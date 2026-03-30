@@ -1340,6 +1340,8 @@ app.use((error, req, res, next) => {
 // ==========================
 // START
 // ==========================
+const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
   console.log(`Servidor VenForce rodando em http://localhost:${PORT}`);
   console.log(`Pasta public: ${publicDir}`);
