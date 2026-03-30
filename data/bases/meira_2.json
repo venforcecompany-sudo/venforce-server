@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "id": "meira_2",
+    "nome": "Meira 2",
+    "total_ids": 4,
+    "atualizado_em": "2026-03-08T04:13:07.296Z",
+    "drive_file_id": "1v1K2ob_k4JkVViCEocYpxceoFvP09olX",
+    "drive_link": "https://docs.google.com/spreadsheets/d/1v1K2ob_k4JkVViCEocYpxceoFvP09olX/edit?usp=drivesdk&ouid=103539531921711952561&rtpof=true&sd=true"
+  },
+  "dados": {
+    "3895989177": {
+      "custo_produto": 12,
+      "imposto_percentual": 0.055,
+      "taxa_fixa": 0
+    },
+    "3903950261": {
+      "custo_produto": 32,
+      "imposto_percentual": 0.055,
+      "taxa_fixa": 0
+    },
+    "4018751329": {
+      "custo_produto": 12,
+      "imposto_percentual": 0.055,
+      "taxa_fixa": 0
+    },
+    "5336471206": {
+      "custo_produto": 14,
+      "imposto_percentual": 0.055,
+      "taxa_fixa": 0
+    }
+  }
+}

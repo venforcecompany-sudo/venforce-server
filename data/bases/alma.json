@@ -1,0 +1,842 @@
+{
+  "meta": {
+    "id": "alma",
+    "nome": "Alma",
+    "total_ids": 166,
+    "atualizado_em": "2026-03-08T02:53:10.667Z",
+    "drive_file_id": "1Ud5tHDZbDlEblAuo3d0n7YVN2mTJcxda",
+    "drive_link": "https://docs.google.com/spreadsheets/d/1Ud5tHDZbDlEblAuo3d0n7YVN2mTJcxda/edit?usp=drivesdk&ouid=103539531921711952561&rtpof=true&sd=true"
+  },
+  "dados": {
+    "4045358615": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4045358641": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4081225595": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4081251363": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4081264249": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4081264251": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4081264259": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4122753041": {
+      "custo_produto": 39,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4122780703": {
+      "custo_produto": 12.9,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4122896695": {
+      "custo_produto": 13,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4122897193": {
+      "custo_produto": 12.9,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4122897427": {
+      "custo_produto": 17,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130539223": {
+      "custo_produto": 21.67,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130551657": {
+      "custo_produto": 16.56,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130561043": {
+      "custo_produto": 97.77,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130564641": {
+      "custo_produto": 13.42,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130567325": {
+      "custo_produto": 12.88,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130577415": {
+      "custo_produto": 46.68,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130579995": {
+      "custo_produto": 11.99,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130580109": {
+      "custo_produto": 12.88,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130606025": {
+      "custo_produto": 16.52,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130615007": {
+      "custo_produto": 21.67,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130615481": {
+      "custo_produto": 16.56,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4130640997": {
+      "custo_produto": 21.67,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4132282317": {
+      "custo_produto": 9,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4132307123": {
+      "custo_produto": 15.5,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4132320135": {
+      "custo_produto": 307,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4132320509": {
+      "custo_produto": 17,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4132332741": {
+      "custo_produto": 9.5,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4132345711": {
+      "custo_produto": 52,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4132345729": {
+      "custo_produto": 73,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4132346105": {
+      "custo_produto": 13,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4132358921": {
+      "custo_produto": 16,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4132384895": {
+      "custo_produto": 13,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4133267087": {
+      "custo_produto": 7,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4133267113": {
+      "custo_produto": 18,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4133281837": {
+      "custo_produto": 31,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4133294565": {
+      "custo_produto": 6,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4133307125": {
+      "custo_produto": 8.5,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4133319267": {
+      "custo_produto": 3.5,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4133319955": {
+      "custo_produto": 16,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4137287949": {
+      "custo_produto": 19.99,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4137322451": {
+      "custo_produto": 17.26,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139604067": {
+      "custo_produto": 9.02,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139604489": {
+      "custo_produto": 20.05,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139607569": {
+      "custo_produto": 6.04,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139607887": {
+      "custo_produto": 20.05,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139620155": {
+      "custo_produto": 6.43,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139620251": {
+      "custo_produto": 15.12,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139632849": {
+      "custo_produto": 15.34,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139645859": {
+      "custo_produto": 7.8,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139646307": {
+      "custo_produto": 20.1,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139646365": {
+      "custo_produto": 23.92,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139658261": {
+      "custo_produto": 15.18,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139658433": {
+      "custo_produto": 20.05,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4139658481": {
+      "custo_produto": 20.05,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4143118649": {
+      "custo_produto": 20.05,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4163894139": {
+      "custo_produto": 10,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4163906985": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4163933125": {
+      "custo_produto": 10,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4167110263": {
+      "custo_produto": 9.33,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4167149153": {
+      "custo_produto": 6.8,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4167191007": {
+      "custo_produto": 16.62,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4167191157": {
+      "custo_produto": 20.05,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4167191165": {
+      "custo_produto": 20.05,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4167231893": {
+      "custo_produto": 11.99,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4167232005": {
+      "custo_produto": 20.05,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4170666639": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4170668095": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4170710701": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4170766083": {
+      "custo_produto": 16,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4170974783": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4170974951": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4170977501": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4170980075": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4171151853": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4179949085": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4180027079": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4180039635": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4180052629": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4180091263": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "4190891863": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367734266": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367734274": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367734300": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367758684": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367771682": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367771718": {
+      "custo_produto": 41,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367809882": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367809906": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367822834": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367835700": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367861322": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367874306": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367874312": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367874330": {
+      "custo_produto": 16,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367899796": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367899828": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367912774": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367925496": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367925508": {
+      "custo_produto": 16,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367925514": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367937576": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5367937606": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5408310226": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5408360438": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5408373586": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5408385820": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5408451426": {
+      "custo_produto": 42.75,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5408463458": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5411678870": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5411704960": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5411769238": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5411779516": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5411805138": {
+      "custo_produto": 17.9,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5411805156": {
+      "custo_produto": 8.9,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5504938654": {
+      "custo_produto": 124.18,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5505192796": {
+      "custo_produto": 25.1,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5505229778": {
+      "custo_produto": 18.2,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5505294864": {
+      "custo_produto": 18.38,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5505281804": {
+      "custo_produto": 18.93,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5505216906": {
+      "custo_produto": 21.16,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5505308076": {
+      "custo_produto": 27.41,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5505220790": {
+      "custo_produto": 96.77,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5509067638": {
+      "custo_produto": 14.2,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5512849110": {
+      "custo_produto": 19,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5522695776": {
+      "custo_produto": 23.92,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5531133456": {
+      "custo_produto": 27.41,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5531649444": {
+      "custo_produto": 25.1,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5531262980": {
+      "custo_produto": 21.67,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5531649442": {
+      "custo_produto": 21.67,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5531649440": {
+      "custo_produto": 13.42,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5531250052": {
+      "custo_produto": 16.52,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5525688334": {
+      "custo_produto": 20.1,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5525736900": {
+      "custo_produto": 18.59,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5525757538": {
+      "custo_produto": 20.05,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5525736758": {
+      "custo_produto": 20.05,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5534706254": {
+      "custo_produto": 7,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5491512360": {
+      "custo_produto": 27.32,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5598371472": {
+      "custo_produto": 7.26,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5598968514": {
+      "custo_produto": 7.93,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5619488142": {
+      "custo_produto": 16,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5619500666": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5619462650": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5619467858": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5619532040": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5619532190": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5619442532": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5619545446": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5619470350": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664709054": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664696042": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664631654": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664554614": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664592994": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664643730": {
+      "custo_produto": 21,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664669584": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664669532": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664656414": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664656356": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664617810": {
+      "custo_produto": 11,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5664592134": {
+      "custo_produto": 41,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5573232622": {
+      "custo_produto": 17,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5687393538": {
+      "custo_produto": 0,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    },
+    "5702059036": {
+      "custo_produto": 0,
+      "imposto_percentual": 0,
+      "taxa_fixa": 0
+    },
+    "5708815392": {
+      "custo_produto": 32.34,
+      "imposto_percentual": 0.075,
+      "taxa_fixa": 0
+    }
+  }
+}
