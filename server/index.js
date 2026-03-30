@@ -10,6 +10,7 @@ const XLSX = require("xlsx");
 const jwt = require("jsonwebtoken");
 const { google } = require("googleapis");
 const { Readable } = require("stream");
+const pool = require("./config/database");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -442,6 +443,16 @@ app.get("/health", (req, res) => {
     ok: true,
     mensagem: `VENFORCE STATUS OK ${PORT}`
   });
+});
+
+app.get('/test-db', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT NOW()');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro no banco');
+  }
 });
 
 // ==========================
