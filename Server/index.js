@@ -12,6 +12,13 @@ const { google } = require("googleapis");
 const { Readable } = require("stream");
 
 const app = express();
+app.get('/callback', (req, res) => {
+  const code = req.query.code;
+
+  console.log("CODE RECEBIDO:", code);
+
+  res.send(`Code recebido: ${code}`);
+});
 const PORT = Number(process.env.PORT || 4127);
 const JWT_SECRET = process.env.JWT_SECRET || "venforce_secret_local";
 const DRIVE_FOLDER_ID = String(process.env.GOOGLE_DRIVE_FOLDER_ID || "").trim();
@@ -1356,3 +1363,4 @@ app.listen(PORT, () => {
   console.log(`GOOGLE_DRIVE_FOLDER_ID: ${DRIVE_FOLDER_ID || "(não configurado)"}`);
   console.log(`Drive client ativo: ${!!drive}`);
 });
+add callback route
