@@ -472,6 +472,7 @@ app.get('/create-users-table', async (req, res) => {
 });
 
 
+
 app.get('/test-db', async (req, res) => {
   try {
     const result = await pool.query('SELECT NOW()');
@@ -479,6 +480,30 @@ app.get('/test-db', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).send('Erro no banco');
+  }
+});
+
+
+
+app.post('/register', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).send('Email e senha obrigatórios');
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+
+    await pool.query(
+      'INSERT INTO users (email, password) VALUES ($1, $2)',
+      [email, hashed]
+    );
+
+    res.send('Usuário criado!');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao criar usuário');
   }
 });
 
@@ -504,7 +529,12 @@ app.post("/login", async (req, res) => {
       });
     }
 
-    const user = buscarUserPorEmail(email);
+	  const result = await pool.query(
+	  'SELECT * FROM users WHERE email = $1',
+	  [email]
+	);
+
+	const user = result.rows[0];
 
     if (!user) {
       return res.status(401).json({
@@ -520,7 +550,7 @@ app.post("/login", async (req, res) => {
       });
     }
 
-    const senhaSalva = user.password || user.senha || "";
+    const senhaSalva = user.password;
     const valid = await bcrypt.compare(password, senhaSalva);
 
     if (!valid) {
