@@ -445,6 +445,33 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    mensagem: `VENFORCE STATUS OK ${PORT}`
+  });
+});
+
+
+app.get('/create-users-table', async (req, res) => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    res.send('Tabela users criada com sucesso');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Erro ao criar tabela');
+  }
+});
+
+
 app.get('/test-db', async (req, res) => {
   try {
     const result = await pool.query('SELECT NOW()');
