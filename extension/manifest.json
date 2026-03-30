@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "VenForce Go",
+  "version": "1.1.5",
+  "description": "Gestão de bases e custos da VenForce",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://venforce-server.onrender.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.mercadolivre.com.br/*",
+        "https://mercadolivre.com.br/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "VenForce"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

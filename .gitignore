@@ -1,0 +1,10 @@
+node_modules
+.env
+*.log
+
+server/node_modules
+server/google-credentials.json
+server/user_client_access.json
+server/log.txt
+
+extension_original/
