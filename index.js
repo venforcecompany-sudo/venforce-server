@@ -94,15 +94,22 @@ function parsePlanilha(buffer, originalName) {
 
   const resultado = [];
   for (const row of rows) {
-    const id = String(obterValorColuna(row, ["id", "ID", "Id", "sku", "SKU"])).trim();
+    const id = String(
+      obterValorColuna(row, ["id", "ID", "Id", "sku", "SKU", "Sku"])
+    ).trim();
     if (!id) continue;
 
     resultado.push({
       produto_id: id,
-     // DEPOIS — adicionado "Custo", "Imposto", "Taxa" com maiúscula
-custo_produto:      numeroSeguro(obterValorColuna(row, ["custo_produto", "Custo", "custo", "CUSTO", "Custo Produto"])),
-imposto_percentual: numeroSeguro(obterValorColuna(row, ["imposto_percentual", "Imposto", "imposto", "IMPOSTO", "Imposto Percentual"])),
-taxa_fixa:          numeroSeguro(obterValorColuna(row, ["taxa_fixa", "Taxa", "taxa", "TAXA", "Taxa Fixa"]))
+      custo_produto: numeroSeguro(
+        obterValorColuna(row, ["Custo", "custo_produto", "CUSTO_PRODUTO", "custo", "CUSTO", "Custo Produto", "custo produto"])
+      ),
+      imposto_percentual: numeroSeguro(
+        obterValorColuna(row, ["Imposto", "imposto_percentual", "IMPOSTO_PERCENTUAL", "imposto", "IMPOSTO", "Imposto Percentual", "imposto percentual"])
+      ),
+      taxa_fixa: numeroSeguro(
+        obterValorColuna(row, ["Taxa", "taxa_fixa", "TAXA_FIXA", "taxa", "TAXA", "Taxa Fixa", "taxa fixa"])
+      ),
     });
   }
 
