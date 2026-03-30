@@ -1,17 +1,6 @@
-/**
- * ============================================
- * VENFORCE — Login Controller
- * Autenticação via POST /login e persistência do token
- * ============================================
- */
-
-/** Chave EXATA no localStorage (deve ser a mesma em dashboard.js) */
 const STORAGE_KEY = "vf-token";
-
-// ─── Configuração da API ───
 const API_BASE = "https://venforce-server.onrender.com";
 
-// ─── Referências DOM ───
 const form = document.getElementById("login-form");
 const emailInput = document.getElementById("email");
 const senhaInput = document.getElementById("senha");
@@ -24,12 +13,9 @@ const yearSpan = document.getElementById("year");
 
 yearSpan.textContent = new Date().getFullYear();
 
-// Já autenticado → dashboard (mesma chave que o dashboard verifica)
 if (localStorage.getItem(STORAGE_KEY)) {
   window.location.replace("dashboard.html");
 }
-
-// ─── UI: erro no formulário ───
 
 function showFormError(message) {
   alertMsg.textContent = message;
@@ -40,20 +26,14 @@ function hideFormError() {
   alertBox.classList.remove("show");
 }
 
-/**
- * Loading no botão de entrar (desabilita e mostra spinner)
- */
 function setButtonLoading(isLoading) {
   btnLogin.disabled = isLoading;
   btnText.textContent = isLoading ? "Entrando…" : "Entrar";
   btnSpinner.style.display = isLoading ? "inline-block" : "none";
 }
 
-// ─── Validação local ───
-
 function validateFields() {
   let valid = true;
-
   emailInput.classList.remove("is-invalid");
   senhaInput.classList.remove("is-invalid");
   hideFormError();
@@ -69,8 +49,7 @@ function validateFields() {
     valid = false;
   }
 
-  const senha = senhaInput.value;
-  if (!senha) {
+  if (!senhaInput.value) {
     senhaInput.classList.add("is-invalid");
     if (valid) showFormError("Preencha o campo de senha.");
     valid = false;
@@ -79,82 +58,49 @@ function validateFields() {
   return valid;
 }
 
-/**
- * Extrai mensagem amigável do JSON de erro da API (ex.: { "erro": "..." })
- */
-function messageFromErrorBody(data) {
-  if (!data || typeof data !== "object") return null;
-  return (
-    data.erro ||
-    data.message ||
-    data.error ||
-    (typeof data.msg === "string" ? data.msg : null)
-  );
-}
-
-// ─── Submit: POST /login ───
-
 form.addEventListener("submit", async function (e) {
   e.preventDefault();
-
   if (!validateFields()) return;
 
   setButtonLoading(true);
   hideFormError();
 
-  const payload = {
-    email: emailInput.value.trim(),
-    senha: senhaInput.value,
-  };
-
   try {
-    const response = await fetch(`${API_BASE}/login`, {
+    const response = await fetch(`${API_BASE}/auth/login`, {   // ← rota correta
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        email: emailInput.value.trim(),
+        password: senhaInput.value,                             // ← campo correto
+      }),
     });
 
     let data = null;
-    try {
-      data = await response.json();
-    } catch {
-      // corpo não é JSON (ex.: servidor fora do ar com HTML)
-    }
+    try { data = await response.json(); } catch {}
 
     if (!response.ok) {
-      const msg =
-        messageFromErrorBody(data) ||
-        "E-mail ou senha incorretos.";
-      showFormError(msg);
+      showFormError(data?.erro || data?.message || "E-mail ou senha incorretos.");
       setButtonLoading(false);
       return;
     }
 
-    const token = data && data.token;
-    if (!token || typeof token !== "string") {
-      showFormError("Resposta inválida: servidor não enviou o token.");
+    if (!data?.token) {
+      showFormError("Resposta inválida: token não recebido.");
       setButtonLoading(false);
       return;
     }
 
-    // Sucesso: persiste token e só então redireciona
-    localStorage.setItem(STORAGE_KEY, token);
+    // Salva token E dados do usuário
+    localStorage.setItem(STORAGE_KEY, data.token);
+    localStorage.setItem("vf-user", JSON.stringify(data.user));
     window.location.replace("dashboard.html");
+
   } catch (err) {
     console.error("Erro no login:", err);
-    showFormError(
-      "Não foi possível conectar ao servidor. Verifique se a API está em http://localhost:5000."
-    );
+    showFormError("Não foi possível conectar ao servidor.");
     setButtonLoading(false);
   }
 });
 
-emailInput.addEventListener("input", () => {
-  emailInput.classList.remove("is-invalid");
-  hideFormError();
-});
-
-senhaInput.addEventListener("input", () => {
-  senhaInput.classList.remove("is-invalid");
-  hideFormError();
-});
+emailInput.addEventListener("input", () => { emailInput.classList.remove("is-invalid"); hideFormError(); });
+senhaInput.addEventListener("input", () => { senhaInput.classList.remove("is-invalid"); hideFormError(); });

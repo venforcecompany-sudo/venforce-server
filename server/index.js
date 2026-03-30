@@ -99,9 +99,10 @@ function parsePlanilha(buffer, originalName) {
 
     resultado.push({
       produto_id: id,
-      custo_produto: numeroSeguro(obterValorColuna(row, ["custo_produto", "custo", "CUSTO", "Custo Produto"])),
-      imposto_percentual: numeroSeguro(obterValorColuna(row, ["imposto_percentual", "imposto", "IMPOSTO", "Imposto Percentual"])),
-      taxa_fixa: numeroSeguro(obterValorColuna(row, ["taxa_fixa", "taxa", "Taxa Fixa"]))
+     // DEPOIS — adicionado "Custo", "Imposto", "Taxa" com maiúscula
+custo_produto:      numeroSeguro(obterValorColuna(row, ["custo_produto", "Custo", "custo", "CUSTO", "Custo Produto"])),
+imposto_percentual: numeroSeguro(obterValorColuna(row, ["imposto_percentual", "Imposto", "imposto", "IMPOSTO", "Imposto Percentual"])),
+taxa_fixa:          numeroSeguro(obterValorColuna(row, ["taxa_fixa", "Taxa", "taxa", "TAXA", "Taxa Fixa"]))
     });
   }
 
@@ -418,11 +419,16 @@ app.post("/importar-base", authMiddleware, upload.single("arquivo"), async (req,
       await client.query("DELETE FROM custos WHERE base_id = $1", [baseId]);
 
       for (const linha of linhas) {
-        await client.query(
-          `INSERT INTO custos (base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [baseId, linha.produto_id, linha.custo_produto, linha.imposto_percentual, linha.taxa_fixa]
-        );
+// DEPOIS (duplicata na planilha → atualiza em vez de quebrar)
+await client.query(
+  `INSERT INTO custos (base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa)
+   VALUES ($1, $2, $3, $4, $5)
+   ON CONFLICT (base_id, produto_id) DO UPDATE SET
+     custo_produto      = EXCLUDED.custo_produto,
+     imposto_percentual = EXCLUDED.imposto_percentual,
+     taxa_fixa          = EXCLUDED.taxa_fixa`,
+  [baseId, linha.produto_id, linha.custo_produto, linha.imposto_percentual, linha.taxa_fixa]
+);
       }
 
       await client.query("COMMIT");
@@ -517,6 +523,18 @@ app.use((err, req, res, next) => {
 // ==========================
 // START
 // ==========================
+// GET /admin/users — lista todos os usuários (só admin)
+app.get("/admin/users", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT id, nome, email, ativo, role, created_at FROM users ORDER BY id ASC"
+    );
+    res.json({ ok: true, users: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`VenForce rodando em http://localhost:${PORT}`);
 });

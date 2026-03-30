@@ -1,198 +1,95 @@
-/**
- * ============================================
- * VENFORCE — Dashboard
- * GET /bases com Bearer token; exibe nome, região e status
- * ============================================
- */
-
-/** Mesma chave que login.js usa ao salvar o token após POST /login */
 const STORAGE_KEY = "vf-token";
-
 const API_BASE = "https://venforce-server.onrender.com";
 
 // ─── DOM ───
-const btnLogout = document.getElementById("btn-logout");
-const btnRetry = document.getElementById("btn-retry");
-const basesCount = document.getElementById("bases-count");
-const basesTbody = document.getElementById("bases-tbody");
-const stateLoading = document.getElementById("state-loading");
-const stateTable = document.getElementById("state-table");
-const stateEmpty = document.getElementById("state-empty");
-const stateError = document.getElementById("state-error");
-const errorMessage = document.getElementById("error-message");
+const btnLogout     = document.getElementById("btn-logout");
+const btnRetry      = document.getElementById("btn-retry");
+const basesCount    = document.getElementById("bases-count");
+const basesTbody    = document.getElementById("bases-tbody");
+const stateLoading  = document.getElementById("state-loading");
+const stateTable    = document.getElementById("state-table");
+const stateEmpty    = document.getElementById("state-empty");
+const stateError    = document.getElementById("state-error");
+const errorMessage  = document.getElementById("error-message");
 
-// ─── Token ───
-
-/**
- * Lê o token salvo no login. Se não existir, manda para a tela de login.
- */
+// ─── Sessão ───
 function getTokenOrRedirect() {
   const token = localStorage.getItem(STORAGE_KEY);
-  if (!token) {
-    window.location.replace("index.html");
-    return null;
-  }
+  if (!token) { window.location.replace("index.html"); return null; }
   return token;
 }
 
 const TOKEN = getTokenOrRedirect();
 
-/** 401: sessão inválida → limpa storage e volta ao login */
 function clearSessionAndGoLogin() {
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem("vf-user");
   window.location.replace("index.html");
 }
 
-// ─── Estados da UI (apenas um visível por vez) ───
+// Preenche nome do usuário logado na navbar (se tiver o elemento)
+const userNameEl = document.getElementById("user-name");
+if (userNameEl) {
+  try {
+    const user = JSON.parse(localStorage.getItem("vf-user") || "{}");
+    userNameEl.textContent = user.nome || user.email || "";
+  } catch {}
+}
 
+// ─── Estados da UI ───
 function showLoading() {
   stateLoading.style.display = "flex";
-  stateTable.style.display = "none";
-  stateEmpty.style.display = "none";
-  stateError.style.display = "none";
+  stateTable.style.display   = "none";
+  stateEmpty.style.display   = "none";
+  stateError.style.display   = "none";
 }
-
 function showTable() {
   stateLoading.style.display = "none";
-  stateTable.style.display = "block";
-  stateEmpty.style.display = "none";
-  stateError.style.display = "none";
+  stateTable.style.display   = "block";
+  stateEmpty.style.display   = "none";
+  stateError.style.display   = "none";
 }
-
 function showEmpty() {
   stateLoading.style.display = "none";
-  stateTable.style.display = "none";
-  stateEmpty.style.display = "block";
-  stateError.style.display = "none";
-  basesCount.style.display = "none";
+  stateTable.style.display   = "none";
+  stateEmpty.style.display   = "block";
+  stateError.style.display   = "none";
+  basesCount.style.display   = "none";
 }
-
 function showError(message) {
   stateLoading.style.display = "none";
-  stateTable.style.display = "none";
-  stateEmpty.style.display = "none";
-  stateError.style.display = "block";
-  errorMessage.textContent = message;
+  stateTable.style.display   = "none";
+  stateEmpty.style.display   = "none";
+  stateError.style.display   = "block";
+  errorMessage.textContent   = message;
 }
 
-// ─── API: lista de bases ───
-
-/**
- * GET /bases com Authorization: Bearer <token>
- * Resposta esperada: { "bases": [ { id, nome, regiao, ativa, custo, imposto }, ... ] }
- */
+// ─── Bases ───
 async function loadBases() {
   if (!TOKEN) return;
-
   showLoading();
 
   try {
     const response = await fetch(`${API_BASE}/bases`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${TOKEN}` },
     });
 
-    if (response.status === 401) {
-      clearSessionAndGoLogin();
-      return;
-    }
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
+    if (response.status === 401) { clearSessionAndGoLogin(); return; }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const result = await response.json();
     const bases = result.bases;
 
     if (!Array.isArray(bases)) {
-      console.error("Resposta inesperada:", result);
-      showError(
-        'Resposta inválida: a API deve retornar { "bases": [ ... ] }.'
-      );
+      showError("Resposta inválida da API.");
       return;
     }
 
     renderBases(bases);
   } catch (err) {
     console.error("Erro ao carregar bases:", err);
-    const msg =
-      err.message && /^HTTP \d+/.test(err.message)
-        ? `Erro do servidor (${err.message}). Tente novamente.`
-        : "Não foi possível carregar as bases. Verifique sua conexão e se a API está em http://localhost:5000.";
-    showError(msg);
+    showError("Não foi possível carregar as bases. Tente novamente.");
   }
-}
-
-/**
- * Formata número como moeda BRL para exibição (valores vêm da API em base.custo / base.imposto)
- */
-function formatarMoedaBR(valor) {
-  if (valor === null || valor === undefined || valor === "") return "—";
-  const n = Number(valor);
-  if (Number.isNaN(n)) return "—";
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-/**
- * Preenche a tabela: nome, região, custo, imposto, status (base.ativa)
- */
-function renderBases(bases) {
-  basesTbody.innerHTML = "";
-
-  if (bases.length === 0) {
-    showEmpty();
-    return;
-  }
-
-  basesCount.textContent = String(bases.length);
-  basesCount.style.display = "inline-block";
-
-  bases.forEach((base, index) => {
-    const tr = document.createElement("tr");
-    tr.classList.add("animate-fade-up");
-    tr.style.animationDelay = `${index * 0.04}s`;
-
-    const nome =
-      base.nome != null && String(base.nome).trim() !== ""
-        ? String(base.nome)
-        : "—";
-    const regiao =
-      base.regiao != null && String(base.regiao).trim() !== ""
-        ? String(base.regiao)
-        : "—";
-
-    const custoFmt = formatarMoedaBR(base.custo);
-    const impostoFmt = formatarMoedaBR(base.imposto);
-
-    const ativa = Boolean(base.ativa);
-    const statusLabel = ativa ? "Ativa" : "Inativa";
-    const statusClass = ativa ? "base-status--active" : "base-status--inactive";
-    const statusHtml = `<span class="${statusClass}">${statusLabel}</span>`;
-
-    tr.innerHTML = `
-      <td style="color: var(--vf-text-l); font-family: var(--vf-mono); font-size: .8rem;">
-        ${String(index + 1).padStart(2, "0")}
-      </td>
-      <td><strong>${escapeHTML(nome)}</strong></td>
-      <td style="color: var(--vf-text-m); font-size: .875rem;">${escapeHTML(
-        regiao
-      )}</td>
-      <td style="font-family: var(--vf-mono); font-size: .875rem;">${escapeHTML(
-        custoFmt
-      )}</td>
-      <td style="font-family: var(--vf-mono); font-size: .875rem;">${escapeHTML(
-        impostoFmt
-      )}</td>
-      <td>${statusHtml}</td>
-    `;
-
-    basesTbody.appendChild(tr);
-  });
-
-  showTable();
 }
 
 function escapeHTML(str) {
@@ -201,17 +98,133 @@ function escapeHTML(str) {
   return div.innerHTML;
 }
 
-// ─── Ações ───
+function renderBases(bases) {
+  basesTbody.innerHTML = "";
 
-btnLogout.addEventListener("click", function () {
+  if (!bases.length) { showEmpty(); return; }
+
+  basesCount.textContent     = String(bases.length);
+  basesCount.style.display   = "inline-block";
+
+  bases.forEach((base, index) => {
+    const tr = document.createElement("tr");
+    tr.classList.add("animate-fade-up");
+    tr.style.animationDelay = `${index * 0.04}s`;
+
+    // ← usa base.ativo (não base.ativa) e base.slug como ID
+    const ativo       = base.ativo !== false;
+    const statusLabel = ativo ? "Ativa" : "Inativa";
+    const statusClass = ativo ? "base-status--active" : "base-status--inactive";
+
+    tr.innerHTML = `
+      <td style="color:var(--vf-text-l);font-family:var(--vf-mono);font-size:.8rem;">
+        ${String(index + 1).padStart(2, "0")}
+      </td>
+      <td><strong>${escapeHTML(base.nome || "—")}</strong></td>
+      <td style="color:var(--vf-text-m);font-size:.875rem;font-family:var(--vf-mono);">
+        ${escapeHTML(base.slug || "—")}
+      </td>
+      <td style="text-align:center;">
+        <span class="${statusClass}">${statusLabel}</span>
+      </td>
+      <td style="text-align:center;">
+        <button
+          class="vf-btn-danger-sm"
+          data-slug="${escapeHTML(base.slug)}"
+          data-nome="${escapeHTML(base.nome || base.slug)}"
+        >Excluir</button>
+      </td>
+    `;
+
+    basesTbody.appendChild(tr);
+  });
+
+  // Eventos dos botões de excluir
+  basesTbody.querySelectorAll(".vf-btn-danger-sm").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const slug = btn.dataset.slug;
+      const nome = btn.dataset.nome;
+      if (confirm(`Excluir permanentemente a base "${nome}"?\n\nEsta ação não pode ser desfeita.`)) {
+        deleteBase(slug);
+      }
+    });
+  });
+
+  showTable();
+}
+
+async function deleteBase(slug) {
+  try {
+    const response = await fetch(`${API_BASE}/bases/${encodeURIComponent(slug)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+
+    if (response.status === 401) { clearSessionAndGoLogin(); return; }
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.erro || `HTTP ${response.status}`);
+
+    loadBases(); // recarrega a lista
+  } catch (err) {
+    alert("Erro ao excluir base: " + err.message);
+  }
+}
+
+// ─── Usuários (seção separada, se existir na página) ───
+const usersTbody = document.getElementById("users-tbody");
+const usersCount = document.getElementById("users-count");
+
+async function loadUsers() {
+  if (!usersTbody) return;
+
+  try {
+    const response = await fetch(`${API_BASE}/admin/users`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+
+    if (response.status === 401) { clearSessionAndGoLogin(); return; }
+    if (!response.ok) return;
+
+    const result = await response.json();
+    const users = result.users || [];
+
+    if (usersCount) {
+      usersCount.textContent   = String(users.length);
+      usersCount.style.display = "inline-block";
+    }
+
+    usersTbody.innerHTML = "";
+    users.forEach((user, index) => {
+      const tr = document.createElement("tr");
+      const ativo = user.ativo !== false;
+      tr.innerHTML = `
+        <td style="font-family:var(--vf-mono);font-size:.8rem;">${String(index + 1).padStart(2, "0")}</td>
+        <td><strong>${escapeHTML(user.nome || "—")}</strong></td>
+        <td style="font-size:.875rem;">${escapeHTML(user.email)}</td>
+        <td style="text-align:center;">
+          <span class="${ativo ? "base-status--active" : "base-status--inactive"}">${ativo ? "Ativo" : "Inativo"}</span>
+        </td>
+        <td style="font-size:.8rem;font-family:var(--vf-mono);">${escapeHTML(user.role || "user")}</td>
+      `;
+      usersTbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error("Erro ao carregar usuários:", err);
+  }
+}
+
+// ─── Ações ───
+btnLogout.addEventListener("click", () => {
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem("vf-user");
   window.location.replace("index.html");
 });
 
-btnRetry.addEventListener("click", function () {
-  loadBases();
-});
+btnRetry.addEventListener("click", () => loadBases());
 
+// ─── Init ───
 if (TOKEN) {
   loadBases();
+  loadUsers();
 }
