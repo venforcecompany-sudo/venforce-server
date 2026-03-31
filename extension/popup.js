@@ -322,16 +322,16 @@ console.log("LOGIN ENVIADO:", email, password);
     return [];
   }
 
-  function getBaseValue(base) {
-    return (
-      base?.id ||
-      base?.nome ||
-      base?.slug ||
-      base?.baseId ||
-      base?.value ||
-      ""
-    );
-  }
+function getBaseValue(base) {
+  return (
+    base?.slug ||
+    base?.id ||
+    base?.nome ||
+    base?.baseId ||
+    base?.value ||
+    ""
+  );
+}
 
   function getBaseLabel(base) {
     return (

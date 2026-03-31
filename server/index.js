@@ -56,15 +56,23 @@ function parsePlanilha(buffer, originalName) {
   if (!primeiraAba) throw new Error("A planilha não possui abas válidas");
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets[primeiraAba], { defval: "" });
   if (!rows.length) throw new Error("A planilha está vazia");
+
   const resultado = [];
   for (const row of rows) {
-    const id = String(obterValorColuna(row, ["id", "ID", "Id", "sku", "SKU", "Sku"])).trim();
+    // Normaliza chaves: remove espaços e BOM invisíveis
+    const r = {};
+    for (const [k, v] of Object.entries(row)) {
+      r[k.trim().replace(/^\uFEFF/, "")] = v;
+    }
+
+    const id = String(obterValorColuna(r, ["id", "ID", "Id", "sku", "SKU", "Sku"])).trim();
     if (!id) continue;
+
     resultado.push({
       produto_id: id,
-      custo_produto: numeroSeguro(obterValorColuna(row, ["Custo", "custo_produto", "CUSTO_PRODUTO", "custo", "CUSTO", "Custo Produto"])),
-      imposto_percentual: numeroSeguro(obterValorColuna(row, ["Imposto", "imposto_percentual", "IMPOSTO_PERCENTUAL", "imposto", "IMPOSTO", "Imposto Percentual"])),
-      taxa_fixa: numeroSeguro(obterValorColuna(row, ["Taxa", "taxa_fixa", "TAXA_FIXA", "taxa", "TAXA", "Taxa Fixa"]))
+      custo_produto: numeroSeguro(obterValorColuna(r, ["Custo", "custo_produto", "CUSTO_PRODUTO", "custo", "CUSTO", "Custo Produto"])),
+      imposto_percentual: numeroSeguro(obterValorColuna(r, ["Imposto", "imposto_percentual", "IMPOSTO_PERCENTUAL", "imposto", "IMPOSTO", "Imposto Percentual"])),
+      taxa_fixa: numeroSeguro(obterValorColuna(r, ["Taxa", "taxa_fixa", "TAXA_FIXA", "taxa", "TAXA", "Taxa Fixa"]))
     });
   }
   if (!resultado.length) throw new Error("Nenhum ID válido encontrado na planilha");
@@ -278,10 +286,12 @@ app.post("/bases/:baseId/desabilitar", authMiddleware, async (req, res) => {
 // EXCLUIR BASE
 app.delete("/bases/:baseId", authMiddleware, async (req, res) => {
   try {
-    const slug = normalizarSlug(req.params.baseId);
+    const param = req.params.baseId;
+    // Aceita tanto ID numérico quanto slug
     const acesso = await pool.query(
-      `SELECT b.id FROM bases b JOIN user_bases ub ON ub.base_id = b.id WHERE b.slug = $1 AND ub.user_id = $2`,
-      [slug, req.user.id]
+      `SELECT b.id FROM bases b JOIN user_bases ub ON ub.base_id = b.id
+       WHERE (b.id = $1 OR b.slug = $2) AND ub.user_id = $3`,
+      [parseInt(param) || 0, normalizarSlug(param), req.user.id]
     );
     if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada" });
     await pool.query("DELETE FROM bases WHERE id = $1", [acesso.rows[0].id]);
