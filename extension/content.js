@@ -621,24 +621,67 @@ console.log("[VenForce] extensão iniciada");
     return { percentual, valor };
   }
 
-  function extrairFrete(row) {
-    const t = getTextoLimpo(row);
-    const tSemFlex = t.replace(/você receberá[\s\S]{0,80}?por usar o flex[\s\S]{0,40}?(?:\n|$)/gi, "");
+ function extrairFrete(row) {
+  const t = getTextoLimpo(row);
 
-    const valor = buscarValorAposBloco(
-      tSemFlex,
-      /(Envio por conta do comprador|Você oferece frete grátis|Frete grátis|Frete|Envio)/i,
-      240
-    );
-    if (valor) return valor;
+  // 🔹 remove bloco do FLEX (continua igual)
+  const tSemFlex = t.replace(
+    /você receberá[\s\S]{0,80}?por usar o flex[\s\S]{0,40}?(?:\n|$)/gi,
+    ""
+  );
 
-    const m = tSemFlex.match(
-      /(Envio por conta do comprador|Você oferece frete grátis|Frete grátis|Frete|Envio)[\s\S]{0,240}?A pagar\s*R\$\s*([\d\.]+,\d{2}|[\d\.]+)/i
-    );
-    if (m?.[2]) return extrairNumeroDeTexto(`R$ ${m[2]}`);
+  // ==========================
+  // 1. LAYOUT NOVO 
+  // ==========================
+  let valor = buscarValorAposBloco(
+    tSemFlex,
+    /(Envio por conta do comprador|Você oferece frete grátis|Frete grátis|Frete|Envio)/i,
+    240
+  );
+  if (valor) return valor;
 
-    return 0;
+  // ==========================
+  // 2. LAYOUT ANTIGO (NOVO SUPORTE)
+  // ==========================
+  const linhas = getLinhas(tSemFlex);
+
+  for (let i = 0; i < linhas.length; i++) {
+    const linha = linhas[i];
+
+    // identifica bloco de frete
+    if (/frete grátis|frete|envio/i.test(linha)) {
+      const bloco = `${linhas[i]} ${linhas[i + 1] || ""} ${linhas[i + 2] || ""}`;
+
+      const match = bloco.match(/R\$\s*([\d\.]+,\d{2}|[\d\.]+)/i);
+      if (match?.[1]) {
+        return extrairNumeroDeTexto(`R$ ${match[1]}`);
+      }
+    }
   }
+
+  // ==========================
+  // 3. FALLBACK INTELIGENTE
+  // ==========================
+  const todosValores = extrairTodosOsPrecosDoTexto(tSemFlex);
+
+  if (todosValores.length >= 3) {
+    // geralmente: preço venda / comissão / frete
+    return todosValores[2];
+  }
+
+  // ==========================
+  // 4. FALLBACK FINAL
+  // ==========================
+  const match = tSemFlex.match(
+    /(Envio|Frete)[\s\S]{0,200}?R\$\s*([\d\.]+,\d{2}|[\d\.]+)/i
+  );
+  if (match?.[2]) {
+    return extrairNumeroDeTexto(`R$ ${match[2]}`);
+  }
+
+  return 0;
+}
+
 
   function calcular(precoVenda, custoInfo, comissaoInfo, frete) {
     const custo = numeroSeguro(custoInfo?.custo_produto);
