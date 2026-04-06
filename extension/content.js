@@ -272,6 +272,39 @@ console.log("[VenForce] extensão iniciada");
       .vf-scan-reset:hover { background: #fbd7d7; }
       .vf-scan-mini-btn:disabled { opacity: 0.6; cursor: not-allowed; }
       .vf-scan-help { margin-top: 6px; font-size: 10px; color: #666; }
+
+      .vf-scan-toggle-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #5b2be0;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+        color: white;
+        font-size: 16px;
+        transition: background 0.2s;
+        flex-shrink: 0;
+      }
+      .vf-scan-toggle-btn:hover { background: #4520ad; }
+
+      .vf-scan-panel {
+        display: none;
+        background: rgba(255,255,255,0.97);
+        border: 1.5px solid #d8d0ff;
+        border-radius: 12px;
+        padding: 10px 12px;
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        color: #333;
+        min-width: 200px;
+        max-width: 260px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.13);
+      }
+      .vf-scan-panel.open { display: block; }
     `;
 
     root.appendChild(style);
@@ -813,38 +846,36 @@ console.log("[VenForce] extensão iniciada");
     scanBtn.className = "venforce-scan-btn";
     scanBtn.textContent = "▶ Escanear página";
     scanBtn.addEventListener("click", async () => {
-      const token = getTokenLocalStorage();
-      if (token) {
-        const root = getOverlayRoot();
-        const baseSel = root?.getElementById("vf-scan-base");
-        const contaIn = root?.getElementById("vf-scan-conta");
-        const baseSlug = String(baseSel?.value || getBaseSlugLocalStorage() || "").trim();
-        const contaMl = String(contaIn?.value || (await obterContaMl()) || "").trim();
-        if (baseSlug) setBaseSlugLocalStorage(baseSlug);
-        if (baseSlug && contaMl) await iniciarScan(baseSlug, contaMl);
-        atualizarScanUI();
+      const root = getOverlayRoot();
+      const baseSel = root?.getElementById("vf-scan-base");
+      const contaIn = root?.getElementById("vf-scan-conta");
+      const sessaoAuth = await getSessao();
+      const token = sessaoAuth?.token || "";
+
+      if (!token) {
+        alert("Faça login pelo popup da extensão primeiro.");
+        return;
       }
 
-      {
-        const root = getOverlayRoot();
-        const baseSel = root?.getElementById("vf-scan-base");
-        const contaIn = root?.getElementById("vf-scan-conta");
-        const baseSlug = String(baseSel?.value || "").trim();
-        const contaMl = String(contaIn?.value || "").trim();
+      const baseSlug = String(baseSel?.value || "").trim();
+      const contaMl = String(contaIn?.value || "").trim();
 
-        if (baseSlug && contaMl) {
-          await iniciarScan(baseSlug, contaMl);
-        } else if (!baseSlug) {
-          alert("Selecione uma base antes de escanear.");
-          return;
-        }
+      if (!baseSlug) {
+        alert("Selecione uma base antes de escanear.");
+        return;
       }
+
+      if (baseSlug) setBaseSlugLocalStorage(baseSlug);
+
+      // Inicia ou retoma sessão e aguarda salvar no storage
+      await iniciarScan(baseSlug, contaMl || "sem_conta");
+      await atualizarScanUI();
 
       scanBtn.disabled = true;
       scanBtn.textContent = "Escaneando...";
       expandAllOnNextRender = true;
       scheduleProcess();
-      await new Promise(r => setTimeout(r, 1200));
+      await new Promise(r => setTimeout(r, 1500));
       processarPagina();
       await new Promise(r => setTimeout(r, 400));
       atualizarDebugNaPagina();
@@ -853,20 +884,24 @@ console.log("[VenForce] extensão iniciada");
     });
     wrap.appendChild(scanBtn);
 
-    const scanSessionBox = document.createElement("div");
-    scanSessionBox.id = "vf-scan-session-box";
-    scanSessionBox.className = "vf-scan-session";
-    scanSessionBox.style.display = "none";
-    scanSessionBox.innerHTML = `
-      <div class="vf-scan-session-title">
-        <span>Scan acumulativo</span>
-        <span class="vf-scan-active" id="vf-scan-active" style="display:none;">
-          <span class="vf-scan-dot"></span>
-          Ativo
+    const scanToggleBtn = document.createElement("button");
+    scanToggleBtn.type = "button";
+    scanToggleBtn.className = "vf-scan-toggle-btn";
+    scanToggleBtn.title = "Scan acumulativo";
+    scanToggleBtn.innerHTML = "⚡";
+    wrap.appendChild(scanToggleBtn);
+
+    const scanPanel = document.createElement("div");
+    scanPanel.id = "vf-scan-session-box";
+    scanPanel.className = "vf-scan-panel";
+    scanPanel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-weight:700;font-size:12px;color:#5b2be0;">Scan acumulativo</span>
+        <span class="vf-scan-active" id="vf-scan-active" style="display:none;font-size:10px;font-weight:700;color:#1a7a42;display:inline-flex;align-items:center;gap:4px;">
+          <span class="vf-scan-dot"></span>Ativo
         </span>
       </div>
-      <div id="vf-scan-count" style="font-weight:700;color:#5b2be0;">0 anúncios acumulados</div>
-
+      <div id="vf-scan-count" style="font-weight:700;color:#5b2be0;margin-bottom:8px;">0 anúncios acumulados</div>
       <div class="vf-scan-row">
         <label>Base</label>
         <select id="vf-scan-base" class="vf-scan-select">
@@ -877,14 +912,16 @@ console.log("[VenForce] extensão iniciada");
         <label>Conta</label>
         <input id="vf-scan-conta" class="vf-scan-input" placeholder="ex: minha_conta_ml">
       </div>
-
       <div class="vf-scan-actions">
-        <button type="button" class="vf-scan-mini-btn vf-scan-finish" id="vf-btn-finish-scan">Finalizar scan</button>
+        <button type="button" class="vf-scan-mini-btn vf-scan-finish" id="vf-btn-finish-scan">Finalizar</button>
         <button type="button" class="vf-scan-mini-btn vf-scan-reset" id="vf-btn-reset-scan">Resetar</button>
       </div>
-      <div class="vf-scan-help">Dica: o scan acumula entre páginas enquanto estiver ativo.</div>
     `;
-    wrap.appendChild(scanSessionBox);
+    wrap.appendChild(scanPanel);
+
+    scanToggleBtn.addEventListener("click", () => {
+      scanPanel.classList.toggle("open");
+    });
 
     const debugBox = document.createElement("div");
     debugBox.id = "vf-debug-box";
