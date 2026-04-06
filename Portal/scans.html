@@ -15,9 +15,30 @@
 
       <div class="vf-page-header">
         <h2>Scans</h2>
-        <p>Histórico de análises realizadas pela extensão.</p>
+        <p>Análise de lucratividade por conta.</p>
       </div>
 
+      <!-- ── RESUMO GERAL ── -->
+      <div class="vf-summary-grid">
+        <div class="vf-summary-card">
+          <div class="vf-summary-number" id="summary-contas">—</div>
+          <div class="vf-summary-label">Total de contas escaneadas</div>
+        </div>
+        <div class="vf-summary-card">
+          <div class="vf-summary-number" id="summary-total">—</div>
+          <div class="vf-summary-label">Total de anúncios analisados</div>
+        </div>
+        <div class="vf-summary-card">
+          <div class="vf-summary-number" id="summary-mc">—</div>
+          <div class="vf-summary-label">MC médio geral</div>
+        </div>
+        <div class="vf-summary-card">
+          <div class="vf-summary-number" id="summary-criticas">—</div>
+          <div class="vf-summary-label">Contas críticas (MC médio &lt; 10%)</div>
+        </div>
+      </div>
+
+      <!-- ── CONTAS ANALISADAS ── -->
       <div class="vf-card">
         <div class="vf-card-header">
           <h5>
@@ -26,33 +47,17 @@
               <line x1="18" y1="20" x2="18" y2="4"></line>
               <line x1="6" y1="20" x2="6" y2="16"></line>
             </svg>
-            Scans realizados
+            Contas analisadas
           </h5>
-          <span class="vf-badge" id="scans-count" style="display:none;">0</span>
         </div>
 
-        <div id="scans-content" style="min-height:200px;">
+        <div id="contas-content" style="min-height:200px;">
           <div id="state-loading" class="vf-loading">
             <div class="loading-dots"><span></span><span></span><span></span></div>
             <p>Carregando scans…</p>
           </div>
-          <div id="state-table" class="vf-table-wrapper" style="display:none;">
-            <table class="vf-table">
-              <thead>
-                <tr>
-                  <th style="width:50px;">#</th>
-                  <th style="width:190px;">Data</th>
-                  <th>Conta ML</th>
-                  <th>Base</th>
-                  <th style="width:110px;text-align:right;">Total</th>
-                  <th style="width:150px;text-align:center;">MC Médio</th>
-                  <th style="width:120px;text-align:right;">Saudáveis</th>
-                  <th style="width:120px;text-align:right;">Atenção</th>
-                  <th style="width:120px;text-align:right;">Críticos</th>
-                </tr>
-              </thead>
-              <tbody id="scans-tbody"></tbody>
-            </table>
+          <div id="state-list" style="display:none;">
+            <div id="contas-list"></div>
           </div>
           <div id="state-empty" class="vf-empty-state" style="display:none;">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
