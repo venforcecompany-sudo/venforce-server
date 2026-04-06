@@ -186,6 +186,19 @@ CREATE TABLE IF NOT EXISTS callbacks (
         created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS scans (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        base_slug TEXT NOT NULL,
+        conta_ml TEXT NOT NULL,
+        total_anuncios INTEGER NOT NULL DEFAULT 0,
+        mc_medio NUMERIC(10,4) NOT NULL DEFAULT 0,
+        saudaveis INTEGER NOT NULL DEFAULT 0,
+        atencao INTEGER NOT NULL DEFAULT 0,
+        criticos INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
     `);   
 
     await pool.query(`
@@ -239,6 +252,47 @@ app.post("/auth/login", async (req, res) => {
 app.get("/auth/me", authMiddleware, (req, res) => {
   const u = req.user;
   res.json({ ok: true, user: { id: u.id, nome: u.nome, email: u.email, ativo: u.ativo, role: u.role } });
+});
+
+app.post("/scans", authMiddleware, async (req, res) => {
+  try {
+    const {
+      base_slug, conta_ml, total_anuncios,
+      mc_medio, saudaveis, atencao, criticos
+    } = req.body;
+
+    if (!base_slug || !conta_ml || !total_anuncios) {
+      return res.status(400).json({ ok: false, erro: "Campos obrigatórios faltando." });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO scans 
+       (user_id, base_slug, conta_ml, total_anuncios, mc_medio, saudaveis, atencao, criticos)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING *`,
+      [req.user.id, base_slug, conta_ml, total_anuncios,
+       mc_medio || 0, saudaveis || 0, atencao || 0, criticos || 0]
+    );
+
+    res.status(201).json({ ok: true, scan: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.get("/scans", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM scans 
+       WHERE user_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 100`,
+      [req.user.id]
+    );
+    res.json({ ok: true, scans: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
 });
 
 app.get("/api/bases/:baseSlug", apiKeyMiddleware, async (req, res) => {

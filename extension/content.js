@@ -5,6 +5,9 @@ console.log("[VenForce] extensão iniciada");
 
   const OVERLAY_ID = "venforce-overlay-root";
   const BOX_CLASS = "venforce-card-box";
+  const SCAN_SESSION_KEY = "vf_scan_session";
+  const LS_TOKEN_KEY = "vf-token";
+  const LS_BASE_KEY = "vf-base";
 
   const BOX_WIDTH = 280;
   const CARD_GAP_FROM_ROW = 18;
@@ -192,6 +195,83 @@ console.log("[VenForce] extensão iniciada");
       .vf-dbg-red    { background: #fef0f0; border-radius: 6px; padding: 4px 2px; font-size: 10px; color: #c62828; font-weight: 700; }
       .vf-dbg-label  { font-size: 8px; font-weight: 400; display: block; margin-top: 1px; }
       .vf-dbg-media  { margin-top: 5px; font-size: 10px; color: #666; text-align: center; }
+
+      .vf-scan-session {
+        background: rgba(255,255,255,0.96);
+        border: 1.5px solid #d8d0ff;
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        color: #333;
+        min-width: 140px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+      }
+
+      .vf-scan-session-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        font-weight: 700;
+        font-size: 12px;
+        color: #5b2be0;
+      }
+
+      .vf-scan-active {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #1a7a42;
+      }
+
+      .vf-scan-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #2ea55e;
+        box-shadow: 0 0 0 0 rgba(46,165,94,0.45);
+        animation: vfPulseDot 1.1s ease-in-out infinite;
+      }
+
+      @keyframes vfPulseDot {
+        0%   { box-shadow: 0 0 0 0 rgba(46,165,94,0.40); }
+        70%  { box-shadow: 0 0 0 7px rgba(46,165,94,0.00); }
+        100% { box-shadow: 0 0 0 0 rgba(46,165,94,0.00); }
+      }
+
+      .vf-scan-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+      .vf-scan-row label { font-size: 9px; opacity: 0.6; min-width: 56px; }
+      .vf-scan-input, .vf-scan-select {
+        flex: 1;
+        border: 1px solid rgba(0,0,0,0.18);
+        border-radius: 8px;
+        padding: 6px 8px;
+        font-size: 11px;
+        outline: none;
+      }
+      .vf-scan-input:focus, .vf-scan-select:focus { border-color: rgba(91,43,224,0.45); box-shadow: 0 0 0 2px rgba(91,43,224,0.08); }
+
+      .vf-scan-actions { display: flex; gap: 6px; margin-top: 8px; }
+      .vf-scan-mini-btn {
+        flex: 1;
+        padding: 7px 8px;
+        font-size: 11px;
+        font-weight: 700;
+        font-family: Arial, sans-serif;
+        border-radius: 10px;
+        cursor: pointer;
+        border: 1px solid transparent;
+      }
+      .vf-scan-finish { background: #2ea55e; border-color: #237a47; color: #fff; }
+      .vf-scan-finish:hover { background: #237a47; }
+      .vf-scan-reset { background: #fef0f0; border-color: #d44c4c; color: #c62828; }
+      .vf-scan-reset:hover { background: #fbd7d7; }
+      .vf-scan-mini-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+      .vf-scan-help { margin-top: 6px; font-size: 10px; color: #666; }
     `;
 
     root.appendChild(style);
@@ -318,6 +398,300 @@ console.log("[VenForce] extensão iniciada");
   }
 
   // ==========================
+  // SCAN ACUMULATIVO (chrome.storage.local)
+  // ==========================
+  function getTokenLocalStorage() {
+    try { return localStorage.getItem(LS_TOKEN_KEY) || ""; } catch { return ""; }
+  }
+
+  function getBaseSlugLocalStorage() {
+    try { return (localStorage.getItem(LS_BASE_KEY) || "").trim(); } catch { return ""; }
+  }
+
+  function setBaseSlugLocalStorage(slug) {
+    try { localStorage.setItem(LS_BASE_KEY, String(slug || "").trim()); } catch {}
+  }
+
+  async function getScanSession() {
+    try {
+      const storage = await chrome.storage.local.get([SCAN_SESSION_KEY]);
+      return storage?.[SCAN_SESSION_KEY] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function setScanSession(sessao) {
+    try {
+      await chrome.storage.local.set({ [SCAN_SESSION_KEY]: sessao });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function clearScanSession() {
+    try {
+      await chrome.storage.local.remove([SCAN_SESSION_KEY]);
+    } catch {}
+  }
+
+  function calcularMetricas(anuncios) {
+    const items = Object.values(anuncios || {});
+    const total = items.length;
+    if (!total) return { total: 0, mc_medio: 0, saudaveis: 0, atencao: 0, criticos: 0 };
+
+    let somaPreco = 0;
+    let somaMcPonderado = 0;
+    let somaMc = 0;
+    let saudaveis = 0;
+    let atencao = 0;
+    let criticos = 0;
+
+    for (const it of items) {
+      const mc = Number(it?.mc) || 0;
+      const preco = Number(it?.preco) || 0;
+      somaMc += mc;
+
+      if (preco > 0) {
+        somaPreco += preco;
+        somaMcPonderado += mc * preco;
+      }
+
+      if (mc >= 20) saudaveis += 1;
+      else if (mc >= 10) atencao += 1;
+      else criticos += 1;
+    }
+
+    const mc_medio = somaPreco > 0 ? (somaMcPonderado / somaPreco) : (somaMc / total);
+    return { total, mc_medio, saudaveis, atencao, criticos };
+  }
+
+  async function iniciarScan(base_slug, conta_ml) {
+    const base = String(base_slug || "").trim();
+    const conta = String(conta_ml || "").trim();
+    if (!base || !conta) return null;
+
+    const atual = await getScanSession();
+    if (atual?.ativo && atual.base_slug && atual.conta_ml) {
+      const mesma = atual.base_slug === base && atual.conta_ml === conta;
+      if (mesma) return atual;
+
+      const ok = confirm(
+        `Já existe um scan acumulando para:\n\nBase: ${atual.base_slug}\nConta: ${atual.conta_ml}\n\nDeseja resetar e iniciar um novo scan para:\nBase: ${base}\nConta: ${conta}?`
+      );
+      if (!ok) return atual;
+    }
+
+    const nova = {
+      ativo: true,
+      base_slug: base,
+      conta_ml: conta,
+      anuncios: {},
+      iniciado_em: Date.now()
+    };
+    await setScanSession(nova);
+    atualizarScanUI();
+    return nova;
+  }
+
+  function adicionarAnuncio(id, dados) {
+    const anuncioId = String(id || "").trim();
+    if (!anuncioId) return;
+
+    const payload = {
+      mc: Number(dados?.mc) || 0,
+      preco: Number(dados?.preco) || 0,
+      status: String(dados?.status || "")
+    };
+
+    chrome.storage.local.get([SCAN_SESSION_KEY], (storage) => {
+      const sessao = storage?.[SCAN_SESSION_KEY];
+      if (!sessao?.ativo) return;
+      if (!sessao.anuncios) sessao.anuncios = {};
+      sessao.anuncios[anuncioId] = payload;
+      chrome.storage.local.set({ [SCAN_SESSION_KEY]: sessao }, () => {
+        atualizarScanUI();
+      });
+    });
+  }
+
+  async function finalizarScan(token) {
+    try {
+      const t = String(token || "").trim();
+      if (!t) return;
+
+      const sessao = await getScanSession();
+      if (!sessao?.ativo) {
+        alert("Nenhuma sessão de scan ativa.");
+        return;
+      }
+
+      const base_slug = String(sessao.base_slug || "").trim();
+      const conta_ml = String(sessao.conta_ml || "").trim();
+      const anuncios = sessao.anuncios || {};
+      const m = calcularMetricas(anuncios);
+
+      if (!base_slug || !conta_ml || !m.total) {
+        alert("Não foi possível finalizar: base/conta inválidas ou nenhum anúncio acumulado.");
+        return;
+      }
+
+      const res = await fetch(`${API_BASE_URL}/scans`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${t}`
+        },
+        body: JSON.stringify({
+          base_slug,
+          conta_ml,
+          total_anuncios: m.total,
+          mc_medio: m.mc_medio,
+          saudaveis: m.saudaveis,
+          atencao: m.atencao,
+          criticos: m.criticos
+        })
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        alert("Sessão expirada. Faça login novamente no portal.");
+        return;
+      }
+      if (!res.ok || json?.ok === false) {
+        throw new Error(json?.erro || `HTTP ${res.status}`);
+      }
+
+      await clearScanSession();
+      resetarContadoresScanUI();
+      alert("✓ Scan finalizado e salvo com sucesso.");
+    } catch (err) {
+      alert("Erro ao finalizar scan: " + err.message);
+    } finally {
+      atualizarScanUI();
+    }
+  }
+
+  function resetarScan() {
+    clearScanSession().finally(() => {
+      resetarContadoresScanUI();
+      atualizarScanUI();
+    });
+  }
+
+  async function obterContaMl() {
+    const fromUrl = (() => {
+      try {
+        const u = new URL(location.href);
+        const path = (u.pathname || "").split("/").filter(Boolean);
+        const known = path.find(p => /^@/.test(p));
+        if (known) return known.replace(/^@/, "");
+        const maybe = path.find(p => /perfil|user|usuario|seller/i.test(p));
+        if (maybe) {
+          const idx = path.indexOf(maybe);
+          if (idx >= 0 && path[idx + 1]) return path[idx + 1];
+        }
+      } catch {}
+      return "";
+    })();
+
+    if (fromUrl) return fromUrl;
+
+    const candidates = [
+      "[data-testid='user-menu']",
+      "[data-testid='nav-header-user-menu']",
+      "header a[href*='perfil']",
+      "header a[href*='/profile']",
+      "header [class*='user']",
+    ];
+    for (const sel of candidates) {
+      const el = document.querySelector(sel);
+      const t = getTextoLimpo(el);
+      if (t && t.length >= 3 && t.length <= 40) return t.split("\n")[0].trim();
+    }
+
+    return "";
+  }
+
+  async function carregarBasesParaSelect(token) {
+    const root = getOverlayRoot();
+    const select = root?.getElementById("vf-scan-base");
+    if (!select) return;
+
+    select.innerHTML = `<option value="">Carregando bases…</option>`;
+    try {
+      const res = await fetch(`${API_BASE_URL}/bases`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json().catch(() => ({}));
+      const bases = Array.isArray(json?.bases) ? json.bases : [];
+
+      select.innerHTML = `<option value="">Selecione uma base…</option>`;
+      bases.forEach((b) => {
+        const opt = document.createElement("option");
+        opt.value = b.slug || b.nome || "";
+        opt.textContent = b.nome || b.slug || "—";
+        select.appendChild(opt);
+      });
+
+      const current = getBaseSlugLocalStorage();
+      if (current) select.value = current;
+    } catch {
+      select.innerHTML = `<option value="">Não foi possível carregar bases</option>`;
+    }
+  }
+
+  function resetarContadoresScanUI() {
+    const root = getOverlayRoot();
+    const el = root?.getElementById("vf-scan-count");
+    if (el) el.textContent = "0 anúncios acumulados";
+    const active = root?.getElementById("vf-scan-active");
+    if (active) active.style.display = "none";
+  }
+
+  async function atualizarScanUI() {
+    const root = getOverlayRoot();
+    if (!root) return;
+
+    const token = getTokenLocalStorage();
+    const box = root.getElementById("vf-scan-session-box");
+    if (!box) return;
+
+    const btnFinish = root.getElementById("vf-btn-finish-scan");
+    const btnReset = root.getElementById("vf-btn-reset-scan");
+
+    if (!token) {
+      box.style.display = "none";
+      return;
+    }
+    box.style.display = "block";
+
+    const sessao = await getScanSession();
+    const countEl = root.getElementById("vf-scan-count");
+    const activeEl = root.getElementById("vf-scan-active");
+    const contaInput = root.getElementById("vf-scan-conta");
+    const baseSelect = root.getElementById("vf-scan-base");
+
+    const baseSlug = getBaseSlugLocalStorage();
+    if (baseSelect && baseSlug && baseSelect.value !== baseSlug) baseSelect.value = baseSlug;
+
+    const contaAtual = (contaInput?.value || "").trim();
+    if (!contaAtual) {
+      const contaDetectada = await obterContaMl();
+      if (contaDetectada && contaInput) contaInput.value = contaDetectada;
+    }
+
+    const total = sessao?.anuncios ? Object.keys(sessao.anuncios).length : 0;
+    if (countEl) countEl.textContent = `${total} anúncios acumulados`;
+    if (activeEl) activeEl.style.display = sessao?.ativo ? "inline-flex" : "none";
+
+    if (btnFinish) btnFinish.disabled = !sessao?.ativo || total <= 0;
+    if (btnReset) btnReset.disabled = !sessao?.ativo && total <= 0;
+  }
+
+  // ==========================
   // CARREGAMENTO DE CUSTOS
   // ROTA NOVA: GET /bases/:baseId (sem Drive)
   // ==========================
@@ -434,6 +808,18 @@ console.log("[VenForce] extensão iniciada");
     scanBtn.className = "venforce-scan-btn";
     scanBtn.textContent = "▶ Escanear página";
     scanBtn.addEventListener("click", async () => {
+      const token = getTokenLocalStorage();
+      if (token) {
+        const root = getOverlayRoot();
+        const baseSel = root?.getElementById("vf-scan-base");
+        const contaIn = root?.getElementById("vf-scan-conta");
+        const baseSlug = String(baseSel?.value || getBaseSlugLocalStorage() || "").trim();
+        const contaMl = String(contaIn?.value || (await obterContaMl()) || "").trim();
+        if (baseSlug) setBaseSlugLocalStorage(baseSlug);
+        if (baseSlug && contaMl) await iniciarScan(baseSlug, contaMl);
+        atualizarScanUI();
+      }
+
       scanBtn.disabled = true;
       scanBtn.textContent = "Escaneando...";
       expandAllOnNextRender = true;
@@ -446,6 +832,39 @@ console.log("[VenForce] extensão iniciada");
       scanBtn.textContent = "▶ Escanear página";
     });
     wrap.appendChild(scanBtn);
+
+    const scanSessionBox = document.createElement("div");
+    scanSessionBox.id = "vf-scan-session-box";
+    scanSessionBox.className = "vf-scan-session";
+    scanSessionBox.style.display = "none";
+    scanSessionBox.innerHTML = `
+      <div class="vf-scan-session-title">
+        <span>Scan acumulativo</span>
+        <span class="vf-scan-active" id="vf-scan-active" style="display:none;">
+          <span class="vf-scan-dot"></span>
+          Ativo
+        </span>
+      </div>
+      <div id="vf-scan-count" style="font-weight:700;color:#5b2be0;">0 anúncios acumulados</div>
+
+      <div class="vf-scan-row">
+        <label>Base</label>
+        <select id="vf-scan-base" class="vf-scan-select">
+          <option value="">Selecione uma base…</option>
+        </select>
+      </div>
+      <div class="vf-scan-row">
+        <label>Conta</label>
+        <input id="vf-scan-conta" class="vf-scan-input" placeholder="ex: minha_conta_ml">
+      </div>
+
+      <div class="vf-scan-actions">
+        <button type="button" class="vf-scan-mini-btn vf-scan-finish" id="vf-btn-finish-scan">Finalizar scan</button>
+        <button type="button" class="vf-scan-mini-btn vf-scan-reset" id="vf-btn-reset-scan">Resetar</button>
+      </div>
+      <div class="vf-scan-help">Dica: o scan acumula entre páginas enquanto estiver ativo.</div>
+    `;
+    wrap.appendChild(scanSessionBox);
 
     const debugBox = document.createElement("div");
     debugBox.id = "vf-debug-box";
@@ -465,6 +884,34 @@ console.log("[VenForce] extensão iniciada");
     wrap.appendChild(debugBox);
 
     root.appendChild(wrap);
+
+    const token = getTokenLocalStorage();
+    if (token) {
+      carregarBasesParaSelect(token);
+      atualizarScanUI();
+      const baseSel = root.getElementById("vf-scan-base");
+      if (baseSel) {
+        baseSel.addEventListener("change", () => {
+          const v = String(baseSel.value || "").trim();
+          if (v) setBaseSlugLocalStorage(v);
+          atualizarScanUI();
+        });
+      }
+      const contaIn = root.getElementById("vf-scan-conta");
+      if (contaIn) contaIn.addEventListener("input", () => atualizarScanUI());
+
+      const btnFinish = root.getElementById("vf-btn-finish-scan");
+      if (btnFinish) btnFinish.addEventListener("click", async () => {
+        btnFinish.disabled = true;
+        await finalizarScan(getTokenLocalStorage());
+        btnFinish.disabled = false;
+      });
+      const btnReset = root.getElementById("vf-btn-reset-scan");
+      if (btnReset) btnReset.addEventListener("click", () => {
+        if (confirm("Resetar o scan acumulativo? Isso apaga os anúncios já acumulados.")) resetarScan();
+      });
+    }
+
     return overlay;
   }
 
@@ -846,6 +1293,12 @@ console.log("[VenForce] extensão iniciada");
 
     renderBox(box, id, dados, { precoCheio: precoInfo.precoCheio, precoPromocional: precoInfo.precoPromocional });
 
+    const token = getTokenLocalStorage();
+    if (token) {
+      const status = getStatusByMc(dados.mc)?.texto || "";
+      adicionarAnuncio(id, { mc: dados.mc, preco: dados.precoVenda, status });
+    }
+
     if (!podeUsarCache) box.__venforceCache = { id, dados, precoInfo };
     row.dataset.vfProcessed = "1";
 
@@ -941,6 +1394,7 @@ console.log("[VenForce] extensão iniciada");
     processarPagina();
     startObserver();
     startStorageWatcher();
+    atualizarScanUI();
     console.log("[VenForce] inicialização concluída");
   }
 

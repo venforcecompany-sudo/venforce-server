@@ -46,6 +46,14 @@
           <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
         </svg>`;
     }
+    if (name === "bar-chart") {
+      return `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="12" y1="20" x2="12" y2="10"></line>
+          <line x1="18" y1="20" x2="18" y2="4"></line>
+          <line x1="6" y1="20" x2="6" y2="16"></line>
+        </svg>`;
+    }
     if (name === "shield") {
       return `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -74,6 +82,7 @@
   function buildNavLinks(user) {
     const links = [
       { label: "Dashboard", href: "dashboard.html", icon: "activity", adminOnly: false },
+      { label: "Scans", href: "scans.html", icon: "bar-chart", adminOnly: false },
       { label: "Clientes", href: "clientes.html", icon: "users", adminOnly: false },
       { label: "Callbacks", href: "callbacks.html", icon: "repeat", adminOnly: false },
       { label: "Usuários", href: "usuarios.html", icon: "shield", adminOnly: true },
