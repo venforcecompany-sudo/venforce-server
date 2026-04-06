@@ -689,9 +689,13 @@ console.log("[VenForce] extensão iniciada");
         opt.textContent = b.nome || b.slug || "—";
         select.appendChild(opt);
       });
-
-      const current = getBaseSlugLocalStorage();
-      if (current) select.value = current;
+      chrome.storage.local.get(["baseSelecionada"], (s) => {
+        const salva = s?.baseSelecionada || getBaseSlugLocalStorage() || "";
+        if (salva) {
+          select.value = salva;
+          setBaseSlugLocalStorage(salva);
+        }
+      });
     } catch {
       select.innerHTML = `<option value="">Não foi possível carregar bases</option>`;
     }
@@ -734,8 +738,11 @@ console.log("[VenForce] extensão iniciada");
 
     const contaAtual = (contaInput?.value || "").trim();
     if (!contaAtual) {
-      const contaDetectada = await obterContaMl();
-      if (contaDetectada && contaInput) contaInput.value = contaDetectada;
+      chrome.storage.local.get(["vf_conta_ml"], async (s) => {
+        const salva = s?.vf_conta_ml || "";
+        const detectada = salva || await obterContaMl();
+        if (detectada && contaInput) contaInput.value = detectada;
+      });
     }
 
     const total = sessao?.anuncios ? Object.keys(sessao.anuncios).length : 0;
@@ -911,6 +918,7 @@ console.log("[VenForce] extensão iniciada");
     const scanPanel = document.createElement("div");
     scanPanel.id = "vf-scan-session-box";
     scanPanel.className = "vf-scan-panel";
+    scanPanel.style.display = "none";
     scanPanel.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <span style="font-weight:700;font-size:12px;color:#5b2be0;">Scan acumulativo</span>
@@ -936,8 +944,14 @@ console.log("[VenForce] extensão iniciada");
     `;
     wrap.appendChild(scanPanel);
 
-    scanToggleBtn.addEventListener("click", () => {
-      scanPanel.classList.toggle("open");
+    scanToggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (scanPanel.style.display === "block") {
+        scanPanel.style.display = "none";
+      } else {
+        scanPanel.style.display = "block";
+      }
     });
 
     const debugBox = document.createElement("div");
@@ -973,7 +987,11 @@ console.log("[VenForce] extensão iniciada");
           });
         }
         const contaIn = root.getElementById("vf-scan-conta");
-        if (contaIn) contaIn.addEventListener("input", () => atualizarScanUI());
+        if (contaIn) contaIn.addEventListener("input", () => {
+          const v = String(contaIn.value || "").trim();
+          if (v) chrome.storage.local.set({ vf_conta_ml: v });
+          atualizarScanUI();
+        });
   
         const btnFinish = root.getElementById("vf-btn-finish-scan");
         if (btnFinish) btnFinish.addEventListener("click", async () => {
