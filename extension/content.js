@@ -15,6 +15,8 @@ console.log("[VenForce] extensão iniciada");
 
   let COST_DB = {};
   let scheduled = false;
+  let pendingAnuncios = {};
+  let flushScheduled = false;
   let currentBaseId = null;
   let expandAllOnNextRender = false;
   let collapseAllOnNextRender = false;
@@ -531,20 +533,35 @@ console.log("[VenForce] extensão iniciada");
   function adicionarAnuncio(id, dados) {
     const anuncioId = String(id || "").trim();
     if (!anuncioId) return;
-
-    const payload = {
+    pendingAnuncios[anuncioId] = {
       mc: Number(dados?.mc) || 0,
       preco: Number(dados?.preco) || 0,
       status: String(dados?.status || "")
     };
+    if (!flushScheduled) {
+      flushScheduled = true;
+      setTimeout(flushAnuncios, 300);
+    }
+  }
+
+  function flushAnuncios() {
+    flushScheduled = false;
+    const batch = { ...pendingAnuncios };
+    pendingAnuncios = {};
+    if (!Object.keys(batch).length) return;
 
     chrome.storage.local.get([SCAN_SESSION_KEY], (storage) => {
       const sessao = storage?.[SCAN_SESSION_KEY];
       if (!sessao?.ativo) return;
       if (!sessao.anuncios) sessao.anuncios = {};
-      if (!sessao.anuncios[anuncioId]) {
-        sessao.anuncios[anuncioId] = payload;
+      let changed = false;
+      for (const [id, payload] of Object.entries(batch)) {
+        if (!sessao.anuncios[id]) {
+          sessao.anuncios[id] = payload;
+          changed = true;
+        }
       }
+      if (!changed) return;
       chrome.storage.local.set({ [SCAN_SESSION_KEY]: sessao }, () => {
         atualizarScanUI();
       });
@@ -1355,13 +1372,8 @@ console.log("[VenForce] extensão iniciada");
     if (!podeUsarCache) box.__venforceCache = { id, dados, precoInfo };
     row.dataset.vfProcessed = "1";
 
-    chrome.storage.local.get(["token"], (s) => {
-      const token = s?.token || getTokenLocalStorage();
-      if (token) {
-        const status = getStatusByMc(dados.mc)?.texto || "";
-        adicionarAnuncio(id, { mc: dados.mc, preco: dados.precoVenda, status });
-      }
-    });
+    const status = getStatusByMc(dados.mc)?.texto || "";
+    adicionarAnuncio(id, { mc: dados.mc, preco: dados.precoVenda, status });
     return { key, box, row };
   }
 
