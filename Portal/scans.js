@@ -220,7 +220,7 @@ function renderContas(contasMap) {
       btn.textContent = open ? "Ocultar scans" : "Ver scans";
     });
 
-    document.getElementById(`btn-del-conta-${conta}`)
+    card.querySelector(`[id^="btn-del-conta-"]`)
       .addEventListener("click", async () => {
         if (!confirm(`Excluir TODOS os scans de "${conta}"?`)) return;
         try {
