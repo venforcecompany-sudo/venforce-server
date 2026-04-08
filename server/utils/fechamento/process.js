@@ -89,6 +89,10 @@ function processarFechamento(buffer) {
       defval: "",
     });
 
+    console.log("DEBUG rows[0]:", JSON.stringify(Object.entries(rows[0] || {}).slice(0, 5)));
+console.log("DEBUG isPrincipal row0:", rows[0] ? String(rows[0]["ID da Variação"]) === "-" : "N/A");
+console.log("DEBUG impressoes row0:", rows[0] ? rows[0]["Impressão do Produto"] : "N/A");
+
     if (!rows.length) {
       return { error: "A planilha está vazia." };
     }
