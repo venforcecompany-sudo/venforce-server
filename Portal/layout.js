@@ -54,6 +54,14 @@
           <line x1="6" y1="20" x2="6" y2="16"></line>
         </svg>`;
     }
+    if (name === "download") {
+      return `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="12" y1="3" x2="12" y2="16"></line>
+          <polyline points="7 11 12 16 17 11"></polyline>
+          <line x1="5" y1="21" x2="19" y2="21"></line>
+        </svg>`;
+    }
     if (name === "shield") {
       return `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -81,6 +89,7 @@
 
   function buildNavLinks(user) {
     const links = [
+      { label: "Extensão", href: "extensao.html", icon: "download", adminOnly: false },
       { label: "Dashboard", href: "dashboard.html", icon: "activity", adminOnly: false },
       { label: "Painel de análise de conversão", href: "fechamento.html", icon: "activity", adminOnly: false },
       { label: "Clientes", href: "clientes.html", icon: "users", adminOnly: false },
