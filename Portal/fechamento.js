@@ -357,6 +357,53 @@ async function processarArquivo() {
   }
 }
 
+async function compilarArquivos() {
+  if (!TOKEN) return;
+
+  const input = document.getElementById("fechamento-arquivos");
+  const arquivos = input?.files;
+  if (!arquivos || arquivos.length === 0) {
+    setStatus("Selecione ao menos uma planilha.", "danger");
+    return;
+  }
+
+  const btnCompilar = document.getElementById("btn-compilar");
+  if (btnCompilar) {
+    btnCompilar.disabled = true;
+    btnCompilar.textContent = "Compilando...";
+  }
+
+  try {
+    const formData = new FormData();
+    Array.from(arquivos).forEach((arquivo) => {
+      formData.append("files", arquivo);
+    });
+
+    const res = await fetch("https://venforce-server.onrender.com/fechamentos/compilar", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + TOKEN },
+      body: formData
+    });
+
+    if (res.status === 401) { window.location.replace("index.html"); return; }
+
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.erro || json.message || "HTTP " + res.status);
+
+    dadosAtuais = json.data;
+    renderResumo();
+    renderTabContent();
+    setStatus("✓ Compilado com sucesso.", "success");
+  } catch (err) {
+    setStatus("Erro: " + (err?.message || "Falha ao compilar."), "danger");
+  } finally {
+    if (btnCompilar) {
+      btnCompilar.disabled = false;
+      btnCompilar.textContent = "Compilar várias planilhas";
+    }
+  }
+}
+
 // Eventos
 const inputArquivo = document.getElementById("fechamento-arquivo");
 const fileLabelSpan = ensureFileLabelSpan(inputArquivo);
@@ -370,6 +417,9 @@ if (inputArquivo) {
 
 const btnProcessar = document.getElementById("btn-processar");
 if (btnProcessar) btnProcessar.addEventListener("click", processarArquivo);
+
+const btnCompilar = document.getElementById("btn-compilar");
+if (btnCompilar) btnCompilar.addEventListener("click", compilarArquivos);
 
 const btnLimpar = document.getElementById("btn-limpar");
 if (btnLimpar) {
