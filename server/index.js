@@ -1069,6 +1069,552 @@ app.post("/fechamentos/financeiro", authMiddleware, upload.fields([{ name: "sale
   }
 });
 
+
+
+// ============================================================
+// ROTAS MULTI-CONTA — Sistema de Assessoria
+// Cada conta = 1 cliente com config.json + sessao_ml.json próprios
+// Cole no index.js antes de "// ERRO GLOBAL"
+// ============================================================
+
+// ─── CONTAS ML (os "saves") ─────────────────────────────────
+
+// Listar todas as contas do usuário
+app.get("/contas", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT c.id, c.nome, c.slug, c.conta_ml_id, c.ativo, c.headless, c.slow_mo,
+              c.created_at, c.updated_at,
+              (SELECT COUNT(*) FROM conta_mlbs m WHERE m.conta_id = c.id AND m.ativo = true) AS total_mlbs,
+              (SELECT valida FROM conta_sessoes s WHERE s.conta_id = c.id) AS sessao_valida,
+              (SELECT json_build_object('id', j.id, 'status', j.status, 'created_at', j.created_at)
+               FROM conta_jobs j WHERE j.conta_id = c.id ORDER BY j.created_at DESC LIMIT 1) AS ultimo_job
+       FROM contas_ml c
+       WHERE c.user_id = $1
+       ORDER BY c.nome ASC`,
+      [req.user.id]
+    );
+    res.json({ ok: true, contas: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Criar nova conta
+app.post("/contas", authMiddleware, async (req, res) => {
+  try {
+    const { nome, conta_ml_id, headless = true, slow_mo = 50 } = req.body;
+    if (!nome) return res.status(400).json({ ok: false, erro: "Nome é obrigatório." });
+
+    const slug = normalizarSlug(nome);
+    const result = await pool.query(
+      `INSERT INTO contas_ml (user_id, nome, slug, conta_ml_id, headless, slow_mo)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [req.user.id, nome.trim(), slug, conta_ml_id || null, headless, slow_mo]
+    );
+    res.status(201).json({ ok: true, conta: result.rows[0] });
+  } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ ok: false, erro: "Já existe uma conta com esse nome." });
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Atualizar conta
+app.patch("/contas/:id", authMiddleware, async (req, res) => {
+  try {
+    const contaId = parseInt(req.params.id);
+    const { nome, conta_ml_id, ativo, headless, slow_mo } = req.body;
+    const campos = [];
+    const valores = [];
+    let i = 1;
+
+    if (nome !== undefined)       { campos.push(`nome = $${i++}`);        valores.push(nome.trim()); }
+    if (conta_ml_id !== undefined) { campos.push(`conta_ml_id = $${i++}`); valores.push(conta_ml_id); }
+    if (ativo !== undefined)      { campos.push(`ativo = $${i++}`);       valores.push(ativo); }
+    if (headless !== undefined)   { campos.push(`headless = $${i++}`);    valores.push(headless); }
+    if (slow_mo !== undefined)    { campos.push(`slow_mo = $${i++}`);     valores.push(slow_mo); }
+
+    if (!campos.length) return res.status(400).json({ ok: false, erro: "Nenhum campo para atualizar." });
+
+    campos.push(`updated_at = CURRENT_TIMESTAMP`);
+    valores.push(contaId, req.user.id);
+
+    const result = await pool.query(
+      `UPDATE contas_ml SET ${campos.join(", ")} WHERE id = $${i++} AND user_id = $${i}
+       RETURNING *`,
+      valores
+    );
+    if (!result.rows.length) return res.status(404).json({ ok: false, erro: "Conta não encontrada." });
+    res.json({ ok: true, conta: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Excluir conta (cascade deleta MLBs, sessão e jobs)
+app.delete("/contas/:id", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "DELETE FROM contas_ml WHERE id = $1 AND user_id = $2 RETURNING id, nome",
+      [parseInt(req.params.id), req.user.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ ok: false, erro: "Conta não encontrada." });
+    res.json({ ok: true, mensagem: `Conta "${result.rows[0].nome}" excluída.` });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Duplicar conta (copiar MLBs para nova conta)
+app.post("/contas/:id/duplicar", authMiddleware, async (req, res) => {
+  try {
+    const contaId = parseInt(req.params.id);
+    const { novo_nome } = req.body;
+    if (!novo_nome) return res.status(400).json({ ok: false, erro: "novo_nome é obrigatório." });
+
+    // Buscar conta original
+    const original = await pool.query(
+      "SELECT * FROM contas_ml WHERE id = $1 AND user_id = $2",
+      [contaId, req.user.id]
+    );
+    if (!original.rows.length) return res.status(404).json({ ok: false, erro: "Conta não encontrada." });
+
+    const slug = normalizarSlug(novo_nome);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const novaConta = await client.query(
+        `INSERT INTO contas_ml (user_id, nome, slug, headless, slow_mo)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [req.user.id, novo_nome.trim(), slug,
+         original.rows[0].headless, original.rows[0].slow_mo]
+      );
+
+      // Copiar MLBs
+      await client.query(
+        `INSERT INTO conta_mlbs (conta_id, mlb, quantidade, preco_final)
+         SELECT $1, mlb, quantidade, preco_final
+         FROM conta_mlbs WHERE conta_id = $2 AND ativo = true`,
+        [novaConta.rows[0].id, contaId]
+      );
+
+      await client.query("COMMIT");
+      res.status(201).json({ ok: true, conta: novaConta.rows[0] });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ ok: false, erro: "Já existe uma conta com esse nome." });
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ─── MLBs DE UMA CONTA ──────────────────────────────────────
+
+// Listar MLBs da conta
+app.get("/contas/:contaId/mlbs", authMiddleware, async (req, res) => {
+  try {
+    const contaId = parseInt(req.params.contaId);
+
+    // Verificar acesso
+    const acesso = await pool.query(
+      "SELECT id FROM contas_ml WHERE id = $1 AND user_id = $2",
+      [contaId, req.user.id]
+    );
+    if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Conta não encontrada." });
+
+    const result = await pool.query(
+      "SELECT id, mlb, quantidade, preco_final, ativo, created_at FROM conta_mlbs WHERE conta_id = $1 ORDER BY mlb",
+      [contaId]
+    );
+    res.json({ ok: true, mlbs: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Adicionar/atualizar MLB
+app.post("/contas/:contaId/mlbs", authMiddleware, async (req, res) => {
+  try {
+    const contaId = parseInt(req.params.contaId);
+    const acesso = await pool.query(
+      "SELECT id FROM contas_ml WHERE id = $1 AND user_id = $2",
+      [contaId, req.user.id]
+    );
+    if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Conta não encontrada." });
+
+    const { mlb, quantidade = 10, preco_final = null } = req.body;
+    if (!mlb) return res.status(400).json({ ok: false, erro: "MLB é obrigatório." });
+
+    const result = await pool.query(
+      `INSERT INTO conta_mlbs (conta_id, mlb, quantidade, preco_final)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (conta_id, mlb) DO UPDATE SET
+         quantidade = EXCLUDED.quantidade,
+         preco_final = EXCLUDED.preco_final,
+         ativo = true
+       RETURNING *`,
+      [contaId, String(mlb).trim().toUpperCase(), quantidade, preco_final || null]
+    );
+    res.status(201).json({ ok: true, mlb: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Importar MLBs em lote (config.json inteiro)
+app.post("/contas/:contaId/mlbs/lote", authMiddleware, async (req, res) => {
+  try {
+    const contaId = parseInt(req.params.contaId);
+    const acesso = await pool.query(
+      "SELECT id FROM contas_ml WHERE id = $1 AND user_id = $2",
+      [contaId, req.user.id]
+    );
+    if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Conta não encontrada." });
+
+    const { mlbs, substituir = false } = req.body;
+    if (!Array.isArray(mlbs) || !mlbs.length) {
+      return res.status(400).json({ ok: false, erro: "Envie um array 'mlbs'." });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      if (substituir) {
+        await client.query("DELETE FROM conta_mlbs WHERE conta_id = $1", [contaId]);
+      }
+
+      let count = 0;
+      for (const item of mlbs) {
+        const mlb = String(item.mlb || "").trim().toUpperCase();
+        if (!mlb) continue;
+
+        await client.query(
+          `INSERT INTO conta_mlbs (conta_id, mlb, quantidade, preco_final)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (conta_id, mlb) DO UPDATE SET
+             quantidade = EXCLUDED.quantidade,
+             preco_final = EXCLUDED.preco_final,
+             ativo = true`,
+          [contaId, mlb, item.quantidade_padrao || item.quantidade || 10, item.preco_final || null]
+        );
+        count++;
+      }
+
+      await client.query(
+        "UPDATE contas_ml SET updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        [contaId]
+      );
+
+      await client.query("COMMIT");
+      res.json({ ok: true, total: count, mensagem: `${count} MLBs importados.` });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Exportar MLBs como config.json
+app.get("/contas/:contaId/exportar", authMiddleware, async (req, res) => {
+  try {
+    const contaId = parseInt(req.params.contaId);
+    const acesso = await pool.query(
+      "SELECT * FROM contas_ml WHERE id = $1 AND user_id = $2",
+      [contaId, req.user.id]
+    );
+    if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Conta não encontrada." });
+
+    const mlbs = await pool.query(
+      "SELECT mlb, quantidade AS quantidade_padrao, preco_final FROM conta_mlbs WHERE conta_id = $1 AND ativo = true ORDER BY mlb",
+      [contaId]
+    );
+
+    res.json({
+      mlbs: mlbs.rows,
+      headless: acesso.rows[0].headless,
+      slow_mo: acesso.rows[0].slow_mo
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Remover MLB
+app.delete("/contas/:contaId/mlbs/:mlbId", authMiddleware, async (req, res) => {
+  try {
+    const contaId = parseInt(req.params.contaId);
+    const acesso = await pool.query(
+      "SELECT id FROM contas_ml WHERE id = $1 AND user_id = $2",
+      [contaId, req.user.id]
+    );
+    if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Conta não encontrada." });
+
+    const result = await pool.query(
+      "DELETE FROM conta_mlbs WHERE id = $1 AND conta_id = $2 RETURNING id",
+      [parseInt(req.params.mlbId), contaId]
+    );
+    if (!result.rows.length) return res.status(404).json({ ok: false, erro: "MLB não encontrado." });
+    res.json({ ok: true, mensagem: "MLB removido." });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ─── SESSÃO ML POR CONTA ────────────────────────────────────
+
+// Upload de sessão (sessao_ml.json)
+app.post("/contas/:contaId/sessao", authMiddleware, async (req, res) => {
+  try {
+    const contaId = parseInt(req.params.contaId);
+    const acesso = await pool.query(
+      "SELECT id FROM contas_ml WHERE id = $1 AND user_id = $2",
+      [contaId, req.user.id]
+    );
+    if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Conta não encontrada." });
+
+    const { sessao } = req.body;
+    if (!sessao || !sessao.cookies) {
+      return res.status(400).json({ ok: false, erro: "Sessão inválida. Envie o conteúdo do sessao_ml.json." });
+    }
+
+    await pool.query(
+      `INSERT INTO conta_sessoes (conta_id, sessao_json)
+       VALUES ($1, $2)
+       ON CONFLICT (conta_id) DO UPDATE SET
+         sessao_json = EXCLUDED.sessao_json,
+         valida = true,
+         updated_at = CURRENT_TIMESTAMP`,
+      [contaId, JSON.stringify(sessao)]
+    );
+
+    res.json({ ok: true, mensagem: "Sessão salva." });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Verificar sessão
+app.get("/contas/:contaId/sessao", authMiddleware, async (req, res) => {
+  try {
+    const contaId = parseInt(req.params.contaId);
+    const result = await pool.query(
+      `SELECT valida, updated_at FROM conta_sessoes
+       WHERE conta_id = $1 AND conta_id IN (SELECT id FROM contas_ml WHERE user_id = $2)`,
+      [contaId, req.user.id]
+    );
+    if (!result.rows.length) return res.json({ ok: true, tem_sessao: false });
+    res.json({ ok: true, tem_sessao: true, valida: result.rows[0].valida, atualizada_em: result.rows[0].updated_at });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ─── JOBS POR CONTA ─────────────────────────────────────────
+
+// Criar job para uma conta
+app.post("/contas/:contaId/jobs", authMiddleware, async (req, res) => {
+  try {
+    const contaId = parseInt(req.params.contaId);
+    const conta = await pool.query(
+      "SELECT * FROM contas_ml WHERE id = $1 AND user_id = $2 AND ativo = true",
+      [contaId, req.user.id]
+    );
+    if (!conta.rows.length) return res.status(404).json({ ok: false, erro: "Conta não encontrada ou inativa." });
+
+    // Verificar sessão
+    const sessao = await pool.query(
+      "SELECT valida FROM conta_sessoes WHERE conta_id = $1",
+      [contaId]
+    );
+    if (!sessao.rows.length || !sessao.rows[0].valida) {
+      return res.status(400).json({ ok: false, erro: "Sessão ML inválida. Faça upload primeiro." });
+    }
+
+    // Verificar se não tem job em andamento para esta conta
+    const emAndamento = await pool.query(
+      "SELECT id FROM conta_jobs WHERE conta_id = $1 AND status IN ('pendente', 'executando')",
+      [contaId]
+    );
+    if (emAndamento.rows.length) {
+      return res.status(409).json({ ok: false, erro: "Já existe um job em andamento para esta conta." });
+    }
+
+    // Buscar MLBs
+    const mlbs = await pool.query(
+      "SELECT mlb, quantidade AS quantidade_padrao, preco_final FROM conta_mlbs WHERE conta_id = $1 AND ativo = true ORDER BY mlb",
+      [contaId]
+    );
+    if (!mlbs.rows.length) {
+      return res.status(400).json({ ok: false, erro: "Nenhum MLB configurado nesta conta." });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO conta_jobs (user_id, conta_id, mlbs_json)
+       VALUES ($1, $2, $3)
+       RETURNING id, status, created_at`,
+      [req.user.id, contaId, JSON.stringify(mlbs.rows)]
+    );
+
+    res.status(201).json({ ok: true, job: result.rows[0], total_mlbs: mlbs.rows.length });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Rodar TODAS as contas ativas de uma vez (fila sequencial)
+app.post("/contas/executar-todas", authMiddleware, async (req, res) => {
+  try {
+    const contas = await pool.query(
+      `SELECT c.id, c.nome FROM contas_ml c
+       WHERE c.user_id = $1 AND c.ativo = true
+       AND EXISTS (SELECT 1 FROM conta_sessoes s WHERE s.conta_id = c.id AND s.valida = true)
+       AND EXISTS (SELECT 1 FROM conta_mlbs m WHERE m.conta_id = c.id AND m.ativo = true)
+       AND NOT EXISTS (SELECT 1 FROM conta_jobs j WHERE j.conta_id = c.id AND j.status IN ('pendente', 'executando'))
+       ORDER BY c.nome`,
+      [req.user.id]
+    );
+
+    if (!contas.rows.length) {
+      return res.status(400).json({ ok: false, erro: "Nenhuma conta elegível. Verifique sessões e MLBs." });
+    }
+
+    const jobs = [];
+    for (const conta of contas.rows) {
+      const mlbs = await pool.query(
+        "SELECT mlb, quantidade AS quantidade_padrao, preco_final FROM conta_mlbs WHERE conta_id = $1 AND ativo = true",
+        [conta.id]
+      );
+
+      const result = await pool.query(
+        `INSERT INTO conta_jobs (user_id, conta_id, mlbs_json)
+         VALUES ($1, $2, $3) RETURNING id, status`,
+        [req.user.id, conta.id, JSON.stringify(mlbs.rows)]
+      );
+      jobs.push({ conta_id: conta.id, nome: conta.nome, job_id: result.rows[0].id });
+    }
+
+    res.status(201).json({ ok: true, total: jobs.length, jobs });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Listar jobs (todos ou de uma conta)
+app.get("/contas/jobs", authMiddleware, async (req, res) => {
+  try {
+    const { conta_id, limit = 50, page = 1 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const condicoes = ["j.user_id = $1"];
+    const valores = [req.user.id];
+    let i = 2;
+
+    if (conta_id) {
+      condicoes.push(`j.conta_id = $${i++}`);
+      valores.push(parseInt(conta_id));
+    }
+
+    valores.push(parseInt(limit), offset);
+    const result = await pool.query(
+      `SELECT j.id, j.conta_id, c.nome AS conta_nome, j.status,
+              j.mlbs_json, j.resultado, j.log_text,
+              j.created_at, j.started_at, j.finished_at
+       FROM conta_jobs j
+       JOIN contas_ml c ON c.id = j.conta_id
+       WHERE ${condicoes.join(" AND ")}
+       ORDER BY j.created_at DESC
+       LIMIT $${i++} OFFSET $${i}`,
+      valores
+    );
+
+    res.json({ ok: true, jobs: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Detalhes de um job (para o debug panel)
+app.get("/contas/jobs/:jobId", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT j.*, c.nome AS conta_nome
+       FROM conta_jobs j JOIN contas_ml c ON c.id = j.conta_id
+       WHERE j.id = $1 AND j.user_id = $2`,
+      [parseInt(req.params.jobId), req.user.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ ok: false, erro: "Job não encontrado." });
+    res.json({ ok: true, job: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Cancelar job
+app.post("/contas/jobs/:jobId/cancelar", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE conta_jobs SET status = 'cancelado', finished_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND user_id = $2 AND status = 'pendente' RETURNING id`,
+      [parseInt(req.params.jobId), req.user.id]
+    );
+    if (!result.rows.length) return res.status(400).json({ ok: false, erro: "Job não pode ser cancelado." });
+    res.json({ ok: true, mensagem: "Job cancelado." });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ─── DASHBOARD / STATUS GERAL ───────────────────────────────
+
+// Panorama de todas as contas (para o debug panel)
+app.get("/contas/dashboard", authMiddleware, async (req, res) => {
+  try {
+    const contas = await pool.query(
+      `SELECT c.id, c.nome, c.slug, c.ativo,
+              (SELECT COUNT(*) FROM conta_mlbs m WHERE m.conta_id = c.id AND m.ativo = true) AS total_mlbs,
+              (SELECT valida FROM conta_sessoes s WHERE s.conta_id = c.id) AS sessao_valida,
+              (SELECT json_build_object(
+                'id', j.id, 'status', j.status,
+                'resultado', j.resultado,
+                'log_text', j.log_text,
+                'created_at', j.created_at,
+                'finished_at', j.finished_at
+              ) FROM conta_jobs j WHERE j.conta_id = c.id ORDER BY j.created_at DESC LIMIT 1) AS ultimo_job
+       FROM contas_ml c
+       WHERE c.user_id = $1
+       ORDER BY c.nome`,
+      [req.user.id]
+    );
+
+    // Jobs em andamento
+    const pendentes = await pool.query(
+      "SELECT COUNT(*) FROM conta_jobs WHERE user_id = $1 AND status IN ('pendente', 'executando')",
+      [req.user.id]
+    );
+
+    res.json({
+      ok: true,
+      contas: contas.rows,
+      jobs_pendentes: parseInt(pendentes.rows[0].count)
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+
+
 // ERRO GLOBAL
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) return res.status(400).json({ ok: false, erro: `Erro no upload: ${err.message}` });
