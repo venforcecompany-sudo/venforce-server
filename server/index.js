@@ -751,6 +751,324 @@ app.post("/fechamentos/upload", upload.single("file"), (req, res) => {
   }
 });
 
+// ========================= FECHAMENTO FINANCEIRO =========================
+
+function normalizeTextFin(value) {
+  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+function normalizeKeyFin(value) {
+  return normalizeTextFin(value).replace(/\s+/g, " ");
+}
+function normalizeIdFin(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "";
+    return Math.trunc(value).toString();
+  }
+  let text = String(value).trim();
+  if (!text) return "";
+  const scientificLike = text.replace(",", ".");
+  if (/^\d+(\.\d+)?e\+\d+$/i.test(scientificLike)) {
+    const num = Number(scientificLike);
+    if (Number.isFinite(num)) return Math.trunc(num).toString();
+  }
+  const cleaned = text.replace(/^MLB/i, "").replace(/\D/g, "");
+  return cleaned ? `MLB${cleaned}` : "";
+}
+function normalizeIdNoPrefixFin(value) {
+  return normalizeIdFin(value).replace(/^MLB/i, "");
+}
+function toNumberFin(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  let text = String(value).trim();
+  if (!text) return 0;
+  text = text.replace(/\s+/g, "").replace(/R\$/gi, "").replace(/US\$/gi, "").replace(/€/g, "").replace(/%/g, "").replace(/[^\d,.-]/g, "");
+  if (!text) return 0;
+  const hasComma = text.includes(",");
+  const hasDot = text.includes(".");
+  if (hasComma && hasDot) {
+    const lastComma = text.lastIndexOf(",");
+    const lastDot = text.lastIndexOf(".");
+    if (lastComma > lastDot) { text = text.replace(/\./g, "").replace(",", "."); }
+    else { text = text.replace(/,/g, ""); }
+  } else if (hasComma) {
+    text = text.replace(/\./g, "").replace(",", ".");
+  }
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+function round2Fin(value) {
+  return Number((Number.isFinite(value) ? value : 0).toFixed(2));
+}
+function findFieldFin(row, candidates) {
+  const entries = Object.entries(row);
+  for (const [key, value] of entries) {
+    const normalized = normalizeKeyFin(key);
+    for (const candidate of candidates) {
+      if (normalized === candidate) return value;
+    }
+  }
+  for (const [key, value] of entries) {
+    const normalized = normalizeKeyFin(key);
+    for (const candidate of candidates) {
+      if (normalized.includes(candidate)) return value;
+    }
+  }
+  return "";
+}
+function readSheetRowsFin(fileBuffer) {
+  const workbook = XLSX.read(fileBuffer, { type: "buffer", cellStyles: true });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) throw new Error("A planilha enviada está vazia.");
+  const sheet = workbook.Sheets[firstSheetName];
+  const rowsAsArrays = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
+  return { workbook, sheet, rowsAsArrays };
+}
+function parseSpreadsheetFin(fileBuffer, skipRows = 0) {
+  const { sheet } = readSheetRowsFin(fileBuffer);
+  return XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false, range: skipRows });
+}
+function detectMeliHeaderRowFin(fileBuffer) {
+  const { rowsAsArrays } = readSheetRowsFin(fileBuffer);
+  for (let i = 0; i < rowsAsArrays.length; i++) {
+    const joined = (rowsAsArrays[i] || []).map(cell => normalizeTextFin(cell)).join(" | ");
+    if (joined.includes("n.º de venda") || joined.includes("n.o de venda") || joined.includes("nº de venda") || joined.includes("# de anuncio") || joined.includes("# de anúncio") || joined.includes("receita por produtos") || joined.includes("tarifa de venda e impostos")) return i;
+  }
+  return 5;
+}
+function detectShopeeHeaderRowFin(fileBuffer) {
+  const { rowsAsArrays } = readSheetRowsFin(fileBuffer);
+  for (let i = 0; i < rowsAsArrays.length; i++) {
+    const joined = (rowsAsArrays[i] || []).map(cell => normalizeTextFin(cell)).join(" | ");
+    if (joined.includes("id do item") || joined.includes("item id") || joined.includes("id da variacao") || joined.includes("id da variação") || joined.includes("vendas (pedido pago)") || joined.includes("unidades (pedido pago)")) return i;
+  }
+  return 0;
+}
+function parseCostRowsFin(rows) {
+  const parsed = [];
+  for (const row of rows) {
+    const idRaw = findFieldFin(row, ["id", "id do item", "id do produto", "id da variacao", "id da variação", "product id", "item id", "variation id", "sku", "seller sku", "sku do vendedor", "codigo", "código", "model_id", "modelid", "model id", "id modelo", "modelo"]);
+    const id = normalizeIdNoPrefixFin(idRaw);
+    if (!id) continue;
+    const modelIdRaw = findFieldFin(row, ["model_id", "modelid", "model id", "id modelo", "modelo"]);
+    const modelId = normalizeIdNoPrefixFin(modelIdRaw);
+    const cost = toNumberFin(findFieldFin(row, ["preco custo", "preço custo", "custo", "custo produto", "custo do produto", "custo unitario", "custo unitário", "product cost"]));
+    let taxPercent = toNumberFin(findFieldFin(row, ["imposto", "imposto percentual", "percentual imposto", "aliquota", "alíquota", "taxa imposto", "tax percent", "taxa"]));
+    if (taxPercent > 0 && taxPercent <= 1) taxPercent = taxPercent * 100;
+    parsed.push({ id, modelId, cost, taxPercent });
+  }
+  return parsed;
+}
+function getShopeeFeesByTicketFin(avgTicket) {
+  if (avgTicket <= 79.99) return { commissionPercent: 20, fixedFeePerUnit: 4 };
+  if (avgTicket <= 99.99) return { commissionPercent: 14, fixedFeePerUnit: 16 };
+  if (avgTicket <= 199.99) return { commissionPercent: 14, fixedFeePerUnit: 20 };
+  return { commissionPercent: 14, fixedFeePerUnit: 26 };
+}
+function parseShopeeSalesRowsFin(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const itemId = normalizeIdNoPrefixFin(findFieldFin(row, ["id do item", "item id", "id do produto", "product id"]));
+    if (!itemId) continue;
+    if (!groups.has(itemId)) groups.set(itemId, []);
+    groups.get(itemId).push(row);
+  }
+  const parsed = [];
+  for (const [itemId, groupRows] of groups.entries()) {
+    const variationRows = groupRows.filter(row => {
+      const variationId = normalizeIdNoPrefixFin(findFieldFin(row, ["id da variacao", "id da variação", "variation id"]));
+      const revenue = toNumberFin(findFieldFin(row, ["vendas (pedido pago) (brl)", "vendas (pedido pago)", "pedido pago (brl)"]));
+      const paidUnits = toNumberFin(findFieldFin(row, ["unidades (pedido pago)", "unidades pagas", "paid units"]));
+      const impressionsRaw = findFieldFin(row, ["impressao do produto", "impressão do produto", "impressoes do produto", "impressões do produto"]);
+      const impressions = toNumberFin(impressionsRaw);
+      return !!variationId && revenue > 0 && paidUnits > 0 && impressions === 0;
+    });
+    const rowsToUse = variationRows.length > 0 ? variationRows : groupRows;
+    for (const row of rowsToUse) {
+      const variationId = normalizeIdNoPrefixFin(findFieldFin(row, ["id da variacao", "id da variação", "variation id"]));
+      const modelIdRaw = findFieldFin(row, ["model id", "model_id", "modelid"]);
+      const modelId = normalizeIdNoPrefixFin(modelIdRaw);
+      const paidRevenue = toNumberFin(findFieldFin(row, ["vendas (pedido pago) (brl)", "vendas (pedido pago)", "pedido pago (brl)"]));
+      const paidUnits = toNumberFin(findFieldFin(row, ["unidades (pedido pago)", "unidades pagas", "paid units"]));
+      const variationStatus = normalizeTextFin(findFieldFin(row, ["status atual da variacao", "status atual da variação"]));
+      const product = String(findFieldFin(row, ["produto", "nome do produto", "product name"]) || "").trim();
+      if (paidRevenue <= 0 || paidUnits <= 0) continue;
+      const isVariation = variationRows.length > 0;
+      parsed.push({ id: isVariation ? variationId : itemId, modelId, product, itemId, variationId, paidRevenue, paidUnits, isVariation, variationStatus });
+    }
+  }
+  return parsed;
+}
+function processShopeeFinanceiro(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
+  const salesRows = parseShopeeSalesRowsFin(salesRowsRaw);
+  const costRows = parseCostRowsFin(costRowsRaw);
+  if (!salesRows.length) throw new Error("Não consegui identificar linhas válidas na planilha Shopee.");
+  if (!costRows.length) throw new Error("Não consegui identificar linhas válidas na planilha de custos.");
+  const costMap = new Map();
+  for (const row of costRows) {
+    if (row.modelId && !costMap.has(row.modelId)) costMap.set(row.modelId, row);
+    if (row.id && !costMap.has(row.id)) costMap.set(row.id, row);
+  }
+  const unmatchedIdsSet = new Set();
+  const validItems = [];
+  const detailedRows = [];
+  let ignoredRevenue = 0;
+  for (const sale of salesRows) {
+    const costRow = costMap.get(sale.modelId) || costMap.get(sale.id);
+    if (!costRow || costRow.cost <= 0) { unmatchedIdsSet.add(sale.id); ignoredRevenue += sale.paidRevenue; continue; }
+    const averageTicket = sale.paidUnits > 0 ? sale.paidRevenue / sale.paidUnits : 0;
+    if (averageTicket <= 0) continue;
+    const shopeeFees = getShopeeFeesByTicketFin(averageTicket);
+    const commissionValueUnit = averageTicket * (shopeeFees.commissionPercent / 100);
+    const taxUnit = averageTicket * (costRow.taxPercent / 100);
+    const contributionProfitUnit = averageTicket - commissionValueUnit - shopeeFees.fixedFeePerUnit - costRow.cost - taxUnit;
+    const contributionMargin = averageTicket > 0 ? contributionProfitUnit / averageTicket : 0;
+    const contributionProfit = contributionProfitUnit * sale.paidUnits;
+    validItems.push({ paidRevenue: sale.paidRevenue, contributionProfit });
+    detailedRows.push({ Marketplace: "Shopee", Produto: sale.product, ID: sale.id, "Vendas (Pedido pago) (BRL)": round2Fin(sale.paidRevenue), "Unidades (Pedido pago)": sale.paidUnits, Ticket: round2Fin(averageTicket), Custo: round2Fin(costRow.cost), Imposto: round2Fin(costRow.taxPercent), "Comissão %": round2Fin(shopeeFees.commissionPercent), "Taxa Fixa": round2Fin(shopeeFees.fixedFeePerUnit), LC: round2Fin(contributionProfitUnit), MC: round2Fin(contributionMargin * 100), "LC POR ANÚNCIO": round2Fin(contributionProfit) });
+  }
+  const paidRevenueTotal = validItems.reduce((acc, item) => acc + item.paidRevenue, 0);
+  const contributionProfitTotal = validItems.reduce((acc, item) => acc + item.contributionProfit, 0);
+  const averageContributionMargin = paidRevenueTotal > 0 ? contributionProfitTotal / paidRevenueTotal : 0;
+  const tacos = paidRevenueTotal > 0 ? ads / paidRevenueTotal : 0;
+  const finalResult = contributionProfitTotal - ads - venforce - affiliates;
+  return { summary: { grossRevenueTotal: paidRevenueTotal, paidRevenueTotal, contributionProfitTotal, averageContributionMargin, finalResult, tacos, tacox: paidRevenueTotal > 0 ? (ads + venforce) / paidRevenueTotal : 0 }, detailedRows, excelFileName: "fechamento-shopee.xlsx", unmatchedIds: Array.from(unmatchedIdsSet), ignoredRowsWithoutCost: unmatchedIdsSet.size, ignoredRevenue, message: unmatchedIdsSet.size > 0 ? "Alguns IDs não possuem custo cadastrado." : "Processamento concluído com sucesso." };
+}
+function parseMeliRowsFin(rows) {
+  return rows.map((row, index) => {
+    const adIdRaw = String(findFieldFin(row, ["# de anúncio", "# de anuncio", "# do anúncio", "# do anuncio"]) ?? "").trim();
+    return { rowIndex: index, saleDate: String(findFieldFin(row, ["data da venda"]) ?? "").trim(), units: toNumberFin(findFieldFin(row, ["unidades"])), total: toNumberFin(findFieldFin(row, ["total (brl)", "total"])), productRevenue: toNumberFin(findFieldFin(row, ["receita por produtos (brl)", "receita por produtos"])), cancelRefund: toNumberFin(findFieldFin(row, ["cancelamentos e reembolsos (brl)", "cancelamentos e reembolsos"])), adIdRaw, adId: normalizeIdFin(adIdRaw), title: String(findFieldFin(row, ["título do anúncio", "titulo do anuncio", "título", "titulo"]) ?? "").trim(), unitSalePrice: toNumberFin(findFieldFin(row, ["preço unitário de venda do anúncio (brl)", "preco unitario de venda do anuncio (brl)", "preço unitário de venda do anúncio"])) };
+  });
+}
+function parseMeliCostRowsFin(rows) {
+  const parsed = [];
+  for (const row of rows) {
+    const idRaw = findFieldFin(row, ["# de anúncio", "# de anuncio", "# do anúncio", "# do anuncio", "id do anúncio", "id do anuncio", "anúncio", "anuncio", "mlb", "id"]);
+    const normalizedId = normalizeIdFin(idRaw);
+    if (!normalizedId) continue;
+    const cost = toNumberFin(findFieldFin(row, ["preço de custo", "preco de custo", "preço custo", "preco custo", "custo", "custo do produto", "custo produto", "custo unitário", "custo unitario"]));
+    let taxPercent = toNumberFin(findFieldFin(row, ["imposto", "imposto %", "imposto percentual", "percentual imposto", "aliquota", "alíquota"]));
+    if (taxPercent > 0 && taxPercent <= 1) taxPercent = taxPercent * 100;
+    parsed.push({ id: normalizedId, cost: round2Fin(cost), taxPercent: round2Fin(taxPercent) });
+  }
+  return parsed;
+}
+function buildMeliCostMapFin(rows) {
+  const parsed = parseMeliCostRowsFin(rows);
+  const map = new Map();
+  for (const row of parsed) {
+    if (!row.id) continue;
+    if (!map.has(row.id)) map.set(row.id, row);
+    const noPrefix = row.id.replace(/^MLB/i, "");
+    if (noPrefix && !map.has(noPrefix)) map.set(noPrefix, row);
+  }
+  return map;
+}
+function allocateByUnitsFin(totalValue, componentRows) {
+  const totalUnits = componentRows.reduce((acc, row) => acc + row.units, 0);
+  if (totalUnits <= 0 || componentRows.length === 0) return componentRows.map(() => 0);
+  const allocations = [];
+  let accumulated = 0;
+  for (let i = 0; i < componentRows.length; i++) {
+    if (i === componentRows.length - 1) { allocations.push(round2Fin(totalValue - accumulated)); continue; }
+    const value = round2Fin((totalValue / totalUnits) * componentRows[i].units);
+    allocations.push(value);
+    accumulated += value;
+  }
+  return allocations;
+}
+function processMeliFinanceiro(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
+  const salesRows = parseMeliRowsFin(salesRowsRaw);
+  const costMap = buildMeliCostMapFin(costRowsRaw);
+  const finalRows = [];
+  const unmatchedIds = new Set();
+  const consumedIndexes = new Set();
+  let ignoredRevenue = 0;
+  const refundsTotal = round2Fin(salesRows.reduce((sum, row) => sum + row.cancelRefund, 0));
+  function isMainRow(row) { return !row.adId && Math.abs(row.productRevenue) > 0; }
+  function isItemRow(row) { return !!row.adId && row.units > 0; }
+  function getCostForAd(adId) {
+    const normalized = normalizeIdFin(adId);
+    const noPrefix = normalized.replace(/^MLB/i, "");
+    return costMap.get(normalized) || costMap.get(noPrefix) || costMap.get(`MLB${noPrefix}`) || null;
+  }
+  function pushCalculatedRow(item, totalRateado) {
+    const id = normalizeIdFin(item.adId || item.adIdRaw);
+    const cost = getCostForAd(id);
+    if (!cost || cost.cost <= 0) { unmatchedIds.add(id || item.adIdRaw || "SEM_ID"); ignoredRevenue += round2Fin(totalRateado); return; }
+    const units = round2Fin(item.units);
+    const price = round2Fin(item.unitSalePrice);
+    const vendaTotal = round2Fin(units * price);
+    const impostoPercent = round2Fin(cost.taxPercent || 0);
+    const impostoDec = impostoPercent > 1 ? impostoPercent / 100 : impostoPercent;
+    const precoCusto = round2Fin(cost.cost || 0);
+    const precoCustoTotal = round2Fin(units * precoCusto);
+    const totalFormatado = round2Fin(totalRateado);
+    let lc = 0, mc = 0;
+    if (totalFormatado < 0) { lc = round2Fin(totalFormatado); mc = vendaTotal > 0 ? round2Fin((lc / vendaTotal) * 100) : 0; }
+    else if (totalFormatado > 0) { lc = round2Fin(vendaTotal - (vendaTotal * impostoDec) - (vendaTotal - totalFormatado) - precoCustoTotal); mc = vendaTotal > 0 ? round2Fin((lc / vendaTotal) * 100) : 0; }
+    finalRows.push({ "# de anúncio": id, "Título do anúncio": item.title, Unidades: units, "Preço unitário de venda do anúncio (BRL)": price, "Venda Total": vendaTotal, "Total (BRL)": totalFormatado, Imposto: impostoPercent, "Preço de custo": precoCusto, "Preço de custo total": precoCustoTotal, LC: lc, MC: mc });
+  }
+  for (let i = 0; i < salesRows.length; i++) {
+    if (consumedIndexes.has(i)) continue;
+    const current = salesRows[i];
+    if (isMainRow(current)) {
+      const children = [], childrenIndexes = [];
+      let j = i + 1;
+      while (j < salesRows.length) {
+        const next = salesRows[j];
+        if (isMainRow(next)) break;
+        if (next.saleDate !== current.saleDate) break;
+        if (!isItemRow(next)) break;
+        children.push(next); childrenIndexes.push(j); j++;
+      }
+      if (children.length > 0) {
+        const totalRateado = allocateByUnitsFin(current.total, children);
+        for (let k = 0; k < children.length; k++) { pushCalculatedRow(children[k], totalRateado[k]); consumedIndexes.add(childrenIndexes[k]); }
+        consumedIndexes.add(i); continue;
+      }
+      consumedIndexes.add(i); continue;
+    }
+    if (isItemRow(current)) { pushCalculatedRow(current, current.total); consumedIndexes.add(i); }
+  }
+  const grossRevenueTotal = round2Fin(finalRows.reduce((sum, row) => sum + Number(row["Venda Total"] || 0), 0));
+  const paidRevenueTotal = round2Fin(finalRows.reduce((sum, row) => sum + Number(row["Total (BRL)"] || 0), 0));
+  const contributionProfitTotal = round2Fin(finalRows.reduce((sum, row) => sum + Number(row["LC"] || 0), 0));
+  const averageContributionMargin = grossRevenueTotal > 0 ? contributionProfitTotal / grossRevenueTotal : 0;
+  const finalResult = contributionProfitTotal - ads - venforce - affiliates;
+  const tacos = grossRevenueTotal > 0 ? ads / grossRevenueTotal : 0;
+  const tacox = grossRevenueTotal > 0 ? (ads + venforce + affiliates) / grossRevenueTotal : 0;
+  return { summary: { grossRevenueTotal, refundsTotal, cancelledRevenue: refundsTotal, paidRevenueTotal, contributionProfitTotal, averageContributionMargin, finalResult, tacos, tacox }, detailedRows: finalRows, excelFileName: "fechamento-meli.xlsx", unmatchedIds: Array.from(unmatchedIds), ignoredRowsWithoutCost: unmatchedIds.size, ignoredRevenue: round2Fin(ignoredRevenue), message: unmatchedIds.size > 0 ? "Alguns anúncios do MELI não possuem custo cadastrado e foram ignorados." : "OK" };
+}
+
+app.post("/fechamentos/financeiro", authMiddleware, upload.fields([{ name: "sales", maxCount: 1 }, { name: "costs", maxCount: 1 }]), async (req, res) => {
+  try {
+    const salesFile = req.files?.["sales"]?.[0];
+    const costsFile = req.files?.["costs"]?.[0];
+    const marketplace = String(req.body.marketplace || "").trim().toLowerCase();
+    const ads = toNumberFin(req.body.ads);
+    const venforce = toNumberFin(req.body.venforce);
+    const affiliates = toNumberFin(req.body.affiliates);
+    if (!salesFile) return res.status(400).json({ ok: false, erro: "Arquivo de vendas não enviado." });
+    if (!costsFile) return res.status(400).json({ ok: false, erro: "Arquivo de custos não enviado." });
+    if (marketplace !== "meli" && marketplace !== "shopee") return res.status(400).json({ ok: false, erro: "Marketplace inválido. Envie 'meli' ou 'shopee'." });
+    const salesBuffer = salesFile.buffer;
+    const costsBuffer = costsFile.buffer;
+    const salesRowsRaw = marketplace === "meli" ? parseSpreadsheetFin(salesBuffer, detectMeliHeaderRowFin(salesBuffer)) : parseSpreadsheetFin(salesBuffer, detectShopeeHeaderRowFin(salesBuffer));
+    const costRowsRaw = parseSpreadsheetFin(costsBuffer);
+    const result = marketplace === "meli" ? processMeliFinanceiro(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) : processShopeeFinanceiro(salesRowsRaw, costRowsRaw, ads, venforce, affiliates);
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.json_to_sheet(result.detailedRows);
+    XLSX.utils.book_append_sheet(workbook, sheet, "Detalhamento");
+    const excelBuffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    return res.json({ ok: true, ...result, excelBase64: Buffer.from(excelBuffer).toString("base64") });
+  } catch (error) {
+    console.error("Erro em /fechamentos/financeiro:", error);
+    return res.status(500).json({ ok: false, erro: error instanceof Error ? error.message : "Erro ao processar os arquivos." });
+  }
+});
+
 // ERRO GLOBAL
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) return res.status(400).json({ ok: false, erro: `Erro no upload: ${err.message}` });
