@@ -384,11 +384,10 @@ app.get("/bases", authMiddleware, async (req, res) => {
 app.get("/bases/:baseId", authMiddleware, async (req, res) => {
   try {
     const slug = normalizarSlug(req.params.baseId);
-    const acesso = await pool.query(
-      `SELECT b.id, b.nome, b.slug FROM bases b JOIN user_bases ub ON ub.base_id = b.id
-       WHERE b.slug = $1 AND ub.user_id = $2 AND b.ativo = true`,
-      [slug, req.user.id]
-    );
+   const acesso = await pool.query(
+  `SELECT id, nome, slug FROM bases WHERE slug = $1 AND ativo = true`,
+  [slug]
+);
     if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada ou sem permissão" });
     const base = acesso.rows[0];
     const custos = await pool.query(
