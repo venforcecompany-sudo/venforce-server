@@ -384,11 +384,19 @@ app.get("/bases", authMiddleware, async (req, res) => {
 app.get("/bases/:baseId", authMiddleware, async (req, res) => {
   try {
     const slug = normalizarSlug(req.params.baseId);
+
     const acesso = await pool.query(
       `SELECT id, nome, slug FROM bases WHERE slug = $1 AND ativo = true`,
       [slug]
     );
     if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada" });
+
+   const acesso = await pool.query(
+  `SELECT id, nome, slug FROM bases WHERE slug = $1 AND ativo = true`,
+  [slug]
+);
+    if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada ou sem permissão" });
+
     const base = acesso.rows[0];
     const custos = await pool.query(
       "SELECT produto_id, custo_produto, imposto_percentual, taxa_fixa FROM custos WHERE base_id = $1",
