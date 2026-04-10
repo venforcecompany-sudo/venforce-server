@@ -1300,10 +1300,7 @@ const isZeroImpressions =
   raw === "–" ||
   raw === "";
 
-return !!variationId && revenue > 0 && paidUnits > 0 && isZeroImpressions;
-      );
-
-     
+      return !!variationId && !isNaN(Number(variationId)) && isZeroImpressions;
     });
 
     const rowsToUse = variationRows.length > 0 ? variationRows : groupRows;
