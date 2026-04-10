@@ -88,6 +88,45 @@ function gerarApiKey() {
   return "vf_" + crypto.randomBytes(32).toString("hex");
 }
 
+async function getValidMlTokenByCliente(clienteId) {
+  const result = await pool.query("SELECT * FROM ml_tokens WHERE cliente_id = $1", [clienteId]);
+  const row = result.rows[0];
+  if (!row) throw new Error("Cliente não possui token ML");
+
+  const now = Date.now();
+  const expiresAt = new Date(row.expires_at).getTime();
+  const msLeft = expiresAt - now;
+  const fiveMin = 5 * 60 * 1000;
+
+  if (msLeft < fiveMin) {
+    const tokenRes = await fetch("https://api.mercadolibre.com/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: ML_CLIENT_ID,
+        client_secret: ML_CLIENT_SECRET,
+        refresh_token: row.refresh_token
+      })
+    });
+    const data = await tokenRes.json();
+    if (!tokenRes.ok) {
+      throw new Error(data?.message || JSON.stringify(data));
+    }
+    const { access_token, refresh_token, expires_in } = data;
+    const newExpires = new Date(Date.now() + (expires_in || 0) * 1000);
+    const newRefresh = refresh_token || row.refresh_token;
+    await pool.query(
+      `UPDATE ml_tokens SET access_token = $1, refresh_token = $2, expires_at = $3, updated_at = NOW()
+       WHERE cliente_id = $4`,
+      [access_token, newRefresh, newExpires, clienteId]
+    );
+    return access_token;
+  }
+
+  return row.access_token;
+}
+
 // AUTH MIDDLEWARE
 async function authMiddleware(req, res, next) {
   try {
@@ -206,6 +245,27 @@ CREATE TABLE IF NOT EXISTS callbacks (
   ALTER TABLE bases 
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 `);
+
+    await pool.query(`
+      ALTER TABLE ml_tokens ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE CASCADE;
+    `);
+
+    await pool.query(`
+DO $$
+BEGIN
+  ALTER TABLE ml_tokens DROP CONSTRAINT IF EXISTS ml_tokens_ml_user_id_key;
+EXCEPTION
+  WHEN undefined_object THEN NULL;
+END $$;
+    `);
+
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS ml_tokens_cliente_ml_user_unique ON ml_tokens (cliente_id, ml_user_id);
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_ml_tokens_cliente ON ml_tokens (cliente_id);
+    `);
     
     res.json({ ok: true, mensagem: "Tabelas criadas com sucesso" });
   } catch (err) {
@@ -512,6 +572,54 @@ app.get("/clientes", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/clientes/:slug/ml-status", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const slug = normalizarSlug(req.params.slug);
+    const c = await pool.query("SELECT id FROM clientes WHERE slug = $1", [slug]);
+    if (!c.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+    }
+    const clienteId = c.rows[0].id;
+    const t = await pool.query(
+      "SELECT ml_user_id, expires_at, updated_at FROM ml_tokens WHERE cliente_id = $1",
+      [clienteId]
+    );
+    if (!t.rows.length) {
+      return res.json({ ok: true, conectado: false });
+    }
+    const row = t.rows[0];
+    const expiresAt = new Date(row.expires_at);
+    const now = new Date();
+    const expira_em_segundos = Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / 1000));
+    const precisa_refresh = expira_em_segundos < 300;
+    res.json({
+      ok: true,
+      conectado: true,
+      ml_user_id: row.ml_user_id,
+      expires_at: row.expires_at,
+      updated_at: row.updated_at,
+      expira_em_segundos,
+      precisa_refresh
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.delete("/clientes/:slug/ml-token", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const slug = normalizarSlug(req.params.slug);
+    const c = await pool.query("SELECT id FROM clientes WHERE slug = $1", [slug]);
+    if (!c.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+    }
+    await pool.query("DELETE FROM ml_tokens WHERE cliente_id = $1", [c.rows[0].id]);
+    res.json({ ok: true, mensagem: "Conta ML desvinculada." });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.post("/clientes", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const { nome, slug } = req.body;
@@ -646,40 +754,106 @@ app.delete("/usuarios/:id", authMiddleware, requireAdmin, async (req, res) => {
 // ML — INICIAR AUTORIZAÇÃO
 // ==========================
 app.get("/ml/conectar", (req, res) => {
-  if (!ML_CLIENT_ID) return res.status(500).send("ML_CLIENT_ID não configurado.");
-  const url = new URL("https://auth.mercadolivre.com.br/authorization");
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("client_id",    ML_CLIENT_ID);
-  url.searchParams.set("redirect_uri", ML_REDIRECT_URI);
-  res.redirect(url.toString());
+  res.status(410).send(
+    `<html><body style="font-family:sans-serif;padding:2rem;max-width:520px;margin:0 auto;">
+      <h2>410 Gone</h2>
+      <p>Use <code>GET /ml/conectar/:clienteSlug</code> com o slug do cliente para iniciar a autorização Mercado Livre.</p>
+    </body></html>`
+  );
+});
+
+app.get("/ml/conectar/:clienteSlug", async (req, res) => {
+  try {
+    if (!ML_CLIENT_ID) return res.status(500).send("ML_CLIENT_ID não configurado.");
+    const slug = normalizarSlug(req.params.clienteSlug);
+    const result = await pool.query(
+      "SELECT id, slug, nome FROM clientes WHERE slug = $1 AND ativo = true",
+      [slug]
+    );
+    const cliente = result.rows[0];
+    if (!cliente) {
+      return res.status(404).send("Cliente não encontrado.");
+    }
+
+    const state = jwt.sign(
+      {
+        clienteId: cliente.id,
+        clienteSlug: cliente.slug,
+        nonce: crypto.randomBytes(16).toString("hex")
+      },
+      JWT_SECRET,
+      { expiresIn: "10m" }
+    );
+
+    const url = new URL("https://auth.mercadolivre.com.br/authorization");
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("client_id", ML_CLIENT_ID);
+    url.searchParams.set("redirect_uri", ML_REDIRECT_URI);
+    url.searchParams.set("state", state);
+
+    res.redirect(url.toString());
+  } catch (err) {
+    console.error("[ML conectar] erro:", err);
+    res.status(500).send("Erro interno: " + err.message);
+  }
 });
 
 // ==========================
 // ML — CALLBACK
 // ==========================
 app.get("/callback", async (req, res) => {
-  const { code, error, error_description } = req.query;
+  const { code, error, error_description, state } = req.query;
 
-  if (error) {
-    return res.status(400).send(`
-      <html><body style="font-family:sans-serif;text-align:center;padding:3rem;background:#f8f9fc;">
-        <h2>❌ Autorização negada</h2>
-        <p style="color:#6b7280;">${error_description || error}</p>
-      </body></html>`);
+  if (!state || String(state).trim() === "") {
+    return res.status(400).send(
+      `<html><body style="font-family:sans-serif;padding:2rem;"><h2>Erro</h2><p>state ausente</p></body></html>`
+    );
   }
 
-  if (!code) return res.status(400).send("Parâmetro 'code' não recebido.");
+  let decoded;
+  try {
+    decoded = jwt.verify(String(state), JWT_SECRET);
+  } catch (e) {
+    return res.status(400).send(
+      `<html><body style="font-family:sans-serif;padding:2rem;"><h2>Erro</h2><p>state inválido ou expirado</p></body></html>`
+    );
+  }
 
   try {
+    const clienteRes = await pool.query(
+      "SELECT * FROM clientes WHERE id = $1 AND ativo = true",
+      [decoded.clienteId]
+    );
+    const cliente = clienteRes.rows[0];
+    if (!cliente) {
+      return res.status(400).send(
+        `<html><body style="font-family:sans-serif;padding:2rem;"><h2>Erro</h2><p>Cliente inválido ou inativo.</p></body></html>`
+      );
+    }
+
+    if (error) {
+      return res.status(400).send(`
+        <html><body style="font-family:sans-serif;text-align:center;padding:3rem;background:#f8f9fc;">
+          <h2>❌ Autorização negada</h2>
+          <p style="color:#6b7280;">${error_description || error}</p>
+        </body></html>`);
+    }
+
+    if (!code) {
+      return res.status(400).send(
+        `<html><body style="font-family:sans-serif;padding:2rem;"><h2>Erro</h2><p>Parâmetro 'code' não recebido.</p></body></html>`
+      );
+    }
+
     const tokenRes = await fetch("https://api.mercadolibre.com/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        grant_type:    "authorization_code",
-        client_id:     ML_CLIENT_ID,
+        grant_type: "authorization_code",
+        client_id: ML_CLIENT_ID,
         client_secret: ML_CLIENT_SECRET,
         code,
-        redirect_uri:  ML_REDIRECT_URI
+        redirect_uri: ML_REDIRECT_URI
       })
     });
 
@@ -695,34 +869,33 @@ app.get("/callback", async (req, res) => {
     }
 
     const { access_token, refresh_token, user_id: mlUserId, expires_in } = data;
-    const expiresAt = new Date(Date.now() + expires_in * 1000);
+    const expiresAt = new Date(Date.now() + (expires_in || 0) * 1000);
 
     await pool.query(
-      `INSERT INTO ml_tokens (ml_user_id, access_token, refresh_token, expires_at, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (ml_user_id) DO UPDATE SET
-         access_token  = EXCLUDED.access_token,
+      `INSERT INTO ml_tokens (cliente_id, ml_user_id, access_token, refresh_token, expires_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (cliente_id, ml_user_id) DO UPDATE SET
+         access_token = EXCLUDED.access_token,
          refresh_token = EXCLUDED.refresh_token,
-         expires_at    = EXCLUDED.expires_at,
-         updated_at    = NOW()`,
-      [String(mlUserId), access_token, refresh_token, expiresAt]
+         expires_at = EXCLUDED.expires_at,
+         updated_at = NOW()`,
+      [cliente.id, String(mlUserId), access_token, refresh_token, expiresAt]
     );
 
-    console.log(`[ML callback] ✓ token salvo — ml_user_id: ${mlUserId}`);
+    console.log(`[ML callback] ✓ token salvo — cliente: ${cliente.nome} ml_user_id: ${mlUserId}`);
 
     return res.send(`
       <html><body style="font-family:sans-serif;text-align:center;padding:3rem;background:#f8f9fc;">
         <div style="max-width:420px;margin:0 auto;background:#fff;border-radius:16px;padding:2.5rem;box-shadow:0 4px 24px rgba(0,0,0,.08);">
           <div style="font-size:2.5rem;margin-bottom:1rem;">✅</div>
           <h2 style="margin:0 0 .5rem;color:#2d2d2d;">Conta conectada!</h2>
-          <p style="color:#6b7280;margin:0 0 1rem;">Token salvo com sucesso.</p>
+          <p style="color:#6b7280;margin:0 0 1rem;"><strong>${cliente.nome}</strong></p>
           <p style="font-family:monospace;font-size:.8rem;color:#9ca3af;background:#f8f9fc;padding:.75rem;border-radius:8px;">
             ML User ID: ${mlUserId}<br>
             Expira em: ${expiresAt.toLocaleString("pt-BR")}
           </p>
         </div>
       </body></html>`);
-
   } catch (err) {
     console.error("[ML callback] erro:", err);
     return res.status(500).send("Erro interno: " + err.message);
