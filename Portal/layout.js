@@ -84,6 +84,18 @@
           <line x1="3" y1="18" x2="21" y2="18"></line>
         </svg>`;
     }
+    if (name === "chevron-left") {
+      return `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>`;
+    }
+    if (name === "chevron-right") {
+      return `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>`;
+    }
     return "";
   }
 
@@ -122,6 +134,12 @@
     return true;
   }
 
+  const SIDEBAR_COLLAPSED_KEY = "vf-sidebar-collapsed";
+
+  function isDesktopSidebar() {
+    return window.matchMedia("(min-width: 769px)").matches;
+  }
+
   window.initLayout = function initLayout() {
     if (document.querySelector(".vf-sidebar")) return;
     if (!ensureAuthenticated()) return;
@@ -136,12 +154,15 @@
       <button type="button" id="vf-menu-btn" aria-label="Abrir menu" style="display:none;background:transparent;border:1px solid var(--vf-border);border-radius:10px;width:36px;height:36px;align-items:center;justify-content:center;color:var(--vf-text-m);cursor:pointer;">
         ${svgIcon("menu")}
       </button>
-      <a href="dashboard.html" style="display:flex;align-items:center;gap:0.75rem;text-decoration:none;color:inherit;">
-        <span style="width:36px;height:36px;background-color:var(--vf-primary);background-image:linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 55%);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 2px 8px rgba(var(--vf-primary-rgb),.2);">
+      <a href="dashboard.html" class="vf-sidebar-logo-link">
+        <span class="vf-sidebar-logo-mark">
           ${svgIcon("activity")}
         </span>
-        <span>VenforceGo</span>
+        <span class="vf-sidebar-logo-text">VenforceGo</span>
       </a>
+      <button type="button" id="vf-sidebar-toggle" class="vf-sidebar-toggle" aria-label="Recolher menu" aria-expanded="true">
+        ${svgIcon("chevron-left")}
+      </button>
     `;
 
     const nav = document.createElement("nav");
@@ -169,6 +190,30 @@
     const logoutBtn = sidebar.querySelector("#vf-btn-logout");
     if (logoutBtn) logoutBtn.addEventListener("click", clearSession);
 
+    const toggleBtn = sidebar.querySelector("#vf-sidebar-toggle");
+    function setSidebarCollapsed(collapsed) {
+      if (!isDesktopSidebar()) {
+        sidebar.classList.remove("is-collapsed");
+        if (toggleBtn) {
+          toggleBtn.setAttribute("aria-expanded", "true");
+          toggleBtn.setAttribute("aria-label", "Recolher menu");
+          toggleBtn.innerHTML = svgIcon("chevron-left");
+        }
+        return;
+      }
+      sidebar.classList.toggle("is-collapsed", collapsed);
+      if (toggleBtn) {
+        toggleBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        toggleBtn.setAttribute("aria-label", collapsed ? "Expandir menu" : "Recolher menu");
+        toggleBtn.innerHTML = collapsed ? svgIcon("chevron-right") : svgIcon("chevron-left");
+      }
+    }
+
+    function applyStoredSidebarCollapse() {
+      const collapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+      setSidebarCollapsed(collapsed);
+    }
+
     const menuBtn = sidebar.querySelector("#vf-menu-btn");
     function syncMenuButton() {
       const isMobile = window.matchMedia("(max-width: 768px)").matches;
@@ -176,12 +221,26 @@
       menuBtn.style.display = isMobile ? "inline-flex" : "none";
       if (!isMobile) sidebar.classList.remove("is-open");
     }
+    function onResizeLayout() {
+      syncMenuButton();
+      applyStoredSidebarCollapse();
+    }
     syncMenuButton();
-    window.addEventListener("resize", syncMenuButton);
+    applyStoredSidebarCollapse();
+    window.addEventListener("resize", onResizeLayout);
 
     if (menuBtn) {
       menuBtn.addEventListener("click", () => {
         sidebar.classList.toggle("is-open");
+      });
+    }
+
+    if (toggleBtn) {
+      toggleBtn.addEventListener("click", () => {
+        if (!isDesktopSidebar()) return;
+        const next = !sidebar.classList.contains("is-collapsed");
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+        setSidebarCollapsed(next);
       });
     }
   };
