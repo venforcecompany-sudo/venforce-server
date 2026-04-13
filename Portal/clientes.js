@@ -21,6 +21,27 @@ function escapeHTML(s) {
   return d.innerHTML;
 }
 
+function filtrarClientes() {
+  const termo = (document.getElementById("busca-cliente")?.value || "")
+    .toLowerCase().trim();
+
+  const linhas = document.querySelectorAll("#clientes-tbody tr");
+  let visiveis = 0;
+
+  linhas.forEach((tr) => {
+    const texto = tr.textContent.toLowerCase();
+    const bate = !termo || texto.includes(termo);
+    tr.style.display = bate ? "" : "none";
+    if (bate) visiveis++;
+  });
+
+  // Atualiza badge com total visível
+  const badge = document.getElementById("clientes-count");
+  if (badge && badge.style.display !== "none") {
+    badge.textContent = String(visiveis);
+  }
+}
+
 function getMlConectarLink(slug) {
   const base = "https://venforce-server.onrender.com";
   return `${base}/ml/conectar/${encodeURIComponent(slug)}`;
@@ -172,6 +193,8 @@ function renderClientes(clientes) {
 
 
 showTable();
+const buscaAtiva = document.getElementById("busca-cliente");
+if (buscaAtiva) buscaAtiva.value = "";
 // Disparar fetches de status ML em paralelo, sem bloquear a renderização
 clientes.forEach(c => fetchMlStatus(c.slug || ""));
 }
@@ -328,6 +351,15 @@ nomeInput.addEventListener("input", () => {
 
 document.getElementById("btn-criar-cliente").addEventListener("click", createCliente);
 document.getElementById("btn-retry").addEventListener("click", loadClientes);
+
+const buscaInput = document.getElementById("busca-cliente");
+if (buscaInput) {
+  let debounceTimer;
+  buscaInput.addEventListener("input", () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(filtrarClientes, 300);
+  });
+}
 
 if (TOKEN) loadClientes();
 
