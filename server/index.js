@@ -10,7 +10,7 @@ const path = require("path");
 const crypto = require("crypto");
 const pool = require("./config/database");
 const { processarFechamento, compilarFechamentos } = require("./utils/fechamento/process");
-const { getValidMlTokenByCliente } = require("./utils/mlClient");
+const { getValidMlTokenByCliente, mlFetch } = require("./utils/mlClient");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -639,6 +639,71 @@ app.delete("/clientes/:slug", authMiddleware, requireAdmin, async (req, res) => 
     }
     res.json({ ok: true, mensagem: "Cliente removido com sucesso." });
   } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ==========================
+// ML — ROTAS DE INTEGRAÇÃO
+// ==========================
+
+// Testa conexão e retorna dados do usuário ML
+app.get("/ml/teste/:clienteId", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const clienteId = parseInt(req.params.clienteId);
+    if (!clienteId) return res.status(400).json({ ok: false, erro: "clienteId inválido." });
+
+    const { ok, status, data } = await mlFetch(clienteId, "/users/me");
+
+    if (!ok) {
+      return res.status(status).json({ ok: false, erro: data?.message || "Erro ao chamar ML.", status, data });
+    }
+
+    res.json({ ok: true, status, usuario: data });
+  } catch (err) {
+    console.error("[GET /ml/teste] erro:", err.message);
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Busca anúncios ativos do cliente no ML (até 20 por vez, com suporte a offset)
+app.get("/ml/items/:clienteId", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const clienteId = parseInt(req.params.clienteId);
+    if (!clienteId) return res.status(400).json({ ok: false, erro: "clienteId inválido." });
+
+    // Passo 1: buscar o ml_user_id do cliente no banco
+    const tokenRow = await pool.query(
+      "SELECT ml_user_id FROM ml_tokens WHERE cliente_id = $1",
+      [clienteId]
+    );
+    if (!tokenRow.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente sem conta ML vinculada." });
+    }
+    const mlUserId = tokenRow.rows[0].ml_user_id;
+
+    // Passo 2: buscar itens ativos
+    const offset = parseInt(req.query.offset) || 0;
+    const limit  = Math.min(parseInt(req.query.limit) || 20, 50);
+
+    const { ok, status, data } = await mlFetch(
+      clienteId,
+      `/users/${mlUserId}/items/search?status=active&offset=${offset}&limit=${limit}`
+    );
+
+    if (!ok) {
+      return res.status(status).json({ ok: false, erro: data?.message || "Erro ao buscar itens.", status, data });
+    }
+
+    res.json({
+      ok: true,
+      total: data?.paging?.total ?? 0,
+      offset: data?.paging?.offset ?? offset,
+      limit:  data?.paging?.limit  ?? limit,
+      items:  data?.results ?? [],
+    });
+  } catch (err) {
+    console.error("[GET /ml/items] erro:", err.message);
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
