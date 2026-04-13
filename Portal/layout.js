@@ -28,6 +28,29 @@
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
         </svg>`;
     }
+    if (name === "vf-dashboard") {
+      return `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 3v18h18"></path>
+          <path d="M7 15l4-4 3 3 6-6"></path>
+        </svg>`;
+    }
+    if (name === "vf-fechamento") {
+      return `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2v20"></path>
+          <path d="M17 6H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"></path>
+        </svg>`;
+    }
+    if (name === "vf-financeiro") {
+      return `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 20V10"></path>
+          <path d="M10 20V4"></path>
+          <path d="M16 20v-8"></path>
+          <path d="M3 20h18"></path>
+        </svg>`;
+    }
     if (name === "users") {
       return `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -118,9 +141,9 @@
   function buildNavLinks(user) {
     const links = [
       { label: "Extensão", href: "extensao.html", icon: "download", adminOnly: false },
-      { label: "Dashboard", href: "dashboard.html", icon: "activity", adminOnly: false },
-      { label: "Painel de análise de conversão", href: "fechamento.html", icon: "activity", adminOnly: false },
-      { label: "Fechamento Financeiro", href: "financeiro.html", icon: "activity", adminOnly: false },
+      { label: "Dashboard", href: "dashboard.html", icon: "vf-dashboard", adminOnly: false },
+      { label: "Painel de análise de conversão", href: "fechamento.html", icon: "vf-fechamento", adminOnly: false },
+      { label: "Fechamento Financeiro", href: "financeiro.html", icon: "vf-financeiro", adminOnly: false },
       { label: "Clientes", href: "clientes.html", icon: "users", adminOnly: false },
       { label: "Callbacks", href: "callbacks.html", icon: "repeat", adminOnly: false },
       { label: "Tokens ML", href: "ml-tokens.html", icon: "shield", adminOnly: true },
