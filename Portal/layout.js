@@ -141,6 +141,7 @@
   function buildNavLinks(user) {
     const links = [
       { label: "Extensão", href: "extensao.html", icon: "download", adminOnly: false },
+      { label: "Ferramenta OR", href: "ferramenta-or.html", icon: "download", adminOnly: false },
       { label: "Dashboard", href: "dashboard.html", icon: "vf-dashboard", adminOnly: false },
       { label: "Painel de análise de conversão", href: "fechamento.html", icon: "vf-fechamento", adminOnly: false },
       { label: "Fechamento Financeiro", href: "financeiro.html", icon: "vf-financeiro", adminOnly: false },
