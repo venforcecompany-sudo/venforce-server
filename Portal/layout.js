@@ -84,6 +84,22 @@
           <line x1="3" y1="18" x2="21" y2="18"></line>
         </svg>`;
     }
+    if (name === "panel-left-close") {
+      return `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+          <line x1="9" y1="4" x2="9" y2="20"></line>
+          <polyline points="14 16 10 12 14 8"></polyline>
+        </svg>`;
+    }
+    if (name === "panel-left-open") {
+      return `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+          <line x1="9" y1="4" x2="9" y2="20"></line>
+          <polyline points="10 16 14 12 10 8"></polyline>
+        </svg>`;
+    }
     if (name === "chevron-left") {
       return `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -161,7 +177,7 @@
         <span class="vf-sidebar-logo-text">VenforceGo</span>
       </a>
       <button type="button" id="vf-sidebar-toggle" class="vf-sidebar-toggle" aria-label="Recolher menu" aria-expanded="true">
-        ${svgIcon("chevron-left")}
+        ${svgIcon("panel-left-close")}
       </button>
     `;
 
@@ -191,21 +207,24 @@
     if (logoutBtn) logoutBtn.addEventListener("click", clearSession);
 
     const toggleBtn = sidebar.querySelector("#vf-sidebar-toggle");
+    const logoTextEl = sidebar.querySelector(".vf-sidebar-logo-text");
     function setSidebarCollapsed(collapsed) {
       if (!isDesktopSidebar()) {
         sidebar.classList.remove("is-collapsed");
+        if (logoTextEl) logoTextEl.textContent = "VenforceGo";
         if (toggleBtn) {
           toggleBtn.setAttribute("aria-expanded", "true");
           toggleBtn.setAttribute("aria-label", "Recolher menu");
-          toggleBtn.innerHTML = svgIcon("chevron-left");
+          toggleBtn.innerHTML = svgIcon("panel-left-close");
         }
         return;
       }
       sidebar.classList.toggle("is-collapsed", collapsed);
+      if (logoTextEl) logoTextEl.textContent = collapsed ? "VFgo" : "VenforceGo";
       if (toggleBtn) {
         toggleBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
         toggleBtn.setAttribute("aria-label", collapsed ? "Expandir menu" : "Recolher menu");
-        toggleBtn.innerHTML = collapsed ? svgIcon("chevron-right") : svgIcon("chevron-left");
+        toggleBtn.innerHTML = collapsed ? svgIcon("panel-left-open") : svgIcon("panel-left-close");
       }
     }
 
