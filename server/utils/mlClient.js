@@ -47,25 +47,43 @@ async function getValidMlTokenByCliente(clienteId) {
   return row.access_token;
 }
 
+// Somente leitura: não faz refresh e não altera ml_tokens.
+// Usar quando a rota precisa garantir que não haverá POST no OAuth/token do ML.
+async function getMlTokenByClienteNoRefresh(clienteId) {
+  const result = await pool.query("SELECT access_token, expires_at FROM ml_tokens WHERE cliente_id = $1", [clienteId]);
+  const row = result.rows[0];
+  if (!row) throw new Error("Cliente não possui token ML");
+
+  const expiresAt = new Date(row.expires_at).getTime();
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    throw new Error("Token ML expirado (rota read-only não faz refresh automático).");
+  }
+
+  return row.access_token;
+}
+
 async function mlFetch(clienteId, path, options = {}) {
   const ML_API = "https://api.mercadolibre.com";
+  const { noRefresh = false, ...fetchOptions } = options;
 
   async function doRequest(token) {
     return fetch(`${ML_API}${path}`, {
-      ...options,
+      ...fetchOptions,
       headers: {
         "Content-Type": "application/json",
-        ...(options.headers || {}),
+        ...(fetchOptions.headers || {}),
         Authorization: "Bearer " + token,
       },
     });
   }
 
   try {
-    const token = await getValidMlTokenByCliente(clienteId);
+    const token = noRefresh
+      ? await getMlTokenByClienteNoRefresh(clienteId)
+      : await getValidMlTokenByCliente(clienteId);
     let res = await doRequest(token);
 
-    if (res.status === 401) {
+    if (!noRefresh && res.status === 401) {
       console.warn(`[mlFetch] 401 em ${path} para clienteId ${clienteId} — forçando refresh`);
       await pool.query(
         "UPDATE ml_tokens SET expires_at = NOW() WHERE cliente_id = $1",
@@ -85,7 +103,7 @@ async function mlFetch(clienteId, path, options = {}) {
   }
 }
 
-module.exports = { mlFetch, getValidMlTokenByCliente };
+module.exports = { mlFetch, getValidMlTokenByCliente, getMlTokenByClienteNoRefresh };
 
 /*
   USO NAS ROTAS (importar assim):

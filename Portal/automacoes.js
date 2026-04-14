@@ -13,6 +13,8 @@ if (user.role !== "admin") window.location.replace("dashboard.html");
 initLayout();
 
 let ALL_CLIENTES = [];
+let PREVIEW_ML_PAGE = 1;
+const PREVIEW_ML_LIMIT = 20;
 
 function clearSession() {
   localStorage.removeItem(STORAGE_KEY);
@@ -201,6 +203,76 @@ function setPreviewState({ clienteLabel, baseLabel, totalItens, itensPreview }) 
   });
 }
 
+function setPreviewMlState({ page, totalItensMl, linhas }) {
+  const empty = document.getElementById("precificacao-ml-preview-empty");
+  const box = document.getElementById("precificacao-ml-preview-box");
+  const badge = document.getElementById("precificacao-ml-total");
+  const pageEl = document.getElementById("precificacao-ml-page");
+  const prevBtn = document.getElementById("btn-precificacao-ml-prev");
+  const nextBtn = document.getElementById("btn-precificacao-ml-next");
+
+  if (empty) empty.style.display = "none";
+  if (box) box.style.display = "block";
+
+  const total = Number(totalItensMl ?? 0) || 0;
+  const p = Number(page ?? 1) || 1;
+  const totalPages = Math.max(1, Math.ceil(total / PREVIEW_ML_LIMIT));
+
+  if (badge) {
+    badge.style.display = "inline-block";
+    badge.textContent = String(total);
+  }
+  if (pageEl) pageEl.textContent = `Página ${p} de ${totalPages}`;
+  if (prevBtn) prevBtn.disabled = p <= 1;
+  if (nextBtn) nextBtn.disabled = p >= totalPages;
+
+  const tbody = document.getElementById("precificacao-ml-tbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+
+  const rows = Array.isArray(linhas) ? linhas : [];
+  if (rows.length === 0) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="9" style="color:var(--vf-text-m);">Nenhum item encontrado nesta página.</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+
+  rows.forEach((r) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.item_id ?? "—")}</td>
+      <td style="max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHTML(r.titulo ?? "")}">${escapeHTML(r.titulo ?? "—")}</td>
+      <td>${escapeHTML(r.status ?? "—")}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.precoVendaAtual ?? "—")}</td>
+      <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.listing_type_id ?? r.tipoAnuncio ?? "—")}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.custoProduto ?? "—")}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.impostoPercentual ?? "—")}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.taxaFixa ?? "—")}</td>
+      <td>${r.temBase ? "Sim" : "Não"}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function resetPreviewMlUI() {
+  const empty = document.getElementById("precificacao-ml-preview-empty");
+  const box = document.getElementById("precificacao-ml-preview-box");
+  const badge = document.getElementById("precificacao-ml-total");
+  const pageEl = document.getElementById("precificacao-ml-page");
+  const prevBtn = document.getElementById("btn-precificacao-ml-prev");
+  const nextBtn = document.getElementById("btn-precificacao-ml-next");
+  const tbody = document.getElementById("precificacao-ml-tbody");
+
+  if (empty) empty.style.display = "block";
+  if (box) box.style.display = "none";
+  if (badge) badge.style.display = "none";
+  if (pageEl) pageEl.textContent = "Página 1";
+  if (prevBtn) prevBtn.disabled = true;
+  if (nextBtn) nextBtn.disabled = true;
+  if (tbody) tbody.innerHTML = "";
+}
+
 async function previewPrecificacao() {
   if (!TOKEN) return;
 
@@ -269,6 +341,64 @@ async function previewPrecificacao() {
   }
 }
 
+async function previewPrecificacaoMl() {
+  if (!TOKEN) return;
+
+  const clienteSlug = document.getElementById("automacoes-cliente")?.value || "";
+  const baseSlug = document.getElementById("automacoes-base")?.value || "";
+
+  if (!clienteSlug) {
+    setStatus("Selecione um cliente para gerar a prévia com dados do ML.", "var(--vf-danger)");
+    return;
+  }
+  if (!baseSlug) {
+    setStatus("Selecione uma base para gerar a prévia com dados do ML.", "var(--vf-danger)");
+    return;
+  }
+
+  const btn = document.getElementById("btn-precificacao-preview-ml");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Carregando...";
+  }
+
+  try {
+    const qs = new URLSearchParams({
+      clienteSlug,
+      baseSlug,
+      page: String(PREVIEW_ML_PAGE),
+      limit: String(PREVIEW_ML_LIMIT),
+    });
+    const res = await fetch(`${API_BASE}/automacoes/precificacao/preview-ml?${qs.toString()}`, {
+      headers: { Authorization: "Bearer " + TOKEN }
+    });
+
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+
+    setPreviewMlState({
+      page: json.page ?? PREVIEW_ML_PAGE,
+      totalItensMl: json.totalItensMl ?? 0,
+      linhas: json.linhas ?? [],
+    });
+
+    setStatus("Prévia com dados do Mercado Livre carregada (somente leitura).", "var(--vf-success)");
+  } catch (err) {
+    resetPreviewMlUI();
+    setStatus(err?.message ? `Erro: ${err.message}` : "Erro ao gerar prévia com dados do ML.", "var(--vf-danger)");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Prévia com dados ML";
+    }
+  }
+}
+
 document.getElementById("automacoes-cliente")?.addEventListener("change", (e) => {
   const slug = e.target.value || "";
   if (!slug) {
@@ -283,6 +413,18 @@ document.getElementById("automacoes-cliente-search")?.addEventListener("input", 
 });
 
 document.getElementById("btn-precificacao-preview")?.addEventListener("click", previewPrecificacao);
+document.getElementById("btn-precificacao-preview-ml")?.addEventListener("click", () => {
+  PREVIEW_ML_PAGE = 1;
+  previewPrecificacaoMl();
+});
+document.getElementById("btn-precificacao-ml-prev")?.addEventListener("click", () => {
+  PREVIEW_ML_PAGE = Math.max(1, PREVIEW_ML_PAGE - 1);
+  previewPrecificacaoMl();
+});
+document.getElementById("btn-precificacao-ml-next")?.addEventListener("click", () => {
+  PREVIEW_ML_PAGE = PREVIEW_ML_PAGE + 1;
+  previewPrecificacaoMl();
+});
 
 if (TOKEN) {
   loadClientes();

@@ -654,6 +654,167 @@ app.get("/automacoes/precificacao/preview", authMiddleware, requireAdmin, async 
   }
 });
 
+// AUTOMAÇÕES (somente leitura) — Preview enriquecido (base + dados ML, sem escrita no ML)
+app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const clienteSlugRaw = String(req.query.clienteSlug || "").trim();
+    const baseSlugRaw = String(req.query.baseSlug || "").trim();
+    const pageRaw = req.query.page;
+    const limitRaw = req.query.limit;
+
+    if (!clienteSlugRaw) return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório" });
+    if (!baseSlugRaw) return res.status(400).json({ ok: false, erro: "baseSlug é obrigatório" });
+
+    const clienteSlug = normalizarSlug(clienteSlugRaw);
+    const baseSlug = normalizarSlug(baseSlugRaw);
+
+    const page = Math.max(1, parseInt(pageRaw) || 1);
+    const limit = Math.min(Math.max(1, parseInt(limitRaw) || 20), 50);
+    const offset = (page - 1) * limit;
+
+    const c = await pool.query(
+      "SELECT id, nome, slug, ativo, created_at FROM clientes WHERE slug = $1",
+      [clienteSlug]
+    );
+    if (!c.rows.length) return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+    const cliente = c.rows[0];
+
+    const b = await pool.query(
+      "SELECT id, nome, slug, ativo, created_at, updated_at FROM bases WHERE slug = $1",
+      [baseSlug]
+    );
+    if (!b.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada." });
+    const base = b.rows[0];
+
+    const custosRes = await pool.query(
+      "SELECT produto_id, custo_produto, imposto_percentual, taxa_fixa FROM custos WHERE base_id = $1",
+      [base.id]
+    );
+    const custosMap = new Map();
+    custosRes.rows.forEach((row) => {
+      const key = String(row.produto_id || "").trim();
+      if (!key) return;
+      custosMap.set(key, {
+        custoProduto: Number(row.custo_produto),
+        impostoPercentual: Number(row.imposto_percentual),
+        taxaFixa: Number(row.taxa_fixa),
+      });
+    });
+
+    // ML (somente leitura): usar ml_user_id já vinculado ao cliente
+    const tokenRow = await pool.query(
+      "SELECT ml_user_id FROM ml_tokens WHERE cliente_id = $1",
+      [cliente.id]
+    );
+    if (!tokenRow.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente sem conta ML vinculada." });
+    }
+    const mlUserId = tokenRow.rows[0].ml_user_id;
+
+    // 1) Buscar ids de itens ativos do cliente (paginado)
+    const search = await mlFetch(
+      cliente.id,
+      `/users/${mlUserId}/items/search?status=active&offset=${offset}&limit=${limit}`,
+      { noRefresh: true }
+    );
+    if (!search.ok) {
+      return res.status(search.status).json({ ok: false, erro: search.data?.message || "Erro ao buscar itens no ML.", status: search.status, data: search.data });
+    }
+
+    const totalItensMl = search.data?.paging?.total ?? 0;
+    const ids = Array.isArray(search.data?.results) ? search.data.results : [];
+
+    // 2) Buscar detalhes de itens em lote (somente leitura)
+    let details = [];
+    if (ids.length > 0) {
+      // Observação: o endpoint do ML espera ids separados por vírgula; não codificar vírgulas evita incompatibilidades.
+      const batch = await mlFetch(cliente.id, `/items?ids=${ids.join(",")}`, { noRefresh: true });
+      if (!batch.ok) {
+        return res.status(batch.status).json({ ok: false, erro: batch.data?.message || "Erro ao buscar detalhes dos itens no ML.", status: batch.status, data: batch.data });
+      }
+      details = Array.isArray(batch.data) ? batch.data : [];
+    }
+
+    const linhas = details.map((entry) => {
+      const body = entry?.body || null;
+      const itemId = String(body?.id || entry?.id || "").trim();
+
+      const baseRow = custosMap.get(itemId) || null;
+      const custoProduto = baseRow ? baseRow.custoProduto : null;
+      const impostoPercentual = baseRow ? baseRow.impostoPercentual : null;
+      const taxaFixa = baseRow ? baseRow.taxaFixa : null;
+
+      // Campos ML disponíveis via leitura (GET /items e /users/.../items/search)
+      const precoVendaAtual = (typeof body?.price === "number") ? body.price : (body?.price != null ? Number(body.price) : null);
+      const listingTypeId = body?.listing_type_id || null;
+
+      // Por segurança nesta etapa:
+      // - comissão e frete podem depender de regras dinâmicas (categoria, listing_type, shipping/logistic_type, etc.)
+      // - existem endpoints read-only no ML, mas sem garantia de completude/estabilidade aqui, preferimos retornar null.
+      const comissaoMarketplace = null;
+      const frete = null;
+
+      // Lucro/margem: só calculamos se TODOS os componentes necessários estiverem disponíveis com segurança
+      // (nesta etapa, comissão e frete ficam null; portanto lucro/margem também ficam null).
+      const lucroContribuicaoPreview = null;
+      const margemContribuicaoPreview = null;
+
+      const observacoes = [];
+      if (!baseRow) observacoes.push("Sem correspondência na base (produto_id não encontrado).");
+      if (comissaoMarketplace === null) observacoes.push("comissaoMarketplace=null (não obtida nesta etapa por segurança/read-only).");
+      if (frete === null) observacoes.push("frete=null (não obtido nesta etapa por segurança/read-only).");
+      if (lucroContribuicaoPreview === null || margemContribuicaoPreview === null) {
+        observacoes.push("lucro/margem=null (depende de comissão/frete; mantido nulo por segurança).");
+      }
+
+      return {
+        item_id: itemId || null,
+        titulo: body?.title || null,
+        status: body?.status || null,
+        precoVendaAtual,
+        tipoAnuncio: listingTypeId,
+        listing_type_id: listingTypeId,
+        custoProduto,
+        impostoPercentual,
+        taxaFixa,
+        comissaoMarketplace,
+        frete,
+        lucroContribuicaoPreview,
+        margemContribuicaoPreview,
+        temBase: Boolean(baseRow),
+        observacoes,
+      };
+    });
+
+    return res.json({
+      ok: true,
+      cliente,
+      base: {
+        id: base.id,
+        nome: base.nome,
+        slug: base.slug,
+        ativo: base.ativo,
+        created_at: base.created_at,
+        updated_at: base.updated_at,
+      },
+      page,
+      limit,
+      totalItensMl,
+      linhas,
+      fonteDados: {
+        ml: {
+          itens: "GET /users/{ml_user_id}/items/search?status=active",
+          detalhes: "GET /items?ids=...",
+        },
+        base: "SELECT custos WHERE base_id = ... (produto_id = item_id/MLB)",
+        camposNullPorSeguranca: ["comissaoMarketplace", "frete", "lucroContribuicaoPreview", "margemContribuicaoPreview"],
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.get("/clientes/:slug/ml-status", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const slug = normalizarSlug(req.params.slug);
