@@ -471,6 +471,25 @@ body {
 .vf-table tbody tr:hover { background: rgba(var(--vf-primary-rgb), 0.04); }
 .vf-table tbody td strong { font-weight: 600; color: var(--vf-text); letter-spacing: -0.01em; }
 
+/* ---------- Automações: Preview ML (ajustes conservadores de largura) ---------- */
+.vf-ml-preview .vf-table-wrapper { overflow-x: auto; }
+.vf-ml-preview .vf-table-ml { table-layout: fixed; }
+.vf-ml-preview .vf-table-ml thead th,
+.vf-ml-preview .vf-table-ml tbody td {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+.vf-ml-preview .vf-table-ml thead th:nth-child(1) { width: 130px; }
+.vf-ml-preview .vf-table-ml thead th:nth-child(2) { width: auto; white-space: normal; }
+.vf-ml-preview .vf-table-ml thead th:nth-child(3) { width: 90px; }
+.vf-ml-preview .vf-table-ml thead th:nth-child(4) { width: 110px; }
+.vf-ml-preview .vf-table-ml thead th:nth-child(5) { width: 120px; }
+.vf-ml-preview .vf-table-ml thead th:nth-child(6),
+.vf-ml-preview .vf-table-ml thead th:nth-child(7),
+.vf-ml-preview .vf-table-ml thead th:nth-child(8) { width: 95px; }
+.vf-ml-preview .vf-table-ml thead th:nth-child(9) { width: 80px; }
+.vf-ml-preview .vf-table-ml tbody td:nth-child(2) { word-break: break-word; }
+
 /* ---------- Status badges ---------- */
 .base-status--active {
   display: inline-flex;
