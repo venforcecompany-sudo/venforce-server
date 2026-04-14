@@ -141,6 +141,9 @@ app.get("/health", (req, res) => res.json({ ok: true, mensagem: `VENFORCE OK por
 
 // SETUP TABELAS
 app.get("/setup", async (req, res) => {
+  if (process.env.ENABLE_SETUP_ROUTE !== "true") {
+    return res.status(403).json({ ok: false, erro: "Rota desabilitada em produção" });
+  }
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
