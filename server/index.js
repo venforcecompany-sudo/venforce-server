@@ -555,7 +555,7 @@ app.delete("/bases/:baseId", authMiddleware, async (req, res) => {
 });
 
 // ADMIN USERS
-app.get("/admin/users", authMiddleware, async (req, res) => {
+app.get("/admin/users", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query("SELECT id, nome, email, ativo, role, created_at FROM users ORDER BY id ASC");
     res.json({ ok: true, users: result.rows });
