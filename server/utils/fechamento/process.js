@@ -451,7 +451,67 @@ function compilarFechamentos(buffers) {
     return { error: "Nenhum fechamento válido para compilar." };
   }
 
-  return buildResultadoFromBaseMetrics(combinedBaseMetrics);
+  // Deduplicação/mesclagem por idItem (mesmo produto em meses diferentes)
+  const mergedByIdItem = new Map();
+
+  for (const row of combinedBaseMetrics) {
+    const idItem = row.idItem;
+    if (!idItem) continue;
+
+    if (!mergedByIdItem.has(idItem)) {
+      mergedByIdItem.set(idItem, {
+        idItem,
+        produto: row.produto,
+        skuReferencia: row.skuReferencia || "",
+        faturamento: 0,
+        unidades: 0,
+        pedidos: 0,
+        impressoes: 0,
+        cliques: 0,
+        ctrSum: 0,
+        ctrCount: 0,
+        conversaoSum: 0,
+        conversaoCount: 0,
+      });
+    }
+
+    const acc = mergedByIdItem.get(idItem);
+
+    acc.faturamento += row.faturamento || 0;
+    acc.unidades += row.unidades || 0;
+    acc.pedidos += row.pedidos || 0;
+    acc.impressoes += row.impressoes || 0;
+    acc.cliques += row.cliques || 0;
+
+    if (row.ctr > 0) {
+      acc.ctrSum += row.ctr;
+      acc.ctrCount += 1;
+    }
+
+    if (row.conversao > 0) {
+      acc.conversaoSum += row.conversao;
+      acc.conversaoCount += 1;
+    }
+  }
+
+  const dedupedBaseMetrics = Array.from(mergedByIdItem.values()).map((row) => ({
+    idItem: row.idItem,
+    produto: row.produto,
+    faturamento: row.faturamento,
+    unidades: row.unidades,
+    pedidos: row.pedidos,
+    impressoes: row.impressoes,
+    cliques: row.cliques,
+    ctr: row.ctrCount > 0 ? row.ctrSum / row.ctrCount : 0,
+    conversao: row.conversaoCount > 0 ? row.conversaoSum / row.conversaoCount : 0,
+    skuReferencia: row.skuReferencia,
+  }));
+
+  if (!dedupedBaseMetrics.length) {
+    return { error: "Nenhum fechamento válido para compilar." };
+  }
+
+  return buildResultadoFromBaseMetrics(dedupedBaseMetrics);
 }
 
 module.exports = { processarFechamento, compilarFechamentos };
