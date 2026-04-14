@@ -597,6 +597,63 @@ app.get("/clientes", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
+// AUTOMAÇÕES (somente leitura) — Preview de precificação por cliente + base
+app.get("/automacoes/precificacao/preview", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const clienteSlugRaw = String(req.query.clienteSlug || "").trim();
+    const baseSlugRaw = String(req.query.baseSlug || "").trim();
+
+    if (!clienteSlugRaw) return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório" });
+    if (!baseSlugRaw) return res.status(400).json({ ok: false, erro: "baseSlug é obrigatório" });
+
+    const clienteSlug = normalizarSlug(clienteSlugRaw);
+    const baseSlug = normalizarSlug(baseSlugRaw);
+
+    const c = await pool.query(
+      "SELECT id, nome, slug, ativo, created_at FROM clientes WHERE slug = $1",
+      [clienteSlug]
+    );
+    if (!c.rows.length) return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+
+    const b = await pool.query(
+      "SELECT id, nome, slug, ativo, created_at, updated_at FROM bases WHERE slug = $1",
+      [baseSlug]
+    );
+    if (!b.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada." });
+
+    const base = b.rows[0];
+    const custos = await pool.query(
+      "SELECT produto_id, custo_produto, imposto_percentual, taxa_fixa FROM custos WHERE base_id = $1 ORDER BY produto_id ASC",
+      [base.id]
+    );
+
+    const totalItens = custos.rows.length;
+    const itensPreview = custos.rows.slice(0, 10).map((row) => ({
+      produto_id: row.produto_id,
+      custo_produto: Number(row.custo_produto),
+      imposto_percentual: Number(row.imposto_percentual),
+      taxa_fixa: Number(row.taxa_fixa),
+    }));
+
+    return res.json({
+      ok: true,
+      cliente: c.rows[0],
+      base: {
+        id: base.id,
+        nome: base.nome,
+        slug: base.slug,
+        ativo: base.ativo,
+        created_at: base.created_at,
+        updated_at: base.updated_at,
+      },
+      totalItens,
+      itensPreview,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.get("/clientes/:slug/ml-status", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const slug = normalizarSlug(req.params.slug);
