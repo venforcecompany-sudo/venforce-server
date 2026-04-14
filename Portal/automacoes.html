@@ -103,6 +103,57 @@
         <div class="vf-card-header">
           <h5>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            Preview — Precificação + Mercado Livre (somente leitura)
+          </h5>
+          <span class="vf-badge" id="precificacao-ml-total" style="display:none;">0</span>
+        </div>
+        <div style="padding:1.25rem 1.75rem;">
+          <div style="margin-bottom:10px;color:var(--vf-text-m);font-size:.875rem;">
+            <div><strong>Somente leitura:</strong> esta prévia não altera anúncios, preços, estoque, campanhas ou integrações do cliente.</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+            <button type="button" id="btn-precificacao-preview-ml" class="vf-btn-secondary" style="margin:0;">
+              Prévia com dados ML
+            </button>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button type="button" id="btn-precificacao-ml-prev" class="vf-btn-secondary" style="margin:0;padding:.4rem .7rem;" disabled>Anterior</button>
+              <button type="button" id="btn-precificacao-ml-next" class="vf-btn-secondary" style="margin:0;padding:.4rem .7rem;" disabled>Próxima</button>
+              <span id="precificacao-ml-page" style="color:var(--vf-text-m);font-size:.875rem;">Página 1</span>
+            </div>
+          </div>
+
+          <div id="precificacao-ml-preview-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
+            <p>Selecione um cliente e uma base, e clique em “Prévia com dados ML”.</p>
+          </div>
+          <div id="precificacao-ml-preview-box" class="vf-table-wrapper" style="display:none;">
+            <table class="vf-table">
+              <thead>
+                <tr>
+                  <th>Item (MLB)</th>
+                  <th>Título</th>
+                  <th>Status</th>
+                  <th style="text-align:right;">Preço</th>
+                  <th>Tipo anúncio</th>
+                  <th style="text-align:right;">Custo</th>
+                  <th style="text-align:right;">Imposto (%)</th>
+                  <th style="text-align:right;">Taxa fixa</th>
+                  <th>Tem base</th>
+                </tr>
+              </thead>
+              <tbody id="precificacao-ml-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="vf-card" style="margin-top:24px;">
+        <div class="vf-card-header">
+          <h5>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
               <polyline points="14 2 14 8 20 8"></polyline>
               <line x1="16" y1="13" x2="8" y2="13"></line>
