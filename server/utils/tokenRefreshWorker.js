@@ -90,10 +90,11 @@ function startTokenRefreshWorker() {
     `[tokenWorker] iniciado — ciclo a cada ${INTERVAL_MS / 60000} min, janela de ${REFRESH_WINDOW_S / 60} min`
   );
 
-  // Roda imediatamente na inicialização
-  runRefreshCycle();
-
-  workerTimer = setInterval(runRefreshCycle, INTERVAL_MS);
+  // Aguarda 30s antes do primeiro ciclo para garantir que o banco está pronto
+  setTimeout(() => {
+    runRefreshCycle();
+    workerTimer = setInterval(runRefreshCycle, INTERVAL_MS);
+  }, 30000);
 }
 
 function stopTokenRefreshWorker() {
