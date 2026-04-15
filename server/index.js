@@ -13,6 +13,7 @@ const crypto = require("crypto");
 const pool = require("./config/database");
 const { processarFechamento, compilarFechamentos } = require("./utils/fechamento/process");
 const { getValidMlTokenByCliente, mlFetch } = require("./utils/mlClient");
+const { startTokenRefreshWorker } = require("./utils/tokenRefreshWorker");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -216,6 +217,10 @@ CREATE TABLE IF NOT EXISTS callbacks (
 
     await pool.query(`
       ALTER TABLE ml_tokens ADD COLUMN IF NOT EXISTS cliente_id INTEGER REFERENCES clientes(id) ON DELETE CASCADE;
+    `);
+
+    await pool.query(`
+      ALTER TABLE ml_tokens ADD COLUMN IF NOT EXISTS token_status TEXT DEFAULT 'valid';
     `);
 
     await pool.query(`
@@ -2447,4 +2452,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ ok: false, erro: "Erro interno do servidor" });
 });
 
-app.listen(PORT, () => console.log(`VenForce rodando em http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`VenForce rodando em http://localhost:${PORT}`);
+  startTokenRefreshWorker();
+});
