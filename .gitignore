@@ -8,3 +8,6 @@ server/user_client_access.json
 server/log.txt
 
 extension_original/
+*.md
+content_funcionando_backup.js
+xlsx.full.min.js
