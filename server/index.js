@@ -17,6 +17,7 @@ const { startTokenRefreshWorker } = require("./utils/tokenRefreshWorker");
 const { authMiddleware, requireAdmin } = require("./middlewares/authMiddleware");
 const authRoutes = require("./routes/authRoutes");
 const logsRoutes = require("./routes/logsRoutes");
+const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -427,6 +428,13 @@ for (const u of users.rows) {
         );
       }
       await client.query("COMMIT");
+      registrarLog({
+        ...dadosUsuarioDeReq(req),
+        acao: "base.importar",
+        detalhes: { base_slug: slug, nome_base: nomeBaseOriginal, total_itens: linhas.length },
+        ip: extrairIp(req),
+        status: "sucesso"
+      });
       res.json({ ok: true, mensagem: "Base criada e planilha importada com sucesso", base: slug, total: linhas.length });
     } catch (err) {
       await client.query("ROLLBACK");
@@ -449,6 +457,13 @@ app.post("/bases/:baseId/desabilitar", authMiddleware, async (req, res) => {
     );
     if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada" });
     await pool.query("UPDATE bases SET ativo = false WHERE id = $1", [acesso.rows[0].id]);
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "base.desabilitar",
+      detalhes: { base_slug: slug },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, mensagem: "Base desabilitada com sucesso" });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -490,6 +505,13 @@ app.delete("/bases/:baseId", authMiddleware, async (req, res) => {
     }
 
     await pool.query("DELETE FROM bases WHERE id = $1", [baseId]);
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "base.excluir",
+      detalhes: { base_slug: normalizarSlug(param) },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
 
     res.json({ ok: true, mensagem: "Base excluída com sucesso" });
 
