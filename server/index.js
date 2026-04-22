@@ -17,6 +17,7 @@ const { startTokenRefreshWorker } = require("./utils/tokenRefreshWorker");
 const { authMiddleware, requireAdmin } = require("./middlewares/authMiddleware");
 const authRoutes = require("./routes/authRoutes");
 const logsRoutes = require("./routes/logsRoutes");
+const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -427,6 +428,13 @@ for (const u of users.rows) {
         );
       }
       await client.query("COMMIT");
+      registrarLog({
+        ...dadosUsuarioDeReq(req),
+        acao: "base.importar",
+        detalhes: { base_slug: slug, nome_base: nomeBaseOriginal, total_itens: linhas.length },
+        ip: extrairIp(req),
+        status: "sucesso"
+      });
       res.json({ ok: true, mensagem: "Base criada e planilha importada com sucesso", base: slug, total: linhas.length });
     } catch (err) {
       await client.query("ROLLBACK");
@@ -449,6 +457,13 @@ app.post("/bases/:baseId/desabilitar", authMiddleware, async (req, res) => {
     );
     if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada" });
     await pool.query("UPDATE bases SET ativo = false WHERE id = $1", [acesso.rows[0].id]);
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "base.desabilitar",
+      detalhes: { base_slug: slug },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, mensagem: "Base desabilitada com sucesso" });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -490,6 +505,13 @@ app.delete("/bases/:baseId", authMiddleware, async (req, res) => {
     }
 
     await pool.query("DELETE FROM bases WHERE id = $1", [baseId]);
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "base.excluir",
+      detalhes: { base_slug: normalizarSlug(param) },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
 
     res.json({ ok: true, mensagem: "Base excluída com sucesso" });
 
@@ -830,6 +852,13 @@ app.delete("/clientes/:slug/ml-token", authMiddleware, requireAdmin, async (req,
       return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
     }
     await pool.query("DELETE FROM ml_tokens WHERE cliente_id = $1", [c.rows[0].id]);
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.ml.desconectar",
+      detalhes: { cliente_slug: slug },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, mensagem: "Conta ML desvinculada." });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -850,6 +879,13 @@ app.post("/clientes", authMiddleware, requireAdmin, async (req, res) => {
        RETURNING id, nome, slug, api_key, ativo, created_at`,
       [nome.trim(), slugNorm, apiKey]
     );
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.cliente.criar",
+      detalhes: { cliente_slug: slugNorm, cliente_nome: nome.trim() },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.status(201).json({ ok: true, cliente: result.rows[0] });
   } catch (err) {
     if (err.code === "23505") {
@@ -869,6 +905,13 @@ app.delete("/clientes/:slug", authMiddleware, requireAdmin, async (req, res) => 
     if (!result.rows.length) {
       return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
     }
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.cliente.excluir",
+      detalhes: { cliente_slug: slug },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, mensagem: "Cliente removido com sucesso." });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -1071,6 +1114,13 @@ app.patch("/usuarios/:id", authMiddleware, requireAdmin, async (req, res) => {
       valores
     );
     if (!result.rows.length) return res.status(404).json({ ok: false, erro: "Usuário não encontrado." });
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.usuario.atualizar",
+      detalhes: { target_user_id: targetId, ativo: ativo, role: role },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, usuario: result.rows[0] });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -1085,6 +1135,13 @@ app.delete("/usuarios/:id", authMiddleware, requireAdmin, async (req, res) => {
     }
     const result = await pool.query("DELETE FROM users WHERE id = $1 RETURNING id", [targetId]);
     if (!result.rows.length) return res.status(404).json({ ok: false, erro: "Usuário não encontrado." });
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.usuario.excluir",
+      detalhes: { target_user_id: targetId },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, mensagem: "Usuário removido com sucesso." });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -1221,6 +1278,15 @@ app.get("/callback", async (req, res) => {
          updated_at = NOW()`,
       [cliente.id, String(mlUserId), access_token, refresh_token, expiresAt]
     );
+    registrarLog({
+      userId: null,
+      userEmail: null,
+      userNome: null,
+      acao: "admin.ml.conectar",
+      detalhes: { cliente_slug: cliente.slug, cliente_nome: cliente.nome, ml_user_id: String(mlUserId) },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
 
     console.log(`[ML callback] ✓ token salvo — cliente: ${cliente.nome} ml_user_id: ${mlUserId}`);
 
