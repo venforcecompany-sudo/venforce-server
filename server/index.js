@@ -14,6 +14,8 @@ const pool = require("./config/database");
 const { processarFechamento, compilarFechamentos } = require("./utils/fechamento/process");
 const { getValidMlTokenByCliente, mlFetch } = require("./utils/mlClient");
 const { startTokenRefreshWorker } = require("./utils/tokenRefreshWorker");
+const { authMiddleware, requireAdmin } = require("./middlewares/authMiddleware");
+const authRoutes = require("./routes/authRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -91,31 +93,6 @@ function parsePlanilha(buffer, originalName) {
 
 function gerarApiKey() {
   return "vf_" + crypto.randomBytes(32).toString("hex");
-}
-
-// AUTH MIDDLEWARE
-async function authMiddleware(req, res, next) {
-  try {
-    const authHeader = req.headers.authorization || "";
-    if (!authHeader.startsWith("Bearer ")) return res.status(401).json({ ok: false, erro: "Token não informado" });
-    const token = authHeader.slice(7);
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const result = await pool.query("SELECT * FROM users WHERE id = $1", [decoded.id]);
-    const user = result.rows[0];
-    if (!user) return res.status(401).json({ ok: false, erro: "Usuário não encontrado" });
-    if (!user.ativo) return res.status(403).json({ ok: false, erro: "Usuário inativo" });
-    req.user = user;
-    next();
-  } catch (err) {
-    return res.status(401).json({ ok: false, erro: "Token inválido ou expirado" });
-  }
-}
-
-function requireAdmin(req, res, next) {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ ok: false, erro: "Acesso restrito a administradores." });
-  }
-  next();
 }
 
 async function apiKeyMiddleware(req, res, next) {
@@ -246,47 +223,7 @@ END $$;
   }
 });
 
-// REGISTER
-app.post("/auth/register", async (req, res) => {
-  try {
-    const { email, password, nome = "" } = req.body;
-    if (!email || !password) return res.status(400).json({ ok: false, erro: "Email e senha são obrigatórios" });
-    const hashed = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      "INSERT INTO users (email, password, nome) VALUES ($1, $2, $3) RETURNING id, email, nome, ativo, role",
-      [email.trim().toLowerCase(), hashed, nome.trim()]
-    );
-    res.status(201).json({ ok: true, user: result.rows[0] });
-  } catch (err) {
-    if (err.code === "23505") return res.status(409).json({ ok: false, erro: "Email já cadastrado" });
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-// LOGIN
-app.post("/auth/login", async (req, res) => {
-  try {
-    const email = String(req.body.email || "").trim().toLowerCase();
-    const senha = req.body.password || req.body.senha || "";
-    if (!email || !senha) return res.status(400).json({ ok: false, erro: "Email e senha são obrigatórios" });
-    const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-    const user = result.rows[0];
-    if (!user) return res.status(401).json({ ok: false, erro: "Usuário não encontrado" });
-    if (!user.ativo) return res.status(403).json({ ok: false, erro: "Usuário inativo" });
-    const valido = await bcrypt.compare(senha, user.password);
-    if (!valido) return res.status(401).json({ ok: false, erro: "Senha inválida" });
-    const token = jwt.sign({ id: user.id, email: user.email, nome: user.nome, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ ok: true, token, user: { id: user.id, nome: user.nome, email: user.email, ativo: user.ativo, role: user.role } });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-// AUTH/ME
-app.get("/auth/me", authMiddleware, (req, res) => {
-  const u = req.user;
-  res.json({ ok: true, user: { id: u.id, nome: u.nome, email: u.email, ativo: u.ativo, role: u.role } });
-});
+app.use("/auth", authRoutes);
 
 app.post("/scans", authMiddleware, async (req, res) => {
   try {
