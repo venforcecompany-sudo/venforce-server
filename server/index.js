@@ -16,6 +16,7 @@ const { getValidMlTokenByCliente, mlFetch } = require("./utils/mlClient");
 const { startTokenRefreshWorker } = require("./utils/tokenRefreshWorker");
 const { authMiddleware, requireAdmin } = require("./middlewares/authMiddleware");
 const authRoutes = require("./routes/authRoutes");
+const logsRoutes = require("./routes/logsRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -224,6 +225,7 @@ END $$;
 });
 
 app.use("/auth", authRoutes);
+app.use("/admin/logs", logsRoutes);
 
 app.post("/scans", authMiddleware, async (req, res) => {
   try {
