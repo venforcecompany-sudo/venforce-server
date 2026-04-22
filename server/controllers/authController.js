@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const pool = require("../config/database");
+const { registrarLog, extrairIp } = require("../services/activityLogService");
 
 const JWT_SECRET = process.env.JWT_SECRET || "venforce_secret_local";
 
@@ -27,11 +28,50 @@ async function login(req, res) {
     if (!email || !senha) return res.status(400).json({ ok: false, erro: "Email e senha são obrigatórios" });
     const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
     const user = result.rows[0];
-    if (!user) return res.status(401).json({ ok: false, erro: "Usuário não encontrado" });
-    if (!user.ativo) return res.status(403).json({ ok: false, erro: "Usuário inativo" });
+    if (!user) {
+      registrarLog({
+        userEmail: email,
+        acao: "login.falha",
+        detalhes: { motivo: "usuario_nao_encontrado" },
+        ip: extrairIp(req),
+        status: "falha"
+      });
+      return res.status(401).json({ ok: false, erro: "Usuário não encontrado" });
+    }
+    if (!user.ativo) {
+      registrarLog({
+        userId: user.id,
+        userEmail: user.email,
+        userNome: user.nome,
+        acao: "login.falha",
+        detalhes: { motivo: "usuario_inativo" },
+        ip: extrairIp(req),
+        status: "falha"
+      });
+      return res.status(403).json({ ok: false, erro: "Usuário inativo" });
+    }
     const valido = await bcrypt.compare(senha, user.password);
-    if (!valido) return res.status(401).json({ ok: false, erro: "Senha inválida" });
+    if (!valido) {
+      registrarLog({
+        userId: user.id,
+        userEmail: user.email,
+        userNome: user.nome,
+        acao: "login.falha",
+        detalhes: { motivo: "senha_invalida" },
+        ip: extrairIp(req),
+        status: "falha"
+      });
+      return res.status(401).json({ ok: false, erro: "Senha inválida" });
+    }
     const token = jwt.sign({ id: user.id, email: user.email, nome: user.nome, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
+    registrarLog({
+      userId: user.id,
+      userEmail: user.email,
+      userNome: user.nome,
+      acao: "login.sucesso",
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, token, user: { id: user.id, nome: user.nome, email: user.email, ativo: user.ativo, role: user.role } });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
