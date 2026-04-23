@@ -4,125 +4,124 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Atividade — Venforce</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <style>
-    /* Larguras das colunas da tabela de logs */
-    .col-w-date    { width: 148px; }
-    .col-w-user    { width: 160px; }
-    .col-w-action  { width: 200px; }
-    .col-w-status  { width: 88px;  }
-    .col-w-ip      { width: 130px; }
-    .col-w-details { min-width: 160px; }
-  </style>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
 </head>
-<body>
+<body class="vf-page">
 
-<div id="app">
-  <!-- sidebar injetada por layout.js -->
+  <div class="vf-main-with-sidebar">
+    <main class="vf-content">
 
-  <main class="main">
-    <div class="page-header">
-      <div class="page-header-top">
-        <div>
-          <h1 class="page-title">Atividade</h1>
-          <p class="page-subtitle">Histórico de requisições recebidas pela API.</p>
+      <div class="vf-page-header">
+        <h2>Atividade</h2>
+        <p>Histórico de requisições recebidas pela API.</p>
+      </div>
+
+      <!-- ── FILTROS ── -->
+      <div class="vf-card" style="margin-bottom:24px;">
+        <div class="vf-card-header">
+          <h5>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 3H2l8 9v7l4 2v-9l8-9z"/>
+            </svg>
+            Filtros
+          </h5>
+        </div>
+        <div style="padding:1.25rem 1.75rem;">
+          <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:1rem;align-items:end;">
+            <div class="vf-form-group" style="margin:0;">
+              <label for="filter-base">Base</label>
+              <select id="filter-base" class="vf-input">
+                <option value="">Todas as bases</option>
+              </select>
+            </div>
+            <div class="vf-form-group" style="margin:0;">
+              <label for="filter-status">Status</label>
+              <select id="filter-status" class="vf-input">
+                <option value="">Todos</option>
+                <option value="success">Sucesso (2xx)</option>
+                <option value="error">Erro (4xx/5xx)</option>
+              </select>
+            </div>
+            <div class="vf-form-group" style="margin:0;">
+              <label for="filter-de">De</label>
+              <input type="date" id="filter-de" class="vf-input">
+            </div>
+            <div class="vf-form-group" style="margin:0;">
+              <label for="filter-ate">Até</label>
+              <input type="date" id="filter-ate" class="vf-input">
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+            <button id="btn-filtrar" class="vf-btn-primary" style="width:auto;margin:0;min-width:140px;">Filtrar</button>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="content">
-      <div class="card">
-
-        <!-- Filtros -->
-        <div class="filter-strip">
-          <div class="filter-group">
-            <label class="filter-label" for="f-acao">Ação</label>
-            <input
-              id="f-acao"
-              class="input"
-              type="text"
-              placeholder="ex.: admin.usuario"
-              style="width: 190px;"
-            >
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="f-status">Status</label>
-            <select id="f-status" class="select" style="width: 110px;">
-              <option value="">Todos</option>
-              <option value="sucesso">Sucesso</option>
-              <option value="falha">Falha</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="f-de">De</label>
-            <input id="f-de" class="input" type="date" style="width: 136px;">
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="f-ate">Até</label>
-            <input id="f-ate" class="input" type="date" style="width: 136px;">
-          </div>
-
-          <button id="btn-filtrar" class="btn btn-primary" style="align-self: flex-end;">
-            Filtrar
-          </button>
-
-          <button id="btn-limpar" class="btn btn-ghost" style="align-self: flex-end;">
-            Limpar
-          </button>
+      <!-- ── LOGS ── -->
+      <div class="vf-card">
+        <div class="vf-card-header">
+          <h5>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            Logs
+          </h5>
+          <span class="vf-badge" id="callbacks-count" style="display:none;">0</span>
         </div>
 
-        <!-- Cabeçalho do card -->
-        <div class="card-header">
-          <span class="card-title">Logs</span>
-          <span class="card-badge" id="total-badge">—</span>
+        <div id="atividade-content" style="min-height:200px;">
+          <div id="state-loading" class="vf-loading">
+            <div class="loading-dots"><span></span><span></span><span></span></div>
+            <p>Carregando logs…</p>
+          </div>
+          <div id="state-table" class="vf-table-wrapper" style="display:none;">
+            <table class="vf-table">
+              <thead>
+                <tr>
+                  <th style="width:50px;">#</th>
+                  <th style="width:190px;">Data/Hora</th>
+                  <th>Base</th>
+                  <th>Endpoint</th>
+                  <th style="width:120px;text-align:center;">Status</th>
+                  <th style="width:150px;">IP</th>
+                  <th style="width:120px;text-align:right;">Duração</th>
+                </tr>
+              </thead>
+              <tbody id="callbacks-tbody"></tbody>
+            </table>
+          </div>
+          <div id="state-empty" class="vf-empty-state" style="display:none;">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            <p>Nenhum log encontrado para os filtros selecionados.</p>
+          </div>
+          <div id="state-error" class="vf-error-state" style="display:none;">
+            <p id="error-message">Erro ao carregar dados.</p>
+            <button id="btn-retry" class="vf-btn-retry">Tentar novamente</button>
+          </div>
         </div>
 
-        <!-- Tabela -->
-        <div class="table-wrap">
-          <table>
-            <colgroup>
-              <col class="col-w-date">
-              <col class="col-w-user">
-              <col class="col-w-action">
-              <col class="col-w-status">
-              <col class="col-w-ip">
-              <col class="col-w-details">
-            </colgroup>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Usuário</th>
-                <th>Ação</th>
-                <th>Status</th>
-                <th>IP</th>
-                <th>Detalhes</th>
-              </tr>
-            </thead>
-            <tbody id="logs-tbody">
-              <tr class="loading-row">
-                <td colspan="6">
-                  <span class="spinner"></span>carregando logs…
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div style="padding:1rem 1.75rem;border-top:1px solid var(--vf-border);display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+          <button id="btn-prev" class="vf-btn-secondary" style="padding:0.6rem 0.9rem;">← Anterior</button>
+          <div id="page-text" style="font-size:.875rem;color:var(--vf-text-m);font-weight:500;">Página 1</div>
+          <button id="btn-next" class="vf-btn-secondary" style="padding:0.6rem 0.9rem;">Próximo →</button>
         </div>
-
-        <!-- Paginação -->
-        <div class="pagination" id="pagination" style="display:none;">
-          <span class="pagination-info" id="pagination-info"></span>
-          <div class="pagination-controls" id="pagination-controls"></div>
-        </div>
-
       </div>
-    </div>
-  </main>
-</div>
 
-<script src="layout.js"></script>
-<script src="atividade.js"></script>
+    </main>
+  </div>
+
+  <script src="layout.js"></script>
+  <script src="atividade.js"></script>
 </body>
 </html>
