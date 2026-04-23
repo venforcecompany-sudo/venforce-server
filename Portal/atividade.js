@@ -1,219 +1,245 @@
-const STORAGE_KEY = "vf-token";
-const API_BASE = "https://venforce-server.onrender.com";
+/**
+ * atividade.js — Venforce Portal
+ * Consome GET /admin/logs — contrato de API INALTERADO.
+ */
 
-function getToken() {
-  const t = localStorage.getItem(STORAGE_KEY);
-  if (!t) { window.location.replace("index.html"); return null; }
-  return t;
-}
-const TOKEN = getToken();
-const user = JSON.parse(localStorage.getItem("vf-user") || "{}");
-if (user.role !== "admin") window.location.replace("dashboard.html");
-initLayout();
+/* ─── Estado ─────────────────────────────────────────────── */
+let state = {
+  page: 1,
+  totalPages: 1,
+  total: 0,
+  loading: false,
+};
 
-function clearSession() {
-  localStorage.removeItem(STORAGE_KEY);
-  localStorage.removeItem("vf-user");
-  window.location.replace("index.html");
-}
+/* ─── Refs ───────────────────────────────────────────────── */
+const tbody         = document.getElementById('logs-tbody');
+const totalBadge    = document.getElementById('total-badge');
+const pagination    = document.getElementById('pagination');
+const pgInfo        = document.getElementById('pagination-info');
+const pgControls    = document.getElementById('pagination-controls');
+const btnFiltrar    = document.getElementById('btn-filtrar');
+const btnLimpar     = document.getElementById('btn-limpar');
+const inputAcao     = document.getElementById('f-acao');
+const selectStatus  = document.getElementById('f-status');
+const inputDe       = document.getElementById('f-de');
+const inputAte      = document.getElementById('f-ate');
 
-function escapeHTML(s) {
-  const d = document.createElement("div");
-  d.textContent = s == null ? "" : String(s);
-  return d.innerHTML;
-}
-
-function formatDateTimeBR(value) {
-  if (!value) return "—";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return "—";
-  const dd = String(dt.getDate()).padStart(2, "0");
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
-  const yyyy = dt.getFullYear();
-  const hh = String(dt.getHours()).padStart(2, "0");
-  const min = String(dt.getMinutes()).padStart(2, "0");
-  return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
-}
-
-function parseDetalhes(raw) {
-  if (raw == null || raw === "") return "—";
-  if (typeof raw === "object") return JSON.stringify(raw, null, 2);
-  try {
-    return JSON.stringify(JSON.parse(String(raw)), null, 2);
-  } catch {
-    return String(raw);
-  }
+/* ─── Filtros ────────────────────────────────────────────── */
+function getFiltros() {
+  return {
+    acao_prefix: inputAcao.value.trim()    || null,
+    status:      selectStatus.value       || null,
+    de:          inputDe.value            || null,
+    ate:         inputAte.value           || null,
+  };
 }
 
-let currentPage = 1;
-
-const stateLoading = document.getElementById("state-loading");
-const stateTable = document.getElementById("state-table");
-const stateEmpty = document.getElementById("state-empty");
-const stateError = document.getElementById("state-error");
-const tbody = document.getElementById("callbacks-tbody");
-const pageText = document.getElementById("page-text");
-const btnPrev = document.getElementById("btn-prev");
-const btnNext = document.getElementById("btn-next");
-const retryBtn = document.getElementById("btn-retry");
-const countBadge = document.getElementById("callbacks-count");
-
-function ajustarFiltrosEColunas() {
-  const baseWrap = document.getElementById("filter-base")?.closest(".vf-form-group");
-  if (baseWrap) {
-    baseWrap.innerHTML = `
-      <label for="filter-acao">Ação</label>
-      <input type="text" id="filter-acao" class="vf-input" placeholder="Ex.: admin.usuario">
-    `;
-  }
-
-  const statusSelect = document.getElementById("filter-status");
-  if (statusSelect) {
-    statusSelect.innerHTML = `
-      <option value="">Todos</option>
-      <option value="sucesso">Sucesso</option>
-      <option value="falha">Falha</option>
-    `;
-  }
-
-  const tableHeadRow = document.querySelector(".vf-table thead tr");
-  if (tableHeadRow) {
-    tableHeadRow.innerHTML = `
-      <th style="width:190px;">Data</th>
-      <th style="width:220px;">Usuário</th>
-      <th style="width:180px;">Ação</th>
-      <th style="width:120px;text-align:center;">Status</th>
-      <th style="width:150px;">IP</th>
-      <th>Detalhes</th>
-    `;
-  }
+function buildQuery(filtros, page) {
+  const p = new URLSearchParams();
+  if (filtros.acao_prefix) p.set('acao_prefix', filtros.acao_prefix);
+  if (filtros.status)      p.set('status',      filtros.status);
+  if (filtros.de)          p.set('de',          filtros.de);
+  if (filtros.ate)         p.set('ate',         filtros.ate);
+  p.set('page',  String(page));
+  p.set('limit', '50');
+  return p.toString();
 }
 
-function showLoading() {
-  stateLoading.style.display = "flex";
-  stateTable.style.display = stateEmpty.style.display = stateError.style.display = "none";
-}
-function showTable() {
-  stateTable.style.display = "block";
-  stateLoading.style.display = stateEmpty.style.display = stateError.style.display = "none";
-}
-function showEmpty() {
-  stateEmpty.style.display = "block";
-  stateLoading.style.display = stateTable.style.display = stateError.style.display = "none";
-  countBadge.style.display = "none";
-}
-function showError(msg) {
-  stateError.style.display = "block";
-  stateLoading.style.display = stateTable.style.display = stateEmpty.style.display = "none";
-  document.getElementById("error-message").textContent = msg;
-  countBadge.style.display = "none";
-}
+/* ─── Fetch ──────────────────────────────────────────────── */
+async function fetchLogs(page = 1) {
+  if (state.loading) return;
+  state.loading = true;
 
-function getFilters() {
-  const acaoPrefix = document.getElementById("filter-acao")?.value || "";
-  const status = document.getElementById("filter-status").value || "";
-  const de = document.getElementById("filter-de").value || "";
-  const ate = document.getElementById("filter-ate").value || "";
-  return { acaoPrefix, status, de, ate };
-}
+  const token = getToken(); // de layout.js
+  const filtros = getFiltros();
+  const qs = buildQuery(filtros, page);
 
-async function loadAtividade(page) {
-  if (!TOKEN) return;
-  showLoading();
-
-  const { acaoPrefix, status, de, ate } = getFilters();
-  const qs = new URLSearchParams();
-  if (acaoPrefix) qs.set("acao_prefix", acaoPrefix);
-  if (status) qs.set("status", status);
-  if (de) qs.set("de", de);
-  if (ate) qs.set("ate", ate);
-  qs.set("page", String(page || 1));
+  setLoading(true);
 
   try {
-    const res = await fetch(`${API_BASE}/admin/logs?${qs.toString()}`, {
-      headers: { Authorization: "Bearer " + TOKEN }
+    const res = await fetch(`${API_BASE}/admin/logs?${qs}`, {
+      headers: { Authorization: `Bearer ${token}` }
     });
-    if (res.status === 401) { clearSession(); return; }
+
+    if (res.status === 401) { logout(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json().catch(() => ({}));
 
-    const logs = Array.isArray(data.logs) ? data.logs : [];
-    const total = Number(data.total || 0);
-    const totalPages = Math.max(Number(data.totalPages || 1), 1);
+    const data = await res.json();
 
-    renderAtividade(logs, page, { total, hasPrev: page > 1, hasNext: page < totalPages, totalPages });
-  } catch {
-    showError("Não foi possível carregar os logs de atividade. Tente novamente.");
+    if (!data.ok) throw new Error(data.message || 'Erro ao buscar logs');
+
+    state.page       = data.page       || 1;
+    state.totalPages = data.totalPages || 1;
+    state.total      = data.total      || 0;
+
+    renderTable(data.logs || []);
+    renderPagination();
+
+  } catch (err) {
+    renderError(err.message);
+  } finally {
+    state.loading = false;
   }
 }
 
-function renderAtividade(logs, page, meta) {
-  tbody.innerHTML = "";
+/* ─── Render ─────────────────────────────────────────────── */
+function setLoading(on) {
+  if (on) {
+    tbody.innerHTML = `
+      <tr class="loading-row">
+        <td colspan="6"><span class="spinner"></span>carregando logs…</td>
+      </tr>`;
+    totalBadge.textContent = '—';
+    pagination.style.display = 'none';
+  }
+}
+
+function renderError(msg) {
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="6">
+        <div class="empty-state">
+          <div class="empty-state-icon">⚠</div>
+          <div class="empty-state-title">Erro ao carregar</div>
+          <div class="empty-state-desc">${escHtml(msg)}</div>
+        </div>
+      </td>
+    </tr>`;
+  totalBadge.textContent = '!';
+  pagination.style.display = 'none';
+}
+
+function renderTable(logs) {
+  totalBadge.textContent = state.total.toLocaleString('pt-BR');
+
   if (!logs.length) {
-    showEmpty();
-    pageText.textContent = `Página ${page}`;
-    btnPrev.disabled = page <= 1;
-    btnNext.disabled = true;
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6">
+          <div class="empty-state">
+            <div class="empty-state-icon">◎</div>
+            <div class="empty-state-title">Nenhum log encontrado</div>
+            <div class="empty-state-desc">Tente ajustar os filtros.</div>
+          </div>
+        </td>
+      </tr>`;
+    pagination.style.display = 'none';
     return;
   }
 
-  countBadge.textContent = String(meta?.total ?? logs.length);
-  countBadge.style.display = "inline-block";
+  tbody.innerHTML = logs.map(log => {
+    const date    = formatDate(log.created_at);
+    const usuario = escHtml(log.user_nome || log.user_email || '—');
+    const acao    = escHtml(log.acao || '—');
+    const ip      = escHtml(log.ip || '—');
+    const detStr  = log.detalhes
+      ? (typeof log.detalhes === 'string' ? log.detalhes : JSON.stringify(log.detalhes))
+      : '—';
+    const isSuccess = log.status === 'sucesso';
 
-  logs.forEach((l, i) => {
-    const when = formatDateTimeBR(l.created_at);
-    const usuario = l.user_nome || l.user_email || "—";
-    const acao = l.acao || "—";
-    const statusRaw = (l.status || "").toLowerCase();
-    const ip = l.ip || "—";
-    const detalhes = parseDetalhes(l.detalhes);
+    return `<tr>
+      <td class="col-date">${date}</td>
+      <td class="col-user">${usuario}</td>
+      <td class="col-action">${acao}</td>
+      <td>
+        <span class="badge ${isSuccess ? 'badge-success' : 'badge-error'}">
+          ${isSuccess ? 'sucesso' : 'falha'}
+        </span>
+      </td>
+      <td class="col-ip">${ip}</td>
+      <td class="col-details" title="${escHtml(detStr)}">${escHtml(detStr)}</td>
+    </tr>`;
+  }).join('');
+}
 
-    const statusHtml = statusRaw === "sucesso"
-      ? `<span class="base-status--active">sucesso</span>`
-      : `<span style="display:inline-flex;align-items:center;gap:.4rem;font-size:.8125rem;font-weight:500;color:var(--vf-danger);">
-           <span style="width:6px;height:6px;border-radius:50%;background:var(--vf-danger);flex-shrink:0;"></span>
-           falha
-         </span>`;
+function renderPagination() {
+  if (state.totalPages <= 1) {
+    pagination.style.display = 'none';
+    return;
+  }
 
-    const tr = document.createElement("tr");
-    tr.classList.add("animate-fade-up");
-    tr.style.animationDelay = `${i * 0.03}s`;
-    tr.innerHTML = `
-      <td style="color:var(--vf-text-m);font-size:.875rem;">${escapeHTML(when)}</td>
-      <td><strong>${escapeHTML(usuario)}</strong></td>
-      <td style="color:var(--vf-text-m);font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(acao)}</td>
-      <td style="text-align:center;">${statusHtml}</td>
-      <td style="color:var(--vf-text-m);font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(ip)}</td>
-      <td><pre style="margin:0;white-space:pre-wrap;word-break:break-word;font-family:var(--vf-mono);font-size:.75rem;color:var(--vf-text-m);">${escapeHTML(detalhes)}</pre></td>
-    `;
-    tbody.appendChild(tr);
+  const inicio = (state.page - 1) * 50 + 1;
+  const fim    = Math.min(state.page * 50, state.total);
+  pgInfo.textContent = `${inicio}–${fim} de ${state.total.toLocaleString('pt-BR')}`;
+
+  // janela de páginas: máx 5 botões
+  const pages  = [];
+  const half   = 2;
+  let start    = Math.max(1, state.page - half);
+  let end      = Math.min(state.totalPages, state.page + half);
+  if (end - start < 4) {
+    if (start === 1) end   = Math.min(state.totalPages, start + 4);
+    else             start = Math.max(1, end - 4);
+  }
+  for (let i = start; i <= end; i++) pages.push(i);
+
+  let html = `
+    <button class="page-btn" onclick="goPage(${state.page - 1})"
+      ${state.page === 1 ? 'disabled' : ''}>‹</button>`;
+  pages.forEach(p => {
+    html += `<button class="page-btn ${p === state.page ? 'active' : ''}"
+      onclick="goPage(${p})">${p}</button>`;
   });
+  html += `
+    <button class="page-btn" onclick="goPage(${state.page + 1})"
+      ${state.page === state.totalPages ? 'disabled' : ''}>›</button>`;
 
-  pageText.textContent = `Página ${page} de ${meta?.totalPages || 1}`;
-  btnPrev.disabled = page <= 1 || meta?.hasPrev === false;
-  btnNext.disabled = meta?.hasNext === false;
-  showTable();
+  pgControls.innerHTML = html;
+  pagination.style.display = 'flex';
 }
 
-document.getElementById("btn-filtrar").addEventListener("click", () => {
-  currentPage = 1;
-  loadAtividade(1);
-});
-
-btnPrev.addEventListener("click", () => {
-  if (currentPage <= 1) return;
-  currentPage -= 1;
-  loadAtividade(currentPage);
-});
-
-btnNext.addEventListener("click", () => {
-  currentPage += 1;
-  loadAtividade(currentPage);
-});
-
-retryBtn.addEventListener("click", () => loadAtividade(currentPage));
-
-if (TOKEN) {
-  ajustarFiltrosEColunas();
-  loadAtividade(currentPage);
+/* ─── Helpers ────────────────────────────────────────────── */
+function formatDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  const dd   = String(d.getDate()).padStart(2, '0');
+  const mm   = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh   = String(d.getHours()).padStart(2, '0');
+  const min  = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
 }
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* ─── Navegação ──────────────────────────────────────────── */
+function goPage(p) {
+  if (p < 1 || p > state.totalPages || p === state.page) return;
+  state.page = p;
+  fetchLogs(p);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+window.goPage = goPage;
+
+/* ─── Eventos ────────────────────────────────────────────── */
+btnFiltrar.addEventListener('click', () => {
+  state.page = 1;
+  fetchLogs(1);
+});
+
+btnLimpar.addEventListener('click', () => {
+  inputAcao.value    = '';
+  selectStatus.value = '';
+  inputDe.value      = '';
+  inputAte.value     = '';
+  state.page = 1;
+  fetchLogs(1);
+});
+
+// filtrar ao pressionar Enter em qualquer input
+[inputAcao, inputDe, inputAte].forEach(el => {
+  el.addEventListener('keydown', e => { if (e.key === 'Enter') btnFiltrar.click(); });
+});
+
+/* ─── Init ───────────────────────────────────────────────── */
+(async () => {
+  await initLayout(); // de layout.js — verifica auth, monta sidebar
+  fetchLogs(1);
+})();
