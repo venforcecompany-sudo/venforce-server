@@ -133,7 +133,7 @@ function renderTable(logs) {
     const acao    = escHtml(log.acao || '—');
     const ip      = escHtml(log.ip || '—');
     const detStr  = log.detalhes
-      ? (typeof log.detalhes === 'string' ? log.detalhes : JSON.stringify(log.detalhes))
+      ? (typeof log.detalhes === 'string' ? log.detalhes : JSON.stringify(log.detalhes, null, 2))
       : '—';
     const isSuccess = log.status === 'sucesso';
 
@@ -147,7 +147,9 @@ function renderTable(logs) {
         </span>
       </td>
       <td class="col-ip">${ip}</td>
-      <td class="col-details" title="${escHtml(detStr)}">${escHtml(detStr)}</td>
+      <td class="col-details">
+        ${detStr !== '—' ? `<div class="json-block">${escHtml(detStr)}</div>` : '—'}
+      </td>
     </tr>`;
   }).join('');
 }
