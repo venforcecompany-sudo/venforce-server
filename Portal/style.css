@@ -378,6 +378,7 @@ tbody td {
   color: var(--text-secondary);
   vertical-align: middle;
 }
+.col-details:hover { color: var(--text-secondary); }
 
 /* col types */
 .col-date {
@@ -420,6 +421,10 @@ tbody td {
   overflow-y: auto;
   color: var(--text-secondary);
 }
+.badge-success { color: var(--success); }
+.badge-success::before { background: var(--success); }
+.badge-error { color: var(--error); }
+.badge-error::before { background: var(--error); }
 
 /* ─── Status badge ───────────────────────────────────────── */
 .badge {
