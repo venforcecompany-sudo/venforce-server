@@ -378,7 +378,6 @@ tbody td {
   color: var(--text-secondary);
   vertical-align: middle;
 }
-.col-details:hover { color: var(--text-secondary); }
 
 /* col types */
 .col-date {
@@ -407,24 +406,13 @@ tbody td {
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--text-muted);
-  vertical-align: top;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
 }
-.json-block {
-  background: var(--bg-raised);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  margin: 4px 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 250px;
-  overflow-y: auto;
-  color: var(--text-secondary);
-}
-.badge-success { color: var(--success); }
-.badge-success::before { background: var(--success); }
-.badge-error { color: var(--error); }
-.badge-error::before { background: var(--error); }
+.col-details:hover { color: var(--text-secondary); }
 
 /* ─── Status badge ───────────────────────────────────────── */
 .badge {
