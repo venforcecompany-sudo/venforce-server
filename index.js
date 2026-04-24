@@ -7,9 +7,17 @@ const multer = require("multer");
 const XLSX = require("xlsx");
 const jwt = require("jsonwebtoken");
 const path = require("path");
+const fs = require("fs");
+const archiver = require("archiver");
 const crypto = require("crypto");
 const pool = require("./config/database");
 const { processarFechamento, compilarFechamentos } = require("./utils/fechamento/process");
+const { getValidMlTokenByCliente, mlFetch } = require("./utils/mlClient");
+const { startTokenRefreshWorker } = require("./utils/tokenRefreshWorker");
+const { authMiddleware, requireAdmin } = require("./middlewares/authMiddleware");
+const authRoutes = require("./routes/authRoutes");
+const logsRoutes = require("./routes/logsRoutes");
+const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -24,6 +32,7 @@ app.options(/.*/, cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
+app.use("/downloads", express.static(path.join(__dirname, "downloads")));
 
 // UPLOAD (memória)
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -88,70 +97,6 @@ function gerarApiKey() {
   return "vf_" + crypto.randomBytes(32).toString("hex");
 }
 
-async function getValidMlTokenByCliente(clienteId) {
-  const result = await pool.query("SELECT * FROM ml_tokens WHERE cliente_id = $1", [clienteId]);
-  const row = result.rows[0];
-  if (!row) throw new Error("Cliente não possui token ML");
-
-  const now = Date.now();
-  const expiresAt = new Date(row.expires_at).getTime();
-  const msLeft = expiresAt - now;
-  const fiveMin = 5 * 60 * 1000;
-
-  if (msLeft < fiveMin) {
-    const tokenRes = await fetch("https://api.mercadolibre.com/oauth/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        client_id: ML_CLIENT_ID,
-        client_secret: ML_CLIENT_SECRET,
-        refresh_token: row.refresh_token
-      })
-    });
-    const data = await tokenRes.json();
-    if (!tokenRes.ok) {
-      throw new Error(data?.message || JSON.stringify(data));
-    }
-    const { access_token, refresh_token, expires_in } = data;
-    const newExpires = new Date(Date.now() + (expires_in || 0) * 1000);
-    const newRefresh = refresh_token || row.refresh_token;
-    await pool.query(
-      `UPDATE ml_tokens SET access_token = $1, refresh_token = $2, expires_at = $3, updated_at = NOW()
-       WHERE cliente_id = $4`,
-      [access_token, newRefresh, newExpires, clienteId]
-    );
-    return access_token;
-  }
-
-  return row.access_token;
-}
-
-// AUTH MIDDLEWARE
-async function authMiddleware(req, res, next) {
-  try {
-    const authHeader = req.headers.authorization || "";
-    if (!authHeader.startsWith("Bearer ")) return res.status(401).json({ ok: false, erro: "Token não informado" });
-    const token = authHeader.slice(7);
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const result = await pool.query("SELECT * FROM users WHERE id = $1", [decoded.id]);
-    const user = result.rows[0];
-    if (!user) return res.status(401).json({ ok: false, erro: "Usuário não encontrado" });
-    if (!user.ativo) return res.status(403).json({ ok: false, erro: "Usuário inativo" });
-    req.user = user;
-    next();
-  } catch (err) {
-    return res.status(401).json({ ok: false, erro: "Token inválido ou expirado" });
-  }
-}
-
-function requireAdmin(req, res, next) {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ ok: false, erro: "Acesso restrito a administradores." });
-  }
-  next();
-}
-
 async function apiKeyMiddleware(req, res, next) {
   try {
     const key = req.headers["x-api-key"] || req.query.api_key;
@@ -176,6 +121,9 @@ app.get("/health", (req, res) => res.json({ ok: true, mensagem: `VENFORCE OK por
 
 // SETUP TABELAS
 app.get("/setup", async (req, res) => {
+  if (process.env.ENABLE_SETUP_ROUTE !== "true") {
+    return res.status(403).json({ ok: false, erro: "Rota desabilitada em produção" });
+  }
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -251,6 +199,10 @@ CREATE TABLE IF NOT EXISTS callbacks (
     `);
 
     await pool.query(`
+      ALTER TABLE ml_tokens ADD COLUMN IF NOT EXISTS token_status TEXT DEFAULT 'valid';
+    `);
+
+    await pool.query(`
 DO $$
 BEGIN
   ALTER TABLE ml_tokens DROP CONSTRAINT IF EXISTS ml_tokens_ml_user_id_key;
@@ -273,47 +225,8 @@ END $$;
   }
 });
 
-// REGISTER
-app.post("/auth/register", async (req, res) => {
-  try {
-    const { email, password, nome = "" } = req.body;
-    if (!email || !password) return res.status(400).json({ ok: false, erro: "Email e senha são obrigatórios" });
-    const hashed = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      "INSERT INTO users (email, password, nome) VALUES ($1, $2, $3) RETURNING id, email, nome, ativo, role",
-      [email.trim().toLowerCase(), hashed, nome.trim()]
-    );
-    res.status(201).json({ ok: true, user: result.rows[0] });
-  } catch (err) {
-    if (err.code === "23505") return res.status(409).json({ ok: false, erro: "Email já cadastrado" });
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-// LOGIN
-app.post("/auth/login", async (req, res) => {
-  try {
-    const email = String(req.body.email || "").trim().toLowerCase();
-    const senha = req.body.password || req.body.senha || "";
-    if (!email || !senha) return res.status(400).json({ ok: false, erro: "Email e senha são obrigatórios" });
-    const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-    const user = result.rows[0];
-    if (!user) return res.status(401).json({ ok: false, erro: "Usuário não encontrado" });
-    if (!user.ativo) return res.status(403).json({ ok: false, erro: "Usuário inativo" });
-    const valido = await bcrypt.compare(senha, user.password);
-    if (!valido) return res.status(401).json({ ok: false, erro: "Senha inválida" });
-    const token = jwt.sign({ id: user.id, email: user.email, nome: user.nome, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ ok: true, token, user: { id: user.id, nome: user.nome, email: user.email, ativo: user.ativo, role: user.role } });
-  } catch (err) {
-    res.status(500).json({ ok: false, erro: err.message });
-  }
-});
-
-// AUTH/ME
-app.get("/auth/me", authMiddleware, (req, res) => {
-  const u = req.user;
-  res.json({ ok: true, user: { id: u.id, nome: u.nome, email: u.email, ativo: u.ativo, role: u.role } });
-});
+app.use("/auth", authRoutes);
+app.use("/admin/logs", logsRoutes);
 
 app.post("/scans", authMiddleware, async (req, res) => {
   try {
@@ -494,7 +407,17 @@ app.post("/importar-base", authMiddleware, upload.single("arquivo"), async (req,
         [slug, nomeBaseOriginal]
       );
       const baseId = baseResult.rows[0].id;
-      await client.query(`INSERT INTO user_bases (user_id, base_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [req.user.id, baseId]);
+      // vincular base a TODOS usuários
+const users = await client.query(`SELECT id FROM users`);
+
+for (const u of users.rows) {
+  await client.query(
+    `INSERT INTO user_bases (user_id, base_id)
+     VALUES ($1, $2)
+     ON CONFLICT DO NOTHING`,
+    [u.id, baseId]
+  );
+}
       await client.query("DELETE FROM custos WHERE base_id = $1", [baseId]);
       for (const linha of linhas) {
         await client.query(
@@ -505,6 +428,13 @@ app.post("/importar-base", authMiddleware, upload.single("arquivo"), async (req,
         );
       }
       await client.query("COMMIT");
+      registrarLog({
+        ...dadosUsuarioDeReq(req),
+        acao: "base.importar",
+        detalhes: { base_slug: slug, nome_base: nomeBaseOriginal, total_itens: linhas.length },
+        ip: extrairIp(req),
+        status: "sucesso"
+      });
       res.json({ ok: true, mensagem: "Base criada e planilha importada com sucesso", base: slug, total: linhas.length });
     } catch (err) {
       await client.query("ROLLBACK");
@@ -527,6 +457,13 @@ app.post("/bases/:baseId/desabilitar", authMiddleware, async (req, res) => {
     );
     if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada" });
     await pool.query("UPDATE bases SET ativo = false WHERE id = $1", [acesso.rows[0].id]);
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "base.desabilitar",
+      detalhes: { base_slug: slug },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, mensagem: "Base desabilitada com sucesso" });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -537,25 +474,79 @@ app.post("/bases/:baseId/desabilitar", authMiddleware, async (req, res) => {
 app.delete("/bases/:baseId", authMiddleware, async (req, res) => {
   try {
     const param = req.params.baseId;
-    // Aceita tanto ID numérico quanto slug
-    const acesso = await pool.query(
-      `SELECT b.id FROM bases b JOIN user_bases ub ON ub.base_id = b.id
-       WHERE (b.id = $1 OR b.slug = $2) AND ub.user_id = $3`,
-      [parseInt(param) || 0, normalizarSlug(param), req.user.id]
-    );
-    if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada" });
-    await pool.query("DELETE FROM bases WHERE id = $1", [acesso.rows[0].id]);
+
+    let baseId;
+
+    if (req.user.role === "admin") {
+      const result = await pool.query(
+        `SELECT id FROM bases WHERE id = $1 OR slug = $2`,
+        [parseInt(param) || 0, normalizarSlug(param)]
+      );
+
+      if (!result.rows.length) {
+        return res.status(404).json({ ok: false, erro: "Base não encontrada" });
+      }
+
+      baseId = result.rows[0].id;
+
+    } else {
+      const acesso = await pool.query(
+        `SELECT b.id FROM bases b
+         JOIN user_bases ub ON ub.base_id = b.id
+         WHERE (b.id = $1 OR b.slug = $2) AND ub.user_id = $3`,
+        [parseInt(param) || 0, normalizarSlug(param), req.user.id]
+      );
+
+      if (!acesso.rows.length) {
+        return res.status(404).json({ ok: false, erro: "Base não encontrada" });
+      }
+
+      baseId = acesso.rows[0].id;
+    }
+
+    await pool.query("DELETE FROM bases WHERE id = $1", [baseId]);
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "base.excluir",
+      detalhes: { base_slug: normalizarSlug(param) },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
+
     res.json({ ok: true, mensagem: "Base excluída com sucesso" });
+
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
 
 // ADMIN USERS
-app.get("/admin/users", authMiddleware, async (req, res) => {
+app.get("/admin/users", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query("SELECT id, nome, email, ativo, role, created_at FROM users ORDER BY id ASC");
     res.json({ ok: true, users: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.get("/admin/ml-tokens", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        c.id AS cliente_id,
+        c.nome AS cliente_nome,
+        c.slug AS cliente_slug,
+        t.ml_user_id,
+        t.access_token,
+        t.refresh_token,
+        t.expires_at,
+        t.updated_at
+      FROM clientes c
+      INNER JOIN ml_tokens t ON t.cliente_id = c.id
+      ORDER BY c.nome ASC
+    `);
+    res.json({ ok: true, tokens: result.rows });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -569,6 +560,253 @@ app.get("/clientes", authMiddleware, requireAdmin, async (req, res) => {
     res.json({ ok: true, clientes: result.rows });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// AUTOMAÇÕES (somente leitura) — Preview de precificação por cliente + base
+app.get("/automacoes/precificacao/preview", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const clienteSlugRaw = String(req.query.clienteSlug || "").trim();
+    const baseSlugRaw = String(req.query.baseSlug || "").trim();
+
+    if (!clienteSlugRaw) return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório" });
+    if (!baseSlugRaw) return res.status(400).json({ ok: false, erro: "baseSlug é obrigatório" });
+
+    const clienteSlug = normalizarSlug(clienteSlugRaw);
+    const baseSlug = normalizarSlug(baseSlugRaw);
+
+    const c = await pool.query(
+      "SELECT id, nome, slug, ativo, created_at FROM clientes WHERE slug = $1",
+      [clienteSlug]
+    );
+    if (!c.rows.length) return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+
+    const b = await pool.query(
+      "SELECT id, nome, slug, ativo, created_at, updated_at FROM bases WHERE slug = $1",
+      [baseSlug]
+    );
+    if (!b.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada." });
+
+    const base = b.rows[0];
+    const custos = await pool.query(
+      "SELECT produto_id, custo_produto, imposto_percentual, taxa_fixa FROM custos WHERE base_id = $1 ORDER BY produto_id ASC",
+      [base.id]
+    );
+
+    const totalItens = custos.rows.length;
+    const itensPreview = custos.rows.slice(0, 10).map((row) => ({
+      produto_id: row.produto_id,
+      custo_produto: Number(row.custo_produto),
+      imposto_percentual: Number(row.imposto_percentual),
+      taxa_fixa: Number(row.taxa_fixa),
+    }));
+
+    return res.json({
+      ok: true,
+      cliente: c.rows[0],
+      base: {
+        id: base.id,
+        nome: base.nome,
+        slug: base.slug,
+        ativo: base.ativo,
+        created_at: base.created_at,
+        updated_at: base.updated_at,
+      },
+      totalItens,
+      itensPreview,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// AUTOMAÇÕES (somente leitura) — Preview enriquecido (base + dados ML, sem escrita no ML)
+app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const clienteSlugRaw = String(req.query.clienteSlug || "").trim();
+    const baseSlugRaw = String(req.query.baseSlug || "").trim();
+    const pageRaw = req.query.page;
+    const limitRaw = req.query.limit;
+
+    if (!clienteSlugRaw) return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório" });
+    if (!baseSlugRaw) return res.status(400).json({ ok: false, erro: "baseSlug é obrigatório" });
+
+    const clienteSlug = normalizarSlug(clienteSlugRaw);
+    const baseSlug = normalizarSlug(baseSlugRaw);
+
+    const page = Math.max(1, parseInt(pageRaw) || 1);
+    const limit = Math.min(Math.max(1, parseInt(limitRaw) || 20), 50);
+    const offset = (page - 1) * limit;
+
+    const c = await pool.query(
+      "SELECT id, nome, slug, ativo, created_at FROM clientes WHERE slug = $1",
+      [clienteSlug]
+    );
+    if (!c.rows.length) return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+    const cliente = c.rows[0];
+
+    const b = await pool.query(
+      "SELECT id, nome, slug, ativo, created_at, updated_at FROM bases WHERE slug = $1",
+      [baseSlug]
+    );
+    if (!b.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada." });
+    const base = b.rows[0];
+
+    const custosRes = await pool.query(
+      "SELECT produto_id, custo_produto, imposto_percentual, taxa_fixa FROM custos WHERE base_id = $1",
+      [base.id]
+    );
+    const custosMapExact = new Map();
+    const custosMapNorm = new Map();
+    const custosMapNumeric = new Map();
+    custosRes.rows.forEach((row) => {
+      const key = String(row.produto_id || "").trim();
+      if (!key) return;
+      const payload = {
+        custoProduto: Number(row.custo_produto),
+        impostoPercentual: Number(row.imposto_percentual),
+        taxaFixa: Number(row.taxa_fixa),
+      };
+      custosMapExact.set(key, payload);
+      custosMapNorm.set(key.toUpperCase(), payload);
+      if (/^\d+$/.test(key)) custosMapNumeric.set(key, payload);
+    });
+
+    // ML (somente leitura): usar ml_user_id já vinculado ao cliente
+    const tokenRow = await pool.query(
+      "SELECT ml_user_id FROM ml_tokens WHERE cliente_id = $1",
+      [cliente.id]
+    );
+    if (!tokenRow.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente sem conta ML vinculada." });
+    }
+    const mlUserId = tokenRow.rows[0].ml_user_id;
+
+    // Somente leitura (anúncios/dados): esta rota faz apenas GET no ML.
+    // Refresh OAuth é permitido aqui só para evitar quebra por expiração do access_token; isso não altera anúncios/preços/estoque/campanhas.
+    // 1) Buscar ids de itens ativos do cliente (paginado)
+    const search = await mlFetch(
+      cliente.id,
+      `/users/${mlUserId}/items/search?status=active&offset=${offset}&limit=${limit}`
+    );
+    if (!search.ok) {
+      return res.status(search.status).json({ ok: false, erro: search.data?.message || "Erro ao buscar itens no ML.", status: search.status, data: search.data });
+    }
+
+    const totalItensMl = search.data?.paging?.total ?? 0;
+    const ids = Array.isArray(search.data?.results) ? search.data.results : [];
+
+    // 2) Buscar detalhes de itens em lote (somente leitura)
+    let details = [];
+    if (ids.length > 0) {
+      // Observação: o endpoint do ML espera ids separados por vírgula; não codificar vírgulas evita incompatibilidades.
+      const batch = await mlFetch(cliente.id, `/items?ids=${ids.join(",")}`);
+      if (!batch.ok) {
+        return res.status(batch.status).json({ ok: false, erro: batch.data?.message || "Erro ao buscar detalhes dos itens no ML.", status: batch.status, data: batch.data });
+      }
+      details = Array.isArray(batch.data) ? batch.data : [];
+    }
+
+    const linhas = details.map((entry) => {
+      const body = entry?.body || null;
+      const itemId = String(body?.id || entry?.id || "").trim();
+      const itemNorm = itemId.toUpperCase();
+
+      // Matching conservador:
+      // 1) match exato
+      // 2) match normalizado (trim + uppercase)
+      // 3) se item começar com MLB, tenta o número contra produto_id numérico da base
+      // Observação: MLBU NÃO é tratado como equivalente automático a MLB numérico.
+      let baseRow =
+        custosMapExact.get(itemId) ||
+        custosMapNorm.get(itemNorm) ||
+        null;
+
+      const observacoes = [];
+
+      if (!baseRow && itemNorm.startsWith("MLBU")) {
+        observacoes.push("item MLBU não é casado automaticamente com produto_id numérico da base");
+      }
+
+      if (!baseRow && itemNorm.startsWith("MLB") && !itemNorm.startsWith("MLBU")) {
+        const num = itemNorm.slice(3).match(/^\d+/)?.[0] || "";
+        if (num && custosMapNumeric.has(num)) {
+          baseRow = custosMapNumeric.get(num);
+          observacoes.push("match realizado pelo número do MLB (base sem prefixo)");
+        }
+      }
+
+      const custoProduto = baseRow ? baseRow.custoProduto : null;
+      const impostoPercentual = baseRow ? baseRow.impostoPercentual : null;
+      const taxaFixa = baseRow ? baseRow.taxaFixa : null;
+
+      // Campos ML disponíveis via leitura (GET /items e /users/.../items/search)
+      const precoVendaAtual = (typeof body?.price === "number") ? body.price : (body?.price != null ? Number(body.price) : null);
+      const listingTypeId = body?.listing_type_id || null;
+
+      // Por segurança nesta etapa:
+      // - comissão e frete podem depender de regras dinâmicas (categoria, listing_type, shipping/logistic_type, etc.)
+      // - existem endpoints read-only no ML, mas sem garantia de completude/estabilidade aqui, preferimos retornar null.
+      const comissaoMarketplace = null;
+      const frete = null;
+
+      // Lucro/margem: só calculamos se TODOS os componentes necessários estiverem disponíveis com segurança
+      // (nesta etapa, comissão e frete ficam null; portanto lucro/margem também ficam null).
+      const lucroContribuicaoPreview = null;
+      const margemContribuicaoPreview = null;
+
+      if (!baseRow) observacoes.push("Sem correspondência na base (produto_id não encontrado).");
+      if (comissaoMarketplace === null) observacoes.push("comissaoMarketplace=null (não obtida nesta etapa por segurança/read-only).");
+      if (frete === null) observacoes.push("frete=null (não obtido nesta etapa por segurança/read-only).");
+      if (lucroContribuicaoPreview === null || margemContribuicaoPreview === null) {
+        observacoes.push("lucro/margem=null (depende de comissão/frete; mantido nulo por segurança).");
+      }
+
+      return {
+        item_id: itemId || null,
+        titulo: body?.title || null,
+        status: body?.status || null,
+        precoVendaAtual,
+        tipoAnuncio: listingTypeId,
+        listing_type_id: listingTypeId,
+        custoProduto,
+        impostoPercentual,
+        taxaFixa,
+        comissaoMarketplace,
+        frete,
+        lucroContribuicaoPreview,
+        margemContribuicaoPreview,
+        temBase: Boolean(baseRow),
+        observacoes,
+      };
+    });
+
+    return res.json({
+      ok: true,
+      cliente,
+      base: {
+        id: base.id,
+        nome: base.nome,
+        slug: base.slug,
+        ativo: base.ativo,
+        created_at: base.created_at,
+        updated_at: base.updated_at,
+      },
+      page,
+      limit,
+      totalItensMl,
+      linhas,
+      fonteDados: {
+        ml: {
+          itens: "GET /users/{ml_user_id}/items/search?status=active",
+          detalhes: "GET /items?ids=...",
+        },
+        base: "SELECT custos WHERE base_id = ... (produto_id = item_id/MLB)",
+        camposNullPorSeguranca: ["comissaoMarketplace", "frete", "lucroContribuicaoPreview", "margemContribuicaoPreview"],
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
   }
 });
 
@@ -614,6 +852,13 @@ app.delete("/clientes/:slug/ml-token", authMiddleware, requireAdmin, async (req,
       return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
     }
     await pool.query("DELETE FROM ml_tokens WHERE cliente_id = $1", [c.rows[0].id]);
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.ml.desconectar",
+      detalhes: { cliente_slug: slug },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, mensagem: "Conta ML desvinculada." });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -634,6 +879,13 @@ app.post("/clientes", authMiddleware, requireAdmin, async (req, res) => {
        RETURNING id, nome, slug, api_key, ativo, created_at`,
       [nome.trim(), slugNorm, apiKey]
     );
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.cliente.criar",
+      detalhes: { cliente_slug: slugNorm, cliente_nome: nome.trim() },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.status(201).json({ ok: true, cliente: result.rows[0] });
   } catch (err) {
     if (err.code === "23505") {
@@ -653,8 +905,139 @@ app.delete("/clientes/:slug", authMiddleware, requireAdmin, async (req, res) => 
     if (!result.rows.length) {
       return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
     }
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.cliente.excluir",
+      detalhes: { cliente_slug: slug },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, mensagem: "Cliente removido com sucesso." });
   } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post("/download-ferramenta-or", authMiddleware, async (req, res) => {
+  try {
+    const { mlbs } = req.body;
+
+    if (!Array.isArray(mlbs) || !mlbs.length) {
+      return res.status(400).json({ ok: false, erro: "Informe ao menos um MLB." });
+    }
+
+    for (const item of mlbs) {
+      if (!item.mlb || !item.quantidade_padrao || !item.preco_final) {
+        return res.status(400).json({
+          ok: false,
+          erro: "Cada item deve ter mlb, quantidade_padrao e preco_final."
+        });
+      }
+    }
+
+    const config = {
+      mlbs: mlbs.map((item) => ({
+        mlb: String(item.mlb).trim(),
+        quantidade_padrao: Number(item.quantidade_padrao),
+        preco_final: String(item.preco_final).trim(),
+      })),
+      headless: false,
+      slow_mo: 50,
+    };
+
+    const configJson = JSON.stringify(config, null, 2);
+    const downloadsDir = path.join(__dirname, "downloads");
+
+    const v1Path     = path.join(downloadsDir, "v1_10_1.py");
+    const criarPath  = path.join(downloadsDir, "Criar_ORs.py");
+
+    if (!fs.existsSync(v1Path) || !fs.existsSync(criarPath)) {
+      return res.status(500).json({ ok: false, erro: "Arquivos Python não encontrados em server/downloads/." });
+    }
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", "attachment; filename=ferramenta-or.zip");
+
+    const archive = archiver("zip", { zlib: { level: 6 } });
+
+    archive.on("error", (err) => {
+      console.error("[download-ferramenta-or] archiver erro:", err.message);
+      if (!res.headersSent) res.status(500).json({ ok: false, erro: err.message });
+    });
+
+    archive.pipe(res);
+    archive.file(v1Path,    { name: "v1_10_1.py" });
+    archive.file(criarPath, { name: "Criar_ORs.py" });
+    archive.append(configJson, { name: "config.json" });
+
+    await archive.finalize();
+  } catch (err) {
+    console.error("[download-ferramenta-or] erro:", err.message);
+    if (!res.headersSent) res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ==========================
+// ML — ROTAS DE INTEGRAÇÃO
+// ==========================
+
+// Testa conexão e retorna dados do usuário ML
+app.get("/ml/teste/:clienteId", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const clienteId = parseInt(req.params.clienteId);
+    if (!clienteId) return res.status(400).json({ ok: false, erro: "clienteId inválido." });
+
+    const { ok, status, data } = await mlFetch(clienteId, "/users/me");
+
+    if (!ok) {
+      return res.status(status).json({ ok: false, erro: data?.message || "Erro ao chamar ML.", status, data });
+    }
+
+    res.json({ ok: true, status, usuario: data });
+  } catch (err) {
+    console.error("[GET /ml/teste] erro:", err.message);
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Busca anúncios ativos do cliente no ML (até 20 por vez, com suporte a offset)
+app.get("/ml/items/:clienteId", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const clienteId = parseInt(req.params.clienteId);
+    if (!clienteId) return res.status(400).json({ ok: false, erro: "clienteId inválido." });
+
+    // Passo 1: buscar o ml_user_id do cliente no banco
+    const tokenRow = await pool.query(
+      "SELECT ml_user_id FROM ml_tokens WHERE cliente_id = $1",
+      [clienteId]
+    );
+    if (!tokenRow.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente sem conta ML vinculada." });
+    }
+    const mlUserId = tokenRow.rows[0].ml_user_id;
+
+    // Passo 2: buscar itens ativos
+    const offset = parseInt(req.query.offset) || 0;
+    const limit  = Math.min(parseInt(req.query.limit) || 20, 50);
+
+    const { ok, status, data } = await mlFetch(
+      clienteId,
+      `/users/${mlUserId}/items/search?status=active&offset=${offset}&limit=${limit}`
+    );
+
+    if (!ok) {
+      return res.status(status).json({ ok: false, erro: data?.message || "Erro ao buscar itens.", status, data });
+    }
+
+    res.json({
+      ok: true,
+      total: data?.paging?.total ?? 0,
+      offset: data?.paging?.offset ?? offset,
+      limit:  data?.paging?.limit  ?? limit,
+      items:  data?.results ?? [],
+    });
+  } catch (err) {
+    console.error("[GET /ml/items] erro:", err.message);
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
@@ -731,6 +1114,13 @@ app.patch("/usuarios/:id", authMiddleware, requireAdmin, async (req, res) => {
       valores
     );
     if (!result.rows.length) return res.status(404).json({ ok: false, erro: "Usuário não encontrado." });
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.usuario.atualizar",
+      detalhes: { target_user_id: targetId, ativo: ativo, role: role },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, usuario: result.rows[0] });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -745,6 +1135,13 @@ app.delete("/usuarios/:id", authMiddleware, requireAdmin, async (req, res) => {
     }
     const result = await pool.query("DELETE FROM users WHERE id = $1 RETURNING id", [targetId]);
     if (!result.rows.length) return res.status(404).json({ ok: false, erro: "Usuário não encontrado." });
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.usuario.excluir",
+      detalhes: { target_user_id: targetId },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
     res.json({ ok: true, mensagem: "Usuário removido com sucesso." });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
@@ -881,6 +1278,15 @@ app.get("/callback", async (req, res) => {
          updated_at = NOW()`,
       [cliente.id, String(mlUserId), access_token, refresh_token, expiresAt]
     );
+    registrarLog({
+      userId: null,
+      userEmail: null,
+      userNome: null,
+      acao: "admin.ml.conectar",
+      detalhes: { cliente_slug: cliente.slug, cliente_nome: cliente.nome, ml_user_id: String(mlUserId) },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
 
     console.log(`[ML callback] ✓ token salvo — cliente: ${cliente.nome} ml_user_id: ${mlUserId}`);
 
@@ -902,10 +1308,10 @@ app.get("/callback", async (req, res) => {
   }
 });
 
-app.post("/fechamentos/upload", upload.single("file"), (req, res) => {
+app.post("/fechamentos/upload", authMiddleware, upload.single("file"), (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ ok: false, error: "Arquivo não enviado" });
+      return res.status(400).json({ ok: false, erro: "Arquivo não enviado" });
     }
 
     const resultado = processarFechamento(req.file.buffer);
@@ -919,16 +1325,16 @@ app.post("/fechamentos/upload", upload.single("file"), (req, res) => {
     console.error(err);
     res.status(500).json({
       ok: false,
-      error: err.message
+      erro: err.message
     });
   }
 });
 
-app.post("/fechamentos/compilar", upload.array("files", 20), (req, res) => {
+app.post("/fechamentos/compilar", authMiddleware, upload.array("files", 20), (req, res) => {
   try {
     const files = req.files || [];
     if (!files.length) {
-      return res.status(400).json({ ok: false, error: "Arquivo não enviado" });
+      return res.status(400).json({ ok: false, erro: "Arquivo não enviado" });
     }
 
     const buffers = files.map((file) => file.buffer);
@@ -943,7 +1349,7 @@ app.post("/fechamentos/compilar", upload.array("files", 20), (req, res) => {
     console.error(err);
     res.status(500).json({
       ok: false,
-      error: err.message
+      erro: err.message
     });
   }
 });
@@ -1248,6 +1654,7 @@ function parseShopeeSalesRows(rows) {
       const revenue = toNumber(
         findField(row, [
           "vendas (pedido pago) (brl)",
+          "Vendas (Pedido pago) (BRL)",
           "vendas (pedido pago)",
           "pedido pago (brl)",
         ])
@@ -1256,33 +1663,39 @@ function parseShopeeSalesRows(rows) {
       const paidUnits = toNumber(
         findField(row, [
           "unidades (pedido pago)",
+          "Unidades (Pedido pago)",
           "unidades pagas",
           "paid units",
         ])
       );
 
-      const impressions = toNumber(
-        findField(row, [
-          "impressao do produto",
-          "impressão do produto",
-          "impressoes do produto",
-          "impressões do produto",
-        ])
-      );
+const impressionsRaw = findField(row, [
+  "impressao do produto",
+  "impressão do produto",
+  "impressoes do produto",
+  "impressões do produto",
+]);
 
-      return !!variationId && revenue > 0 && paidUnits > 0 && impressions === 0;
+const impressions = toNumber(impressionsRaw);
+
+const raw = String(impressionsRaw || "").trim();
+
+const isZeroImpressions =
+  impressions === 0 ||
+  raw === "-" ||
+  raw === "–" ||
+  raw === "";
+
+      return !!variationId && !isNaN(Number(variationId)) && isZeroImpressions;
     });
 
     const rowsToUse = variationRows.length > 0 ? variationRows : groupRows;
 
     for (const row of rowsToUse) {
-      const variationId = normalizeIdNoPrefix(
-        findField(row, ["id da variacao", "id da variação", "variation id"])
-      );
-
       const paidRevenue = toNumber(
         findField(row, [
           "vendas (pedido pago) (brl)",
+          "Vendas (Pedido pago) (BRL)",
           "vendas (pedido pago)",
           "pedido pago (brl)",
         ])
@@ -1291,29 +1704,37 @@ function parseShopeeSalesRows(rows) {
       const paidUnits = toNumber(
         findField(row, [
           "unidades (pedido pago)",
+          "Unidades (Pedido pago)",
           "unidades pagas",
           "paid units",
         ])
-      );
-
-      const variationStatus = normalizeText(
-        findField(row, ["status atual da variacao", "status atual da variação"])
       );
 
       const product = String(
         findField(row, ["produto", "nome do produto", "product name"]) || ""
       ).trim();
 
-      if (paidRevenue <= 0 || paidUnits <= 0) continue;
+      const variationId = normalizeIdNoPrefix(
+        findField(row, ["id da variacao", "id da variação", "variation id"])
+      );
 
-      const isVariation = variationRows.length > 0;
+      const variationStatus = normalizeText(
+        findField(row, ["status atual da variacao", "status atual da variação"])
+      );
 
       const saleModelId = normalizeIdNoPrefix(
         findField(row, ["model id", "model_id", "modelid"])
       );
 
+      const isVariation = variationRows.length > 0;
+      const id = isVariation ? variationId : itemId;
+
+      console.log("[DEBUG parseShopeeSalesRows] id:", id, "paidRevenue:", paidRevenue, "paidUnits:", paidUnits);
+
+      if (!id || paidRevenue <= 0 || paidUnits <= 0) continue;
+
       parsed.push({
-        id: isVariation ? variationId : itemId,
+        id,
         product,
         itemId,
         variationId,
@@ -1420,7 +1841,9 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     }
 
     const costRow =
-      (sale.saleModelId && costMap.get(sale.saleModelId)) || costMap.get(sale.id);
+      (sale.saleModelId && costMap.get(sale.saleModelId)) ||
+      costMap.get(sale.id) ||
+      costMap.get(sale.itemId);
 
     if (!costRow || costRow.cost <= 0) {
       unmatchedIdsSet.add(sale.id);
@@ -2028,10 +2451,193 @@ app.post("/fechamentos/financeiro", authMiddleware, upload.fields([{ name: "sale
   }
 });
 
+// DEBUG TEMPORÁRIO — Spike de endpoints ML em anúncio real
+app.get("/debug/ml-spike/:clienteSlug/:itemId", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const clienteSlug = normalizarSlug(req.params.clienteSlug);
+    const itemId = String(req.params.itemId || "").trim();
+
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, erro: "clienteSlug inválido." });
+    }
+    if (!itemId) {
+      return res.status(400).json({ ok: false, erro: "itemId é obrigatório." });
+    }
+
+    const clienteRes = await pool.query(
+      "SELECT id, nome, slug FROM clientes WHERE slug = $1",
+      [clienteSlug]
+    );
+    if (!clienteRes.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+    }
+    const cliente = clienteRes.rows[0];
+
+    try {
+      await getValidMlTokenByCliente(cliente.id);
+    } catch (tokenErr) {
+      return res.status(404).json({
+        ok: false,
+        erro: "Cliente sem ml_token válido vinculado.",
+        detalhe: tokenErr.message,
+      });
+    }
+
+    function toErrorPayload(result, fallbackMessage) {
+      return {
+        ok: false,
+        status: result?.status ?? null,
+        erro:
+          result?.data?.message ||
+          result?.data?.error ||
+          result?.data?.error_description ||
+          fallbackMessage,
+        data: result?.data ?? null,
+      };
+    }
+
+    function findSaleFeeAmount(listingPricesData) {
+      if (!listingPricesData) return null;
+
+      const first = Array.isArray(listingPricesData)
+        ? listingPricesData[0]
+        : (Array.isArray(listingPricesData?.results) ? listingPricesData.results[0] : listingPricesData);
+
+      if (!first || typeof first !== "object") return null;
+
+      if (first.sale_fee_amount !== undefined && first.sale_fee_amount !== null) {
+        return first.sale_fee_amount;
+      }
+      if (first?.sale_fee_details?.amount !== undefined && first?.sale_fee_details?.amount !== null) {
+        return first.sale_fee_details.amount;
+      }
+      if (first?.sale_fee !== undefined && first?.sale_fee !== null) {
+        return first.sale_fee;
+      }
+      return null;
+    }
+
+    function extractCostFeeFields(value, path = "root", out = []) {
+      if (value === null || value === undefined) return out;
+
+      if (Array.isArray(value)) {
+        value.forEach((entry, index) => extractCostFeeFields(entry, `${path}[${index}]`, out));
+        return out;
+      }
+
+      if (typeof value === "object") {
+        for (const [key, nested] of Object.entries(value)) {
+          const nextPath = `${path}.${key}`;
+          if (/(cost|fee)/i.test(key) && (typeof nested !== "object" || nested === null)) {
+            out.push({ campo: nextPath, valor: nested });
+          }
+          extractCostFeeFields(nested, nextPath, out);
+        }
+      }
+
+      return out;
+    }
+
+    const itemPromise = mlFetch(cliente.id, `/items/${encodeURIComponent(itemId)}`);
+
+    const listingPricesPromise = itemPromise.then(async (itemResult) => {
+      if (!itemResult.ok) {
+        return {
+          ok: false,
+          status: itemResult.status,
+          data: {
+            message: "Não foi possível calcular listing_prices: falha ao buscar item.",
+            dependencia: "item",
+            item_status: itemResult.status,
+            item_data: itemResult.data ?? null,
+          },
+        };
+      }
+
+      const price = itemResult?.data?.price;
+      const listingTypeId = itemResult?.data?.listing_type_id;
+      if (price === null || price === undefined || !listingTypeId) {
+        return {
+          ok: false,
+          status: 422,
+          data: {
+            message: "Item sem price e/ou listing_type_id para calcular listing_prices.",
+            price: price ?? null,
+            listing_type_id: listingTypeId ?? null,
+          },
+        };
+      }
+
+      const query = `/sites/MLB/listing_prices?price=${encodeURIComponent(price)}&listing_type_id=${encodeURIComponent(listingTypeId)}`;
+      return mlFetch(cliente.id, query);
+    });
+
+    const shippingOptionsPromise = mlFetch(
+      cliente.id,
+      `/items/${encodeURIComponent(itemId)}/shipping_options`
+    );
+
+    const [itemSettled, listingSettled, shippingSettled] = await Promise.allSettled([
+      itemPromise,
+      listingPricesPromise,
+      shippingOptionsPromise,
+    ]);
+
+    const itemResult =
+      itemSettled.status === "fulfilled"
+        ? (itemSettled.value.ok ? itemSettled.value.data : toErrorPayload(itemSettled.value, "Erro ao buscar item"))
+        : toErrorPayload(null, itemSettled.reason?.message || "Erro inesperado ao buscar item");
+
+    const listingPricesResult =
+      listingSettled.status === "fulfilled"
+        ? (listingSettled.value.ok ? listingSettled.value.data : toErrorPayload(listingSettled.value, "Erro ao buscar listing_prices"))
+        : toErrorPayload(null, listingSettled.reason?.message || "Erro inesperado ao buscar listing_prices");
+
+    const shippingOptionsResult =
+      shippingSettled.status === "fulfilled"
+        ? (shippingSettled.value.ok ? shippingSettled.value.data : toErrorPayload(shippingSettled.value, "Erro ao buscar shipping_options"))
+        : toErrorPayload(null, shippingSettled.reason?.message || "Erro inesperado ao buscar shipping_options");
+
+    const resumo = {
+      price: itemSettled.status === "fulfilled" && itemSettled.value.ok ? (itemSettled.value.data?.price ?? null) : null,
+      listing_type_id:
+        itemSettled.status === "fulfilled" && itemSettled.value.ok
+          ? (itemSettled.value.data?.listing_type_id ?? null)
+          : null,
+      sale_fee_amount:
+        listingSettled.status === "fulfilled" && listingSettled.value.ok
+          ? findSaleFeeAmount(listingSettled.value.data)
+          : null,
+      shipping_costs_fees:
+        shippingSettled.status === "fulfilled" && shippingSettled.value.ok
+          ? extractCostFeeFields(shippingSettled.value.data)
+          : [],
+    };
+
+    return res.json({
+      ok: true,
+      cliente: {
+        id: cliente.id,
+        nome: cliente.nome,
+        slug: cliente.slug,
+      },
+      item: itemResult,
+      listing_prices: listingPricesResult,
+      shipping_options: shippingOptionsResult,
+      resumo,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // ERRO GLOBAL
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) return res.status(400).json({ ok: false, erro: `Erro no upload: ${err.message}` });
   res.status(500).json({ ok: false, erro: "Erro interno do servidor" });
 });
 
-app.listen(PORT, () => console.log(`VenForce rodando em http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`VenForce rodando em http://localhost:${PORT}`);
+  startTokenRefreshWorker();
+});
