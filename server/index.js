@@ -755,23 +755,28 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
       const logisticType = body?.shipping?.logistic_type || "xd_drop_off";
       const freeShipping = body?.shipping?.free_shipping ?? true;
 
-      const effectivePriceCandidates = [];
-      if (body?.price != null && Number.isFinite(Number(body.price))) {
-        effectivePriceCandidates.push(Number(body.price));
-      }
-      if (body?.sale_price != null && Number.isFinite(Number(body.sale_price))) {
-        effectivePriceCandidates.push(Number(body.sale_price));
-      }
-      if (Array.isArray(body?.prices?.prices)) {
-        body.prices.prices.forEach((priceEntry) => {
-          const amount = Number(priceEntry?.amount);
-          if (Number.isFinite(amount)) effectivePriceCandidates.push(amount);
-        });
-      }
-      const precoEfetivo =
-        effectivePriceCandidates.length > 0
-          ? Math.min(...effectivePriceCandidates)
+      const precoOriginal =
+        body?.price != null && Number.isFinite(Number(body.price)) && Number(body.price) > 0
+          ? Number(body.price)
           : null;
+
+      let precoPromocionado = null;
+      try {
+        if (itemId) {
+          const pricesResp = await mlFetch(cliente.id, `/items/${encodeURIComponent(itemId)}/prices`);
+          const pricesList = Array.isArray(pricesResp?.data?.prices) ? pricesResp.data.prices : [];
+          const amounts = pricesList
+            .map((p) => Number(p?.amount))
+            .filter((n) => Number.isFinite(n) && n > 0);
+          if (amounts.length > 0) {
+            precoPromocionado = Math.min(...amounts);
+          }
+        }
+      } catch (_) {
+        precoPromocionado = null;
+      }
+
+      const precoEfetivo = precoPromocionado ?? precoOriginal;
 
       const [listingPricesResp, shippingResp] = await Promise.all([
         (async () => {
@@ -816,12 +821,13 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
         custoProduto !== null &&
         impostoPercentual !== null &&
         taxaFixa !== null &&
-        comissaoPercentual !== null &&
+        comissaoMarketplace !== null &&
         frete !== null;
 
       const lucroContribuicao = hasLcInputs
         ? precoEfetivo -
-          (precoEfetivo * ((impostoPercentual / 100) + (comissaoPercentual / 100))) -
+          (precoEfetivo * (impostoPercentual / 100)) -
+          comissaoMarketplace -
           frete -
           taxaFixa -
           custoProduto
@@ -869,6 +875,9 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
         custoProduto,
         impostoPercentual,
         taxaFixa,
+        precoOriginal,
+        precoPromocionado,
+        precoBaseCalculo: precoEfetivo,
         precoEfetivo,
         comissaoMarketplace,
         comissaoPercentual,

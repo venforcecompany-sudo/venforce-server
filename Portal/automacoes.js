@@ -268,6 +268,10 @@ function setPreviewMlState({ page, totalItensMl, linhas }) {
       r.precoAlvo == null || !Number.isFinite(Number(r.precoAlvo))
         ? "—"
         : brlFormatter.format(Number(r.precoAlvo));
+    const freteFmt =
+      r.frete == null || !Number.isFinite(Number(r.frete))
+        ? "—"
+        : brlFormatter.format(Number(r.frete));
 
     const lcColor =
       lcFmt === "—" ? "" : (lcNumber > 0 ? "color:var(--vf-success);" : (lcNumber < 0 ? "color:var(--vf-danger);" : ""));
@@ -279,11 +283,11 @@ function setPreviewMlState({ page, totalItensMl, linhas }) {
       <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.item_id ?? "—")}</td>
       <td style="white-space:normal;line-height:1.35;" title="${escapeHTML(r.titulo ?? "")}">${escapeHTML(r.titulo ?? "—")}</td>
       <td>${escapeHTML(r.status ?? "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.precoVendaAtual ?? "—")}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.precoBaseCalculo ?? r.precoEfetivo ?? r.precoVendaAtual ?? "—")}</td>
       <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.listing_type_id ?? r.tipoAnuncio ?? "—")}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.custoProduto ?? "—")}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.impostoPercentual ?? "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.taxaFixa ?? "—")}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(freteFmt)}</td>
       <td>${r.temBase ? "Sim" : "Não"}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(comissaoFmt)}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(lcFmt)}</td>
