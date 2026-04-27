@@ -211,13 +211,13 @@
         ${svgIcon("menu")}
       </button>
       <a href="dashboard.html" class="vf-sidebar-logo-link">
-        <span class="vf-sidebar-logo-mark">
-          ${svgIcon("activity")}
+        <span class="vf-sidebar-logo-mark" aria-label="VenforceGo">
+          <span class="vf-logo-vf">VF</span><span class="vf-logo-go">go</span>
         </span>
         <span class="vf-sidebar-logo-text">VenforceGo</span>
       </a>
       <button type="button" id="vf-sidebar-toggle" class="vf-sidebar-toggle" aria-label="Recolher menu" aria-expanded="true">
-        ${svgIcon("panel-left-close")}
+        ${svgIcon("chevron-left")}
       </button>
     `;
 
@@ -255,7 +255,7 @@
         if (toggleBtn) {
           toggleBtn.setAttribute("aria-expanded", "true");
           toggleBtn.setAttribute("aria-label", "Recolher menu");
-          toggleBtn.innerHTML = svgIcon("panel-left-close");
+          toggleBtn.innerHTML = svgIcon("chevron-left");
         }
         return;
       }
@@ -264,7 +264,7 @@
       if (toggleBtn) {
         toggleBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
         toggleBtn.setAttribute("aria-label", collapsed ? "Expandir menu" : "Recolher menu");
-        toggleBtn.innerHTML = collapsed ? svgIcon("panel-left-open") : svgIcon("panel-left-close");
+        toggleBtn.innerHTML = collapsed ? svgIcon("chevron-right") : svgIcon("chevron-left");
       }
     }
 
