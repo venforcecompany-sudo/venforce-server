@@ -9,7 +9,9 @@ function getToken() {
 
 const TOKEN = getToken();
 const user = JSON.parse(localStorage.getItem("vf-user") || "{}");
-if (user.role !== "admin") window.location.replace("dashboard.html");
+const role = String(user.role || "").toLowerCase();
+const canAccessAutomacoes = role === "admin" || role === "membro";
+if (!canAccessAutomacoes) window.location.replace("dashboard.html");
 initLayout();
 
 let ALL_CLIENTES = [];
@@ -131,7 +133,7 @@ async function loadClientes() {
   setStatus("", "");
 
   try {
-    const res = await fetch(`${API_BASE}/clientes`, {
+    const res = await fetch(`${API_BASE}/automacoes/clientes`, {
       headers: { Authorization: "Bearer " + TOKEN }
     });
 

@@ -115,6 +115,19 @@ async function apiKeyMiddleware(req, res, next) {
   }
 }
 
+function requireAutomacoesAccess(req, res, next) {
+  const role = String(req.user?.role || "").toLowerCase();
+
+  if (role === "admin" || role === "membro") {
+    return next();
+  }
+
+  return res.status(403).json({
+    ok: false,
+    erro: "Acesso restrito às automações."
+  });
+}
+
 // ROTAS BÁSICAS
 app.get("/", (req, res) => res.send("API VenForce rodando 🚀"));
 app.get("/health", (req, res) => res.json({ ok: true, mensagem: `VENFORCE OK porta ${PORT}` }));
@@ -563,8 +576,22 @@ app.get("/clientes", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/automacoes/clientes", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, nome, slug, ativo, created_at
+       FROM clientes
+       WHERE ativo = true
+       ORDER BY nome ASC`
+    );
+    res.json({ ok: true, clientes: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // AUTOMAÇÕES (somente leitura) — Preview de precificação por cliente + base
-app.get("/automacoes/precificacao/preview", authMiddleware, requireAdmin, async (req, res) => {
+app.get("/automacoes/precificacao/preview", authMiddleware, requireAutomacoesAccess, async (req, res) => {
   try {
     const clienteSlugRaw = String(req.query.clienteSlug || "").trim();
     const baseSlugRaw = String(req.query.baseSlug || "").trim();
@@ -621,7 +648,7 @@ app.get("/automacoes/precificacao/preview", authMiddleware, requireAdmin, async 
 });
 
 // AUTOMAÇÕES (somente leitura) — Preview enriquecido (base + dados ML, sem escrita no ML)
-app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, async (req, res) => {
+app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAutomacoesAccess, async (req, res) => {
   try {
     const clienteSlugRaw = String(req.query.clienteSlug || "").trim();
     const baseSlugRaw = String(req.query.baseSlug || "").trim();
