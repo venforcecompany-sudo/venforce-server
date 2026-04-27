@@ -627,6 +627,7 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
     const baseSlugRaw = String(req.query.baseSlug || "").trim();
     const pageRaw = req.query.page;
     const limitRaw = req.query.limit;
+    const margemAlvoRaw = req.query.margemAlvo;
 
     if (!clienteSlugRaw) return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório" });
     if (!baseSlugRaw) return res.status(400).json({ ok: false, erro: "baseSlug é obrigatório" });
@@ -635,8 +636,13 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
     const baseSlug = normalizarSlug(baseSlugRaw);
 
     const page = Math.max(1, parseInt(pageRaw) || 1);
-    const limit = Math.min(Math.max(1, parseInt(limitRaw) || 20), 50);
+    const limit = Math.min(Math.max(1, parseInt(limitRaw) || 20), 20);
     const offset = (page - 1) * limit;
+    const parsedMargemAlvo = Number(margemAlvoRaw);
+    const margemAlvo =
+      Number.isFinite(parsedMargemAlvo) && parsedMargemAlvo >= 0.01 && parsedMargemAlvo <= 0.99
+        ? parsedMargemAlvo
+        : null;
 
     const c = await pool.query(
       "SELECT id, nome, slug, ativo, created_at FROM clientes WHERE slug = $1",
@@ -707,7 +713,7 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
       details = Array.isArray(batch.data) ? batch.data : [];
     }
 
-    const linhas = details.map((entry) => {
+    const linhas = await Promise.all(details.map(async (entry) => {
       const body = entry?.body || null;
       const itemId = String(body?.id || entry?.id || "").trim();
       const itemNorm = itemId.toUpperCase();
@@ -743,23 +749,114 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
       // Campos ML disponíveis via leitura (GET /items e /users/.../items/search)
       const precoVendaAtual = (typeof body?.price === "number") ? body.price : (body?.price != null ? Number(body.price) : null);
       const listingTypeId = body?.listing_type_id || null;
+      const categoryId = body?.category_id || null;
+      const sellerId = body?.seller_id || null;
+      const condition = body?.condition || "new";
+      const logisticType = body?.shipping?.logistic_type || "xd_drop_off";
+      const freeShipping = body?.shipping?.free_shipping ?? true;
 
-      // Por segurança nesta etapa:
-      // - comissão e frete podem depender de regras dinâmicas (categoria, listing_type, shipping/logistic_type, etc.)
-      // - existem endpoints read-only no ML, mas sem garantia de completude/estabilidade aqui, preferimos retornar null.
-      const comissaoMarketplace = null;
-      const frete = null;
+      const effectivePriceCandidates = [];
+      if (body?.price != null && Number.isFinite(Number(body.price))) {
+        effectivePriceCandidates.push(Number(body.price));
+      }
+      if (body?.sale_price != null && Number.isFinite(Number(body.sale_price))) {
+        effectivePriceCandidates.push(Number(body.sale_price));
+      }
+      if (Array.isArray(body?.prices?.prices)) {
+        body.prices.prices.forEach((priceEntry) => {
+          const amount = Number(priceEntry?.amount);
+          if (Number.isFinite(amount)) effectivePriceCandidates.push(amount);
+        });
+      }
+      const precoEfetivo =
+        effectivePriceCandidates.length > 0
+          ? Math.min(...effectivePriceCandidates)
+          : null;
 
-      // Lucro/margem: só calculamos se TODOS os componentes necessários estiverem disponíveis com segurança
-      // (nesta etapa, comissão e frete ficam null; portanto lucro/margem também ficam null).
-      const lucroContribuicaoPreview = null;
-      const margemContribuicaoPreview = null;
+      const [listingPricesResp, shippingResp] = await Promise.all([
+        (async () => {
+          if (precoEfetivo === null || !listingTypeId || !categoryId) return null;
+          const query = `/sites/MLB/listing_prices?price=${encodeURIComponent(precoEfetivo)}&listing_type_id=${encodeURIComponent(listingTypeId)}&category_id=${encodeURIComponent(categoryId)}`;
+          try {
+            return await mlFetch(cliente.id, query);
+          } catch (_) {
+            return null;
+          }
+        })(),
+        (async () => {
+          if (precoEfetivo === null || !sellerId || !listingTypeId || !itemId) return null;
+          const query = `/users/${encodeURIComponent(sellerId)}/shipping_options/free?item_id=${encodeURIComponent(itemId)}&verbose=true&item_price=${encodeURIComponent(precoEfetivo)}&listing_type_id=${encodeURIComponent(listingTypeId)}&mode=me2&condition=${encodeURIComponent(condition)}&logistic_type=${encodeURIComponent(logisticType)}&free_shipping=${encodeURIComponent(freeShipping)}`;
+          try {
+            return await mlFetch(cliente.id, query);
+          } catch (_) {
+            return null;
+          }
+        })(),
+      ]);
+
+      const listingPricesData =
+        listingPricesResp && listingPricesResp.ok ? listingPricesResp.data : null;
+      const listingPriceRoot = Array.isArray(listingPricesData)
+        ? listingPricesData[0]
+        : (Array.isArray(listingPricesData?.results) ? listingPricesData.results[0] : listingPricesData);
+      const comissaoMarketplace =
+        listingPriceRoot?.sale_fee_amount != null ? Number(listingPriceRoot.sale_fee_amount) : null;
+      const comissaoPercentual =
+        listingPriceRoot?.sale_fee_details?.percentage_fee != null
+          ? Number(listingPriceRoot.sale_fee_details.percentage_fee)
+          : null;
+
+      const frete =
+        shippingResp && shippingResp.ok && shippingResp.data?.coverage?.all_country?.list_cost != null
+          ? Number(shippingResp.data.coverage.all_country.list_cost)
+          : null;
+
+      const hasLcInputs =
+        precoEfetivo !== null &&
+        custoProduto !== null &&
+        impostoPercentual !== null &&
+        taxaFixa !== null &&
+        comissaoPercentual !== null &&
+        frete !== null;
+
+      const lucroContribuicao = hasLcInputs
+        ? precoEfetivo -
+          (precoEfetivo * ((impostoPercentual / 100) + (comissaoPercentual / 100))) -
+          frete -
+          taxaFixa -
+          custoProduto
+        : null;
+      const margemContribuicao =
+        lucroContribuicao !== null && precoEfetivo
+          ? lucroContribuicao / precoEfetivo
+          : null;
+
+      let precoAlvo = null;
+      let lucroAlvo = null;
+      if (
+        margemAlvo !== null &&
+        custoProduto !== null &&
+        frete !== null &&
+        taxaFixa !== null &&
+        impostoPercentual !== null &&
+        comissaoPercentual !== null
+      ) {
+        const denominator =
+          1 - (impostoPercentual / 100) - (comissaoPercentual / 100) - margemAlvo;
+        if (denominator > 0) {
+          precoAlvo = (custoProduto + frete + taxaFixa) / denominator;
+          lucroAlvo = precoAlvo * margemAlvo;
+        }
+      }
+
+      const lucroContribuicaoPreview = lucroContribuicao;
+      const margemContribuicaoPreview = margemContribuicao;
 
       if (!baseRow) observacoes.push("Sem correspondência na base (produto_id não encontrado).");
-      if (comissaoMarketplace === null) observacoes.push("comissaoMarketplace=null (não obtida nesta etapa por segurança/read-only).");
-      if (frete === null) observacoes.push("frete=null (não obtido nesta etapa por segurança/read-only).");
+      if (comissaoMarketplace === null) observacoes.push("comissaoMarketplace=null (não foi possível obter no ML para este item).");
+      if (frete === null) observacoes.push("frete=null (não foi possível obter no ML para este item).");
       if (lucroContribuicaoPreview === null || margemContribuicaoPreview === null) {
-        observacoes.push("lucro/margem=null (depende de comissão/frete; mantido nulo por segurança).");
+        observacoes.push("lucro/margem=null (faltam dados de custo/comissão/frete para este item).");
       }
 
       return {
@@ -772,14 +869,20 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
         custoProduto,
         impostoPercentual,
         taxaFixa,
+        precoEfetivo,
         comissaoMarketplace,
+        comissaoPercentual,
         frete,
+        lucroContribuicao,
+        margemContribuicao,
+        precoAlvo,
+        lucroAlvo,
         lucroContribuicaoPreview,
         margemContribuicaoPreview,
         temBase: Boolean(baseRow),
         observacoes,
       };
-    });
+    }));
 
     return res.json({
       ok: true,
@@ -802,7 +905,7 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
           detalhes: "GET /items?ids=...",
         },
         base: "SELECT custos WHERE base_id = ... (produto_id = item_id/MLB)",
-        camposNullPorSeguranca: ["comissaoMarketplace", "frete", "lucroContribuicaoPreview", "margemContribuicaoPreview"],
+        camposNullPorSeguranca: ["lucroContribuicaoPreview", "margemContribuicaoPreview"],
       },
     });
   } catch (err) {
