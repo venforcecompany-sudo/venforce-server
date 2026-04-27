@@ -133,6 +133,14 @@
               <span id="precificacao-ml-page" style="color:var(--vf-text-m);font-size:.875rem;">Página 1</span>
             </div>
           </div>
+          <div id="precificacao-ml-insights" class="vf-ml-insights" style="display:none;"></div>
+          <div id="precificacao-ml-controls" class="vf-ml-controls" style="display:none;">
+            <div class="vf-form-group" style="margin:0;max-width:360px;">
+              <label for="precificacao-ml-search">Buscar na página atual</label>
+              <input id="precificacao-ml-search" class="vf-input" type="search" placeholder="Digite título ou MLB..." autocomplete="off" />
+            </div>
+            <div id="precificacao-ml-filter-buttons" class="vf-ml-filter-buttons"></div>
+          </div>
 
           <div id="precificacao-ml-preview-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
             <p>Selecione um cliente e uma base, e clique em “Prévia com dados ML”.</p>
@@ -150,6 +158,7 @@
                   <th style="text-align:right;">Imposto (%)</th>
                   <th style="text-align:right;">Frete (R$)</th>
                   <th>Tem base</th>
+                  <th>Diagnóstico</th>
                   <th style="text-align:right;">Comissão (R$)</th>
                   <th style="text-align:right;">LC (R$)</th>
                   <th style="text-align:right;">MC (%)</th>

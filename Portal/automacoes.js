@@ -19,6 +19,18 @@ let ALL_CLIENTES = [];
 let ALL_BASES = [];
 let PREVIEW_ML_PAGE = 1;
 const PREVIEW_ML_LIMIT = 20;
+let PREVIEW_ML_ROWS = [];
+let PREVIEW_ML_FILTER = "todos";
+let PREVIEW_ML_SEARCH = "";
+const PREVIEW_ML_FILTERS = [
+  { key: "todos", label: "Todos" },
+  { key: "critico", label: "Críticos" },
+  { key: "atencao", label: "Atenção" },
+  { key: "saudavel", label: "Saudáveis" },
+  { key: "sem_base", label: "Sem base" },
+  { key: "sem_frete", label: "Sem frete" },
+  { key: "sem_comissao", label: "Sem comissão" },
+];
 
 function clearSession() {
   localStorage.removeItem(STORAGE_KEY);
@@ -237,37 +249,160 @@ function setPreviewState({ clienteLabel, baseLabel, totalItens, itensPreview }) 
   });
 }
 
-function setPreviewMlState({ page, totalItensMl, linhas }) {
-  const empty = document.getElementById("precificacao-ml-preview-empty");
-  const box = document.getElementById("precificacao-ml-preview-box");
-  const badge = document.getElementById("precificacao-ml-total");
-  const pageEl = document.getElementById("precificacao-ml-page");
-  const prevBtn = document.getElementById("btn-precificacao-ml-prev");
-  const nextBtn = document.getElementById("btn-precificacao-ml-next");
+function getMargemAlvoDecimalAtual() {
+  const input = document.getElementById("automacoes-margem");
+  const raw = Number(input?.value);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  return raw / 100;
+}
 
-  if (empty) empty.style.display = "none";
-  if (box) box.style.display = "block";
+function diagnosticarLinhaMl(r) {
+  const mc = Number(r?.margemContribuicao);
+  const margemAlvo = getMargemAlvoDecimalAtual();
 
-  const total = Number(totalItensMl ?? 0) || 0;
-  const p = Number(page ?? 1) || 1;
-  const totalPages = Math.max(1, Math.ceil(total / PREVIEW_ML_LIMIT));
-
-  if (badge) {
-    badge.style.display = "inline-block";
-    badge.textContent = String(total);
+  if (!r?.temBase) {
+    return { key: "sem_base", label: "Sem base", tone: "neutral" };
   }
-  if (pageEl) pageEl.textContent = `Página ${p} de ${totalPages}`;
-  if (prevBtn) prevBtn.disabled = p <= 1;
-  if (nextBtn) nextBtn.disabled = p >= totalPages;
+  if (r?.frete == null || !Number.isFinite(Number(r.frete))) {
+    return { key: "sem_frete", label: "Sem frete", tone: "warning" };
+  }
+  if (r?.comissaoMarketplace == null || !Number.isFinite(Number(r.comissaoMarketplace))) {
+    return { key: "sem_comissao", label: "Sem comissão", tone: "warning" };
+  }
+  if (!Number.isFinite(mc)) {
+    return { key: "sem_dados", label: "Sem dados", tone: "neutral" };
+  }
+  if (mc < 0) {
+    return { key: "critico", label: "Crítico", tone: "danger" };
+  }
+  if (margemAlvo !== null && mc < margemAlvo) {
+    return { key: "atencao", label: "Atenção", tone: "warning" };
+  }
+  return { key: "saudavel", label: "Saudável", tone: "success" };
+}
 
+function renderDiagnosticoBadge(diag) {
+  const cls = `vf-ml-badge vf-ml-badge-${diag?.tone || "neutral"}`;
+  return `<span class="${cls}">${escapeHTML(diag?.label || "—")}</span>`;
+}
+
+function getPreviewMlFilteredRows() {
+  const rows = Array.isArray(PREVIEW_ML_ROWS) ? PREVIEW_ML_ROWS : [];
+  const q = PREVIEW_ML_SEARCH.trim().toLowerCase();
+
+  return rows.filter((r) => {
+    const diag = diagnosticarLinhaMl(r);
+    if (PREVIEW_ML_FILTER !== "todos" && diag.key !== PREVIEW_ML_FILTER) {
+      return false;
+    }
+
+    if (q) {
+      const haystack = [
+        r?.item_id,
+        r?.titulo,
+        r?.status,
+        r?.tipoAnuncio,
+        r?.listing_type_id,
+      ].join(" ").toLowerCase();
+
+      if (!haystack.includes(q)) return false;
+    }
+
+    return true;
+  });
+}
+
+function renderPreviewMlInsights() {
+  const container = document.getElementById("precificacao-ml-insights");
+  if (!container) return;
+
+  const rows = Array.isArray(PREVIEW_ML_ROWS) ? PREVIEW_ML_ROWS : [];
+  if (!rows.length) {
+    container.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+
+  let comBase = 0;
+  let semBase = 0;
+  let criticos = 0;
+  let atencao = 0;
+  let saudaveis = 0;
+  let semFrete = 0;
+  let semComissao = 0;
+  let mcCount = 0;
+  let mcSum = 0;
+
+  rows.forEach((r) => {
+    if (r?.temBase) comBase += 1;
+    else semBase += 1;
+
+    const diag = diagnosticarLinhaMl(r);
+    if (diag.key === "critico") criticos += 1;
+    if (diag.key === "atencao") atencao += 1;
+    if (diag.key === "saudavel") saudaveis += 1;
+    if (diag.key === "sem_frete") semFrete += 1;
+    if (diag.key === "sem_comissao") semComissao += 1;
+
+    const mc = Number(r?.margemContribuicao);
+    if (Number.isFinite(mc)) {
+      mcSum += mc;
+      mcCount += 1;
+    }
+  });
+
+  const mcMedia = mcCount > 0 ? (mcSum / mcCount) * 100 : null;
+  const mcMediaTxt = mcMedia == null ? "—" : `${mcMedia.toFixed(2)}%`;
+
+  container.style.display = "grid";
+  container.innerHTML = `
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Página atual</div><div class="vf-ml-insight-value">${rows.length}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Com base</div><div class="vf-ml-insight-value">${comBase}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Sem base</div><div class="vf-ml-insight-value">${semBase}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Críticos</div><div class="vf-ml-insight-value">${criticos}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Atenção</div><div class="vf-ml-insight-value">${atencao}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Saudáveis</div><div class="vf-ml-insight-value">${saudaveis}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">MC média</div><div class="vf-ml-insight-value">${mcMediaTxt}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Sem frete</div><div class="vf-ml-insight-value">${semFrete}</div></div>
+  `;
+}
+
+function renderPreviewMlControls() {
+  const container = document.getElementById("precificacao-ml-controls");
+  const buttonsWrap = document.getElementById("precificacao-ml-filter-buttons");
+  if (!container || !buttonsWrap) return;
+
+  const hasRows = Array.isArray(PREVIEW_ML_ROWS) && PREVIEW_ML_ROWS.length > 0;
+  if (!hasRows) {
+    container.style.display = "none";
+    buttonsWrap.innerHTML = "";
+    return;
+  }
+
+  container.style.display = "flex";
+  buttonsWrap.innerHTML = PREVIEW_ML_FILTERS.map((f) => {
+    const active = f.key === PREVIEW_ML_FILTER ? "active" : "";
+    return `<button type="button" class="vf-ml-filter-btn ${active}" data-filter="${escapeHTML(f.key)}">${escapeHTML(f.label)}</button>`;
+  }).join("");
+
+  buttonsWrap.querySelectorAll("[data-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      PREVIEW_ML_FILTER = btn.getAttribute("data-filter") || "todos";
+      renderPreviewMlControls();
+      renderPreviewMlTable();
+    });
+  });
+}
+
+function renderPreviewMlTable() {
   const tbody = document.getElementById("precificacao-ml-tbody");
   if (!tbody) return;
   tbody.innerHTML = "";
 
-  const rows = Array.isArray(linhas) ? linhas : [];
+  const rows = getPreviewMlFilteredRows();
   if (rows.length === 0) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="13" style="color:var(--vf-text-m);">Nenhum item encontrado nesta página.</td>`;
+    tr.innerHTML = `<td colspan="14" style="color:var(--vf-text-m);">Nenhum item encontrado com os filtros atuais.</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -284,6 +419,7 @@ function setPreviewMlState({ page, totalItensMl, linhas }) {
   });
 
   rows.forEach((r) => {
+    const diag = diagnosticarLinhaMl(r);
     const comissaoFmt =
       r.comissaoMarketplace == null || !Number.isFinite(Number(r.comissaoMarketplace))
         ? "—"
@@ -323,6 +459,7 @@ function setPreviewMlState({ page, totalItensMl, linhas }) {
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.impostoPercentual ?? "—")}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(freteFmt)}</td>
       <td>${r.temBase ? "Sim" : "Não"}</td>
+      <td>${renderDiagnosticoBadge(diag)}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(comissaoFmt)}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(lcFmt)}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcColor}">${escapeHTML(mcFmt)}</td>
@@ -330,6 +467,39 @@ function setPreviewMlState({ page, totalItensMl, linhas }) {
     `;
     tbody.appendChild(tr);
   });
+}
+
+function setPreviewMlState({ page, totalItensMl, linhas }) {
+  const empty = document.getElementById("precificacao-ml-preview-empty");
+  const box = document.getElementById("precificacao-ml-preview-box");
+  const badge = document.getElementById("precificacao-ml-total");
+  const pageEl = document.getElementById("precificacao-ml-page");
+  const prevBtn = document.getElementById("btn-precificacao-ml-prev");
+  const nextBtn = document.getElementById("btn-precificacao-ml-next");
+
+  if (empty) empty.style.display = "none";
+  if (box) box.style.display = "block";
+
+  const total = Number(totalItensMl ?? 0) || 0;
+  const p = Number(page ?? 1) || 1;
+  const totalPages = Math.max(1, Math.ceil(total / PREVIEW_ML_LIMIT));
+
+  if (badge) {
+    badge.style.display = "inline-block";
+    badge.textContent = String(total);
+  }
+  if (pageEl) pageEl.textContent = `Página ${p} de ${totalPages}`;
+  if (prevBtn) prevBtn.disabled = p <= 1;
+  if (nextBtn) nextBtn.disabled = p >= totalPages;
+  PREVIEW_ML_ROWS = Array.isArray(linhas) ? linhas : [];
+  PREVIEW_ML_FILTER = "todos";
+  PREVIEW_ML_SEARCH = "";
+  const searchInput = document.getElementById("precificacao-ml-search");
+  if (searchInput) searchInput.value = "";
+
+  renderPreviewMlInsights();
+  renderPreviewMlControls();
+  renderPreviewMlTable();
 }
 
 function resetPreviewMlUI() {
@@ -340,6 +510,10 @@ function resetPreviewMlUI() {
   const prevBtn = document.getElementById("btn-precificacao-ml-prev");
   const nextBtn = document.getElementById("btn-precificacao-ml-next");
   const tbody = document.getElementById("precificacao-ml-tbody");
+  const insights = document.getElementById("precificacao-ml-insights");
+  const controls = document.getElementById("precificacao-ml-controls");
+  const searchInput = document.getElementById("precificacao-ml-search");
+  const filterButtons = document.getElementById("precificacao-ml-filter-buttons");
 
   if (empty) empty.style.display = "block";
   if (box) box.style.display = "none";
@@ -348,6 +522,14 @@ function resetPreviewMlUI() {
   if (prevBtn) prevBtn.disabled = true;
   if (nextBtn) nextBtn.disabled = true;
   if (tbody) tbody.innerHTML = "";
+  if (insights) { insights.style.display = "none"; insights.innerHTML = ""; }
+  if (controls) controls.style.display = "none";
+  if (filterButtons) filterButtons.innerHTML = "";
+  if (searchInput) searchInput.value = "";
+
+  PREVIEW_ML_ROWS = [];
+  PREVIEW_ML_FILTER = "todos";
+  PREVIEW_ML_SEARCH = "";
 }
 
 async function previewPrecificacao() {
@@ -498,6 +680,17 @@ document.getElementById("automacoes-cliente-search")?.addEventListener("input", 
 });
 document.getElementById("automacoes-base-search")?.addEventListener("input", () => {
   applyBaseSearchFilter({ keepValueIfPossible: true });
+});
+document.getElementById("precificacao-ml-search")?.addEventListener("input", (e) => {
+  PREVIEW_ML_SEARCH = e.target.value || "";
+  renderPreviewMlTable();
+});
+document.getElementById("automacoes-margem")?.addEventListener("input", () => {
+  if (PREVIEW_ML_ROWS.length > 0) {
+    renderPreviewMlInsights();
+    renderPreviewMlControls();
+    renderPreviewMlTable();
+  }
 });
 
 document.getElementById("btn-precificacao-preview")?.addEventListener("click", previewPrecificacao);
