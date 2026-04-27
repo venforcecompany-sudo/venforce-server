@@ -44,6 +44,12 @@ function normalizarSlug(nome) {
     .replace(/[^\w\-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
 }
 
+function normalizarMlItemId(valor) {
+  const texto = String(valor || "").trim().toUpperCase();
+  const match = texto.match(/MLB\d+|MLBU\d+/);
+  return match ? match[0] : texto;
+}
+
 function numeroSeguro(valor) {
   if (valor === null || valor === undefined || valor === "") return 0;
   if (typeof valor === "number") return Number.isFinite(valor) ? valor : 0;
@@ -125,6 +131,19 @@ function requireAutomacoesAccess(req, res, next) {
   return res.status(403).json({
     ok: false,
     erro: "Acesso restrito às automações."
+  });
+}
+
+function requireDesignAccess(req, res, next) {
+  const role = String(req.user?.role || "").toLowerCase();
+
+  if (role === "admin" || role === "user" || role === "membro") {
+    return next();
+  }
+
+  return res.status(403).json({
+    ok: false,
+    erro: "Acesso restrito ao módulo de design."
   });
 }
 
@@ -590,6 +609,20 @@ app.get("/automacoes/clientes", authMiddleware, requireAutomacoesAccess, async (
   }
 });
 
+app.get("/design/clientes", authMiddleware, requireDesignAccess, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, nome, slug, ativo, created_at
+       FROM clientes
+       WHERE ativo = true
+       ORDER BY nome ASC`
+    );
+    res.json({ ok: true, clientes: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // AUTOMAÇÕES (somente leitura) — Preview de precificação por cliente + base
 app.get("/automacoes/precificacao/preview", authMiddleware, requireAutomacoesAccess, async (req, res) => {
   try {
@@ -948,6 +981,169 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAutomacoes
         base: "SELECT custos WHERE base_id = ... (produto_id = item_id/MLB)",
         camposNullPorSeguranca: ["lucroContribuicaoPreview", "margemContribuicaoPreview"],
       },
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.get("/design/anuncios/:itemId/imagens", authMiddleware, requireDesignAccess, async (req, res) => {
+  try {
+    const clienteSlugRaw = String(req.query.clienteSlug || "").trim();
+    if (!clienteSlugRaw) {
+      return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório." });
+    }
+
+    const clienteSlug = normalizarSlug(clienteSlugRaw);
+    const clienteRes = await pool.query(
+      "SELECT id, nome, slug FROM clientes WHERE slug = $1 AND ativo = true",
+      [clienteSlug]
+    );
+    if (!clienteRes.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+    }
+    const cliente = clienteRes.rows[0];
+
+    const itemId = normalizarMlItemId(req.params.itemId);
+    if (!itemId) {
+      return res.status(400).json({ ok: false, erro: "itemId inválido." });
+    }
+
+    const itemResp = await mlFetch(cliente.id, `/items/${encodeURIComponent(itemId)}`);
+    if (!itemResp.ok) {
+      return res.status(itemResp.status || 502).json({
+        ok: false,
+        erro: itemResp.data?.message || "Erro ao buscar anúncio no Mercado Livre.",
+        status: itemResp.status,
+        data: itemResp.data ?? null
+      });
+    }
+
+    const item = itemResp.data?.body || itemResp.data || {};
+    const pictures = Array.isArray(item.pictures) ? item.pictures : [];
+    const imagens = pictures.map((p, index) => ({
+      index: index + 1,
+      id: p.id || null,
+      url: p.secure_url || p.url || p.max_size || null,
+      secure_url: p.secure_url || null,
+      size: p.size || null,
+      max_size: p.max_size || null,
+      quality: p.quality || null,
+    })).filter((img) => img.url);
+
+    return res.json({
+      ok: true,
+      item: {
+        id: item.id || itemId,
+        title: item.title || null,
+        seller_id: item.seller_id || null,
+        status: item.status || null
+      },
+      total: imagens.length,
+      imagens
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.get("/design/anuncios/:itemId/imagens/download", authMiddleware, requireDesignAccess, async (req, res) => {
+  try {
+    const clienteSlugRaw = String(req.query.clienteSlug || "").trim();
+    if (!clienteSlugRaw) {
+      return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório." });
+    }
+
+    const clienteSlug = normalizarSlug(clienteSlugRaw);
+    const clienteRes = await pool.query(
+      "SELECT id, nome, slug FROM clientes WHERE slug = $1 AND ativo = true",
+      [clienteSlug]
+    );
+    if (!clienteRes.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+    }
+    const cliente = clienteRes.rows[0];
+
+    const itemId = normalizarMlItemId(req.params.itemId);
+    if (!itemId) {
+      return res.status(400).json({ ok: false, erro: "itemId inválido." });
+    }
+
+    const itemResp = await mlFetch(cliente.id, `/items/${encodeURIComponent(itemId)}`);
+    if (!itemResp.ok) {
+      return res.status(itemResp.status || 502).json({
+        ok: false,
+        erro: itemResp.data?.message || "Erro ao buscar anúncio no Mercado Livre.",
+        status: itemResp.status,
+        data: itemResp.data ?? null
+      });
+    }
+
+    const item = itemResp.data?.body || itemResp.data || {};
+    const pictures = Array.isArray(item.pictures) ? item.pictures : [];
+    const imagens = pictures.map((p) => p?.secure_url || p?.url || p?.max_size || null).filter(Boolean);
+    if (!imagens.length) {
+      return res.status(404).json({ ok: false, erro: "Nenhuma imagem encontrada para este anúncio." });
+    }
+
+    const arquivos = [];
+    for (let index = 0; index < imagens.length; index++) {
+      const url = imagens[index];
+      try {
+        const imgResp = await fetch(url);
+        if (!imgResp.ok) continue;
+
+        const arr = await imgResp.arrayBuffer();
+        const buffer = Buffer.from(arr);
+        if (!buffer.length) continue;
+
+        const contentType = String(imgResp.headers.get("content-type") || "").toLowerCase();
+        let ext = ".jpg";
+        if (contentType.includes("png")) ext = ".png";
+        else if (contentType.includes("webp")) ext = ".webp";
+        else if (contentType.includes("jpeg") || contentType.includes("jpg")) ext = ".jpg";
+
+        arquivos.push({
+          index,
+          ext,
+          buffer,
+        });
+      } catch (_) {
+        // ignora falhas individuais para não interromper o lote
+      }
+    }
+
+    if (!arquivos.length) {
+      return res.status(500).json({ ok: false, erro: "Não foi possível baixar nenhuma imagem." });
+    }
+
+    const designDir = path.join(__dirname, "downloads", "design");
+    fs.mkdirSync(designDir, { recursive: true });
+
+    const filename = `${itemId}-imagens-${Date.now()}.zip`;
+    const zipPath = path.join(designDir, filename);
+
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver("zip", { zlib: { level: 6 } });
+
+    const zipDone = new Promise((resolve, reject) => {
+      output.on("close", resolve);
+      output.on("error", reject);
+      archive.on("error", reject);
+    });
+
+    archive.pipe(output);
+    arquivos.forEach((arquivo) => {
+      archive.append(arquivo.buffer, {
+        name: `${itemId}_${String(arquivo.index + 1).padStart(2, "0")}${arquivo.ext}`
+      });
+    });
+    await archive.finalize();
+    await zipDone;
+
+    return res.json({
+      ok: true,
+      downloadUrl: `/downloads/design/${filename}`
     });
   } catch (err) {
     return res.status(500).json({ ok: false, erro: err.message });

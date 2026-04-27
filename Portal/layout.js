@@ -142,11 +142,14 @@
     const role = String(user.role || "").toLowerCase();
     const canAccessAutomacoes =
       role === "admin" || role === "user" || role === "membro";
+    const canAccessDesign =
+      role === "admin" || role === "user" || role === "membro";
     const links = [
       { label: "Extensão", href: "extensao.html", icon: "download", adminOnly: false },
       { label: "Ferramenta OR", href: "ferramenta-or.html", icon: "download", adminOnly: false },
       { label: "Dashboard", href: "dashboard.html", icon: "vf-dashboard", adminOnly: false },
       { label: "Automações", href: "automacoes.html", icon: "repeat", adminOnly: false, automacoesOnly: true },
+      { label: "Design", href: "design.html", icon: "bar-chart", adminOnly: false, designOnly: true },
       { label: "Painel de análise de conversão", href: "fechamento.html", icon: "vf-fechamento", adminOnly: false },
       { label: "Fechamento Financeiro", href: "financeiro.html", icon: "vf-financeiro", adminOnly: false },
       { label: "Clientes", href: "clientes.html", icon: "users", adminOnly: true },
@@ -156,7 +159,7 @@
       { label: "Usuários", href: "usuarios.html", icon: "shield", adminOnly: true },
     ];
     return links
-      .filter((l) => (!l.adminOnly || role === "admin") && (!l.automacoesOnly || canAccessAutomacoes))
+      .filter((l) => (!l.adminOnly || role === "admin") && (!l.automacoesOnly || canAccessAutomacoes) && (!l.designOnly || canAccessDesign))
       .map((l) => {
         const active = isActiveLink(l.href) ? "active" : "";
         return `<a class="${active}" href="${l.href}">${svgIcon(l.icon)}<span>${l.label}</span></a>`;

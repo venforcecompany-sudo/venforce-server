@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Venforce — Design</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
+</head>
+<body class="vf-page">
+  <div class="vf-main-with-sidebar">
+    <main class="vf-content">
+      <div class="vf-page-header">
+        <h2>Design</h2>
+        <p>Baixe as imagens atuais de um anúncio do Mercado Livre para análise e criação de materiais.</p>
+      </div>
+
+      <div class="vf-card" style="margin-bottom:24px;">
+        <div class="vf-card-header">
+          <h5>Contexto</h5>
+        </div>
+        <div style="padding:1.5rem 1.75rem;">
+          <div style="display:grid;grid-template-columns:1fr 2fr;gap:14px;max-width:980px;">
+            <div class="vf-form-group" style="margin:0;">
+              <label for="design-cliente">Selecionar cliente</label>
+              <select id="design-cliente" class="vf-input">
+                <option value="">Carregando...</option>
+              </select>
+            </div>
+            <div class="vf-form-group" style="margin:0;">
+              <label for="design-item">ID ou link do anúncio</label>
+              <input id="design-item" class="vf-input" type="text" placeholder="Ex: MLB1234567890 ou link do anúncio" autocomplete="off" />
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
+            <button type="button" id="btn-design-buscar" class="vf-btn-secondary" style="margin:0;">Buscar imagens</button>
+            <button type="button" id="btn-design-download" class="vf-btn-secondary" style="margin:0;" disabled>Baixar ZIP</button>
+          </div>
+          <div id="design-status" style="margin-top:12px;font-size:.875rem;display:none;"></div>
+        </div>
+      </div>
+
+      <div class="vf-card">
+        <div class="vf-card-header">
+          <h5>Imagens do anúncio</h5>
+          <span class="vf-badge" id="design-total" style="display:none;">0</span>
+        </div>
+        <div style="padding:1.25rem 1.75rem;">
+          <div id="design-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
+            <p>Selecione um cliente, informe um anúncio e clique em "Buscar imagens".</p>
+          </div>
+          <div id="design-results" style="display:none;">
+            <div style="margin-bottom:12px;color:var(--vf-text-m);font-size:.9rem;">
+              <div><strong>Título:</strong> <span id="design-item-title">—</span></div>
+              <div><strong>ID:</strong> <span id="design-item-id">—</span></div>
+              <div><strong>Status:</strong> <span id="design-item-status">—</span></div>
+            </div>
+            <div id="design-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="layout.js"></script>
+  <script src="design.js"></script>
+</body>
+</html>
