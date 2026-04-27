@@ -233,12 +233,47 @@ function setPreviewMlState({ page, totalItensMl, linhas }) {
   const rows = Array.isArray(linhas) ? linhas : [];
   if (rows.length === 0) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="9" style="color:var(--vf-text-m);">Nenhum item encontrado nesta página.</td>`;
+    tr.innerHTML = `<td colspan="13" style="color:var(--vf-text-m);">Nenhum item encontrado nesta página.</td>`;
     tbody.appendChild(tr);
     return;
   }
 
+  const brlFormatter = new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const pctFormatter = new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
   rows.forEach((r) => {
+    const comissaoFmt =
+      r.comissaoMarketplace == null || !Number.isFinite(Number(r.comissaoMarketplace))
+        ? "—"
+        : brlFormatter.format(Number(r.comissaoMarketplace));
+    const lcNumber = Number(r.lucroContribuicao);
+    const lcFmt =
+      r.lucroContribuicao == null || !Number.isFinite(lcNumber)
+        ? "—"
+        : brlFormatter.format(lcNumber);
+    const mcNumber = Number(r.margemContribuicao);
+    const mcFmt =
+      r.margemContribuicao == null || !Number.isFinite(mcNumber)
+        ? "—"
+        : `${pctFormatter.format(mcNumber * 100)}%`;
+    const precoAlvoFmt =
+      r.precoAlvo == null || !Number.isFinite(Number(r.precoAlvo))
+        ? "—"
+        : brlFormatter.format(Number(r.precoAlvo));
+
+    const lcColor =
+      lcFmt === "—" ? "" : (lcNumber > 0 ? "color:var(--vf-success);" : (lcNumber < 0 ? "color:var(--vf-danger);" : ""));
+    const mcColor =
+      mcFmt === "—" ? "" : (mcNumber > 0 ? "color:var(--vf-success);" : (mcNumber < 0 ? "color:var(--vf-danger);" : ""));
+
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.item_id ?? "—")}</td>
@@ -250,6 +285,10 @@ function setPreviewMlState({ page, totalItensMl, linhas }) {
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.impostoPercentual ?? "—")}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.taxaFixa ?? "—")}</td>
       <td>${r.temBase ? "Sim" : "Não"}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(comissaoFmt)}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(lcFmt)}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcColor}">${escapeHTML(mcFmt)}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(precoAlvoFmt)}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -346,6 +385,8 @@ async function previewPrecificacaoMl() {
 
   const clienteSlug = document.getElementById("automacoes-cliente")?.value || "";
   const baseSlug = document.getElementById("automacoes-base")?.value || "";
+  const margemInput = document.getElementById("automacoes-margem");
+  const margemRaw = (margemInput?.value ?? "").toString().trim();
 
   if (!clienteSlug) {
     setStatus("Selecione um cliente para gerar a prévia com dados do ML.", "var(--vf-danger)");
@@ -369,6 +410,12 @@ async function previewPrecificacaoMl() {
       page: String(PREVIEW_ML_PAGE),
       limit: String(PREVIEW_ML_LIMIT),
     });
+    if (margemRaw !== "") {
+      const margemNumero = Number(margemRaw);
+      if (Number.isFinite(margemNumero)) {
+        qs.set("margemAlvo", String(margemNumero / 100));
+      }
+    }
     const res = await fetch(`${API_BASE}/automacoes/precificacao/preview-ml?${qs.toString()}`, {
       headers: { Authorization: "Bearer " + TOKEN }
     });
