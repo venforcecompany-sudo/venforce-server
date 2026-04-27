@@ -2574,7 +2574,7 @@ app.get("/debug/ml-spike/:clienteSlug/:itemId", authMiddleware, requireAdmin, as
 
     const shippingOptionsPromise = mlFetch(
       cliente.id,
-      `/items/${encodeURIComponent(itemId)}/shipping_options`
+      `/items/${encodeURIComponent(itemId)}/shipping_options?zip_code=01310100`
     );
 
     const [itemSettled, listingSettled, shippingSettled] = await Promise.allSettled([
