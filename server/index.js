@@ -815,18 +815,23 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
         shippingResp && shippingResp.ok && shippingResp.data?.coverage?.all_country?.list_cost != null
           ? Number(shippingResp.data.coverage.all_country.list_cost)
           : null;
+      const impostoNumero = Number(impostoPercentual);
+      const impostoAliquota =
+        Number.isFinite(impostoNumero) && impostoNumero >= 0
+          ? (impostoNumero > 1 ? impostoNumero / 100 : impostoNumero)
+          : null;
 
       const hasLcInputs =
         precoEfetivo !== null &&
         custoProduto !== null &&
-        impostoPercentual !== null &&
+        impostoAliquota !== null &&
         taxaFixa !== null &&
         comissaoMarketplace !== null &&
         frete !== null;
 
       const lucroContribuicao = hasLcInputs
         ? precoEfetivo -
-          (precoEfetivo * (impostoPercentual / 100)) -
+          (precoEfetivo * impostoAliquota) -
           comissaoMarketplace -
           frete -
           taxaFixa -
@@ -844,11 +849,11 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
         custoProduto !== null &&
         frete !== null &&
         taxaFixa !== null &&
-        impostoPercentual !== null &&
+        impostoAliquota !== null &&
         comissaoPercentual !== null
       ) {
         const denominator =
-          1 - (impostoPercentual / 100) - (comissaoPercentual / 100) - margemAlvo;
+          1 - impostoAliquota - (comissaoPercentual / 100) - margemAlvo;
         if (denominator > 0) {
           precoAlvo = (custoProduto + frete + taxaFixa) / denominator;
           lucroAlvo = precoAlvo * margemAlvo;
