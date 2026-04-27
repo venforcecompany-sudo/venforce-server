@@ -13,6 +13,7 @@ if (user.role !== "admin") window.location.replace("dashboard.html");
 initLayout();
 
 let ALL_CLIENTES = [];
+let ALL_BASES = [];
 let PREVIEW_ML_PAGE = 1;
 const PREVIEW_ML_LIMIT = 20;
 
@@ -90,6 +91,34 @@ function setBasesOptions(select, bases) {
   });
 }
 
+function applyBaseSearchFilter({ keepValueIfPossible = true } = {}) {
+  const input = document.getElementById("automacoes-base-search");
+  const select = document.getElementById("automacoes-base");
+  if (!select) return;
+
+  const q = (input?.value || "").trim().toLowerCase();
+  const filtered = !q
+    ? ALL_BASES
+    : ALL_BASES.filter((b) => {
+        const nome = (b?.nome || "").toString().toLowerCase();
+        const slug = (b?.slug || "").toString().toLowerCase();
+        return nome.includes(q) || slug.includes(q);
+      });
+
+  const currentValue = select.value || "";
+  setBasesOptions(select, filtered);
+
+  if (keepValueIfPossible && currentValue) {
+    const stillThere = filtered.some((b) => (b?.slug || "") === currentValue);
+    if (stillThere) {
+      select.value = currentValue;
+    } else {
+      select.value = "";
+      setStatus("Base atual não está no filtro. Selecione uma base.", "var(--vf-text-m)");
+    }
+  }
+}
+
 async function loadClientes() {
   if (!TOKEN) return;
 
@@ -151,9 +180,11 @@ async function loadBases() {
     const data = await res.json().catch(() => ({}));
     const bases = Array.isArray(data.bases) ? data.bases : (Array.isArray(data) ? data : []);
 
-    setBasesOptions(select, bases);
+    ALL_BASES = bases;
+    applyBaseSearchFilter({ keepValueIfPossible: false });
     if (select) select.disabled = false;
   } catch (err) {
+    ALL_BASES = [];
     if (select) {
       select.disabled = true;
       select.innerHTML = `<option value="">Erro ao carregar bases</option>`;
@@ -461,6 +492,9 @@ document.getElementById("automacoes-cliente")?.addEventListener("change", (e) =>
 
 document.getElementById("automacoes-cliente-search")?.addEventListener("input", () => {
   applyClienteSearchFilter({ keepValueIfPossible: true });
+});
+document.getElementById("automacoes-base-search")?.addEventListener("input", () => {
+  applyBaseSearchFilter({ keepValueIfPossible: true });
 });
 
 document.getElementById("btn-precificacao-preview")?.addEventListener("click", previewPrecificacao);
