@@ -805,36 +805,24 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
         listingPriceRoot?.sale_fee_details?.percentage_fee != null
           ? Number(listingPriceRoot.sale_fee_details.percentage_fee)
           : null;
-      const comissaoPercentualReal =
-        precoEfetivo > 0 && comissaoMarketplace !== null
-          ? comissaoMarketplace / precoEfetivo
-          : null;
 
       const frete =
-        shippingResp && shippingResp.ok
-          ? (
-              shippingResp?.data?.options?.[0]?.cost ??
-              shippingResp?.data?.options?.[0]?.list_cost ??
-              null
-            )
+        shippingResp && shippingResp.ok && shippingResp.data?.coverage?.all_country?.list_cost != null
+          ? Number(shippingResp.data.coverage.all_country.list_cost)
           : null;
-      const freteNumber = frete != null ? Number(frete) : null;
-      const impostoPercentualReal =
-        impostoPercentual !== null ? (impostoPercentual / 100) : null;
 
       const hasLcInputs =
         precoEfetivo !== null &&
         custoProduto !== null &&
         impostoPercentual !== null &&
         taxaFixa !== null &&
-        comissaoMarketplace !== null &&
-        freteNumber !== null;
+        comissaoPercentual !== null &&
+        frete !== null;
 
       const lucroContribuicao = hasLcInputs
         ? precoEfetivo -
-          (precoEfetivo * impostoPercentualReal) -
-          comissaoMarketplace -
-          freteNumber -
+          (precoEfetivo * ((impostoPercentual / 100) + (comissaoPercentual / 100))) -
+          frete -
           taxaFixa -
           custoProduto
         : null;
@@ -848,15 +836,15 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
       if (
         margemAlvo !== null &&
         custoProduto !== null &&
-        freteNumber !== null &&
+        frete !== null &&
         taxaFixa !== null &&
-        impostoPercentualReal !== null &&
-        comissaoPercentualReal !== null
+        impostoPercentual !== null &&
+        comissaoPercentual !== null
       ) {
         const denominator =
-          1 - impostoPercentualReal - comissaoPercentualReal - margemAlvo;
+          1 - (impostoPercentual / 100) - (comissaoPercentual / 100) - margemAlvo;
         if (denominator > 0) {
-          precoAlvo = (custoProduto + freteNumber + taxaFixa) / denominator;
+          precoAlvo = (custoProduto + frete + taxaFixa) / denominator;
           lucroAlvo = precoAlvo * margemAlvo;
         }
       }
@@ -884,7 +872,7 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAdmin, asy
         precoEfetivo,
         comissaoMarketplace,
         comissaoPercentual,
-        frete: freteNumber,
+        frete,
         lucroContribuicao,
         margemContribuicao,
         precoAlvo,
