@@ -77,6 +77,14 @@
           <line x1="6" y1="20" x2="6" y2="16"></line>
         </svg>`;
     }
+    if (name === "image") {
+      return `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <path d="M21 15l-5-5L5 21"></path>
+        </svg>`;
+    }
     if (name === "download") {
       return `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -149,7 +157,7 @@
       { label: "Ferramenta OR", href: "ferramenta-or.html", icon: "download", adminOnly: false },
       { label: "Dashboard", href: "dashboard.html", icon: "vf-dashboard", adminOnly: false },
       { label: "Automações", href: "automacoes.html", icon: "repeat", adminOnly: false, automacoesOnly: true },
-      { label: "Design", href: "design.html", icon: "bar-chart", adminOnly: false, designOnly: true },
+      { label: "Design", href: "design.html", icon: "image", adminOnly: false, designOnly: true },
       { label: "Painel de análise de conversão", href: "fechamento.html", icon: "vf-fechamento", adminOnly: false },
       { label: "Fechamento Financeiro", href: "financeiro.html", icon: "vf-financeiro", adminOnly: false },
       { label: "Clientes", href: "clientes.html", icon: "users", adminOnly: true },
