@@ -118,7 +118,7 @@ async function apiKeyMiddleware(req, res, next) {
 function requireAutomacoesAccess(req, res, next) {
   const role = String(req.user?.role || "").toLowerCase();
 
-  if (role === "admin" || role === "membro") {
+  if (role === "admin" || role === "user" || role === "membro") {
     return next();
   }
 

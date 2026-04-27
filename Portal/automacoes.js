@@ -10,7 +10,8 @@ function getToken() {
 const TOKEN = getToken();
 const user = JSON.parse(localStorage.getItem("vf-user") || "{}");
 const role = String(user.role || "").toLowerCase();
-const canAccessAutomacoes = role === "admin" || role === "membro";
+const canAccessAutomacoes =
+  role === "admin" || role === "user" || role === "membro";
 if (!canAccessAutomacoes) window.location.replace("dashboard.html");
 initLayout();
 

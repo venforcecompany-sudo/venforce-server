@@ -140,7 +140,8 @@
 
   function buildNavLinks(user) {
     const role = String(user.role || "").toLowerCase();
-    const canAccessAutomacoes = role === "admin" || role === "membro";
+    const canAccessAutomacoes =
+      role === "admin" || role === "user" || role === "membro";
     const links = [
       { label: "Extensão", href: "extensao.html", icon: "download", adminOnly: false },
       { label: "Ferramenta OR", href: "ferramenta-or.html", icon: "download", adminOnly: false },
