@@ -912,11 +912,17 @@ function renderRelatoriosLista(relatorios) {
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.itens_sem_base ?? 0))}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcStyle}">${escapeHTML(formatarMcMedia(r.mc_media))}</td>
       <td>${escapeHTML(r.status || "—")}</td>
-      <td>
+      <td style="white-space:nowrap;">
         <button type="button" class="vf-btn-secondary vf-relatorio-detalhes-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">Ver detalhes</button>
-        <button type="button" class="vf-btn-secondary vf-relatorio-excluir-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0 0 0 6px;padding:.25rem .6rem;font-size:.75rem;">Excluir</button>
-        <button type="button" class="vf-btn-secondary vf-relatorio-csv-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0 0 0 6px;padding:.25rem .6rem;font-size:.75rem;">CSV</button>
-        <button type="button" class="vf-btn-secondary vf-relatorio-xlsx-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0 0 0 6px;padding:.25rem .6rem;font-size:.75rem;">XLSX</button>
+      </td>
+      <td style="white-space:nowrap;">
+        <button type="button" class="vf-btn-secondary vf-relatorio-excluir-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">Excluir</button>
+      </td>
+      <td>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
+          <button type="button" class="vf-btn-secondary vf-relatorio-xlsx-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">XLSX</button>
+          <button type="button" class="vf-btn-secondary vf-relatorio-csv-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">CSV</button>
+        </div>
       </td>
     `;
     tbody.appendChild(tr);
