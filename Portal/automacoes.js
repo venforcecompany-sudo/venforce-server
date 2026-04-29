@@ -578,6 +578,10 @@ function setPreviewMlState({ page, totalItensMl, linhas }) {
   renderPreviewMlInsights();
   renderPreviewMlControls();
   renderPreviewMlTable();
+  const btnSalvar = document.getElementById("btn-precificacao-ml-salvar");
+  if (btnSalvar) {
+    btnSalvar.disabled = !(Array.isArray(PREVIEW_ML_ROWS) && PREVIEW_ML_ROWS.length > 0);
+  }
 }
 
 function resetPreviewMlUI() {
@@ -608,6 +612,8 @@ function resetPreviewMlUI() {
   PREVIEW_ML_ROWS = [];
   PREVIEW_ML_FILTER = "todos";
   PREVIEW_ML_SEARCH = "";
+  const btnSalvar = document.getElementById("btn-precificacao-ml-salvar");
+  if (btnSalvar) btnSalvar.disabled = true;
 }
 
 async function previewPrecificacao() {
@@ -744,6 +750,95 @@ async function previewPrecificacaoMl() {
   }
 }
 
+async function salvarRelatorioAtual() {
+  if (!TOKEN) return;
+
+  const clienteSelect = document.getElementById("automacoes-cliente");
+  const baseSelect = document.getElementById("automacoes-base");
+  const clienteSlug = clienteSelect?.value || "";
+  const baseSlug = baseSelect?.value || "";
+
+  if (!clienteSlug) {
+    setStatus("Selecione um cliente para salvar o relatório.", "var(--vf-danger)");
+    return;
+  }
+  if (!baseSlug) {
+    setStatus("Selecione uma base para salvar o relatório.", "var(--vf-danger)");
+    return;
+  }
+  if (!Array.isArray(PREVIEW_ML_ROWS) || PREVIEW_ML_ROWS.length === 0) {
+    setStatus("Gere uma prévia com dados ML antes de salvar.", "var(--vf-danger)");
+    return;
+  }
+
+  const margemAlvo = getMargemAlvoDecimalAtual();
+
+  const linhas = PREVIEW_ML_ROWS.map((r) => {
+    const diag = diagnosticarLinhaMl(r);
+    return {
+      item_id: r.item_id ?? null,
+      titulo: r.titulo ?? null,
+      statusAnuncio: r.status ?? null,
+      listingTypeId: r.listing_type_id ?? r.tipoAnuncio ?? null,
+      precoOriginal: Number.isFinite(Number(r.precoOriginal)) ? Number(r.precoOriginal) : null,
+      precoPromocional: Number.isFinite(Number(r.precoPromocionado)) ? Number(r.precoPromocionado) : null,
+      precoEfetivo: Number.isFinite(Number(r.precoEfetivo)) ? Number(r.precoEfetivo) : null,
+      custo: Number.isFinite(Number(r.custoProduto)) ? Number(r.custoProduto) : null,
+      impostoPercentual: Number.isFinite(Number(r.impostoPercentual)) ? Number(r.impostoPercentual) : null,
+      taxaFixa: Number.isFinite(Number(r.taxaFixa)) ? Number(r.taxaFixa) : null,
+      frete: Number.isFinite(Number(r.frete)) ? Number(r.frete) : null,
+      comissao: Number.isFinite(Number(r.comissaoMarketplace)) ? Number(r.comissaoMarketplace) : null,
+      comissaoPercentual: Number.isFinite(Number(r.comissaoPercentual)) ? Number(r.comissaoPercentual) : null,
+      lc: Number.isFinite(Number(r.lucroContribuicao)) ? Number(r.lucroContribuicao) : null,
+      mc: Number.isFinite(Number(r.margemContribuicao)) ? Number(r.margemContribuicao) : null,
+      precoAlvo: Number.isFinite(Number(r.precoAlvo)) ? Number(r.precoAlvo) : null,
+      diagnostico: diag.key,
+      temBase: !!r.temBase,
+    };
+  });
+
+  const btn = document.getElementById("btn-precificacao-ml-salvar");
+  const labelOriginal = btn ? btn.textContent : "Salvar relatório";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Salvando...";
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/automacoes/relatorios`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + TOKEN,
+      },
+      body: JSON.stringify({
+        clienteSlug,
+        baseSlug,
+        margemAlvo,
+        escopo: "pagina_atual",
+        linhas,
+      }),
+    });
+
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+
+    setStatus(`Relatório #${json.relatorio_id} salvo com sucesso (${linhas.length} itens).`, "var(--vf-success)");
+  } catch (err) {
+    setStatus(err?.message ? `Erro ao salvar relatório: ${err.message}` : "Erro ao salvar relatório.", "var(--vf-danger)");
+  } finally {
+    if (btn) {
+      btn.disabled = !(Array.isArray(PREVIEW_ML_ROWS) && PREVIEW_ML_ROWS.length > 0);
+      btn.textContent = labelOriginal;
+    }
+  }
+}
+
 document.getElementById("automacoes-cliente")?.addEventListener("change", (e) => {
   const slug = e.target.value || "";
   if (!slug) {
@@ -776,6 +871,7 @@ document.getElementById("btn-precificacao-preview-ml")?.addEventListener("click"
   PREVIEW_ML_PAGE = 1;
   previewPrecificacaoMl();
 });
+document.getElementById("btn-precificacao-ml-salvar")?.addEventListener("click", salvarRelatorioAtual);
 document.getElementById("btn-precificacao-ml-prev")?.addEventListener("click", () => {
   PREVIEW_ML_PAGE = Math.max(1, PREVIEW_ML_PAGE - 1);
   previewPrecificacaoMl();
