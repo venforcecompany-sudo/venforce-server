@@ -1452,6 +1452,7 @@ app.get("/automacoes/relatorios/:id/export/xlsx", authMiddleware, requireAutomac
         numeroOuNulo(it.preco_original),
         "",
         "",
+        "",
         numeroOuNulo(it.preco_promocional),
         "",
         "",
@@ -1524,7 +1525,7 @@ app.get("/automacoes/relatorios/:id/export/xlsx", authMiddleware, requireAutomac
     ];
     matrizSheet["!cols"] = [
       { wch: 14 }, { wch: 12 }, { wch: 48 }, { wch: 12 }, { wch: 3 },
-      { wch: 12 }, { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 13 }, { wch: 11 }, { wch: 3 },
+      { wch: 12 }, { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 3 },
       { wch: 14 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 3 },
       { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 3 },
       { wch: 18 }, { wch: 13 }, { wch: 12 }, { wch: 11 }, { wch: 12 }, { wch: 24 }, { wch: 30 },
