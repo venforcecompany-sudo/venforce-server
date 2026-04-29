@@ -152,6 +152,39 @@
         </div>
       </div>
 
+      <div class="vf-card" id="vf-diagnostico-card" style="margin-top:24px;">
+        <div class="vf-card-header">
+          <h5>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            Diagnóstico completo da loja
+          </h5>
+          <span id="vf-diagnostico-status-badge" class="vf-ml-badge vf-ml-badge-neutral">Aguardando</span>
+        </div>
+        <div style="padding:1.25rem 1.75rem;">
+          <div style="color:var(--vf-text-m);font-size:.875rem;line-height:1.5;margin-bottom:12px;">
+            Percorre todos os anúncios ativos da loja e gera um relatório consolidado com diagnóstico, contadores e MC média.
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+            <button type="button" id="btn-diagnostico-completo-start" class="vf-btn-secondary" style="margin:0;" disabled>
+              Gerar diagnóstico completo
+            </button>
+            <span id="vf-diagnostico-status-text" style="color:var(--vf-text-m);font-size:.875rem;">Selecione cliente e base para habilitar.</span>
+          </div>
+          <div id="vf-diagnostico-progress" style="display:none;margin-bottom:12px;">
+            <div style="height:8px;background:var(--vf-border);border-radius:999px;overflow:hidden;">
+              <div id="vf-diagnostico-progress-bar" style="height:100%;width:0%;background:var(--vf-primary);transition:width .25s ease;"></div>
+            </div>
+          </div>
+          <div id="vf-diagnostico-resumo" class="vf-ml-insights" style="display:none;"></div>
+          <div id="vf-diagnostico-final" class="vf-empty-state" style="display:none;padding:1rem 1rem;margin-top:10px;"></div>
+        </div>
+      </div>
+
       <div class="vf-card vf-ml-preview" style="margin-top:24px;">
         <div class="vf-card-header">
           <h5>

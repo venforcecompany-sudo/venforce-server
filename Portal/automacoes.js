@@ -22,6 +22,9 @@ const PREVIEW_ML_LIMIT = 20;
 let PREVIEW_ML_ROWS = [];
 let PREVIEW_ML_FILTER = "todos";
 let PREVIEW_ML_SEARCH = "";
+let DIAG_POLL_TIMER = null;
+let DIAG_RELATORIO_ID = null;
+let DIAG_ULTIMO_RELATORIO = null;
 const PREVIEW_ML_FILTERS = [
   { key: "todos", label: "Todos" },
   { key: "critico", label: "Críticos" },
@@ -974,6 +977,244 @@ async function carregarRelatoriosCliente(clienteSlug) {
   }
 }
 
+function pararPollingDiagnostico() {
+  if (DIAG_POLL_TIMER) {
+    clearInterval(DIAG_POLL_TIMER);
+    DIAG_POLL_TIMER = null;
+  }
+}
+
+function renderDiagnosticoCompletoEstado(relatorio) {
+  const badge = document.getElementById("vf-diagnostico-status-badge");
+  const statusText = document.getElementById("vf-diagnostico-status-text");
+  const resumo = document.getElementById("vf-diagnostico-resumo");
+  const finalBox = document.getElementById("vf-diagnostico-final");
+  const progress = document.getElementById("vf-diagnostico-progress");
+  const progressBar = document.getElementById("vf-diagnostico-progress-bar");
+  const btn = document.getElementById("btn-diagnostico-completo-start");
+  if (!badge || !statusText || !resumo || !finalBox || !progress || !progressBar || !btn) return;
+
+  const r = relatorio || {};
+  const status = String(r.status || "").toLowerCase();
+  const isProcessando = status === "processando";
+  const isConcluido = status === "concluido";
+  const isErro = status === "erro";
+
+  let tone = "neutral";
+  if (isProcessando) tone = "warning";
+  if (isConcluido) tone = "success";
+  if (isErro) tone = "danger";
+
+  badge.className = `vf-ml-badge vf-ml-badge-${tone}`;
+  badge.textContent = isProcessando ? "Processando" : (isConcluido ? "Concluído" : (isErro ? "Erro" : "Aguardando"));
+
+  const total = Number(r.total_itens ?? 0) || 0;
+  const comBase = Number(r.itens_com_base ?? 0) || 0;
+  const semBase = Number(r.itens_sem_base ?? 0) || 0;
+  const criticos = Number(r.itens_criticos ?? 0) || 0;
+  const atencao = Number(r.itens_atencao ?? 0) || 0;
+  const saudaveis = Number(r.itens_saudaveis ?? 0) || 0;
+  const mcMedia = formatarMcMedia(r.mc_media);
+
+  resumo.innerHTML = `
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Total</div><div class="vf-ml-insight-value">${escapeHTML(String(total))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Com base</div><div class="vf-ml-insight-value">${escapeHTML(String(comBase))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Sem base</div><div class="vf-ml-insight-value">${escapeHTML(String(semBase))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Críticos</div><div class="vf-ml-insight-value">${escapeHTML(String(criticos))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Atenção</div><div class="vf-ml-insight-value">${escapeHTML(String(atencao))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Saudáveis</div><div class="vf-ml-insight-value">${escapeHTML(String(saudaveis))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">MC média</div><div class="vf-ml-insight-value">${escapeHTML(mcMedia)}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Relatório</div><div class="vf-ml-insight-value">#${escapeHTML(String(r.id ?? "—"))}</div></div>
+  `;
+  resumo.style.display = "grid";
+
+  if (isProcessando) {
+    const pct = Math.min(95, Math.round(15 + (Math.log10(total + 1) * 35)));
+    progress.style.display = "block";
+    progressBar.style.width = `${Math.max(8, pct)}%`;
+    progressBar.style.background = "var(--vf-primary)";
+    statusText.textContent = `Diagnóstico em andamento. Itens processados até agora: ${total}.`;
+    finalBox.style.display = "none";
+  } else if (isConcluido) {
+    progress.style.display = "block";
+    progressBar.style.width = "100%";
+    progressBar.style.background = "var(--vf-success)";
+    statusText.textContent = `Diagnóstico concluído em ${escapeHTML(formatarDataRelatorio(r.created_at))}.`;
+    finalBox.style.display = "block";
+    finalBox.innerHTML = `<p><strong>Concluído.</strong> Relatório #${escapeHTML(String(r.id || "—"))} finalizado com ${escapeHTML(String(total))} itens.</p>`;
+  } else if (isErro) {
+    progress.style.display = "block";
+    progressBar.style.width = "100%";
+    progressBar.style.background = "var(--vf-danger)";
+    statusText.textContent = "O diagnóstico terminou com erro.";
+    finalBox.style.display = "block";
+    finalBox.innerHTML = `<p style="color:var(--vf-danger);"><strong>Erro:</strong> ${escapeHTML(r.observacoes || "Falha durante o processamento.")}</p>`;
+  } else {
+    progress.style.display = "none";
+    progressBar.style.width = "0%";
+    statusText.textContent = "Aguardando início do diagnóstico completo.";
+    finalBox.style.display = "none";
+  }
+
+  btn.disabled = isProcessando;
+}
+
+function resetDiagnosticoCompletoUI() {
+  pararPollingDiagnostico();
+  DIAG_RELATORIO_ID = null;
+  DIAG_ULTIMO_RELATORIO = null;
+
+  const badge = document.getElementById("vf-diagnostico-status-badge");
+  const statusText = document.getElementById("vf-diagnostico-status-text");
+  const resumo = document.getElementById("vf-diagnostico-resumo");
+  const finalBox = document.getElementById("vf-diagnostico-final");
+  const progress = document.getElementById("vf-diagnostico-progress");
+  const progressBar = document.getElementById("vf-diagnostico-progress-bar");
+  const btn = document.getElementById("btn-diagnostico-completo-start");
+  if (!badge || !statusText || !resumo || !finalBox || !progress || !progressBar || !btn) return;
+
+  const clienteSlug = document.getElementById("automacoes-cliente")?.value || "";
+  const baseSlug = document.getElementById("automacoes-base")?.value || "";
+  const podeIniciar = Boolean(clienteSlug && baseSlug);
+
+  badge.className = "vf-ml-badge vf-ml-badge-neutral";
+  badge.textContent = "Aguardando";
+  statusText.textContent = podeIniciar
+    ? "Pronto para iniciar um novo diagnóstico completo."
+    : "Selecione cliente e base para habilitar.";
+  resumo.style.display = "none";
+  resumo.innerHTML = "";
+  finalBox.style.display = "none";
+  finalBox.innerHTML = "";
+  progress.style.display = "none";
+  progressBar.style.width = "0%";
+  progressBar.style.background = "var(--vf-primary)";
+  btn.disabled = !podeIniciar;
+}
+
+async function carregarDiagnosticoCompleto(relatorioId) {
+  if (!relatorioId || !TOKEN) return;
+
+  const res = await fetch(`${API_BASE}/automacoes/diagnostico-completo/${encodeURIComponent(relatorioId)}`, {
+    headers: { Authorization: "Bearer " + TOKEN },
+  });
+
+  if (res.status === 401) { clearSession(); return; }
+  if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.ok) {
+    throw new Error(json?.erro || `HTTP ${res.status}`);
+  }
+
+  const anteriorStatus = String(DIAG_ULTIMO_RELATORIO?.status || "").toLowerCase();
+  const atual = json.relatorio || {};
+  const atualStatus = String(atual.status || "").toLowerCase();
+
+  DIAG_RELATORIO_ID = atual.id || relatorioId;
+  DIAG_ULTIMO_RELATORIO = atual;
+  renderDiagnosticoCompletoEstado(atual);
+
+  if (atualStatus === "concluido") {
+    pararPollingDiagnostico();
+    if (anteriorStatus !== "concluido") {
+      setStatus(`Diagnóstico completo concluído (relatório #${atual.id}).`, "var(--vf-success)");
+      const slug = document.getElementById("automacoes-cliente")?.value || "";
+      if (slug) carregarRelatoriosCliente(slug);
+    }
+  } else if (atualStatus === "erro") {
+    pararPollingDiagnostico();
+    if (anteriorStatus !== "erro") {
+      setStatus("Diagnóstico completo finalizado com erro. Verifique as observações.", "var(--vf-danger)");
+    }
+  }
+}
+
+function iniciarPollingDiagnostico(relatorioId) {
+  DIAG_RELATORIO_ID = relatorioId;
+  pararPollingDiagnostico();
+  carregarDiagnosticoCompleto(relatorioId).catch((err) => {
+    setStatus(`Erro ao carregar diagnóstico: ${err.message}`, "var(--vf-danger)");
+  });
+  DIAG_POLL_TIMER = setInterval(() => {
+    carregarDiagnosticoCompleto(relatorioId).catch((err) => {
+      pararPollingDiagnostico();
+      setStatus(`Erro no polling do diagnóstico: ${err.message}`, "var(--vf-danger)");
+      const badge = document.getElementById("vf-diagnostico-status-badge");
+      const statusText = document.getElementById("vf-diagnostico-status-text");
+      if (badge) {
+        badge.className = "vf-ml-badge vf-ml-badge-danger";
+        badge.textContent = "Erro";
+      }
+      if (statusText) statusText.textContent = "Falha ao atualizar o andamento do diagnóstico.";
+    });
+  }, 3000);
+}
+
+async function iniciarDiagnosticoCompleto() {
+  if (!TOKEN) return;
+
+  const clienteSlug = document.getElementById("automacoes-cliente")?.value || "";
+  const baseSlug = document.getElementById("automacoes-base")?.value || "";
+  if (!clienteSlug) {
+    setStatus("Selecione um cliente para gerar o diagnóstico completo.", "var(--vf-danger)");
+    return;
+  }
+  if (!baseSlug) {
+    setStatus("Selecione uma base para gerar o diagnóstico completo.", "var(--vf-danger)");
+    return;
+  }
+
+  const btn = document.getElementById("btn-diagnostico-completo-start");
+  const labelOriginal = btn ? btn.textContent : "Gerar diagnóstico completo";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Iniciando...";
+  }
+
+  try {
+    const margemAlvo = getMargemAlvoDecimalAtual();
+    const res = await fetch(`${API_BASE}/automacoes/diagnostico-completo/start`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + TOKEN,
+      },
+      body: JSON.stringify({
+        clienteSlug,
+        baseSlug,
+        margemAlvo,
+      }),
+    });
+
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+
+    const json = await res.json().catch(() => ({}));
+    if (res.status === 409) {
+      const relatorioId = json?.relatorio_id;
+      setStatus(json?.erro || "Já existe um diagnóstico completo em andamento para este cliente.", "var(--vf-text-m)");
+      if (relatorioId) iniciarPollingDiagnostico(relatorioId);
+      return;
+    }
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+
+    setStatus(`Diagnóstico completo iniciado (relatório #${json.relatorio_id}).`, "var(--vf-success)");
+    iniciarPollingDiagnostico(json.relatorio_id);
+  } catch (err) {
+    setStatus(err?.message ? `Erro ao iniciar diagnóstico completo: ${err.message}` : "Erro ao iniciar diagnóstico completo.", "var(--vf-danger)");
+  } finally {
+    if (btn) btn.textContent = labelOriginal;
+    if (!DIAG_ULTIMO_RELATORIO || String(DIAG_ULTIMO_RELATORIO.status || "").toLowerCase() !== "processando") {
+      const clienteAtual = document.getElementById("automacoes-cliente")?.value || "";
+      const baseAtual = document.getElementById("automacoes-base")?.value || "";
+      if (btn) btn.disabled = !(clienteAtual && baseAtual);
+    }
+  }
+}
+
 async function excluirRelatorioSalvo(id) {
   if (!id || !TOKEN) return;
 
@@ -1167,6 +1408,7 @@ async function abrirRelatorioDetalhe(id) {
 
 document.getElementById("automacoes-cliente")?.addEventListener("change", (e) => {
   const slug = e.target.value || "";
+  resetDiagnosticoCompletoUI();
   if (!slug) {
     setStatus("Selecione um cliente para preparar o contexto.", "var(--vf-text-m)");
     const card = document.getElementById("vf-relatorios-card");
@@ -1175,6 +1417,9 @@ document.getElementById("automacoes-cliente")?.addEventListener("change", (e) =>
   }
   setStatus(`Cliente selecionado: ${escapeHTML(slug)} (ações: em breve)`, "var(--vf-success)");
   carregarRelatoriosCliente(slug);
+});
+document.getElementById("automacoes-base")?.addEventListener("change", () => {
+  resetDiagnosticoCompletoUI();
 });
 
 document.getElementById("automacoes-cliente-search")?.addEventListener("input", () => {
@@ -1208,6 +1453,7 @@ document.getElementById("btn-relatorios-refresh")?.addEventListener("click", () 
   }
   carregarRelatoriosCliente(slug);
 });
+document.getElementById("btn-diagnostico-completo-start")?.addEventListener("click", iniciarDiagnosticoCompleto);
 document.getElementById("btn-precificacao-ml-salvar")?.addEventListener("click", salvarRelatorioAtual);
 document.getElementById("btn-precificacao-ml-prev")?.addEventListener("click", () => {
   PREVIEW_ML_PAGE = Math.max(1, PREVIEW_ML_PAGE - 1);
@@ -1231,5 +1477,6 @@ document.addEventListener("keydown", (e) => {
 if (TOKEN) {
   loadClientes();
   loadBases();
+  resetDiagnosticoCompletoUI();
 }
 
