@@ -107,6 +107,51 @@
         </div>
       </div>
 
+      <div class="vf-card" id="vf-relatorios-card" style="margin-top:24px;display:none;">
+        <div class="vf-card-header">
+          <h5>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            Relatórios salvos do cliente
+          </h5>
+          <span class="vf-badge" id="vf-relatorios-total" style="display:none;">0</span>
+        </div>
+        <div style="padding:1.25rem 1.75rem;">
+          <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:10px;">
+            <button type="button" id="btn-relatorios-refresh" class="vf-btn-secondary" style="margin:0;padding:.4rem .7rem;">Atualizar</button>
+          </div>
+          <div id="vf-relatorios-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
+            <p>Selecione um cliente para ver os relatórios salvos.</p>
+          </div>
+          <div id="vf-relatorios-wrapper" class="vf-table-wrapper" style="display:none;">
+            <table class="vf-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Data</th>
+                  <th>Base</th>
+                  <th>Escopo</th>
+                  <th style="text-align:right;">Margem alvo</th>
+                  <th style="text-align:right;">Itens</th>
+                  <th style="text-align:right;">Críticos</th>
+                  <th style="text-align:right;">Atenção</th>
+                  <th style="text-align:right;">Saudáveis</th>
+                  <th style="text-align:right;">Sem base</th>
+                  <th style="text-align:right;">MC média</th>
+                  <th>Status</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="vf-relatorios-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div class="vf-card vf-ml-preview" style="margin-top:24px;">
         <div class="vf-card-header">
           <h5>

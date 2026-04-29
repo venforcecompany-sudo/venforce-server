@@ -829,6 +829,9 @@ async function salvarRelatorioAtual() {
     }
 
     setStatus(`Relatório #${json.relatorio_id} salvo com sucesso (${linhas.length} itens).`, "var(--vf-success)");
+    if (typeof carregarRelatoriosCliente === "function") {
+      carregarRelatoriosCliente(clienteSlug);
+    }
   } catch (err) {
     setStatus(err?.message ? `Erro ao salvar relatório: ${err.message}` : "Erro ao salvar relatório.", "var(--vf-danger)");
   } finally {
@@ -839,13 +842,141 @@ async function salvarRelatorioAtual() {
   }
 }
 
+function formatarDataRelatorio(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("pt-BR");
+  } catch (_) {
+    return String(iso);
+  }
+}
+
+function formatarMargemAlvo(valor) {
+  const n = Number(valor);
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  return `${(n * 100).toFixed(2)}%`;
+}
+
+function formatarMcMedia(valor) {
+  const n = Number(valor);
+  if (!Number.isFinite(n)) return "—";
+  return `${(n * 100).toFixed(2)}%`;
+}
+
+function renderRelatoriosLista(relatorios) {
+  const tbody = document.getElementById("vf-relatorios-tbody");
+  const wrapper = document.getElementById("vf-relatorios-wrapper");
+  const empty = document.getElementById("vf-relatorios-empty");
+  const badge = document.getElementById("vf-relatorios-total");
+  if (!tbody || !wrapper || !empty || !badge) return;
+
+  tbody.innerHTML = "";
+
+  const lista = Array.isArray(relatorios) ? relatorios : [];
+  badge.style.display = "inline-block";
+  badge.textContent = String(lista.length);
+
+  if (lista.length === 0) {
+    wrapper.style.display = "none";
+    empty.style.display = "block";
+    empty.innerHTML = `<p>Nenhum relatório salvo para este cliente ainda.</p>`;
+    return;
+  }
+
+  empty.style.display = "none";
+  wrapper.style.display = "block";
+
+  lista.forEach((r) => {
+    const tr = document.createElement("tr");
+    const mcStyle =
+      Number.isFinite(Number(r.mc_media)) && Number(r.mc_media) < 0
+        ? "color:var(--vf-danger);"
+        : (Number.isFinite(Number(r.mc_media)) && Number(r.mc_media) > 0
+            ? "color:var(--vf-success);"
+            : "");
+
+    tr.innerHTML = `
+      <td style="font-family:var(--vf-mono);font-size:.8rem;">#${escapeHTML(String(r.id))}</td>
+      <td>${escapeHTML(formatarDataRelatorio(r.created_at))}</td>
+      <td>${escapeHTML(r.base_slug || "—")}</td>
+      <td>${escapeHTML(r.escopo || "—")}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(formatarMargemAlvo(r.margem_alvo))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.total_itens ?? 0))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;color:var(--vf-danger);">${escapeHTML(String(r.itens_criticos ?? 0))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;color:var(--vf-warning, #d97706);">${escapeHTML(String(r.itens_atencao ?? 0))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;color:var(--vf-success);">${escapeHTML(String(r.itens_saudaveis ?? 0))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.itens_sem_base ?? 0))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcStyle}">${escapeHTML(formatarMcMedia(r.mc_media))}</td>
+      <td>${escapeHTML(r.status || "—")}</td>
+      <td>
+        <button type="button" class="vf-btn-secondary vf-relatorio-detalhes-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">Ver detalhes</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll(".vf-relatorio-detalhes-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      if (!id) return;
+      // Placeholder — a próxima etapa implementa o detalhe.
+      setStatus(`Abrir detalhe do relatório #${id} (em breve).`, "var(--vf-text-m)");
+    });
+  });
+}
+
+async function carregarRelatoriosCliente(clienteSlug) {
+  const card = document.getElementById("vf-relatorios-card");
+  const empty = document.getElementById("vf-relatorios-empty");
+  const wrapper = document.getElementById("vf-relatorios-wrapper");
+  const badge = document.getElementById("vf-relatorios-total");
+  if (!card || !empty || !wrapper || !badge) return;
+
+  if (!clienteSlug) {
+    card.style.display = "none";
+    return;
+  }
+  if (!TOKEN) return;
+
+  card.style.display = "block";
+  wrapper.style.display = "none";
+  empty.style.display = "block";
+  empty.innerHTML = `<p>Carregando relatórios...</p>`;
+  badge.style.display = "none";
+
+  try {
+    const qs = new URLSearchParams({ clienteSlug });
+    const res = await fetch(`${API_BASE}/automacoes/relatorios?${qs.toString()}`, {
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+
+    renderRelatoriosLista(json.relatorios || []);
+  } catch (err) {
+    wrapper.style.display = "none";
+    empty.style.display = "block";
+    empty.innerHTML = `<p style="color:var(--vf-danger);">Erro ao carregar relatórios: ${escapeHTML(err.message || "desconhecido")}</p>`;
+    badge.style.display = "none";
+  }
+}
+
 document.getElementById("automacoes-cliente")?.addEventListener("change", (e) => {
   const slug = e.target.value || "";
   if (!slug) {
     setStatus("Selecione um cliente para preparar o contexto.", "var(--vf-text-m)");
+    const card = document.getElementById("vf-relatorios-card");
+    if (card) card.style.display = "none";
     return;
   }
   setStatus(`Cliente selecionado: ${escapeHTML(slug)} (ações: em breve)`, "var(--vf-success)");
+  carregarRelatoriosCliente(slug);
 });
 
 document.getElementById("automacoes-cliente-search")?.addEventListener("input", () => {
@@ -870,6 +1001,14 @@ document.getElementById("btn-precificacao-preview")?.addEventListener("click", p
 document.getElementById("btn-precificacao-preview-ml")?.addEventListener("click", () => {
   PREVIEW_ML_PAGE = 1;
   previewPrecificacaoMl();
+});
+document.getElementById("btn-relatorios-refresh")?.addEventListener("click", () => {
+  const slug = document.getElementById("automacoes-cliente")?.value || "";
+  if (!slug) {
+    setStatus("Selecione um cliente para listar relatórios.", "var(--vf-danger)");
+    return;
+  }
+  carregarRelatoriosCliente(slug);
 });
 document.getElementById("btn-precificacao-ml-salvar")?.addEventListener("click", salvarRelatorioAtual);
 document.getElementById("btn-precificacao-ml-prev")?.addEventListener("click", () => {
