@@ -219,6 +219,58 @@ CREATE TABLE IF NOT EXISTS callbacks (
         criticos INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS relatorios (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
+        cliente_slug TEXT NOT NULL,
+        base_id INTEGER REFERENCES bases(id) ON DELETE SET NULL,
+        base_slug TEXT NOT NULL,
+        margem_alvo NUMERIC(6,4),
+        escopo TEXT NOT NULL DEFAULT 'pagina_atual',
+        status TEXT NOT NULL DEFAULT 'concluido',
+        total_itens INTEGER NOT NULL DEFAULT 0,
+        itens_com_base INTEGER NOT NULL DEFAULT 0,
+        itens_sem_base INTEGER NOT NULL DEFAULT 0,
+        itens_criticos INTEGER NOT NULL DEFAULT 0,
+        itens_atencao INTEGER NOT NULL DEFAULT 0,
+        itens_saudaveis INTEGER NOT NULL DEFAULT 0,
+        mc_media NUMERIC(10,6),
+        observacoes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_relatorios_cliente_slug ON relatorios(cliente_slug, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_relatorios_cliente_id ON relatorios(cliente_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS relatorio_itens (
+        id SERIAL PRIMARY KEY,
+        relatorio_id INTEGER NOT NULL REFERENCES relatorios(id) ON DELETE CASCADE,
+        item_id TEXT NOT NULL,
+        titulo TEXT,
+        status_anuncio TEXT,
+        listing_type_id TEXT,
+        preco_original NUMERIC(14,4),
+        preco_promocional NUMERIC(14,4),
+        preco_efetivo NUMERIC(14,4),
+        custo NUMERIC(14,4),
+        imposto_percentual NUMERIC(8,4),
+        taxa_fixa NUMERIC(14,4),
+        frete NUMERIC(14,4),
+        comissao NUMERIC(14,4),
+        comissao_percentual NUMERIC(8,4),
+        lc NUMERIC(14,4),
+        mc NUMERIC(10,6),
+        preco_alvo NUMERIC(14,4),
+        preco_sugerido NUMERIC(14,4),
+        diferenca_preco NUMERIC(14,4),
+        acao_recomendada TEXT,
+        explicacao_calculo TEXT,
+        diagnostico TEXT,
+        tem_base BOOLEAN NOT NULL DEFAULT false
+      );
+      CREATE INDEX IF NOT EXISTS idx_relatorio_itens_relatorio ON relatorio_itens(relatorio_id);
+      CREATE INDEX IF NOT EXISTS idx_relatorio_itens_diagnostico ON relatorio_itens(relatorio_id, diagnostico);
     `);   
 
     await pool.query(`
@@ -981,6 +1033,204 @@ app.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAutomacoes
         base: "SELECT custos WHERE base_id = ... (produto_id = item_id/MLB)",
         camposNullPorSeguranca: ["lucroContribuicaoPreview", "margemContribuicaoPreview"],
       },
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// SALVAR RELATÓRIO
+app.post("/automacoes/relatorios", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const {
+      clienteSlug, baseSlug, margemAlvo, escopo, observacoes, linhas,
+    } = req.body || {};
+
+    if (!clienteSlug) return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório." });
+    if (!baseSlug) return res.status(400).json({ ok: false, erro: "baseSlug é obrigatório." });
+    if (!Array.isArray(linhas) || linhas.length === 0) {
+      return res.status(400).json({ ok: false, erro: "linhas é obrigatório e não pode ser vazio." });
+    }
+
+    const clienteSlugNorm = normalizarSlug(clienteSlug);
+    const baseSlugNorm = normalizarSlug(baseSlug);
+    const escopoNorm = ["pagina_atual", "loja_completa"].includes(escopo) ? escopo : "pagina_atual";
+
+    const c = await pool.query("SELECT id, slug FROM clientes WHERE slug = $1", [clienteSlugNorm]);
+    if (!c.rows.length) return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+
+    const b = await pool.query("SELECT id, slug FROM bases WHERE slug = $1", [baseSlugNorm]);
+    if (!b.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada." });
+
+    const margemNumber = Number(margemAlvo);
+    const margem = Number.isFinite(margemNumber) && margemNumber > 0 && margemNumber < 1
+      ? margemNumber
+      : null;
+
+    let comBase = 0, semBase = 0, criticos = 0, atencao = 0, saudaveis = 0;
+    let mcSum = 0, mcCount = 0;
+    for (const l of linhas) {
+      if (l.temBase) comBase++; else semBase++;
+      if (l.diagnostico === "critico") criticos++;
+      if (l.diagnostico === "atencao") atencao++;
+      if (l.diagnostico === "saudavel") saudaveis++;
+      const mc = Number(l.mc);
+      if (Number.isFinite(mc)) { mcSum += mc; mcCount++; }
+    }
+    const mcMedia = mcCount > 0 ? mcSum / mcCount : null;
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const ins = await client.query(
+        `INSERT INTO relatorios
+         (user_id, cliente_id, cliente_slug, base_id, base_slug, margem_alvo,
+          escopo, status, total_itens, itens_com_base, itens_sem_base,
+          itens_criticos, itens_atencao, itens_saudaveis, mc_media, observacoes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'concluido',$8,$9,$10,$11,$12,$13,$14,$15)
+         RETURNING id, created_at`,
+        [
+          req.user.id,
+          c.rows[0].id, c.rows[0].slug,
+          b.rows[0].id, b.rows[0].slug,
+          margem, escopoNorm,
+          linhas.length, comBase, semBase,
+          criticos, atencao, saudaveis,
+          mcMedia, (observacoes || null),
+        ]
+      );
+      const relatorioId = ins.rows[0].id;
+
+      for (const l of linhas) {
+        await client.query(
+          `INSERT INTO relatorio_itens
+           (relatorio_id, item_id, titulo, status_anuncio, listing_type_id,
+            preco_original, preco_promocional, preco_efetivo,
+            custo, imposto_percentual, taxa_fixa,
+            frete, comissao, comissao_percentual,
+            lc, mc, preco_alvo, preco_sugerido, diferenca_preco,
+            acao_recomendada, explicacao_calculo, diagnostico, tem_base)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+          [
+            relatorioId,
+            String(l.item_id || ""),
+            l.titulo ?? null,
+            l.statusAnuncio ?? null,
+            l.listingTypeId ?? null,
+            l.precoOriginal ?? null,
+            l.precoPromocional ?? null,
+            l.precoEfetivo ?? null,
+            l.custo ?? null,
+            l.impostoPercentual ?? null,
+            l.taxaFixa ?? null,
+            l.frete ?? null,
+            l.comissao ?? null,
+            l.comissaoPercentual ?? null,
+            l.lc ?? null,
+            l.mc ?? null,
+            l.precoAlvo ?? null,
+            l.precoSugerido ?? l.preco_sugerido ?? null,
+            l.diferencaPreco ?? l.diferenca_preco ?? null,
+            l.acaoRecomendada ?? l.acao_recomendada ?? null,
+            l.explicacaoCalculo ?? l.explicacao_calculo ?? null,
+            l.diagnostico ?? null,
+            !!l.temBase,
+          ]
+        );
+      }
+
+      await client.query("COMMIT");
+
+      registrarLog({
+        ...dadosUsuarioDeReq(req),
+        acao: "automacoes.relatorio.salvar",
+        detalhes: {
+          relatorio_id: relatorioId,
+          cliente_slug: clienteSlugNorm,
+          base_slug: baseSlugNorm,
+          escopo: escopoNorm,
+          total_itens: linhas.length,
+        },
+        ip: extrairIp(req),
+        status: "sucesso",
+      });
+
+      return res.status(201).json({
+        ok: true,
+        relatorio_id: relatorioId,
+        created_at: ins.rows[0].created_at,
+      });
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// LISTAR RELATÓRIOS POR CLIENTE
+app.get("/automacoes/relatorios", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const clienteSlug = String(req.query.clienteSlug || "").trim();
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório." });
+    }
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const slug = normalizarSlug(clienteSlug);
+
+    const result = await pool.query(
+      `SELECT id, user_id, cliente_slug, base_slug, margem_alvo, escopo, status,
+              total_itens, itens_com_base, itens_sem_base,
+              itens_criticos, itens_atencao, itens_saudaveis,
+              mc_media, observacoes, created_at
+         FROM relatorios
+        WHERE cliente_slug = $1
+        ORDER BY created_at DESC
+        LIMIT $2`,
+      [slug, limit]
+    );
+
+    return res.json({ ok: true, total: result.rows.length, relatorios: result.rows });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// BUSCAR DETALHE DE UM RELATÓRIO
+app.get("/automacoes/relatorios/:id", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, erro: "id inválido." });
+    }
+
+    const rel = await pool.query("SELECT * FROM relatorios WHERE id = $1", [id]);
+    if (!rel.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Relatório não encontrado." });
+    }
+
+    const itens = await pool.query(
+      `SELECT id, item_id, titulo, status_anuncio, listing_type_id,
+              preco_original, preco_promocional, preco_efetivo,
+              custo, imposto_percentual, taxa_fixa,
+              frete, comissao, comissao_percentual,
+              lc, mc, preco_alvo, preco_sugerido, diferenca_preco,
+              acao_recomendada, explicacao_calculo, diagnostico, tem_base
+         FROM relatorio_itens
+        WHERE relatorio_id = $1
+        ORDER BY id ASC`,
+      [id]
+    );
+
+    return res.json({
+      ok: true,
+      relatorio: rel.rows[0],
+      itens: itens.rows,
+      total_itens: itens.rows.length,
     });
   } catch (err) {
     return res.status(500).json({ ok: false, erro: err.message });
