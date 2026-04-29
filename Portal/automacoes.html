@@ -212,6 +212,16 @@
     </main>
   </div>
 
+  <div id="vf-calc-modal" class="vf-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:var(--vf-surface);border-radius:14px;max-width:520px;width:90%;padding:1.5rem;box-shadow:var(--vf-shadow-card);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <h5 style="margin:0;">Como o cálculo foi feito</h5>
+        <button id="vf-calc-modal-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;">×</button>
+      </div>
+      <div id="vf-calc-modal-body"></div>
+    </div>
+  </div>
+
   <script src="layout.js"></script>
   <script src="automacoes.js"></script>
 </body>

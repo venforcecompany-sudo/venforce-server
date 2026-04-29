@@ -32,6 +32,42 @@ const PREVIEW_ML_FILTERS = [
   { key: "sem_comissao", label: "Sem comissão" },
 ];
 
+function abrirModalCalculo(r) {
+  const modal = document.getElementById("vf-calc-modal");
+  const body = document.getElementById("vf-calc-modal-body");
+  if (!modal || !body) return;
+  const brl = (n) => Number.isFinite(Number(n)) ? new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(Number(n)) : "—";
+  const pct = (n) => Number.isFinite(Number(n)) ? `${(Number(n)*100).toFixed(2)}%` : "—";
+  const preco = Number(r.precoEfetivo);
+  const imp = Number(r.impostoPercentual);
+  const impAliq = Number.isFinite(imp) ? (imp > 1 ? imp/100 : imp) : 0;
+  const valorImposto = Number.isFinite(preco) ? preco * impAliq : null;
+  body.innerHTML = `
+    <div style="font-family:var(--vf-mono);font-size:.85rem;line-height:1.8;">
+      <div><strong>Item:</strong> ${escapeHTML(r.item_id || "—")}</div>
+      <hr style="margin:.75rem 0;opacity:.3;">
+      <div>Preço efetivo: <strong>${brl(r.precoEfetivo)}</strong></div>
+      <div>(−) Imposto (${pct(impAliq)}): ${brl(valorImposto)}</div>
+      <div>(−) Comissão ML: ${brl(r.comissaoMarketplace)}</div>
+      <div>(−) Frete: ${brl(r.frete)}</div>
+      <div>(−) Taxa fixa: ${brl(r.taxaFixa)}</div>
+      <div>(−) Custo produto: ${brl(r.custoProduto)}</div>
+      <hr style="margin:.75rem 0;opacity:.3;">
+      <div><strong>= Lucro de Contribuição: ${brl(r.lucroContribuicao)}</strong></div>
+      <div><strong>Margem de Contribuição: ${pct(r.margemContribuicao)}</strong></div>
+      ${r.precoAlvo != null ? `<hr style="margin:.75rem 0;opacity:.3;"><div><strong>Preço Alvo (margem desejada): ${brl(r.precoAlvo)}</strong></div>` : ""}
+    </div>
+  `;
+  modal.style.display = "flex";
+}
+
+document.getElementById("vf-calc-modal-close")?.addEventListener("click", () => {
+  document.getElementById("vf-calc-modal").style.display = "none";
+});
+document.getElementById("vf-calc-modal")?.addEventListener("click", (e) => {
+  if (e.target.id === "vf-calc-modal") e.target.style.display = "none";
+});
+
 function clearSession() {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem("vf-user");
@@ -402,7 +438,7 @@ function renderPreviewMlTable() {
   const rows = getPreviewMlFilteredRows();
   if (rows.length === 0) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="14" style="color:var(--vf-text-m);">Nenhum item encontrado com os filtros atuais.</td>`;
+    tr.innerHTML = `<td colspan="15" style="color:var(--vf-text-m);">Nenhum item encontrado com os filtros atuais.</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -472,7 +508,10 @@ function renderPreviewMlTable() {
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.item_id ?? "—")}</td>
+      <td style="font-family:var(--vf-mono);font-size:.8rem;">
+        <button type="button" class="vf-calc-info-btn" data-idx="${PREVIEW_ML_ROWS.indexOf(r)}" style="border:none;background:transparent;cursor:pointer;color:var(--vf-primary);margin-right:4px;" title="Ver cálculo">ⓘ</button>
+        ${escapeHTML(r.item_id ?? "—")}
+      </td>
       <td style="white-space:normal;line-height:1.35;" title="${escapeHTML(r.titulo ?? "")}">${escapeHTML(r.titulo ?? "—")}</td>
       <td>${escapeHTML(r.status ?? "—")}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.precoBaseCalculo ?? r.precoEfetivo ?? r.precoVendaAtual ?? "—")}</td>
@@ -489,6 +528,13 @@ function renderPreviewMlTable() {
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${ajusteColor}">${ajusteIcon} ${escapeHTML(ajusteFmt)}</td>
     `;
     tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll(".vf-calc-info-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.getAttribute("data-idx"), 10);
+      const linha = PREVIEW_ML_ROWS[idx];
+      if (linha) abrirModalCalculo(linha);
+    });
   });
 }
 
