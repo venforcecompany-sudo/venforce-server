@@ -247,6 +247,7 @@ CREATE TABLE IF NOT EXISTS callbacks (
         id SERIAL PRIMARY KEY,
         relatorio_id INTEGER NOT NULL REFERENCES relatorios(id) ON DELETE CASCADE,
         item_id TEXT NOT NULL,
+        sku TEXT,
         titulo TEXT,
         status_anuncio TEXT,
         listing_type_id TEXT,
@@ -301,6 +302,10 @@ END $$;
 
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_ml_tokens_cliente ON ml_tokens (cliente_id);
+    `);
+
+    await pool.query(`
+      ALTER TABLE relatorio_itens ADD COLUMN IF NOT EXISTS sku TEXT;
     `);
     
     res.json({ ok: true, mensagem: "Tabelas criadas com sucesso" });
@@ -1214,7 +1219,7 @@ app.get("/automacoes/relatorios/:id", authMiddleware, requireAutomacoesAccess, a
     }
 
     const itens = await pool.query(
-      `SELECT id, item_id, titulo, status_anuncio, listing_type_id,
+      `SELECT id, item_id, sku, titulo, status_anuncio, listing_type_id,
               preco_original, preco_promocional, preco_efetivo,
               custo, imposto_percentual, taxa_fixa,
               frete, comissao, comissao_percentual,
@@ -1285,11 +1290,49 @@ function montarNomeArquivoRelatorio(relatorio, extensao, prefixo = "relatorio") 
   return `${prefixo}-${cliente}-${base}-${escopo}-#${id}.${extensao}`;
 }
 
+function extrairSkuMl(body) {
+  const direto = [body?.seller_custom_field, body?.sku]
+    .map((v) => String(v || "").trim())
+    .find(Boolean);
+  if (direto) return direto;
+
+  const nomeEhSku = (txt) => String(txt || "").toLowerCase().includes("sku");
+  const attrs = Array.isArray(body?.attributes) ? body.attributes : [];
+  for (const a of attrs) {
+    const id = String(a?.id || "");
+    const name = String(a?.name || "");
+    if (!nomeEhSku(id) && !nomeEhSku(name)) continue;
+    const val = a?.value_name ?? a?.value_id ?? a?.value_struct?.number ?? a?.value_struct?.unit ?? null;
+    const sku = String(val || "").trim();
+    if (sku) return sku;
+  }
+
+  const vars = Array.isArray(body?.variations) ? body.variations : [];
+  for (const v of vars) {
+    const vDireto = [v?.seller_custom_field, v?.sku]
+      .map((x) => String(x || "").trim())
+      .find(Boolean);
+    if (vDireto) return vDireto;
+
+    const vAttrs = Array.isArray(v?.attributes) ? v.attributes : [];
+    for (const a of vAttrs) {
+      const id = String(a?.id || "");
+      const name = String(a?.name || "");
+      if (!nomeEhSku(id) && !nomeEhSku(name)) continue;
+      const val = a?.value_name ?? a?.value_id ?? a?.value_struct?.number ?? a?.value_struct?.unit ?? null;
+      const sku = String(val || "").trim();
+      if (sku) return sku;
+    }
+  }
+
+  return null;
+}
+
 async function carregarRelatorioComItens(id) {
   const rel = await pool.query("SELECT * FROM relatorios WHERE id = $1", [id]);
   if (!rel.rows.length) return null;
   const itens = await pool.query(
-    `SELECT id, item_id, titulo, status_anuncio, listing_type_id,
+    `SELECT id, item_id, sku, titulo, status_anuncio, listing_type_id,
             preco_original, preco_promocional, preco_efetivo,
             custo, imposto_percentual, taxa_fixa,
             frete, comissao, comissao_percentual,
@@ -1441,7 +1484,7 @@ app.get("/automacoes/relatorios/:id/export/xlsx", authMiddleware, requireAutomac
       const freteNum = numeroOuNulo(it.frete);
       matrizRows.push([
         it.item_id || "",
-        "",
+        it.sku || "",
         it.titulo || "",
         "MeLi",
         "",
@@ -1647,6 +1690,7 @@ function diagAcaoRecomendada({ diagnostico, precoEfetivo, precoAlvo }) {
 // Replica EXATAMENTE o pipeline de enriquecimento da rota /automacoes/precificacao/preview-ml para 1 item.
 async function diagEnriquecerItem({ clienteId, body, baseRow, margemAlvo }) {
   const itemId = String(body?.id || "").trim();
+  const sku = extrairSkuMl(body);
   const listingTypeId = body?.listing_type_id || null;
   const categoryId = body?.category_id || null;
   const sellerId = body?.seller_id || null;
@@ -1744,6 +1788,7 @@ async function diagEnriquecerItem({ clienteId, body, baseRow, margemAlvo }) {
 
   return {
     item_id: itemId,
+    sku,
     titulo: body?.title || null,
     status_anuncio: body?.status || null,
     listing_type_id: listingTypeId,
@@ -1771,7 +1816,7 @@ async function diagEnriquecerItem({ clienteId, body, baseRow, margemAlvo }) {
 async function diagInserirItensLote(relatorioId, linhas) {
   if (!linhas.length) return;
   const cols = [
-    "relatorio_id", "item_id", "titulo", "status_anuncio", "listing_type_id",
+    "relatorio_id", "item_id", "sku", "titulo", "status_anuncio", "listing_type_id",
     "preco_original", "preco_promocional", "preco_efetivo",
     "custo", "imposto_percentual", "taxa_fixa",
     "frete", "comissao", "comissao_percentual",
@@ -1786,7 +1831,7 @@ async function diagInserirItensLote(relatorioId, linhas) {
     for (let i = 0; i < cols.length; i++) slots.push(`$${p++}`);
     placeholders.push(`(${slots.join(",")})`);
     valores.push(
-      relatorioId, l.item_id, l.titulo, l.status_anuncio, l.listing_type_id,
+      relatorioId, l.item_id, l.sku, l.titulo, l.status_anuncio, l.listing_type_id,
       l.preco_original, l.preco_promocional, l.preco_efetivo,
       l.custo, l.imposto_percentual, l.taxa_fixa,
       l.frete, l.comissao, l.comissao_percentual,
