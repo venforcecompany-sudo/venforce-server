@@ -1408,18 +1408,31 @@ app.get("/automacoes/relatorios/:id/export/xlsx", authMiddleware, requireAutomac
 
     const matrizRows = [
       [
+        "Edite custo, frete, comissão, preço ou margem alvo para simular novas decisões.",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+      ],
+      [
         "Dados do anúncio", "", "", "",
+        "",
         "Cálculo atual", "", "", "", "", "", "", "", "", "",
-        "Promoção", "", "",
-        "Preço sugerido", "", "", "",
+        "",
+        "Promoção", "", "", "",
+        "",
+        "Preço sugerido", "", "",
+        "",
         "Decisão", "", "", "", "", "", "",
       ],
       [
-        "ID", "SKU/Base", "Título", "Marketplace", "Preço Custo", "Imposto %",
-        "Frete?", "Frete R$", "Taxa fixa", "Comissão %", "Comissão R$",
+        "ID", "SKU/Base", "Título", "Marketplace",
+        "",
+        "Preço Custo", "Imposto %", "Frete?", "Frete R$", "Taxa fixa", "Comissão %", "Comissão R$",
         "Preço Original", "Lucro Original", "MC Original",
-        "Preço Promocional", "Lucro Promocional", "MC Promocional",
-        "Preço Efetivo", "Margem Alvo", "Preço Sugerido", "Lucro no Sugerido",
+        "",
+        "Preço Promocional", "Lucro Promocional", "MC Promocional", "Preço Efetivo",
+        "",
+        "Margem Alvo", "Preço Sugerido", "Lucro no Sugerido",
+        "",
         "Ação", "Preço Adotado", "Diferença R$", "Diferença %",
         "Diagnóstico", "Ação Recomendada", "Observação",
       ],
@@ -1434,6 +1447,7 @@ app.get("/automacoes/relatorios/:id/export/xlsx", authMiddleware, requireAutomac
         "",
         it.titulo || "",
         "MeLi",
+        "",
         numeroOuNulo(it.custo),
         impostoPct,
         freteNum !== null ? "Sim" : "Não",
@@ -1444,11 +1458,14 @@ app.get("/automacoes/relatorios/:id/export/xlsx", authMiddleware, requireAutomac
         numeroOuNulo(it.preco_original),
         "",
         "",
+        "",
         numeroOuNulo(it.preco_promocional),
         "",
         "",
         numeroOuNulo(it.preco_efetivo),
+        "",
         paraDecimalPct(relatorio.margem_alvo),
+        "",
         "",
         "",
         "",
@@ -1473,41 +1490,89 @@ app.get("/automacoes/relatorios/:id/export/xlsx", authMiddleware, requireAutomac
       if (!ws[addr]) return;
       ws[addr].z = format;
     };
+    const setStyle = (ws, addr, style) => {
+      ws[addr] = { ...(ws[addr] || { t: "s", v: "" }), s: style };
+    };
+    const paintRange = (ws, startCol, endCol, row, style) => {
+      for (let c = startCol; c <= endCol; c++) {
+        const addr = XLSX.utils.encode_cell({ c, r: row - 1 });
+        setStyle(ws, addr, style);
+      }
+    };
 
-    for (let row = 3; row < 3 + itens.length; row++) {
-      setFormula(matrizSheet, `M${row}`, `IFERROR(L${row}-L${row}*(F${row}+J${row})-H${row}-I${row}-E${row},"")`, "R$ #,##0.00");
-      setFormula(matrizSheet, `N${row}`, `IFERROR(M${row}/L${row},"")`, "0.00%");
-      setFormula(matrizSheet, `P${row}`, `IFERROR(O${row}-O${row}*(F${row}+J${row})-H${row}-I${row}-E${row},"")`, "R$ #,##0.00");
-      setFormula(matrizSheet, `Q${row}`, `IFERROR(P${row}/O${row},"")`, "0.00%");
-      setFormula(matrizSheet, `T${row}`, `IFERROR((E${row}+H${row}+I${row})/(1-F${row}-J${row}-S${row}),"")`, "R$ #,##0.00");
-      setFormula(matrizSheet, `U${row}`, `IFERROR(T${row}*S${row},"")`, "R$ #,##0.00");
-      setFormula(matrizSheet, `V${row}`, `IF(Z${row}="sem_base","Revisar custo/base",IF(Z${row}="sem_frete","Revisar frete",IF(Z${row}="sem_comissao","Revisar comissão",IF(R${row}<T${row},"Subir preço",IF(R${row}>T${row},"Avaliar redução","Manter")))))`);
-      setFormula(matrizSheet, `W${row}`, `IF(V${row}="Subir preço",T${row},R${row})`, "R$ #,##0.00");
-      setFormula(matrizSheet, `X${row}`, `IFERROR(W${row}-R${row},"")`, "R$ #,##0.00");
-      setFormula(matrizSheet, `Y${row}`, `IFERROR(X${row}/R${row},"")`, "0.00%");
+    for (let row = 4; row < 4 + itens.length; row++) {
+      setFormula(matrizSheet, `N${row}`, `IFERROR(M${row}-M${row}*(G${row}+K${row})-I${row}-J${row}-F${row},"")`, "R$ #,##0.00");
+      setFormula(matrizSheet, `O${row}`, `IFERROR(N${row}/M${row},"")`, "0.00%");
+      setFormula(matrizSheet, `R${row}`, `IFERROR(Q${row}-Q${row}*(G${row}+K${row})-I${row}-J${row}-F${row},"")`, "R$ #,##0.00");
+      setFormula(matrizSheet, `S${row}`, `IFERROR(R${row}/Q${row},"")`, "0.00%");
+      setFormula(matrizSheet, `W${row}`, `IFERROR((F${row}+I${row}+J${row})/(1-G${row}-K${row}-V${row}),"")`, "R$ #,##0.00");
+      setFormula(matrizSheet, `X${row}`, `IFERROR(W${row}*V${row},"")`, "R$ #,##0.00");
+      setFormula(matrizSheet, `Z${row}`, `IF(AD${row}="sem_base","Revisar custo/base",IF(AD${row}="sem_frete","Revisar frete",IF(AD${row}="sem_comissao","Revisar comissão",IF(T${row}<W${row},"Subir preço",IF(T${row}>W${row},"Avaliar redução","Manter")))))`);
+      setFormula(matrizSheet, `AA${row}`, `IF(Z${row}="Subir preço",W${row},T${row})`, "R$ #,##0.00");
+      setFormula(matrizSheet, `AB${row}`, `IFERROR(AA${row}-T${row},"")`, "R$ #,##0.00");
+      setFormula(matrizSheet, `AC${row}`, `IFERROR(AB${row}/T${row},"")`, "0.00%");
 
-      ["E", "H", "I", "K", "L", "O", "R"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "R$ #,##0.00"));
-      ["F", "J", "S"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "0.00%"));
+      ["F", "I", "J", "L", "M", "N", "Q", "R", "T", "W", "X", "AA", "AB"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "R$ #,##0.00"));
+      ["G", "K", "O", "S", "V", "AC"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "0.00%"));
     }
 
     setFormat(resumoSheet, "B5", "0.00%");
     setFormat(resumoSheet, "B12", "0.00%");
 
-    matrizSheet["!autofilter"] = { ref: `A2:AB${Math.max(2, 2 + itens.length)}` };
-    matrizSheet["!freeze"] = { xSplit: 0, ySplit: 2, topLeftCell: "A3", activePane: "bottomLeft", state: "frozen" };
+    matrizSheet["!autofilter"] = { ref: `A3:AF${Math.max(3, 3 + itens.length)}` };
+    matrizSheet["!freeze"] = { xSplit: 0, ySplit: 3, topLeftCell: "A4", activePane: "bottomLeft", state: "frozen" };
     matrizSheet["!merges"] = [
-      XLSX.utils.decode_range("A1:D1"),
-      XLSX.utils.decode_range("E1:N1"),
-      XLSX.utils.decode_range("O1:Q1"),
-      XLSX.utils.decode_range("R1:U1"),
-      XLSX.utils.decode_range("V1:AB1"),
+      XLSX.utils.decode_range("A1:AF1"),
+      XLSX.utils.decode_range("A2:D2"),
+      XLSX.utils.decode_range("F2:O2"),
+      XLSX.utils.decode_range("Q2:T2"),
+      XLSX.utils.decode_range("V2:X2"),
+      XLSX.utils.decode_range("Z2:AF2"),
     ];
     matrizSheet["!cols"] = [
-      { wch: 14 }, { wch: 12 }, { wch: 38 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 11 },
-      { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 14 }, { wch: 15 },
-      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 13 }, { wch: 12 },
-      { wch: 11 }, { wch: 12 }, { wch: 24 }, { wch: 28 },
+      { wch: 14 }, { wch: 12 }, { wch: 48 }, { wch: 12 }, { wch: 3 },
+      { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 11 }, { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 3 },
+      { wch: 14 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 3 },
+      { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 3 },
+      { wch: 18 }, { wch: 13 }, { wch: 12 }, { wch: 11 }, { wch: 12 }, { wch: 24 }, { wch: 30 },
     ];
+
+    const styleInstrucao = {
+      font: { bold: true, color: { rgb: "374151" } },
+      fill: { patternType: "solid", fgColor: { rgb: "F3F4F6" } },
+      alignment: { horizontal: "left", vertical: "center" },
+    };
+    const styleHeaderBase = {
+      font: { bold: true, color: { rgb: "1F2937" } },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+    };
+    const styleDados = { ...styleHeaderBase, fill: { patternType: "solid", fgColor: { rgb: "E5E7EB" } } };
+    const styleCalc = { ...styleHeaderBase, fill: { patternType: "solid", fgColor: { rgb: "DBEAFE" } } };
+    const stylePromo = { ...styleHeaderBase, fill: { patternType: "solid", fgColor: { rgb: "EDE9FE" } } };
+    const styleSug = { ...styleHeaderBase, fill: { patternType: "solid", fgColor: { rgb: "DCFCE7" } } };
+    const styleDec = { ...styleHeaderBase, fill: { patternType: "solid", fgColor: { rgb: "FEF3C7" } } };
+    const styleSeparador = { fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } } };
+
+    paintRange(matrizSheet, 0, 31, 1, styleInstrucao);
+    paintRange(matrizSheet, 0, 3, 2, styleDados);
+    paintRange(matrizSheet, 5, 14, 2, styleCalc);
+    paintRange(matrizSheet, 16, 19, 2, stylePromo);
+    paintRange(matrizSheet, 21, 23, 2, styleSug);
+    paintRange(matrizSheet, 25, 31, 2, styleDec);
+    paintRange(matrizSheet, 4, 4, 2, styleSeparador);
+    paintRange(matrizSheet, 15, 15, 2, styleSeparador);
+    paintRange(matrizSheet, 20, 20, 2, styleSeparador);
+    paintRange(matrizSheet, 24, 24, 2, styleSeparador);
+
+    paintRange(matrizSheet, 0, 3, 3, styleDados);
+    paintRange(matrizSheet, 5, 14, 3, styleCalc);
+    paintRange(matrizSheet, 16, 19, 3, stylePromo);
+    paintRange(matrizSheet, 21, 23, 3, styleSug);
+    paintRange(matrizSheet, 25, 31, 3, styleDec);
+    paintRange(matrizSheet, 4, 4, 3, styleSeparador);
+    paintRange(matrizSheet, 15, 15, 3, styleSeparador);
+    paintRange(matrizSheet, 20, 20, 3, styleSeparador);
+    paintRange(matrizSheet, 24, 24, 3, styleSeparador);
     resumoSheet["!cols"] = [{ wch: 22 }, { wch: 28 }];
 
     XLSX.utils.book_append_sheet(workbook, resumoSheet, "Resumo");
