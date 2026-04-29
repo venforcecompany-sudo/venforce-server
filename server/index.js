@@ -1277,12 +1277,12 @@ function csvEscape(valor) {
   return texto;
 }
 
-function montarNomeArquivoRelatorio(relatorio, extensao) {
+function montarNomeArquivoRelatorio(relatorio, extensao, prefixo = "relatorio") {
   const cliente = normalizarSlug(relatorio?.cliente_slug || "cliente");
   const base = normalizarSlug(relatorio?.base_slug || "base");
   const escopo = normalizarSlug(relatorio?.escopo || "escopo");
   const id = Number(relatorio?.id) || 0;
-  return `relatorio-${cliente}-${base}-${escopo}-#${id}.${extensao}`;
+  return `${prefixo}-${cliente}-${base}-${escopo}-#${id}.${extensao}`;
 }
 
 async function carregarRelatorioComItens(id) {
@@ -1380,54 +1380,138 @@ app.get("/automacoes/relatorios/:id/export/xlsx", authMiddleware, requireAutomac
     }
     const { relatorio, itens } = dados;
 
+    const paraDecimalPct = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return null;
+      return n > 1 ? n / 100 : n;
+    };
+    const numeroOuNulo = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
     const resumoRows = [
-      { campo: "id", valor: relatorio.id },
-      { campo: "cliente_slug", valor: relatorio.cliente_slug },
-      { campo: "base_slug", valor: relatorio.base_slug },
-      { campo: "escopo", valor: relatorio.escopo },
-      { campo: "status", valor: relatorio.status },
-      { campo: "margem_alvo", valor: relatorio.margem_alvo },
-      { campo: "total_itens", valor: relatorio.total_itens },
-      { campo: "itens_com_base", valor: relatorio.itens_com_base },
-      { campo: "itens_sem_base", valor: relatorio.itens_sem_base },
-      { campo: "itens_criticos", valor: relatorio.itens_criticos },
-      { campo: "itens_atencao", valor: relatorio.itens_atencao },
-      { campo: "itens_saudaveis", valor: relatorio.itens_saudaveis },
-      { campo: "mc_media", valor: relatorio.mc_media },
-      { campo: "observacoes", valor: relatorio.observacoes },
-      { campo: "created_at", valor: relatorio.created_at },
+      ["Resumo do relatório", ""],
+      ["Cliente", relatorio.cliente_slug || "—"],
+      ["Base", relatorio.base_slug || "—"],
+      ["Escopo", relatorio.escopo || "—"],
+      ["Margem alvo", paraDecimalPct(relatorio.margem_alvo)],
+      ["Total de itens", numeroOuNulo(relatorio.total_itens)],
+      ["Com base", numeroOuNulo(relatorio.itens_com_base)],
+      ["Sem base", numeroOuNulo(relatorio.itens_sem_base)],
+      ["Críticos", numeroOuNulo(relatorio.itens_criticos)],
+      ["Atenção", numeroOuNulo(relatorio.itens_atencao)],
+      ["Saudáveis", numeroOuNulo(relatorio.itens_saudaveis)],
+      ["MC média", paraDecimalPct(relatorio.mc_media)],
+      ["Data do relatório", relatorio.created_at ? new Date(relatorio.created_at).toLocaleString("pt-BR") : "—"],
     ];
 
-    const itensRows = itens.map((it) => ({
-      item_id: it.item_id,
-      titulo: it.titulo,
-      status_anuncio: it.status_anuncio,
-      listing_type_id: it.listing_type_id,
-      preco_original: it.preco_original,
-      preco_promocional: it.preco_promocional,
-      preco_efetivo: it.preco_efetivo,
-      custo: it.custo,
-      imposto_percentual: it.imposto_percentual,
-      taxa_fixa: it.taxa_fixa,
-      frete: it.frete,
-      comissao: it.comissao,
-      comissao_percentual: it.comissao_percentual,
-      lc: it.lc,
-      mc: it.mc,
-      preco_alvo: it.preco_alvo,
-      preco_sugerido: it.preco_sugerido,
-      diferenca_preco: it.diferenca_preco,
-      acao_recomendada: it.acao_recomendada,
-      explicacao_calculo: it.explicacao_calculo,
-      diagnostico: it.diagnostico,
-      tem_base: it.tem_base,
-    }));
+    const matrizRows = [
+      [
+        "Dados do anúncio", "", "", "",
+        "Cálculo atual", "", "", "", "", "", "", "", "", "",
+        "Promoção", "", "",
+        "Preço sugerido", "", "", "",
+        "Decisão", "", "", "", "", "", "",
+      ],
+      [
+        "ID", "SKU/Base", "Título", "Marketplace", "Preço Custo", "Imposto %",
+        "Frete?", "Frete R$", "Taxa fixa", "Comissão %", "Comissão R$",
+        "Preço Original", "Lucro Original", "MC Original",
+        "Preço Promocional", "Lucro Promocional", "MC Promocional",
+        "Preço Efetivo", "Margem Alvo", "Preço Sugerido", "Lucro no Sugerido",
+        "Ação", "Preço Adotado", "Diferença R$", "Diferença %",
+        "Diagnóstico", "Ação Recomendada", "Observação",
+      ],
+    ];
+
+    itens.forEach((it) => {
+      const impostoPct = paraDecimalPct(it.imposto_percentual);
+      const comissaoPct = paraDecimalPct(it.comissao_percentual);
+      const freteNum = numeroOuNulo(it.frete);
+      matrizRows.push([
+        it.item_id || "",
+        "",
+        it.titulo || "",
+        "MeLi",
+        numeroOuNulo(it.custo),
+        impostoPct,
+        freteNum !== null ? "Sim" : "Não",
+        freteNum,
+        numeroOuNulo(it.taxa_fixa),
+        comissaoPct,
+        numeroOuNulo(it.comissao),
+        numeroOuNulo(it.preco_original),
+        "",
+        "",
+        numeroOuNulo(it.preco_promocional),
+        "",
+        "",
+        numeroOuNulo(it.preco_efetivo),
+        paraDecimalPct(relatorio.margem_alvo),
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        it.diagnostico || "",
+        it.acao_recomendada || "",
+        it.explicacao_calculo || "",
+      ]);
+    });
 
     const workbook = XLSX.utils.book_new();
-    const resumoSheet = XLSX.utils.json_to_sheet(resumoRows);
-    const itensSheet = XLSX.utils.json_to_sheet(itensRows.length ? itensRows : [{}]);
+    const resumoSheet = XLSX.utils.aoa_to_sheet(resumoRows);
+    const matrizSheet = XLSX.utils.aoa_to_sheet(matrizRows);
+
+    const setFormula = (ws, addr, formula, format) => {
+      ws[addr] = { ...(ws[addr] || {}), f: formula };
+      if (format) ws[addr].z = format;
+    };
+    const setFormat = (ws, addr, format) => {
+      if (!ws[addr]) return;
+      ws[addr].z = format;
+    };
+
+    for (let row = 3; row < 3 + itens.length; row++) {
+      setFormula(matrizSheet, `M${row}`, `IFERROR(L${row}-L${row}*(F${row}+J${row})-H${row}-I${row}-E${row},"")`, "R$ #,##0.00");
+      setFormula(matrizSheet, `N${row}`, `IFERROR(M${row}/L${row},"")`, "0.00%");
+      setFormula(matrizSheet, `P${row}`, `IFERROR(O${row}-O${row}*(F${row}+J${row})-H${row}-I${row}-E${row},"")`, "R$ #,##0.00");
+      setFormula(matrizSheet, `Q${row}`, `IFERROR(P${row}/O${row},"")`, "0.00%");
+      setFormula(matrizSheet, `T${row}`, `IFERROR((E${row}+H${row}+I${row})/(1-F${row}-J${row}-S${row}),"")`, "R$ #,##0.00");
+      setFormula(matrizSheet, `U${row}`, `IFERROR(T${row}*S${row},"")`, "R$ #,##0.00");
+      setFormula(matrizSheet, `V${row}`, `IF(Z${row}="sem_base","Revisar custo/base",IF(Z${row}="sem_frete","Revisar frete",IF(Z${row}="sem_comissao","Revisar comissão",IF(R${row}<T${row},"Subir preço",IF(R${row}>T${row},"Avaliar redução","Manter")))))`);
+      setFormula(matrizSheet, `W${row}`, `IF(V${row}="Subir preço",T${row},R${row})`, "R$ #,##0.00");
+      setFormula(matrizSheet, `X${row}`, `IFERROR(W${row}-R${row},"")`, "R$ #,##0.00");
+      setFormula(matrizSheet, `Y${row}`, `IFERROR(X${row}/R${row},"")`, "0.00%");
+
+      ["E", "H", "I", "K", "L", "O", "R"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "R$ #,##0.00"));
+      ["F", "J", "S"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "0.00%"));
+    }
+
+    setFormat(resumoSheet, "B5", "0.00%");
+    setFormat(resumoSheet, "B12", "0.00%");
+
+    matrizSheet["!autofilter"] = { ref: `A2:AB${Math.max(2, 2 + itens.length)}` };
+    matrizSheet["!freeze"] = { xSplit: 0, ySplit: 2, topLeftCell: "A3", activePane: "bottomLeft", state: "frozen" };
+    matrizSheet["!merges"] = [
+      XLSX.utils.decode_range("A1:D1"),
+      XLSX.utils.decode_range("E1:N1"),
+      XLSX.utils.decode_range("O1:Q1"),
+      XLSX.utils.decode_range("R1:U1"),
+      XLSX.utils.decode_range("V1:AB1"),
+    ];
+    matrizSheet["!cols"] = [
+      { wch: 14 }, { wch: 12 }, { wch: 38 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 11 },
+      { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 14 }, { wch: 15 },
+      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 13 }, { wch: 12 },
+      { wch: 11 }, { wch: 12 }, { wch: 24 }, { wch: 28 },
+    ];
+    resumoSheet["!cols"] = [{ wch: 22 }, { wch: 28 }];
+
     XLSX.utils.book_append_sheet(workbook, resumoSheet, "Resumo");
-    XLSX.utils.book_append_sheet(workbook, itensSheet, "Itens");
+    XLSX.utils.book_append_sheet(workbook, matrizSheet, "Matriz Mercado Livre");
 
     const buffer = XLSX.write(workbook, {
       type: "buffer",
@@ -1435,7 +1519,7 @@ app.get("/automacoes/relatorios/:id/export/xlsx", authMiddleware, requireAutomac
       compression: true,
     });
 
-    const filename = montarNomeArquivoRelatorio(relatorio, "xlsx");
+    const filename = montarNomeArquivoRelatorio(relatorio, "xlsx", "matriz-precificacao");
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     return res.send(buffer);
