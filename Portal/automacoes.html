@@ -271,6 +271,51 @@
     </div>
   </div>
 
+  <div id="vf-relatorio-detalhe-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--vf-surface);border-radius:14px;max-width:1280px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:var(--vf-shadow-card);overflow:hidden;">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:1.25rem 1.5rem;border-bottom:1px solid var(--vf-border);">
+        <h5 style="margin:0;display:flex;align-items:center;gap:8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+          <span id="vf-relatorio-detalhe-titulo">Detalhe do relatório</span>
+        </h5>
+        <button id="vf-relatorio-detalhe-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;color:var(--vf-text-m);" aria-label="Fechar">×</button>
+      </div>
+      <div id="vf-relatorio-detalhe-body" style="padding:1.25rem 1.5rem;overflow:auto;flex:1;">
+        <div id="vf-relatorio-detalhe-loading" style="color:var(--vf-text-m);">Carregando...</div>
+        <div id="vf-relatorio-detalhe-content" style="display:none;">
+          <div id="vf-relatorio-detalhe-resumo" class="vf-ml-insights" style="display:grid;"></div>
+          <div id="vf-relatorio-detalhe-meta" style="margin:14px 0;color:var(--vf-text-m);font-size:.875rem;"></div>
+          <div class="vf-table-wrapper">
+            <table class="vf-table">
+              <thead>
+                <tr>
+                  <th>Item (MLB)</th>
+                  <th>Título</th>
+                  <th style="text-align:right;">Preço original</th>
+                  <th style="text-align:right;">Promocional</th>
+                  <th style="text-align:right;">Efetivo</th>
+                  <th style="text-align:right;">Custo</th>
+                  <th style="text-align:right;">Imposto (%)</th>
+                  <th style="text-align:right;">Frete (R$)</th>
+                  <th style="text-align:right;">Comissão (R$)</th>
+                  <th>Tem base</th>
+                  <th>Diagnóstico</th>
+                  <th style="text-align:right;">LC (R$)</th>
+                  <th style="text-align:right;">MC (%)</th>
+                  <th style="text-align:right;">Preço Alvo (R$)</th>
+                </tr>
+              </thead>
+              <tbody id="vf-relatorio-detalhe-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="layout.js"></script>
   <script src="automacoes.js"></script>
 </body>

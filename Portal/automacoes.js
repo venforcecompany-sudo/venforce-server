@@ -919,8 +919,7 @@ function renderRelatoriosLista(relatorios) {
     btn.addEventListener("click", () => {
       const id = btn.getAttribute("data-id");
       if (!id) return;
-      // Placeholder — a próxima etapa implementa o detalhe.
-      setStatus(`Abrir detalhe do relatório #${id} (em breve).`, "var(--vf-text-m)");
+      abrirRelatorioDetalhe(id);
     });
   });
 }
@@ -964,6 +963,169 @@ async function carregarRelatoriosCliente(clienteSlug) {
     empty.style.display = "block";
     empty.innerHTML = `<p style="color:var(--vf-danger);">Erro ao carregar relatórios: ${escapeHTML(err.message || "desconhecido")}</p>`;
     badge.style.display = "none";
+  }
+}
+
+function fecharRelatorioDetalheModal() {
+  const modal = document.getElementById("vf-relatorio-detalhe-modal");
+  if (modal) modal.style.display = "none";
+}
+
+function diagnosticoLabelDoSalvo(key) {
+  switch ((key || "").toLowerCase()) {
+    case "critico": return { label: "Crítico", tone: "danger" };
+    case "atencao": return { label: "Atenção", tone: "warning" };
+    case "saudavel": return { label: "Saudável", tone: "success" };
+    case "sem_base": return { label: "Sem base", tone: "neutral" };
+    case "sem_frete": return { label: "Sem frete", tone: "warning" };
+    case "sem_comissao": return { label: "Sem comissão", tone: "warning" };
+    case "sem_dados": return { label: "Sem dados", tone: "neutral" };
+    default: return { label: key || "—", tone: "neutral" };
+  }
+}
+
+function renderRelatorioDetalheResumo(relatorio) {
+  const container = document.getElementById("vf-relatorio-detalhe-resumo");
+  const meta = document.getElementById("vf-relatorio-detalhe-meta");
+  if (!container || !relatorio) return;
+
+  container.innerHTML = `
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Total</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.total_itens ?? 0))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Com base</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_com_base ?? 0))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Sem base</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_sem_base ?? 0))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Críticos</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_criticos ?? 0))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Atenção</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_atencao ?? 0))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Saudáveis</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_saudaveis ?? 0))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">MC média</div><div class="vf-ml-insight-value">${escapeHTML(formatarMcMedia(relatorio.mc_media))}</div></div>
+    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Margem alvo</div><div class="vf-ml-insight-value">${escapeHTML(formatarMargemAlvo(relatorio.margem_alvo))}</div></div>
+  `;
+
+  if (meta) {
+    const partes = [
+      `<strong>#${escapeHTML(String(relatorio.id))}</strong>`,
+      `Cliente: <strong>${escapeHTML(relatorio.cliente_slug || "—")}</strong>`,
+      `Base: <strong>${escapeHTML(relatorio.base_slug || "—")}</strong>`,
+      `Escopo: <strong>${escapeHTML(relatorio.escopo || "—")}</strong>`,
+      `Status: <strong>${escapeHTML(relatorio.status || "—")}</strong>`,
+      `Data: <strong>${escapeHTML(formatarDataRelatorio(relatorio.created_at))}</strong>`,
+    ];
+    if (relatorio.observacoes) {
+      partes.push(`Observações: <em>${escapeHTML(relatorio.observacoes)}</em>`);
+    }
+    meta.innerHTML = partes.join(" · ");
+  }
+}
+
+function renderRelatorioDetalheItens(itens) {
+  const tbody = document.getElementById("vf-relatorio-detalhe-tbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+
+  const lista = Array.isArray(itens) ? itens : [];
+  if (lista.length === 0) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="14" style="color:var(--vf-text-m);">Este relatório não possui itens salvos.</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+
+  const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pct = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const fmtMoney = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? brl.format(n) : "—";
+  };
+  const fmtPctNum = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? `${pct.format(n)}` : "—";
+  };
+  const fmtMcFraction = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? `${pct.format(n * 100)}%` : "—";
+  };
+
+  lista.forEach((it) => {
+    const diag = diagnosticoLabelDoSalvo(it.diagnostico);
+    const lcN = Number(it.lc);
+    const mcN = Number(it.mc);
+    const lcColor = !Number.isFinite(lcN) ? "" : (lcN > 0 ? "color:var(--vf-success);" : (lcN < 0 ? "color:var(--vf-danger);" : ""));
+    const mcColor = !Number.isFinite(mcN) ? "" : (mcN > 0 ? "color:var(--vf-success);" : (mcN < 0 ? "color:var(--vf-danger);" : ""));
+
+    const precoOriginalN = Number(it.preco_original);
+    const precoPromoN = Number(it.preco_promocional);
+    const temPromo =
+      Number.isFinite(precoPromoN) && precoPromoN > 0 &&
+      Number.isFinite(precoOriginalN) && precoPromoN < precoOriginalN;
+    const originalStyle = temPromo ? "text-decoration:line-through;color:var(--vf-text-m);" : "";
+    const promoStyle = temPromo ? "color:var(--vf-success);font-weight:600;" : "color:var(--vf-text-m);";
+    const promoFmt = temPromo ? fmtMoney(precoPromoN) : "—";
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(it.item_id || "—")}</td>
+      <td style="white-space:normal;line-height:1.35;" title="${escapeHTML(it.titulo || "")}">${escapeHTML(it.titulo || "—")}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${originalStyle}">${escapeHTML(fmtMoney(it.preco_original))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${promoStyle}">${escapeHTML(promoFmt)}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_efetivo))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.custo))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtPctNum(it.imposto_percentual))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.frete))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.comissao))}</td>
+      <td>${it.tem_base ? "Sim" : "Não"}</td>
+      <td><span class="vf-ml-badge vf-ml-badge-${diag.tone}">${escapeHTML(diag.label)}</span></td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(fmtMoney(it.lc))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcColor}">${escapeHTML(fmtMcFraction(it.mc))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_alvo))}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function abrirRelatorioDetalhe(id) {
+  if (!id || !TOKEN) return;
+
+  const modal = document.getElementById("vf-relatorio-detalhe-modal");
+  const loading = document.getElementById("vf-relatorio-detalhe-loading");
+  const content = document.getElementById("vf-relatorio-detalhe-content");
+  const titulo = document.getElementById("vf-relatorio-detalhe-titulo");
+  if (!modal || !loading || !content) return;
+
+  if (titulo) titulo.textContent = `Relatório #${id}`;
+  modal.style.display = "flex";
+  loading.style.display = "block";
+  loading.textContent = "Carregando...";
+  content.style.display = "none";
+
+  try {
+    const res = await fetch(`${API_BASE}/automacoes/relatorios/${encodeURIComponent(id)}`, {
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+
+    const relatorio = json.relatorio || {};
+    const itens = json.itens || [];
+
+    if (titulo) {
+      titulo.textContent = `Relatório #${relatorio.id || id} — ${relatorio.cliente_slug || "—"}`;
+    }
+
+    renderRelatorioDetalheResumo(relatorio);
+    renderRelatorioDetalheItens(itens);
+
+    loading.style.display = "none";
+    content.style.display = "block";
+  } catch (err) {
+    loading.style.display = "block";
+    loading.innerHTML = `<span style="color:var(--vf-danger);">Erro ao carregar detalhe: ${escapeHTML(err.message || "desconhecido")}</span>`;
+    content.style.display = "none";
   }
 }
 
@@ -1018,6 +1180,16 @@ document.getElementById("btn-precificacao-ml-prev")?.addEventListener("click", (
 document.getElementById("btn-precificacao-ml-next")?.addEventListener("click", () => {
   PREVIEW_ML_PAGE = PREVIEW_ML_PAGE + 1;
   previewPrecificacaoMl();
+});
+document.getElementById("vf-relatorio-detalhe-close")?.addEventListener("click", fecharRelatorioDetalheModal);
+document.getElementById("vf-relatorio-detalhe-modal")?.addEventListener("click", (e) => {
+  if (e.target.id === "vf-relatorio-detalhe-modal") fecharRelatorioDetalheModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const modal = document.getElementById("vf-relatorio-detalhe-modal");
+    if (modal && modal.style.display !== "none") fecharRelatorioDetalheModal();
+  }
 });
 
 if (TOKEN) {
