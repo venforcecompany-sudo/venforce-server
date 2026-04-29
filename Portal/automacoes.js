@@ -25,6 +25,7 @@ let PREVIEW_ML_SEARCH = "";
 let DIAG_POLL_TIMER = null;
 let DIAG_RELATORIO_ID = null;
 let DIAG_ULTIMO_RELATORIO = null;
+let RELATORIO_DETALHE_ATUAL_ID = null;
 const PREVIEW_ML_FILTERS = [
   { key: "todos", label: "Todos" },
   { key: "critico", label: "Críticos" },
@@ -914,6 +915,8 @@ function renderRelatoriosLista(relatorios) {
       <td>
         <button type="button" class="vf-btn-secondary vf-relatorio-detalhes-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">Ver detalhes</button>
         <button type="button" class="vf-btn-secondary vf-relatorio-excluir-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0 0 0 6px;padding:.25rem .6rem;font-size:.75rem;">Excluir</button>
+        <button type="button" class="vf-btn-secondary vf-relatorio-csv-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0 0 0 6px;padding:.25rem .6rem;font-size:.75rem;">CSV</button>
+        <button type="button" class="vf-btn-secondary vf-relatorio-xlsx-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0 0 0 6px;padding:.25rem .6rem;font-size:.75rem;">XLSX</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -931,6 +934,20 @@ function renderRelatoriosLista(relatorios) {
       const id = btn.getAttribute("data-id");
       if (!id) return;
       excluirRelatorioSalvo(id);
+    });
+  });
+  tbody.querySelectorAll(".vf-relatorio-csv-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      if (!id) return;
+      baixarRelatorioArquivo(id, "csv");
+    });
+  });
+  tbody.querySelectorAll(".vf-relatorio-xlsx-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      if (!id) return;
+      baixarRelatorioArquivo(id, "xlsx");
     });
   });
 }
@@ -1215,6 +1232,47 @@ async function iniciarDiagnosticoCompleto() {
   }
 }
 
+function atualizarBotoesExportDetalhe() {
+  const csvBtn = document.getElementById("btn-relatorio-detalhe-csv");
+  const xlsxBtn = document.getElementById("btn-relatorio-detalhe-xlsx");
+  const habilitar = Boolean(RELATORIO_DETALHE_ATUAL_ID);
+  if (csvBtn) csvBtn.disabled = !habilitar;
+  if (xlsxBtn) xlsxBtn.disabled = !habilitar;
+}
+
+async function baixarRelatorioArquivo(relatorioId, formato) {
+  if (!TOKEN || !relatorioId) return;
+  const fmt = formato === "xlsx" ? "xlsx" : "csv";
+  try {
+    const res = await fetch(`${API_BASE}/automacoes/relatorios/${encodeURIComponent(relatorioId)}/export/${fmt}`, {
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+
+    const blob = await res.blob();
+    const disp = res.headers.get("content-disposition") || "";
+    const nomeMatch = disp.match(/filename="?([^"]+)"?/i);
+    const filename = nomeMatch?.[1] || `relatorio-${relatorioId}.${fmt}`;
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    setStatus(err?.message ? `Erro ao exportar relatório: ${err.message}` : "Erro ao exportar relatório.", "var(--vf-danger)");
+  }
+}
+
 async function excluirRelatorioSalvo(id) {
   if (!id || !TOKEN) return;
 
@@ -1246,6 +1304,8 @@ async function excluirRelatorioSalvo(id) {
 function fecharRelatorioDetalheModal() {
   const modal = document.getElementById("vf-relatorio-detalhe-modal");
   if (modal) modal.style.display = "none";
+  RELATORIO_DETALHE_ATUAL_ID = null;
+  atualizarBotoesExportDetalhe();
 }
 
 function diagnosticoLabelDoSalvo(key) {
@@ -1367,6 +1427,8 @@ async function abrirRelatorioDetalhe(id) {
   const content = document.getElementById("vf-relatorio-detalhe-content");
   const titulo = document.getElementById("vf-relatorio-detalhe-titulo");
   if (!modal || !loading || !content) return;
+  RELATORIO_DETALHE_ATUAL_ID = id;
+  atualizarBotoesExportDetalhe();
 
   if (titulo) titulo.textContent = `Relatório #${id}`;
   modal.style.display = "flex";
@@ -1464,6 +1526,14 @@ document.getElementById("btn-precificacao-ml-next")?.addEventListener("click", (
   previewPrecificacaoMl();
 });
 document.getElementById("vf-relatorio-detalhe-close")?.addEventListener("click", fecharRelatorioDetalheModal);
+document.getElementById("btn-relatorio-detalhe-csv")?.addEventListener("click", () => {
+  if (!RELATORIO_DETALHE_ATUAL_ID) return;
+  baixarRelatorioArquivo(RELATORIO_DETALHE_ATUAL_ID, "csv");
+});
+document.getElementById("btn-relatorio-detalhe-xlsx")?.addEventListener("click", () => {
+  if (!RELATORIO_DETALHE_ATUAL_ID) return;
+  baixarRelatorioArquivo(RELATORIO_DETALHE_ATUAL_ID, "xlsx");
+});
 document.getElementById("vf-relatorio-detalhe-modal")?.addEventListener("click", (e) => {
   if (e.target.id === "vf-relatorio-detalhe-modal") fecharRelatorioDetalheModal();
 });

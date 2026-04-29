@@ -1268,6 +1268,182 @@ app.delete("/automacoes/relatorios/:id", authMiddleware, requireAutomacoesAccess
   }
 });
 
+function csvEscape(valor) {
+  if (valor === null || valor === undefined) return "";
+  const texto = String(valor);
+  if (texto.includes('"') || texto.includes(",") || texto.includes("\n")) {
+    return `"${texto.replace(/"/g, '""')}"`;
+  }
+  return texto;
+}
+
+function montarNomeArquivoRelatorio(relatorio, extensao) {
+  const cliente = normalizarSlug(relatorio?.cliente_slug || "cliente");
+  const base = normalizarSlug(relatorio?.base_slug || "base");
+  const escopo = normalizarSlug(relatorio?.escopo || "escopo");
+  const id = Number(relatorio?.id) || 0;
+  return `relatorio-${cliente}-${base}-${escopo}-#${id}.${extensao}`;
+}
+
+async function carregarRelatorioComItens(id) {
+  const rel = await pool.query("SELECT * FROM relatorios WHERE id = $1", [id]);
+  if (!rel.rows.length) return null;
+  const itens = await pool.query(
+    `SELECT id, item_id, titulo, status_anuncio, listing_type_id,
+            preco_original, preco_promocional, preco_efetivo,
+            custo, imposto_percentual, taxa_fixa,
+            frete, comissao, comissao_percentual,
+            lc, mc, preco_alvo, preco_sugerido, diferenca_preco,
+            acao_recomendada, explicacao_calculo, diagnostico, tem_base
+       FROM relatorio_itens
+      WHERE relatorio_id = $1
+      ORDER BY id ASC`,
+    [id]
+  );
+  return { relatorio: rel.rows[0], itens: itens.rows };
+}
+
+// EXPORTAR RELATÓRIO CSV
+app.get("/automacoes/relatorios/:id/export/csv", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, erro: "id inválido." });
+    }
+
+    const dados = await carregarRelatorioComItens(id);
+    if (!dados) {
+      return res.status(404).json({ ok: false, erro: "Relatório não encontrado." });
+    }
+    const { relatorio, itens } = dados;
+
+    const linhas = [];
+    linhas.push("Resumo do relatório");
+    linhas.push(`ID,${csvEscape(relatorio.id)}`);
+    linhas.push(`Cliente,${csvEscape(relatorio.cliente_slug)}`);
+    linhas.push(`Base,${csvEscape(relatorio.base_slug)}`);
+    linhas.push(`Escopo,${csvEscape(relatorio.escopo)}`);
+    linhas.push(`Status,${csvEscape(relatorio.status)}`);
+    linhas.push(`Margem alvo,${csvEscape(relatorio.margem_alvo)}`);
+    linhas.push(`Total itens,${csvEscape(relatorio.total_itens)}`);
+    linhas.push(`Itens com base,${csvEscape(relatorio.itens_com_base)}`);
+    linhas.push(`Itens sem base,${csvEscape(relatorio.itens_sem_base)}`);
+    linhas.push(`Itens críticos,${csvEscape(relatorio.itens_criticos)}`);
+    linhas.push(`Itens atenção,${csvEscape(relatorio.itens_atencao)}`);
+    linhas.push(`Itens saudáveis,${csvEscape(relatorio.itens_saudaveis)}`);
+    linhas.push(`MC média,${csvEscape(relatorio.mc_media)}`);
+    linhas.push(`Observações,${csvEscape(relatorio.observacoes)}`);
+    linhas.push(`Criado em,${csvEscape(relatorio.created_at)}`);
+    linhas.push("");
+    linhas.push("Itens");
+    linhas.push([
+      "item_id", "titulo", "status_anuncio", "listing_type_id",
+      "preco_original", "preco_promocional", "preco_efetivo",
+      "custo", "imposto_percentual", "taxa_fixa",
+      "frete", "comissao", "comissao_percentual",
+      "lc", "mc", "preco_alvo", "preco_sugerido", "diferenca_preco",
+      "acao_recomendada", "explicacao_calculo", "diagnostico", "tem_base",
+    ].join(","));
+
+    itens.forEach((it) => {
+      linhas.push([
+        it.item_id, it.titulo, it.status_anuncio, it.listing_type_id,
+        it.preco_original, it.preco_promocional, it.preco_efetivo,
+        it.custo, it.imposto_percentual, it.taxa_fixa,
+        it.frete, it.comissao, it.comissao_percentual,
+        it.lc, it.mc, it.preco_alvo, it.preco_sugerido, it.diferenca_preco,
+        it.acao_recomendada, it.explicacao_calculo, it.diagnostico, it.tem_base,
+      ].map(csvEscape).join(","));
+    });
+
+    const csv = linhas.join("\n");
+    const filename = montarNomeArquivoRelatorio(relatorio, "csv");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.send(`\uFEFF${csv}`);
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// EXPORTAR RELATÓRIO XLSX
+app.get("/automacoes/relatorios/:id/export/xlsx", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, erro: "id inválido." });
+    }
+
+    const dados = await carregarRelatorioComItens(id);
+    if (!dados) {
+      return res.status(404).json({ ok: false, erro: "Relatório não encontrado." });
+    }
+    const { relatorio, itens } = dados;
+
+    const resumoRows = [
+      { campo: "id", valor: relatorio.id },
+      { campo: "cliente_slug", valor: relatorio.cliente_slug },
+      { campo: "base_slug", valor: relatorio.base_slug },
+      { campo: "escopo", valor: relatorio.escopo },
+      { campo: "status", valor: relatorio.status },
+      { campo: "margem_alvo", valor: relatorio.margem_alvo },
+      { campo: "total_itens", valor: relatorio.total_itens },
+      { campo: "itens_com_base", valor: relatorio.itens_com_base },
+      { campo: "itens_sem_base", valor: relatorio.itens_sem_base },
+      { campo: "itens_criticos", valor: relatorio.itens_criticos },
+      { campo: "itens_atencao", valor: relatorio.itens_atencao },
+      { campo: "itens_saudaveis", valor: relatorio.itens_saudaveis },
+      { campo: "mc_media", valor: relatorio.mc_media },
+      { campo: "observacoes", valor: relatorio.observacoes },
+      { campo: "created_at", valor: relatorio.created_at },
+    ];
+
+    const itensRows = itens.map((it) => ({
+      item_id: it.item_id,
+      titulo: it.titulo,
+      status_anuncio: it.status_anuncio,
+      listing_type_id: it.listing_type_id,
+      preco_original: it.preco_original,
+      preco_promocional: it.preco_promocional,
+      preco_efetivo: it.preco_efetivo,
+      custo: it.custo,
+      imposto_percentual: it.imposto_percentual,
+      taxa_fixa: it.taxa_fixa,
+      frete: it.frete,
+      comissao: it.comissao,
+      comissao_percentual: it.comissao_percentual,
+      lc: it.lc,
+      mc: it.mc,
+      preco_alvo: it.preco_alvo,
+      preco_sugerido: it.preco_sugerido,
+      diferenca_preco: it.diferenca_preco,
+      acao_recomendada: it.acao_recomendada,
+      explicacao_calculo: it.explicacao_calculo,
+      diagnostico: it.diagnostico,
+      tem_base: it.tem_base,
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    const resumoSheet = XLSX.utils.json_to_sheet(resumoRows);
+    const itensSheet = XLSX.utils.json_to_sheet(itensRows.length ? itensRows : [{}]);
+    XLSX.utils.book_append_sheet(workbook, resumoSheet, "Resumo");
+    XLSX.utils.book_append_sheet(workbook, itensSheet, "Itens");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+      compression: true,
+    });
+
+    const filename = montarNomeArquivoRelatorio(relatorio, "xlsx");
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.send(buffer);
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // ========== DIAGNÓSTICO COMPLETO DA LOJA ==========
 
 const DIAG_SCROLL_LIMIT = 100;        // máximo aceito pelo ML por scroll

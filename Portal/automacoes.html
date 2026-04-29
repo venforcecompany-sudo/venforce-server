@@ -314,7 +314,11 @@
           </svg>
           <span id="vf-relatorio-detalhe-titulo">Detalhe do relatório</span>
         </h5>
-        <button id="vf-relatorio-detalhe-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;color:var(--vf-text-m);" aria-label="Fechar">×</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button id="btn-relatorio-detalhe-csv" type="button" class="vf-btn-secondary" style="margin:0;padding:.35rem .65rem;" disabled>CSV</button>
+          <button id="btn-relatorio-detalhe-xlsx" type="button" class="vf-btn-secondary" style="margin:0;padding:.35rem .65rem;" disabled>XLSX</button>
+          <button id="vf-relatorio-detalhe-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;color:var(--vf-text-m);" aria-label="Fechar">×</button>
+        </div>
       </div>
       <div id="vf-relatorio-detalhe-body" style="padding:1.25rem 1.5rem;overflow:auto;flex:1;">
         <div id="vf-relatorio-detalhe-loading" style="color:var(--vf-text-m);">Carregando...</div>
