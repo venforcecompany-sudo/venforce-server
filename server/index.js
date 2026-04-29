@@ -1268,6 +1268,160 @@ app.delete("/automacoes/relatorios/:id", authMiddleware, requireAutomacoesAccess
   }
 });
 
+// ========== DIAGNÓSTICO COMPLETO DA LOJA ==========
+
+const DIAG_SCROLL_LIMIT = 100;        // máximo aceito pelo ML por scroll
+const DIAG_BATCH_DETAILS = 20;        // lote para GET /items?ids=
+const DIAG_ENRICH_CONCURRENCY = 4;    // enriquecimentos paralelos
+
+function diagChunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+function diagPLimit(concorrencia) {
+  const fila = [];
+  let ativos = 0;
+  const proximo = () => {
+    ativos--;
+    if (fila.length > 0) fila.shift()();
+  };
+  return (fn) =>
+    new Promise((resolve, reject) => {
+      const run = () => {
+        ativos++;
+        Promise.resolve()
+          .then(fn)
+          .then((v) => { proximo(); resolve(v); })
+          .catch((e) => { proximo(); reject(e); });
+      };
+      if (ativos < concorrencia) run();
+      else fila.push(run);
+    });
+}
+
+function diagClassificarItem({ temBase, lc, mc, frete, comissao, margemAlvo }) {
+  if (!temBase) return "sem_base";
+  if (frete === null || frete === undefined) return "sem_frete";
+  if (comissao === null || comissao === undefined) return "sem_comissao";
+  if (lc === null || lc === undefined || mc === null || mc === undefined) return "sem_dados";
+  if (mc < 0) return "critico";
+  const margem = Number(margemAlvo);
+  if (Number.isFinite(margem) && mc < margem) return "atencao";
+  return "saudavel";
+}
+
+function diagAcaoRecomendada({ diagnostico, precoEfetivo, precoAlvo }) {
+  if (diagnostico === "sem_base") return "Cadastrar item na base de custos.";
+  if (diagnostico === "sem_frete") return "Verificar configuração de frete grátis no anúncio.";
+  if (diagnostico === "sem_comissao") return "Verificar listing_type e categoria do anúncio.";
+  if (diagnostico === "sem_dados") return "Revisar dados de entrada (custo, imposto, taxa).";
+  if (precoAlvo == null || precoEfetivo == null) return "Manter preço atual.";
+  const delta = Number(precoAlvo) - Number(precoEfetivo);
+  if (!Number.isFinite(delta)) return "Manter preço atual.";
+  if (Math.abs(delta / precoEfetivo) < 0.005) return "Manter preço atual.";
+  if (delta > 0) return `Subir preço para R$ ${precoAlvo.toFixed(2)}.`;
+  return `Reduzir preço para R$ ${precoAlvo.toFixed(2)}.`;
+}
+
+// ENDPOINT — iniciar diagnóstico completo (base 4.1A)
+app.post("/automacoes/diagnostico-completo/start", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const { clienteSlug, baseSlug, margemAlvo, observacoes } = req.body || {};
+    if (!clienteSlug) return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório." });
+    if (!baseSlug) return res.status(400).json({ ok: false, erro: "baseSlug é obrigatório." });
+
+    const margemNum = Number(margemAlvo);
+    if (margemAlvo != null && margemAlvo !== "" && (!Number.isFinite(margemNum) || margemNum <= 0 || margemNum >= 1)) {
+      return res.status(400).json({ ok: false, erro: "margemAlvo inválida. Use decimal entre 0 e 1." });
+    }
+    const margem = Number.isFinite(margemNum) && margemNum > 0 && margemNum < 1 ? margemNum : null;
+
+    const clienteSlugNorm = normalizarSlug(clienteSlug);
+    const baseSlugNorm = normalizarSlug(baseSlug);
+
+    const c = await pool.query("SELECT id, slug FROM clientes WHERE slug = $1", [clienteSlugNorm]);
+    if (!c.rows.length) return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+
+    const b = await pool.query("SELECT id, slug FROM bases WHERE slug = $1", [baseSlugNorm]);
+    if (!b.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada." });
+
+    const t = await pool.query("SELECT 1 FROM ml_tokens WHERE cliente_id = $1", [c.rows[0].id]);
+    if (!t.rows.length) return res.status(400).json({ ok: false, erro: "Cliente sem conta ML vinculada." });
+
+    const emAndamento = await pool.query(
+      `SELECT id FROM relatorios
+        WHERE cliente_id = $1 AND escopo = 'loja_completa' AND status = 'processando'
+        ORDER BY id DESC LIMIT 1`,
+      [c.rows[0].id]
+    );
+    if (emAndamento.rows.length) {
+      return res.status(409).json({
+        ok: false,
+        erro: "Já existe um diagnóstico completo em andamento para este cliente.",
+        relatorio_id: emAndamento.rows[0].id,
+      });
+    }
+
+    const ins = await pool.query(
+      `INSERT INTO relatorios
+       (user_id, cliente_id, cliente_slug, base_id, base_slug, margem_alvo,
+        escopo, status, total_itens, observacoes)
+       VALUES ($1,$2,$3,$4,$5,$6,'loja_completa','processando',0,$7)
+       RETURNING id`,
+      [
+        req.user.id,
+        c.rows[0].id,
+        c.rows[0].slug,
+        b.rows[0].id,
+        b.rows[0].slug,
+        margem,
+        observacoes || null,
+      ]
+    );
+    const relatorioId = ins.rows[0].id;
+
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "automacoes.diagnostico_completo.start",
+      detalhes: { relatorio_id: relatorioId, cliente_slug: clienteSlugNorm, base_slug: baseSlugNorm },
+      ip: extrairIp(req),
+      status: "sucesso",
+    });
+
+    return res.status(202).json({
+      ok: true,
+      relatorio_id: relatorioId,
+      status: "processando",
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// ENDPOINT — status leve do diagnóstico (somente resumo, sem itens)
+app.get("/automacoes/diagnostico-completo/:id", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, erro: "id inválido." });
+    }
+    const r = await pool.query(
+      `SELECT id, cliente_slug, base_slug, margem_alvo, escopo, status,
+              total_itens, itens_com_base, itens_sem_base,
+              itens_criticos, itens_atencao, itens_saudaveis,
+              mc_media, observacoes, created_at
+         FROM relatorios WHERE id = $1`,
+      [id]
+    );
+    if (!r.rows.length) return res.status(404).json({ ok: false, erro: "Relatório não encontrado." });
+    return res.json({ ok: true, relatorio: r.rows[0] });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.get("/design/anuncios/:itemId/imagens", authMiddleware, requireDesignAccess, async (req, res) => {
   try {
     const clienteSlugRaw = String(req.query.clienteSlug || "").trim();
