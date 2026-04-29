@@ -438,6 +438,28 @@ function renderPreviewMlTable() {
       r.precoAlvo == null || !Number.isFinite(Number(r.precoAlvo))
         ? "—"
         : brlFormatter.format(Number(r.precoAlvo));
+    const precoAtualNum = Number(r.precoEfetivo);
+    const precoAlvoNum = Number(r.precoAlvo);
+    let ajusteFmt = "—";
+    let ajusteColor = "";
+    let ajusteIcon = "";
+    if (Number.isFinite(precoAtualNum) && Number.isFinite(precoAlvoNum) && precoAtualNum > 0) {
+      const delta = precoAlvoNum - precoAtualNum;
+      const deltaPct = (delta / precoAtualNum) * 100;
+      if (Math.abs(deltaPct) < 0.5) {
+        ajusteFmt = "Manter";
+        ajusteColor = "color:var(--vf-text-m);";
+        ajusteIcon = "=";
+      } else if (delta > 0) {
+        ajusteFmt = `+${brlFormatter.format(delta)} (${pctFormatter.format(deltaPct)}%)`;
+        ajusteColor = "color:var(--vf-success);";
+        ajusteIcon = "↑";
+      } else {
+        ajusteFmt = `${brlFormatter.format(delta)} (${pctFormatter.format(deltaPct)}%)`;
+        ajusteColor = "color:var(--vf-danger);";
+        ajusteIcon = "↓";
+      }
+    }
     const freteFmt =
       r.frete == null || !Number.isFinite(Number(r.frete))
         ? "—"
@@ -464,6 +486,7 @@ function renderPreviewMlTable() {
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(lcFmt)}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcColor}">${escapeHTML(mcFmt)}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(precoAlvoFmt)}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${ajusteColor}">${ajusteIcon} ${escapeHTML(ajusteFmt)}</td>
     `;
     tbody.appendChild(tr);
   });
