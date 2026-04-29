@@ -438,7 +438,7 @@ function renderPreviewMlTable() {
   const rows = getPreviewMlFilteredRows();
   if (rows.length === 0) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="15" style="color:var(--vf-text-m);">Nenhum item encontrado com os filtros atuais.</td>`;
+    tr.innerHTML = `<td colspan="16" style="color:var(--vf-text-m);">Nenhum item encontrado com os filtros atuais.</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -474,6 +474,14 @@ function renderPreviewMlTable() {
       r.precoAlvo == null || !Number.isFinite(Number(r.precoAlvo))
         ? "—"
         : brlFormatter.format(Number(r.precoAlvo));
+    const precoOriginalFmt = r.precoOriginal == null || !Number.isFinite(Number(r.precoOriginal))
+      ? "—" : brlFormatter.format(Number(r.precoOriginal));
+
+    const temPromo = r.precoPromocionado != null && Number.isFinite(Number(r.precoPromocionado))
+      && Number(r.precoPromocionado) < Number(r.precoOriginal);
+    const precoPromoFmt = !temPromo ? "—" : brlFormatter.format(Number(r.precoPromocionado));
+    const promoStyle = temPromo ? "color:var(--vf-success);font-weight:600;" : "color:var(--vf-text-m);";
+    const originalStyle = temPromo ? "text-decoration:line-through;color:var(--vf-text-m);" : "";
     const precoAtualNum = Number(r.precoEfetivo);
     const precoAlvoNum = Number(r.precoAlvo);
     let ajusteFmt = "—";
@@ -514,7 +522,8 @@ function renderPreviewMlTable() {
       </td>
       <td style="white-space:normal;line-height:1.35;" title="${escapeHTML(r.titulo ?? "")}">${escapeHTML(r.titulo ?? "—")}</td>
       <td>${escapeHTML(r.status ?? "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.precoBaseCalculo ?? r.precoEfetivo ?? r.precoVendaAtual ?? "—")}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${originalStyle}">${escapeHTML(precoOriginalFmt)}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${promoStyle}">${escapeHTML(precoPromoFmt)}</td>
       <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.listing_type_id ?? r.tipoAnuncio ?? "—")}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.custoProduto ?? "—")}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.impostoPercentual ?? "—")}</td>
