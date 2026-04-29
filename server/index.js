@@ -1237,6 +1237,37 @@ app.get("/automacoes/relatorios/:id", authMiddleware, requireAutomacoesAccess, a
   }
 });
 
+// EXCLUIR RELATÓRIO
+app.delete("/automacoes/relatorios/:id", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, erro: "id inválido." });
+    }
+
+    const rel = await pool.query("SELECT id FROM relatorios WHERE id = $1", [id]);
+    if (!rel.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Relatório não encontrado." });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM relatorio_itens WHERE relatorio_id = $1", [id]);
+      await client.query("DELETE FROM relatorios WHERE id = $1", [id]);
+      await client.query("COMMIT");
+      return res.json({ ok: true });
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.get("/design/anuncios/:itemId/imagens", authMiddleware, requireDesignAccess, async (req, res) => {
   try {
     const clienteSlugRaw = String(req.query.clienteSlug || "").trim();

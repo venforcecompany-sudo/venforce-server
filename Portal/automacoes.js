@@ -910,6 +910,7 @@ function renderRelatoriosLista(relatorios) {
       <td>${escapeHTML(r.status || "—")}</td>
       <td>
         <button type="button" class="vf-btn-secondary vf-relatorio-detalhes-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">Ver detalhes</button>
+        <button type="button" class="vf-btn-secondary vf-relatorio-excluir-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0 0 0 6px;padding:.25rem .6rem;font-size:.75rem;">Excluir</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -920,6 +921,13 @@ function renderRelatoriosLista(relatorios) {
       const id = btn.getAttribute("data-id");
       if (!id) return;
       abrirRelatorioDetalhe(id);
+    });
+  });
+  tbody.querySelectorAll(".vf-relatorio-excluir-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      if (!id) return;
+      excluirRelatorioSalvo(id);
     });
   });
 }
@@ -963,6 +971,34 @@ async function carregarRelatoriosCliente(clienteSlug) {
     empty.style.display = "block";
     empty.innerHTML = `<p style="color:var(--vf-danger);">Erro ao carregar relatórios: ${escapeHTML(err.message || "desconhecido")}</p>`;
     badge.style.display = "none";
+  }
+}
+
+async function excluirRelatorioSalvo(id) {
+  if (!id || !TOKEN) return;
+
+  const confirmar = window.confirm("Excluir este relatório salvo? Essa ação não pode ser desfeita.");
+  if (!confirmar) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/automacoes/relatorios/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+
+    setStatus(`Relatório #${id} excluído com sucesso.`, "var(--vf-success)");
+    const slug = document.getElementById("automacoes-cliente")?.value || "";
+    if (slug) carregarRelatoriosCliente(slug);
+  } catch (err) {
+    setStatus(err?.message ? `Erro ao excluir relatório: ${err.message}` : "Erro ao excluir relatório.", "var(--vf-danger)");
   }
 }
 
