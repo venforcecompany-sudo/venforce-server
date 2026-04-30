@@ -3557,8 +3557,25 @@ function parseShopeeFinancialRows(rows) {
     const product = String(
       findField(row, ["nome do produto", "produto", "product name"]) || ""
     ).trim();
+    const itemId = normalizeIdNoPrefix(
+      findField(row, ["id do item", "item id", "id item", "itemid"])
+    );
+    const variationId = normalizeIdNoPrefix(
+      findField(row, ["id da variacao", "id da variação", "variation id"])
+    );
+    const modelId = normalizeIdNoPrefix(
+      findField(row, ["model id", "model_id", "modelid", "id do modelo"])
+    );
+    const sku = String(
+      findField(row, ["sku da variacao", "sku da variação", "sku", "sku principle", "sku principal"]) || ""
+    ).trim();
 
-    const quantity = toNumber(findField(row, ["quantidade", "qty"]));
+    const quantityRaw = toNumber(findField(row, ["quantidade", "qty"]));
+    const quantity = quantityRaw > 0 ? quantityRaw : 1;
+
+    const subtotalRaw = toNumber(findField(row, ["subtotal do produto"]));
+    const faturamentoRaw = toNumber(findField(row, ["faturamento"]));
+    const agreedPriceRaw = toNumber(findField(row, ["preco acordado", "preço acordado"]));
     const grossRevenueRaw = toNumber(
       findField(row, [
         "faturamento",
@@ -3567,14 +3584,19 @@ function parseShopeeFinancialRows(rows) {
         "total do pedido",
       ])
     );
+    const computedFromPrice = round2(agreedPriceRaw * quantity);
+    const itemRevenue = round2(
+      subtotalRaw || faturamentoRaw || computedFromPrice || grossRevenueRaw || 0
+    );
+
     const paidRevenueRaw = toNumber(
       findField(row, ["repasse", "faturamento", "subtotal do produto", "valor total"])
     );
+    const totalGlobalRaw = toNumber(findField(row, ["total global"]));
+
     const taxRaw = toNumber(findField(row, ["imposto"]));
     const cmvRaw = toNumber(findField(row, ["cmv"]));
     const profitRaw = toNumber(findField(row, ["lucro", "profit"]));
-    let marginRaw = toNumber(findField(row, ["margem", "margin"]));
-    if (Math.abs(marginRaw) > 1) marginRaw = marginRaw / 100;
 
     const transactionFee = toNumber(findField(row, ["taxa de transação", "taxa de transacao"]));
     const commissionNet = toNumber(findField(row, ["taxa de comissão líquida", "taxa de comissao liquida"]));
@@ -3593,14 +3615,34 @@ function parseShopeeFinancialRows(rows) {
       ])
     );
     const isCancelled = statusPedido.includes("cancel");
+    const statusDevolucaoClean = String(statusDevolucao || "").trim();
+    const hasReturnText =
+      statusDevolucaoClean &&
+      ![
+        "-",
+        "--",
+        "n/a",
+        "na",
+        "none",
+        "sem devolucao",
+        "sem devolução",
+        "sem reembolso",
+        "nao",
+        "não",
+      ].includes(statusDevolucaoClean);
     const isReturn =
-      statusDevolucao.includes("devol") ||
-      statusDevolucao.includes("reemb") ||
-      statusDevolucao.includes("refund") ||
-      statusDevolucao.includes("return");
+      !!hasReturnText &&
+      (
+        statusDevolucao.includes("devol") ||
+        statusDevolucao.includes("reemb") ||
+        statusDevolucao.includes("refund") ||
+        statusDevolucao.includes("return")
+      );
 
     const hasSignal =
       !!orderId ||
+      !!itemId ||
+      !!variationId ||
       !!product ||
       Math.abs(grossRevenueRaw) > 0 ||
       Math.abs(paidRevenueRaw) > 0 ||
@@ -3610,17 +3652,21 @@ function parseShopeeFinancialRows(rows) {
     parsed.push({
       id: orderId || String(parsed.length + 1),
       product: product || "—",
+      itemId,
+      variationId,
+      modelId,
+      sku,
       statusPedido,
       statusDevolucao,
-      quantity: quantity > 0 ? quantity : 1,
-      grossRevenue: grossRevenueRaw,
-      paidRevenue: paidRevenueRaw,
+      quantity,
+      grossRevenue: itemRevenue,
+      paidRevenue: round2(paidRevenueRaw || itemRevenue || totalGlobalRaw || 0),
+      totalGlobal: totalGlobalRaw,
       tax: taxRaw,
       cmv: cmvRaw,
       fees: feesRaw,
+      shipping: toNumber(findField(row, ["valor estimado do frete", "frete", "shipping"])),
       profit: profitRaw,
-      profitProvided: String(findField(row, ["lucro", "profit"]) || "").trim() !== "",
-      margin: marginRaw,
       isCancelled,
       isReturn,
     });
@@ -3699,16 +3745,35 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       );
     }
 
+    const costRows = parseCostRows(costRowsRaw);
+    const costMap = new Map();
+    for (const row of costRows) {
+      if (!row.id) continue;
+      const id = normalizeIdNoPrefix(row.id);
+      if (id) costMap.set(id, row);
+      if (row.modelId) {
+        const m = normalizeIdNoPrefix(row.modelId);
+        if (m) costMap.set(m, row);
+      }
+    }
+
+    function getCostForFinancialRow(row) {
+      const keys = [
+        normalizeIdNoPrefix(row.itemId),
+        normalizeIdNoPrefix(row.variationId),
+        normalizeIdNoPrefix(row.modelId),
+        normalizeIdNoPrefix(row.id),
+        normalizeIdNoPrefix(row.sku),
+      ].filter(Boolean);
+      for (const k of keys) {
+        if (costMap.has(k)) return costMap.get(k);
+      }
+      return null;
+    }
+
     const cancelledRows = financialRows.filter((row) => row.isCancelled);
     const returnRows = financialRows.filter((row) => row.isReturn && !row.isCancelled);
     const validRows = financialRows.filter((row) => !row.isCancelled && !row.isReturn);
-
-    const grossRevenueTotal = round2(
-      validRows.reduce((sum, row) => sum + Number(row.grossRevenue || 0), 0)
-    );
-    const paidRevenueTotal = round2(
-      validRows.reduce((sum, row) => sum + Number(row.paidRevenue || 0), 0)
-    );
 
     const cancellationBase = cancelledRows.reduce(
       (sum, row) => sum + Number(row.grossRevenue || row.paidRevenue || 0),
@@ -3718,48 +3783,107 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       cancellationBase > 0 ? -Math.abs(cancellationBase) : cancellationBase
     );
 
-    const returnsBase = returnRows.reduce(
-      (sum, row) => sum + Number(row.grossRevenue || row.paidRevenue || 0),
-      0
+    const returnsBase = returnRows.reduce((sum, row) => {
+      const base = Number(row.grossRevenue || row.paidRevenue || 0);
+      return sum + base;
+    }, 0);
+    const hasReturnValue = returnRows.some(
+      (row) => Math.abs(Number(row.grossRevenue || row.paidRevenue || 0)) > 0.01
     );
-    const returnsTotal =
-      returnRows.length > 0
-        ? round2(returnsBase > 0 ? -Math.abs(returnsBase) : returnsBase)
-        : null;
+    const returnsTotal = hasReturnValue
+      ? round2(returnsBase > 0 ? -Math.abs(returnsBase) : returnsBase)
+      : null;
     if (returnRows.length === 0) {
       executiveNotes.push(
         "returnsTotal não disponível separado na planilha Shopee enviada."
       );
+    } else if (!hasReturnValue) {
+      executiveNotes.push(
+        "returnsTotal identificado por status, mas sem valor confiável separado na planilha Shopee."
+      );
     }
 
-    const marketplaceFeesBase = validRows.reduce(
-      (sum, row) => sum + Number(row.fees || 0),
-      0
-    );
-    const marketplaceFeesTotal = round2(
-      marketplaceFeesBase > 0 ? -Math.abs(marketplaceFeesBase) : marketplaceFeesBase
-    );
+    const detailRows = [];
+    let grossRevenueTotal = 0;
+    let paidRevenueTotal = 0;
+    let marketplaceFeesTotal = 0;
+    let shippingFeesTotal = 0;
+    let taxValueTotal = 0;
+    let cmvTotal = 0;
+    let contributionProfitTotal = 0;
+    let missingCostRows = 0;
 
-    const shippingFeesTotal = null;
-    executiveNotes.push(
-      "shippingFeesTotal não disponível separado na planilha Shopee enviada."
-    );
+    for (const row of financialRows) {
+      const status = row.isCancelled
+        ? "Cancelado"
+        : row.isReturn
+          ? "Devolução/Reembolso"
+          : "Válido";
+      const receita = round2(Number(row.grossRevenue || 0));
+
+      const feesRaw = Number(row.fees || 0);
+      const taxas = round2(feesRaw > 0 ? -Math.abs(feesRaw) : feesRaw);
+
+      const shippingRaw = Number(row.shipping || 0);
+      const frete = round2(shippingRaw > 0 ? -Math.abs(shippingRaw) : shippingRaw);
+
+      const costRow = getCostForFinancialRow(row);
+      const quantity = Number(row.quantity || 0);
+      const costUnit = Number(costRow?.cost || row.cmv || 0);
+      const taxPercent = Number(costRow?.taxPercent || 0);
+      const cmv = round2(
+        costRow
+          ? (costUnit > 0 ? -Math.abs(costUnit * quantity) : 0)
+          : (Number(row.cmv || 0) > 0 ? -Math.abs(Number(row.cmv || 0)) : Number(row.cmv || 0))
+      );
+      const imposto = round2(
+        costRow && taxPercent > 0
+          ? -Math.abs(receita * (taxPercent / 100))
+          : (Number(row.tax || 0) > 0 ? -Math.abs(Number(row.tax || 0)) : Number(row.tax || 0))
+      );
+
+      let lc = 0;
+      let mc = 0;
+      if (!row.isCancelled && !row.isReturn) {
+        lc = round2(receita + taxas + frete + imposto + cmv);
+        mc = receita > 0 ? round2((lc / receita) * 100) : 0;
+
+        grossRevenueTotal += receita;
+        paidRevenueTotal += receita;
+        marketplaceFeesTotal += taxas;
+        shippingFeesTotal += frete;
+        taxValueTotal += imposto;
+        cmvTotal += cmv;
+        contributionProfitTotal += lc;
+      }
+
+      if (!costRow) missingCostRows += 1;
+
+      detailRows.push({
+        Marketplace: "Shopee",
+        Produto: row.product || "—",
+        ID: row.id || row.itemId || row.variationId || "—",
+        Status: status,
+        Faturamento: receita,
+        Quantidade: round2(quantity),
+        CMV: cmv,
+        Imposto: imposto,
+        Taxas: taxas,
+        Frete: frete,
+        LC: round2(lc),
+        MC: round2(mc),
+      });
+    }
+
+    grossRevenueTotal = round2(grossRevenueTotal);
+    paidRevenueTotal = round2(paidRevenueTotal);
+    marketplaceFeesTotal = round2(marketplaceFeesTotal);
+    shippingFeesTotal = round2(shippingFeesTotal);
+    taxValueTotal = round2(taxValueTotal);
+    cmvTotal = round2(cmvTotal);
+    contributionProfitTotal = round2(contributionProfitTotal);
+
     const discountsBonusesTotal = null;
-
-    const taxBase = validRows.reduce((sum, row) => sum + Number(row.tax || 0), 0);
-    const taxValueTotal = round2(taxBase > 0 ? -Math.abs(taxBase) : taxBase);
-
-    const cmvBase = validRows.reduce((sum, row) => sum + Number(row.cmv || 0), 0);
-    const cmvTotal = round2(cmvBase > 0 ? -Math.abs(cmvBase) : cmvBase);
-
-    const hasProfitColumn = validRows.some((row) => row.profitProvided);
-    const contributionProfitTotal = round2(
-      validRows.reduce((sum, row) => {
-        if (hasProfitColumn && row.profitProvided) return sum + Number(row.profit || 0);
-        if (hasProfitColumn && !row.profitProvided) return sum + Number(row.grossRevenue || 0) + Number(row.fees || 0) + Number(row.tax || 0) + Number(row.cmv || 0);
-        return sum + Number(row.grossRevenue || 0) + Number(row.fees || 0) + Number(row.tax || 0) + Number(row.cmv || 0);
-      }, 0)
-    );
 
     const averageContributionMargin =
       grossRevenueTotal > 0 ? contributionProfitTotal / grossRevenueTotal : 0;
@@ -3769,28 +3893,24 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       grossRevenueTotal > 0 ? (ads + venforce + affiliates) / grossRevenueTotal : 0;
     const refundsCount = cancelledRows.length + returnRows.length;
     const refundsTotal = round2(cancellationsTotal + Number(returnsTotal || 0));
-
-    const detailedRows = financialRows.map((row) => {
-      const marginCalc =
-        Math.abs(Number(row.margin || 0)) > 0
-          ? Number(row.margin || 0)
-          : (Number(row.grossRevenue || 0) > 0
-              ? Number(row.profit || 0) / Number(row.grossRevenue || 1)
-              : 0);
-      return {
-        Marketplace: "Shopee",
-        Produto: row.product || "—",
-        ID: row.id || "—",
-        Status: row.statusPedido || row.statusDevolucao || "—",
-        Faturamento: round2(row.grossRevenue || 0),
-        Quantidade: round2(row.quantity || 0),
-        CMV: round2(row.cmv || 0),
-        Imposto: round2(row.tax || 0),
-        Taxas: round2(row.fees || 0),
-        Lucro: round2(row.profit || 0),
-        Margem: round2(marginCalc * 100),
-      };
-    });
+    if (Math.abs(averageContributionMargin) > 1) {
+      executiveNotes.push(
+        "Margem fora do intervalo esperado; revisar sinais das taxas/custos."
+      );
+    }
+    if (missingCostRows > 0) {
+      executiveNotes.push(
+        `${missingCostRows} linha(s) sem custo encontrado por ID/SKU; CMV/imposto usaram fallback da planilha de pedidos quando disponível.`
+      );
+    }
+    if (Math.abs(shippingFeesTotal) <= 0.01) {
+      executiveNotes.push(
+        "shippingFeesTotal não disponível separado com segurança; valor de frete veio vazio/zerado na exportação."
+      );
+    }
+    executiveNotes.push(
+      "Order.all processada com cancelamentos/devoluções excluídos da receita e do LC válidos."
+    );
 
     return {
       summary: {
@@ -3820,7 +3940,7 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
         grossMargin: grossRevenueTotal > 0 ? round2(contributionProfitTotal / grossRevenueTotal) : 0,
         executiveNotes,
       },
-      detailedRows,
+      detailedRows: detailRows,
       excelFileName: "fechamento-shopee.xlsx",
       unmatchedIds: [],
       excludedVariationIds: [],
