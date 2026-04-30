@@ -256,7 +256,7 @@ async function processarFechamentoFinanceiro() {
     if (res.status === 401) { window.location.replace("index.html"); return; }
 
     const json = await res.json();
-    if (!res.ok) throw new Error(json.erro || json.message || "HTTP " + res.status);
+    if (!res.ok) throw new Error(json.erro || json.error || json.message || "HTTP " + res.status);
 
     renderFinResumo(json);
     renderFinResumoExecutivo(json);
