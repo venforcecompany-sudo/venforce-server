@@ -157,6 +157,7 @@
       { label: "Ferramenta OR", href: "ferramenta-or.html", icon: "download", adminOnly: false },
       { label: "Dashboard", href: "dashboard.html", icon: "vf-dashboard", adminOnly: false },
       { label: "Automações", href: "automacoes.html", icon: "repeat", adminOnly: false, automacoesOnly: true },
+      { label: "Relatórios", href: "relatorios.html", icon: "bar-chart", adminOnly: false, automacoesOnly: true },
       { label: "Design", href: "design.html", icon: "image", adminOnly: false, designOnly: true },
       { label: "Painel de análise de conversão", href: "fechamento.html", icon: "vf-fechamento", adminOnly: false },
       { label: "Fechamento Financeiro", href: "financeiro.html", icon: "vf-financeiro", adminOnly: false },

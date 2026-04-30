@@ -1177,27 +1177,64 @@ app.post("/automacoes/relatorios", authMiddleware, requireAutomacoesAccess, asyn
   }
 });
 
-// LISTAR RELATÓRIOS POR CLIENTE
+// LISTAR RELATÓRIOS (global ou por cliente)
 app.get("/automacoes/relatorios", authMiddleware, requireAutomacoesAccess, async (req, res) => {
   try {
     const clienteSlug = String(req.query.clienteSlug || "").trim();
-    if (!clienteSlug) {
-      return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório." });
-    }
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
-    const slug = normalizarSlug(clienteSlug);
+    const limitRaw = parseInt(req.query.limit, 10);
+    const temLimit = Number.isFinite(limitRaw) && limitRaw > 0;
+    const limit = temLimit ? Math.min(Math.max(limitRaw, 1), 500) : null;
+    let result;
 
-    const result = await pool.query(
-      `SELECT id, user_id, cliente_slug, base_slug, margem_alvo, escopo, status,
-              total_itens, itens_com_base, itens_sem_base,
-              itens_criticos, itens_atencao, itens_saudaveis,
-              mc_media, observacoes, created_at
-         FROM relatorios
-        WHERE cliente_slug = $1
-        ORDER BY created_at DESC
-        LIMIT $2`,
-      [slug, limit]
-    );
+    if (clienteSlug) {
+      const slug = normalizarSlug(clienteSlug);
+      if (temLimit) {
+        result = await pool.query(
+          `SELECT id, user_id, cliente_slug, base_slug, margem_alvo, escopo, status,
+                  total_itens, itens_com_base, itens_sem_base,
+                  itens_criticos, itens_atencao, itens_saudaveis,
+                  mc_media, observacoes, created_at
+             FROM relatorios
+            WHERE cliente_slug = $1
+            ORDER BY created_at DESC
+            LIMIT $2`,
+          [slug, limit]
+        );
+      } else {
+        result = await pool.query(
+          `SELECT id, user_id, cliente_slug, base_slug, margem_alvo, escopo, status,
+                  total_itens, itens_com_base, itens_sem_base,
+                  itens_criticos, itens_atencao, itens_saudaveis,
+                  mc_media, observacoes, created_at
+             FROM relatorios
+            WHERE cliente_slug = $1
+            ORDER BY created_at DESC`,
+          [slug]
+        );
+      }
+    } else {
+      if (temLimit) {
+        result = await pool.query(
+          `SELECT id, user_id, cliente_slug, base_slug, margem_alvo, escopo, status,
+                  total_itens, itens_com_base, itens_sem_base,
+                  itens_criticos, itens_atencao, itens_saudaveis,
+                  mc_media, observacoes, created_at
+             FROM relatorios
+            ORDER BY created_at DESC
+            LIMIT $1`,
+          [limit]
+        );
+      } else {
+        result = await pool.query(
+          `SELECT id, user_id, cliente_slug, base_slug, margem_alvo, escopo, status,
+                  total_itens, itens_com_base, itens_sem_base,
+                  itens_criticos, itens_atencao, itens_saudaveis,
+                  mc_media, observacoes, created_at
+             FROM relatorios
+            ORDER BY created_at DESC`
+        );
+      }
+    }
 
     return res.json({ ok: true, total: result.rows.length, relatorios: result.rows });
   } catch (err) {
