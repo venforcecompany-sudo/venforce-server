@@ -3419,6 +3419,72 @@ const isZeroImpressions =
   return parsed;
 }
 
+function getNormalizedColumns(rows) {
+  const first = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+  if (!first || typeof first !== "object") return [];
+  return Object.keys(first).map((k) => normalizeKey(k));
+}
+
+function hasAnyColumn(columns, candidates) {
+  return candidates.some((candidate) =>
+    columns.some((col) => col.includes(normalizeKey(candidate)))
+  );
+}
+
+function isShopeeMassUpdateSheet(rows) {
+  const cols = getNormalizedColumns(rows);
+  if (!cols.length) return false;
+
+  const hasAction = hasAnyColumn(cols, ["acao", "ação", "action"]);
+  const hasUpdateFields =
+    hasAnyColumn(cols, ["preco", "preço", "price"]) ||
+    hasAnyColumn(cols, ["estoque", "stock"]) ||
+    hasAnyColumn(cols, ["publicado", "publish", "ativar"]);
+
+  return hasAction && hasUpdateFields;
+}
+
+function isShopeePerformanceSheet(rows) {
+  const cols = getNormalizedColumns(rows);
+  if (!cols.length) return false;
+
+  const requiredSignals = [
+    ["id do item", "item id"],
+    ["produto", "nome do produto", "product"],
+    ["vendas (pedido pago) (brl)", "vendas (pedido pago)"],
+    ["unidades (pedido pago)"],
+    ["impressao do produto", "impressão do produto"],
+    ["cliques por produto", "clicks por produto"],
+    ["ctr"],
+  ];
+
+  return requiredSignals.every((group) => hasAnyColumn(cols, group));
+}
+
+function isShopeeFinancialOrderSheet(rows) {
+  const cols = getNormalizedColumns(rows);
+  if (!cols.length) return false;
+
+  const hasOrderId = hasAnyColumn(cols, ["id do pedido", "order id", "pedido id"]);
+  const hasStatusPedido = hasAnyColumn(cols, ["status do pedido"]);
+  const hasRepasse = hasAnyColumn(cols, ["repasse"]);
+  const hasTransactionFee = hasAnyColumn(cols, ["taxa de transacao", "taxa de transação"]);
+  const hasCommissionFee = hasAnyColumn(cols, ["taxa de comissao", "taxa de comissão"]);
+  const hasServiceFee = hasAnyColumn(cols, ["taxa de servico", "taxa de serviço"]);
+  const hasReturnStatus = hasAnyColumn(cols, [
+    "status da devolucao / reembolso",
+    "status da devolução / reembolso",
+    "status de devolucao/reembolso",
+    "status de devolução/reembolso",
+  ]);
+
+  return (
+    hasOrderId &&
+    hasStatusPedido &&
+    (hasRepasse || hasTransactionFee || hasCommissionFee || hasServiceFee || hasReturnStatus)
+  );
+}
+
 function parseShopeeFinancialRows(rows) {
   const parsed = [];
 
@@ -3559,9 +3625,24 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
   const detectedColumns =
     salesRowsRaw.length > 0 ? Object.keys(salesRowsRaw[0]) : [];
   const executiveNotes = [];
+  const isMassUpdate = isShopeeMassUpdateSheet(salesRowsRaw);
+  const isPerformance = isShopeePerformanceSheet(salesRowsRaw);
+  const isFinancial = isShopeeFinancialOrderSheet(salesRowsRaw);
 
-  const financialRows = parseShopeeFinancialRows(salesRowsRaw);
-  if (financialRows.length > 0) {
+  if (isMassUpdate) {
+    throw createBadRequestError(
+      "Planilha Shopee de atualização em massa não é suportada neste fechamento. Envie a planilha de performance por produto/variação ou o fechamento por pedido."
+    );
+  }
+
+  if (isFinancial) {
+    const financialRows = parseShopeeFinancialRows(salesRowsRaw);
+    if (!financialRows.length) {
+      throw createBadRequestError(
+        `Formato de planilha Shopee reconhecido como financeiro/pedidos, porém sem linhas válidas. Colunas detectadas: ${detectedColumns.join(", ")}`
+      );
+    }
+
     const cancelledRows = financialRows.filter((row) => row.isCancelled);
     const returnRows = financialRows.filter((row) => row.isReturn && !row.isCancelled);
     const validRows = financialRows.filter((row) => !row.isCancelled && !row.isReturn);
@@ -3693,10 +3774,16 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     };
   }
 
+  if (!isPerformance) {
+    throw createBadRequestError(
+      `Formato de planilha Shopee não reconhecido. Colunas detectadas: ${detectedColumns.join(", ")}`
+    );
+  }
+
   const salesRows = parseShopeeSalesRows(salesRowsRaw);
   if (!salesRows.length) {
     throw createBadRequestError(
-      `Formato de planilha Shopee não reconhecido. Colunas detectadas: ${detectedColumns.join(", ")}`
+      `Planilha Shopee de performance reconhecida, mas não foi possível extrair linhas válidas de vendas pagas. Colunas detectadas: ${detectedColumns.join(", ")}`
     );
   }
 
@@ -3768,11 +3855,15 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
   const finalResult = contributionProfitTotal - ads - venforce - affiliates;
 
   executiveNotes.push(
-    "returnsTotal não disponível separado na planilha Shopee enviada."
+    "Planilha Shopee de performance processada com taxas estimadas por regra, não por repasse financeiro real."
   );
   executiveNotes.push(
-    "shippingFeesTotal não disponível separado na planilha Shopee enviada."
+    "Frete, devoluções e repasse real não disponíveis nesse modelo de planilha Shopee."
   );
+  executiveNotes.push(
+    "returnsTotal não disponível separado na planilha Shopee enviada."
+  );
+  executiveNotes.push("shippingFeesTotal não disponível separado na planilha Shopee enviada.");
 
   const marketplaceFeesBase = validItems.reduce((sum, item) => {
     const commissionUnit =
