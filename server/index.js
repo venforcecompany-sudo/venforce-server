@@ -3469,13 +3469,31 @@ function isShopeeMassUpdateSheet(rows) {
   const cols = getNormalizedColumns(rows);
   if (!cols.length) return false;
 
-  const hasAction = hasAnyColumn(cols, ["acao", "ação", "action"]);
-  const hasUpdateFields =
-    hasAnyColumn(cols, ["preco", "preço", "price"]) ||
-    hasAnyColumn(cols, ["estoque", "stock"]) ||
-    hasAnyColumn(cols, ["publicado", "publish", "ativar"]);
+  // Proteção: se for claramente planilha de pedidos, nunca classificar como mass update.
+  const hasOrderId = hasAnyColumn(cols, ["id do pedido", "order id", "pedido id"]);
+  const hasOrderStatus = hasAnyColumn(cols, ["status do pedido"]);
+  if (hasOrderId && hasOrderStatus) return false;
 
-  return hasAction && hasUpdateFields;
+  // Sinais fortes e específicos de mass update (evita falso positivo por colunas genéricas).
+  const strongMarkers = [
+    "et_title_product_id",
+    "et_title_product_name",
+    "et_title_variation_id",
+    "et_title_variation_price",
+    "et_title_variation_stock",
+    "ps_gtin_code",
+    "motivo da falha",
+    "gtin (ean)",
+    "variante identificador",
+    "sku de referencia",
+    "estoque",
+  ];
+
+  const markerHits = strongMarkers.filter((marker) =>
+    cols.some((col) => col === normalizeKey(marker) || col.includes(normalizeKey(marker)))
+  ).length;
+
+  return markerHits >= 3;
 }
 
 function isShopeePerformanceSheet(rows) {
@@ -3501,10 +3519,23 @@ function isShopeeFinancialOrderSheet(rows) {
 
   const hasOrderId = hasAnyColumn(cols, ["id do pedido", "order id", "pedido id"]);
   const hasStatusPedido = hasAnyColumn(cols, ["status do pedido"]);
-  const hasRepasse = hasAnyColumn(cols, ["repasse"]);
-  const hasTransactionFee = hasAnyColumn(cols, ["taxa de transacao", "taxa de transação"]);
-  const hasCommissionFee = hasAnyColumn(cols, ["taxa de comissao", "taxa de comissão"]);
-  const hasServiceFee = hasAnyColumn(cols, ["taxa de servico", "taxa de serviço"]);
+  const supportingSignals = [
+    ["status da devolucao / reembolso", "status da devolução / reembolso", "status de devolucao/reembolso", "status de devolução/reembolso"],
+    ["nome do produto", "produto"],
+    ["preco acordado", "preço acordado"],
+    ["quantidade"],
+    ["subtotal do produto"],
+    ["taxa de transacao", "taxa de transação"],
+    ["taxa de comissao bruta", "taxa de comissão bruta"],
+    ["taxa de comissao liquida", "taxa de comissão líquida"],
+    ["taxa de servico bruta", "taxa de serviço bruta"],
+    ["taxa de servico liquida", "taxa de serviço líquida"],
+    ["total global"],
+    ["valor estimado do frete"],
+    ["repasse"],
+  ];
+  const supportHits = supportingSignals.filter((group) => hasAnyColumn(cols, group)).length;
+
   const hasReturnStatus = hasAnyColumn(cols, [
     "status da devolucao / reembolso",
     "status da devolução / reembolso",
@@ -3512,11 +3543,8 @@ function isShopeeFinancialOrderSheet(rows) {
     "status de devolução/reembolso",
   ]);
 
-  return (
-    hasOrderId &&
-    hasStatusPedido &&
-    (hasRepasse || hasTransactionFee || hasCommissionFee || hasServiceFee || hasReturnStatus)
-  );
+  // Regra principal para Order.all: ID + status + sinais adicionais de fechamento.
+  return hasOrderId && hasStatusPedido && (supportHits >= 2 || hasReturnStatus);
 }
 
 function parseShopeeFinancialRows(rows) {
@@ -3659,16 +3687,10 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
   const detectedColumns =
     salesRowsRaw.length > 0 ? Object.keys(salesRowsRaw[0]) : [];
   const executiveNotes = [];
-  const isMassUpdate = isShopeeMassUpdateSheet(salesRowsRaw);
-  const isPerformance = isShopeePerformanceSheet(salesRowsRaw);
   const isFinancial = isShopeeFinancialOrderSheet(salesRowsRaw);
+  const isPerformance = isShopeePerformanceSheet(salesRowsRaw);
 
-  if (isMassUpdate) {
-    throw createBadRequestError(
-      "Planilha Shopee de atualização em massa não é suportada neste fechamento. Envie a planilha de performance por produto/variação ou o fechamento por pedido."
-    );
-  }
-
+  // Prioridade: pedidos/financeiro -> performance -> mass update -> desconhecido
   if (isFinancial) {
     const financialRows = parseShopeeFinancialRows(salesRowsRaw);
     if (!financialRows.length) {
@@ -3809,6 +3831,12 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
   }
 
   if (!isPerformance) {
+    const isMassUpdate = isShopeeMassUpdateSheet(salesRowsRaw);
+    if (isMassUpdate) {
+      throw createBadRequestError(
+        "Planilha Shopee de atualização em massa não é suportada neste fechamento. Envie a planilha de performance por produto/variação ou o fechamento por pedido."
+      );
+    }
     throw createBadRequestError(
       `Formato de planilha Shopee não reconhecido. Colunas detectadas: ${detectedColumns.join(", ")}`
     );
