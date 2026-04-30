@@ -105,8 +105,8 @@
 
         .fc-operation-panel {
           margin-top: 18px;
-          padding: 18px 20px;
-          border-radius: 22px;
+          padding: 12px 14px;
+          border-radius: 18px;
           background: var(--fc-panel-bg);
           border: 1px solid var(--fc-panel-br);
           box-shadow: var(--fc-shadow-soft);
@@ -122,7 +122,7 @@
 
         .fc-operation-header h2 {
           margin: 0;
-          font-size: 16px;
+          font-size: 14px;
           font-weight: 780;
           letter-spacing: -0.01em;
         }
@@ -130,30 +130,30 @@
         .fc-operation-header p {
           margin: 0;
           color: var(--fc-text-2);
-          font-size: 12.5px;
+          font-size: 11.5px;
         }
 
         .fc-operation-grid {
           display: grid;
           grid-template-columns: 1.2fr 1fr 1fr repeat(3, minmax(130px, 1fr));
-          gap: 10px;
+          gap: 8px;
           align-items: end;
-          margin-bottom: 10px;
+          margin-bottom: 8px;
         }
 
         .fc-operation-item {
-          border-radius: 14px;
+          border-radius: 12px;
           background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.08);
-          padding: 10px;
+          padding: 8px;
         }
 
         .fc-operation-item label {
           display: block;
-          font-size: 11.5px;
+          font-size: 11px;
           color: var(--fc-accent-label);
           font-weight: 650;
-          margin-bottom: 7px;
+          margin-bottom: 5px;
         }
 
         .fc-operation-item input,
@@ -162,9 +162,10 @@
           color: var(--fc-text-2);
           background: rgba(9,9,11,0.6);
           border: 1px dashed rgba(255,255,255,0.18);
-          border-radius: 12px;
-          padding: 9px 10px;
+          border-radius: 10px;
+          padding: 7px 9px;
           outline: none;
+          min-height: 34px;
         }
 
         .fc-operation-actions {
@@ -204,6 +205,62 @@
           color: var(--fc-text-2);
           font-size: 13px;
         }
+
+        .fc-executive-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 14px;
+        }
+
+        .fc-exec-card {
+          border-radius: 14px;
+          background: rgba(255,255,255,0.035);
+          border: 1px solid rgba(255,255,255,0.09);
+          padding: 12px;
+        }
+
+        .fc-exec-card-title {
+          margin: 0 0 8px;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: #c4b5fd;
+        }
+
+        .fc-exec-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 7px 0;
+          border-top: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .fc-exec-row:first-of-type {
+          border-top: none;
+          padding-top: 0;
+        }
+
+        .fc-exec-label {
+          font-size: 12px;
+          color: #a1a1aa;
+          font-weight: 550;
+        }
+
+        .fc-exec-value {
+          text-align: right;
+          font-size: 12.5px;
+          font-weight: 760;
+          color: #f4f4f5;
+          letter-spacing: -0.01em;
+          white-space: nowrap;
+        }
+
+        .fc-exec-value-positive { color: #86efac; }
+        .fc-exec-value-negative { color: #f87171; }
+        .fc-exec-muted { color: #a1a1aa; }
 
         .fc-stats-grid-dashboard {
           display: grid;
@@ -466,6 +523,9 @@
         }
 
         @media (max-width: 1080px) {
+          .fc-executive-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
           .fc-stats-grid-dashboard {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
@@ -473,6 +533,9 @@
 
         @media (max-width: 760px) {
           .fc-operation-grid {
+            grid-template-columns: 1fr;
+          }
+          .fc-executive-grid {
             grid-template-columns: 1fr;
           }
         }
@@ -541,6 +604,67 @@
           <div class="fc-dashboard-header">
             <h2 class="fc-dashboard-title">Dashboard financeiro</h2>
             <p class="fc-dashboard-subtitle">Visão consolidada dos indicadores principais do fechamento.</p>
+          </div>
+          <div class="fc-executive-grid">
+            <div class="fc-exec-card" id="fin-exec-receitas">
+              <p class="fc-exec-card-title">Resumo executivo · Receitas</p>
+              <div class="fc-exec-row">
+                <span class="fc-exec-label">Receita Bruta</span>
+                <span class="fc-exec-value" id="fin-exec-receita-bruta">—</span>
+              </div>
+              <div class="fc-exec-row">
+                <span class="fc-exec-label">Receita Líquida</span>
+                <span class="fc-exec-value" id="fin-exec-receita-liquida">—</span>
+              </div>
+            </div>
+
+            <div class="fc-exec-card" id="fin-exec-deducoes">
+              <p class="fc-exec-card-title">Resumo executivo · Deduções</p>
+              <div class="fc-exec-row">
+                <span class="fc-exec-label">Cancelamentos</span>
+                <span class="fc-exec-value" id="fin-exec-cancelamentos">—</span>
+              </div>
+              <div class="fc-exec-row">
+                <span class="fc-exec-label">Pedidos cancelados</span>
+                <span class="fc-exec-value" id="fin-exec-pedidos-cancelados">—</span>
+              </div>
+            </div>
+
+            <div class="fc-exec-card" id="fin-exec-custos">
+              <p class="fc-exec-card-title">Resumo executivo · Custos / Investimentos</p>
+              <div class="fc-exec-row">
+                <span class="fc-exec-label">ADS</span>
+                <span class="fc-exec-value" id="fin-exec-ads">—</span>
+              </div>
+              <div class="fc-exec-row">
+                <span class="fc-exec-label">Venforce</span>
+                <span class="fc-exec-value" id="fin-exec-venforce">—</span>
+              </div>
+              <div class="fc-exec-row">
+                <span class="fc-exec-label">Afiliados</span>
+                <span class="fc-exec-value" id="fin-exec-afiliados">—</span>
+              </div>
+            </div>
+
+            <div class="fc-exec-card" id="fin-exec-resultado">
+              <p class="fc-exec-card-title">Resumo executivo · Resultado</p>
+              <div class="fc-exec-row">
+                <span class="fc-exec-label">Resultado Final</span>
+                <span class="fc-exec-value" id="fin-exec-resultado-final">—</span>
+              </div>
+              <div class="fc-exec-row">
+                <span class="fc-exec-label">LC Total</span>
+                <span class="fc-exec-value" id="fin-exec-lc-total">—</span>
+              </div>
+              <div class="fc-exec-row">
+                <span class="fc-exec-label">MC Média</span>
+                <span class="fc-exec-value" id="fin-exec-mc-media">—</span>
+              </div>
+              <div class="fc-exec-row">
+                <span class="fc-exec-label">TACoS</span>
+                <span class="fc-exec-value" id="fin-exec-tacos">—</span>
+              </div>
+            </div>
           </div>
           <div class="fc-stats-grid-dashboard">
               <div class="fc-stat fc-stat-card fc-stat-featured" id="fin-resultado">

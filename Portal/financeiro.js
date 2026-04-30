@@ -54,6 +54,67 @@ function limparFinStats() {
   });
 }
 
+function setExecValue(id, value, formatter, mode = "neutral") {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = formatter(value);
+  el.classList.remove("fc-exec-value-positive", "fc-exec-value-negative", "fc-exec-muted");
+  if (mode === "positive") el.classList.add("fc-exec-value-positive");
+  else if (mode === "negative") el.classList.add("fc-exec-value-negative");
+  else if (mode === "muted") el.classList.add("fc-exec-muted");
+}
+
+function limparFinResumoExecutivo() {
+  [
+    "fin-exec-receita-bruta",
+    "fin-exec-receita-liquida",
+    "fin-exec-cancelamentos",
+    "fin-exec-pedidos-cancelados",
+    "fin-exec-ads",
+    "fin-exec-venforce",
+    "fin-exec-afiliados",
+    "fin-exec-resultado-final",
+    "fin-exec-lc-total",
+    "fin-exec-mc-media",
+    "fin-exec-tacos",
+  ].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = "—";
+    el.classList.remove("fc-exec-value-positive", "fc-exec-value-negative", "fc-exec-muted");
+  });
+}
+
+function renderFinResumoExecutivo(data) {
+  const s = data?.summary || {};
+  const ads = Number(document.getElementById("fin-ads")?.value || 0);
+  const venforce = Number(document.getElementById("fin-venforce")?.value || 0);
+  const afiliados = Number(document.getElementById("fin-affiliates")?.value || 0);
+
+  const gross = Number(s.grossRevenueTotal || 0);
+  const net = Number(s.paidRevenueTotal || 0);
+  const refunds = Number(s.refundsTotal || 0);
+  const refundsCount = Number(s.refundsCount || 0);
+  const finalResult = Number(s.finalResult || 0);
+  const lcTotal = Number(s.contributionProfitTotal || 0);
+  const mcMedia = Number(s.averageContributionMargin || 0);
+  const tacosValue = Number(s.tacos || 0);
+
+  setExecValue("fin-exec-receita-bruta", gross, brl, gross > 0 ? "positive" : "neutral");
+  setExecValue("fin-exec-receita-liquida", net, brl, net > 0 ? "positive" : "neutral");
+  setExecValue("fin-exec-cancelamentos", refunds, brl, refunds < 0 ? "negative" : "neutral");
+  setExecValue("fin-exec-pedidos-cancelados", refundsCount, num, refundsCount > 0 ? "negative" : "muted");
+
+  setExecValue("fin-exec-ads", ads, brl, ads > 0 ? "negative" : "muted");
+  setExecValue("fin-exec-venforce", venforce, brl, venforce > 0 ? "negative" : "muted");
+  setExecValue("fin-exec-afiliados", afiliados, brl, afiliados > 0 ? "negative" : "muted");
+
+  setExecValue("fin-exec-resultado-final", finalResult, brl, finalResult > 0 ? "positive" : (finalResult < 0 ? "negative" : "neutral"));
+  setExecValue("fin-exec-lc-total", lcTotal, brl, lcTotal > 0 ? "positive" : (lcTotal < 0 ? "negative" : "neutral"));
+  setExecValue("fin-exec-mc-media", mcMedia, pct, mcMedia > 0 ? "positive" : (mcMedia < 0 ? "negative" : "neutral"));
+  setExecValue("fin-exec-tacos", tacosValue, pct, "muted");
+}
+
 function renderFinResumo(data) {
   const s = data?.summary || {};
 
@@ -198,6 +259,7 @@ async function processarFechamentoFinanceiro() {
     if (!res.ok) throw new Error(json.erro || json.message || "HTTP " + res.status);
 
     renderFinResumo(json);
+    renderFinResumoExecutivo(json);
     renderFinTabela(json);
     setStatus("✓ Processado com sucesso.", "success");
 
@@ -263,6 +325,7 @@ if (btnFinLimpar) {
     if (marketplace) marketplace.value = "";
 
     limparFinStats();
+    limparFinResumoExecutivo();
 
     const tabela = document.getElementById("fin-tabela");
     if (tabela) tabela.innerHTML = "";
@@ -290,4 +353,5 @@ if (finCostsInput) {
 }
 
 limparFinStats();
+limparFinResumoExecutivo();
 
