@@ -88,18 +88,6 @@
           max-width: 72ch;
         }
 
-        .fc-top-grid {
-          display: grid;
-          grid-template-columns: 1.4fr 0.6fr;
-          gap: 20px;
-          margin-top: 22px;
-          align-items: start;
-        }
-
-        @media (max-width: 1080px) {
-          .fc-top-grid { grid-template-columns: 1fr; }
-        }
-
         .fc-panel {
           background: var(--fc-panel-bg);
           border: 1px solid var(--fc-panel-br);
@@ -115,17 +103,112 @@
           letter-spacing: -0.01em;
         }
 
-        .fc-upload-grid {
+        .fc-operation-panel {
+          margin-top: 18px;
+          padding: 18px 20px;
+          border-radius: 22px;
+          background: var(--fc-panel-bg);
+          border: 1px solid var(--fc-panel-br);
+          box-shadow: var(--fc-shadow-soft);
+        }
+
+        .fc-operation-header {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+
+        .fc-operation-header h2 {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 780;
+          letter-spacing: -0.01em;
+        }
+
+        .fc-operation-header p {
+          margin: 0;
+          color: var(--fc-text-2);
+          font-size: 12.5px;
+        }
+
+        .fc-operation-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: 1.2fr 1fr 1fr repeat(3, minmax(130px, 1fr));
+          gap: 10px;
+          align-items: end;
+          margin-bottom: 10px;
+        }
+
+        .fc-operation-item {
+          border-radius: 14px;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          padding: 10px;
+        }
+
+        .fc-operation-item label {
+          display: block;
+          font-size: 11.5px;
+          color: var(--fc-accent-label);
+          font-weight: 650;
+          margin-bottom: 7px;
+        }
+
+        .fc-operation-item input,
+        .fc-operation-item select {
+          width: 100%;
+          color: var(--fc-text-2);
+          background: rgba(9,9,11,0.6);
+          border: 1px dashed rgba(255,255,255,0.18);
+          border-radius: 12px;
+          padding: 9px 10px;
+          outline: none;
+        }
+
+        .fc-operation-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: flex-end;
+        }
+
+        .fc-dashboard-panel {
+          margin-top: 16px;
+          padding: 22px;
+          border-radius: 24px;
+          background: var(--fc-panel-bg);
+          border: 1px solid var(--fc-panel-br);
+          box-shadow: var(--fc-shadow-soft);
+        }
+
+        .fc-dashboard-header {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
           gap: 12px;
           margin-bottom: 14px;
         }
 
-        @media (max-width: 720px) {
-          .fc-upload-grid {
-            grid-template-columns: 1fr;
-          }
+        .fc-dashboard-title {
+          margin: 0;
+          font-size: 20px;
+          font-weight: 800;
+          letter-spacing: -0.01em;
+        }
+
+        .fc-dashboard-subtitle {
+          margin: 0;
+          color: var(--fc-text-2);
+          font-size: 13px;
+        }
+
+        .fc-stats-grid-dashboard {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
         }
 
         .fc-upload-card {
@@ -156,13 +239,7 @@
           padding: 12px 12px;
         }
 
-        .fc-actions {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          align-items: center;
-          margin-top: 10px;
-        }
+        .fc-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
 
         .fc-btn {
           appearance: none;
@@ -211,18 +288,12 @@
           color: var(--fc-text-2);
         }
 
-        .fc-stats-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 14px;
-        }
-
         .fc-stat-card {
-          border-radius: 18px;
+          border-radius: 16px;
           background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.08);
-          padding: 20px;
-          min-height: 110px;
+          padding: 18px;
+          min-height: 118px;
         }
 
         .fc-stat-title {
@@ -238,6 +309,21 @@
           font-weight: 900;
           line-height: 1.1;
           color: #ffffff;
+        }
+
+        .fc-stat-featured {
+          background: linear-gradient(145deg, rgba(124,58,237,0.22), rgba(76,29,149,0.18));
+          border-color: rgba(196,181,253,0.32);
+          box-shadow: 0 10px 26px rgba(124,58,237,0.18);
+        }
+
+        .fc-stat-featured .fc-stat-title {
+          color: #ddd6fe;
+          font-weight: 700;
+        }
+
+        .fc-stat-featured .fc-stat-value {
+          font-size: 34px;
         }
 
         .fc-tabs-panel {
@@ -368,8 +454,27 @@
 
         @media (max-width: 640px) {
           .fc-wrap { padding: 16px 14px 36px; }
-          .fc-stats-grid { grid-template-columns: 1fr 1fr; }
+          .fc-operation-actions { justify-content: stretch; }
+          .fc-operation-actions .fc-btn { flex: 1; }
           .fc-tab { padding: 9px 12px; font-size: 12px; }
+        }
+
+        @media (max-width: 1360px) {
+          .fc-operation-grid {
+            grid-template-columns: 1fr 1fr 1fr;
+          }
+        }
+
+        @media (max-width: 1080px) {
+          .fc-stats-grid-dashboard {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 760px) {
+          .fc-operation-grid {
+            grid-template-columns: 1fr;
+          }
         }
       </style>
 
@@ -383,63 +488,65 @@
           </p>
         </section>
 
-        <section class="fc-top-grid">
-          <div class="fc-panel">
-            <h2>Envio de arquivo</h2>
+        <section class="fc-operation-panel">
+          <div class="fc-operation-header">
+            <h2>Processar fechamento</h2>
+            <p>Preencha os campos operacionais e processe a planilha.</p>
+          </div>
 
-            <div class="fc-upload-card" style="margin-bottom:12px;">
-              <span class="fc-upload-label">Marketplace</span>
-              <select
-                id="fin-marketplace"
-                style="width:100%;color:var(--fc-text-2);background:rgba(9,9,11,0.6);border:1px dashed rgba(255,255,255,0.18);border-radius:16px;padding:12px 12px;outline:none;"
-              >
+          <div class="fc-operation-grid">
+            <div class="fc-operation-item">
+              <label for="fin-marketplace">Marketplace</label>
+              <select id="fin-marketplace">
                 <option value="">Selecione o marketplace...</option>
                 <option value="meli">Mercado Livre (MELI)</option>
                 <option value="shopee">Shopee</option>
               </select>
             </div>
 
-            <div class="fc-upload-grid">
-              <div class="fc-upload-card">
-                <span class="fc-upload-label">Planilha de Vendas (.xlsx)</span>
-                <label class="fc-file">
-                  <input type="file" id="fin-sales" accept=".xlsx">
-                </label>
-              </div>
-
-              <div class="fc-upload-card">
-                <span class="fc-upload-label">Planilha de Custos (.xlsx)</span>
-                <label class="fc-file">
-                  <input type="file" id="fin-costs" accept=".xlsx">
-                </label>
-              </div>
+            <div class="fc-operation-item">
+              <label for="fin-sales">Planilha de Vendas (.xlsx)</label>
+              <input type="file" id="fin-sales" accept=".xlsx">
             </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px;">
-              <div class="fc-upload-card">
-                <span class="fc-upload-label">ADS (R$)</span>
-                <input type="number" id="fin-ads" min="0" step="0.01" value="0" style="width:100%;color:var(--fc-text-2);background:rgba(9,9,11,0.6);border:1px dashed rgba(255,255,255,0.18);border-radius:16px;padding:12px 12px;outline:none;">
-              </div>
-              <div class="fc-upload-card">
-                <span class="fc-upload-label">Venforce (R$)</span>
-                <input type="number" id="fin-venforce" min="0" step="0.01" value="0" style="width:100%;color:var(--fc-text-2);background:rgba(9,9,11,0.6);border:1px dashed rgba(255,255,255,0.18);border-radius:16px;padding:12px 12px;outline:none;">
-              </div>
-              <div class="fc-upload-card">
-                <span class="fc-upload-label">Afiliados (R$)</span>
-                <input type="number" id="fin-affiliates" min="0" step="0.01" value="0" style="width:100%;color:var(--fc-text-2);background:rgba(9,9,11,0.6);border:1px dashed rgba(255,255,255,0.18);border-radius:16px;padding:12px 12px;outline:none;">
-              </div>
+            <div class="fc-operation-item">
+              <label for="fin-costs">Planilha de Custos (.xlsx)</label>
+              <input type="file" id="fin-costs" accept=".xlsx">
             </div>
 
-            <div class="fc-actions">
-              <button id="btn-fin-processar" class="fc-btn fc-btn-primary" type="button">Processar</button>
-              <button id="btn-fin-limpar" class="fc-btn fc-btn-secondary" type="button">Limpar</button>
+            <div class="fc-operation-item">
+              <label for="fin-ads">ADS (R$)</label>
+              <input type="number" id="fin-ads" min="0" step="0.01" value="0">
             </div>
 
-            <div id="fin-status" class="fc-status" style="display:none;"></div>
+            <div class="fc-operation-item">
+              <label for="fin-venforce">Venforce (R$)</label>
+              <input type="number" id="fin-venforce" min="0" step="0.01" value="0">
+            </div>
+
+            <div class="fc-operation-item">
+              <label for="fin-affiliates">Afiliados (R$)</label>
+              <input type="number" id="fin-affiliates" min="0" step="0.01" value="0">
+            </div>
           </div>
 
-          <div class="fc-panel">
-            <div class="fc-stats-grid">
+          <div class="fc-operation-actions">
+            <button id="btn-fin-processar" class="fc-btn fc-btn-primary" type="button">Processar</button>
+            <button id="btn-fin-limpar" class="fc-btn fc-btn-secondary" type="button">Limpar</button>
+          </div>
+          <div id="fin-status" class="fc-status" style="display:none;"></div>
+        </section>
+
+        <section class="fc-dashboard-panel">
+          <div class="fc-dashboard-header">
+            <h2 class="fc-dashboard-title">Dashboard financeiro</h2>
+            <p class="fc-dashboard-subtitle">Visão consolidada dos indicadores principais do fechamento.</p>
+          </div>
+          <div class="fc-stats-grid-dashboard">
+              <div class="fc-stat fc-stat-card fc-stat-featured" id="fin-resultado">
+                <p class="fc-stat-title">Resultado Final</p>
+                <p class="fc-stat-value">—</p>
+              </div>
               <div class="fc-stat fc-stat-card" id="fin-bruto">
                 <p class="fc-stat-title">Receita Bruta</p>
                 <p class="fc-stat-value">—</p>
@@ -452,12 +559,9 @@
                 <p class="fc-stat-title">LC Total</p>
                 <p class="fc-stat-value">—</p>
               </div>
+              
               <div class="fc-stat fc-stat-card" id="fin-mc">
                 <p class="fc-stat-title">MC Média</p>
-                <p class="fc-stat-value">—</p>
-              </div>
-              <div class="fc-stat fc-stat-card" id="fin-resultado">
-                <p class="fc-stat-title">Resultado Final</p>
                 <p class="fc-stat-value">—</p>
               </div>
               <div class="fc-stat fc-stat-card" id="fin-tacos">
@@ -472,7 +576,6 @@
                 <p class="fc-stat-title">Pedidos cancelados</p>
                 <p class="fc-stat-value">—</p>
               </div>
-            </div>
           </div>
         </section>
 
