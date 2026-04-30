@@ -307,6 +307,24 @@ END $$;
     await pool.query(`
       ALTER TABLE relatorio_itens ADD COLUMN IF NOT EXISTS sku TEXT;
     `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS relatorio_pastas (
+        id SERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        descricao TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await pool.query(`
+      ALTER TABLE relatorios
+      ADD COLUMN IF NOT EXISTS pasta_id INTEGER REFERENCES relatorio_pastas(id) ON DELETE SET NULL;
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_relatorios_pasta_id ON relatorios(pasta_id);
+    `);
     
     res.json({ ok: true, mensagem: "Tabelas criadas com sucesso" });
   } catch (err) {
@@ -1181,62 +1199,197 @@ app.post("/automacoes/relatorios", authMiddleware, requireAutomacoesAccess, asyn
 app.get("/automacoes/relatorios", authMiddleware, requireAutomacoesAccess, async (req, res) => {
   try {
     const clienteSlug = String(req.query.clienteSlug || "").trim();
+    const pastaIdRaw = req.query.pastaId;
+    let pastaId = null;
+    if (pastaIdRaw !== undefined && pastaIdRaw !== null && String(pastaIdRaw).trim() !== "") {
+      const parsedPastaId = parseInt(pastaIdRaw, 10);
+      if (!Number.isFinite(parsedPastaId) || parsedPastaId <= 0) {
+        return res.status(400).json({ ok: false, erro: "pastaId inválido." });
+      }
+      pastaId = parsedPastaId;
+    }
+
     const limitRaw = parseInt(req.query.limit, 10);
     const temLimit = Number.isFinite(limitRaw) && limitRaw > 0;
     const limit = temLimit ? Math.min(Math.max(limitRaw, 1), 500) : null;
-    let result;
 
+    const params = [];
+    const where = [];
     if (clienteSlug) {
-      const slug = normalizarSlug(clienteSlug);
-      if (temLimit) {
-        result = await pool.query(
-          `SELECT id, user_id, cliente_slug, base_slug, margem_alvo, escopo, status,
-                  total_itens, itens_com_base, itens_sem_base,
-                  itens_criticos, itens_atencao, itens_saudaveis,
-                  mc_media, observacoes, created_at
-             FROM relatorios
-            WHERE cliente_slug = $1
-            ORDER BY created_at DESC
-            LIMIT $2`,
-          [slug, limit]
-        );
-      } else {
-        result = await pool.query(
-          `SELECT id, user_id, cliente_slug, base_slug, margem_alvo, escopo, status,
-                  total_itens, itens_com_base, itens_sem_base,
-                  itens_criticos, itens_atencao, itens_saudaveis,
-                  mc_media, observacoes, created_at
-             FROM relatorios
-            WHERE cliente_slug = $1
-            ORDER BY created_at DESC`,
-          [slug]
-        );
-      }
-    } else {
-      if (temLimit) {
-        result = await pool.query(
-          `SELECT id, user_id, cliente_slug, base_slug, margem_alvo, escopo, status,
-                  total_itens, itens_com_base, itens_sem_base,
-                  itens_criticos, itens_atencao, itens_saudaveis,
-                  mc_media, observacoes, created_at
-             FROM relatorios
-            ORDER BY created_at DESC
-            LIMIT $1`,
-          [limit]
-        );
-      } else {
-        result = await pool.query(
-          `SELECT id, user_id, cliente_slug, base_slug, margem_alvo, escopo, status,
-                  total_itens, itens_com_base, itens_sem_base,
-                  itens_criticos, itens_atencao, itens_saudaveis,
-                  mc_media, observacoes, created_at
-             FROM relatorios
-            ORDER BY created_at DESC`
-        );
-      }
+      params.push(normalizarSlug(clienteSlug));
+      where.push(`r.cliente_slug = $${params.length}`);
+    }
+    if (pastaId !== null) {
+      params.push(pastaId);
+      where.push(`r.pasta_id = $${params.length}`);
     }
 
+    let sql = `
+      SELECT r.id, r.user_id, r.cliente_slug, r.base_slug, r.escopo, r.status,
+             r.margem_alvo, r.total_itens, r.itens_com_base, r.itens_sem_base,
+             r.itens_criticos, r.itens_atencao, r.itens_saudaveis,
+             r.mc_media, r.observacoes, r.created_at, r.pasta_id,
+             p.nome AS pasta_nome
+        FROM relatorios r
+        LEFT JOIN relatorio_pastas p ON p.id = r.pasta_id
+    `;
+
+    if (where.length) {
+      sql += ` WHERE ${where.join(" AND ")}`;
+    }
+
+    sql += ` ORDER BY r.created_at DESC`;
+    if (temLimit) {
+      params.push(limit);
+      sql += ` LIMIT $${params.length}`;
+    }
+
+    const result = await pool.query(sql, params);
+
     return res.json({ ok: true, total: result.rows.length, relatorios: result.rows });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// PASTAS DE RELATÓRIOS
+app.get("/relatorios/pastas", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT p.id, p.nome, p.descricao, p.created_at,
+              COUNT(r.id)::int AS total_relatorios
+         FROM relatorio_pastas p
+         LEFT JOIN relatorios r ON r.pasta_id = p.id
+        GROUP BY p.id, p.nome, p.descricao, p.created_at
+        ORDER BY p.nome ASC, p.id ASC`
+    );
+    return res.json({ ok: true, total: result.rows.length, pastas: result.rows });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.post("/relatorios/pastas", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const nome = String(req.body?.nome || "").trim();
+    const descricaoRaw = req.body?.descricao;
+    const descricao = descricaoRaw == null || String(descricaoRaw).trim() === ""
+      ? null
+      : String(descricaoRaw).trim();
+
+    if (!nome) {
+      return res.status(400).json({ ok: false, erro: "nome é obrigatório." });
+    }
+
+    const ins = await pool.query(
+      `INSERT INTO relatorio_pastas (nome, descricao)
+       VALUES ($1, $2)
+       RETURNING id, nome, descricao, created_at`,
+      [nome, descricao]
+    );
+
+    return res.status(201).json({ ok: true, pasta: ins.rows[0] });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.patch("/relatorios/pastas/:id", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, erro: "id inválido." });
+    }
+
+    const atual = await pool.query("SELECT id, nome, descricao, created_at FROM relatorio_pastas WHERE id = $1", [id]);
+    if (!atual.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Pasta não encontrada." });
+    }
+
+    const temNome = Object.prototype.hasOwnProperty.call(req.body || {}, "nome");
+    const temDescricao = Object.prototype.hasOwnProperty.call(req.body || {}, "descricao");
+    if (!temNome && !temDescricao) {
+      return res.status(400).json({ ok: false, erro: "Informe nome e/ou descricao para atualizar." });
+    }
+
+    const nome = temNome ? String(req.body?.nome || "").trim() : atual.rows[0].nome;
+    if (temNome && !nome) {
+      return res.status(400).json({ ok: false, erro: "nome é obrigatório." });
+    }
+
+    const descricao = temDescricao
+      ? (req.body?.descricao == null || String(req.body.descricao).trim() === "" ? null : String(req.body.descricao).trim())
+      : atual.rows[0].descricao;
+
+    const upd = await pool.query(
+      `UPDATE relatorio_pastas
+          SET nome = $1,
+              descricao = $2
+        WHERE id = $3
+      RETURNING id, nome, descricao, created_at`,
+      [nome, descricao, id]
+    );
+
+    return res.json({ ok: true, pasta: upd.rows[0] });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.delete("/relatorios/pastas/:id", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, erro: "id inválido." });
+    }
+
+    const pasta = await pool.query("SELECT id FROM relatorio_pastas WHERE id = $1", [id]);
+    if (!pasta.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Pasta não encontrada." });
+    }
+
+    const refs = await pool.query("SELECT COUNT(*)::int AS total FROM relatorios WHERE pasta_id = $1", [id]);
+    if ((refs.rows[0]?.total || 0) > 0) {
+      return res.status(400).json({ ok: false, erro: "Não é possível excluir uma pasta com relatórios." });
+    }
+
+    await pool.query("DELETE FROM relatorio_pastas WHERE id = $1", [id]);
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+app.patch("/relatorios/:id/pasta", authMiddleware, requireAutomacoesAccess, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, erro: "id inválido." });
+    }
+
+    const rel = await pool.query("SELECT id FROM relatorios WHERE id = $1", [id]);
+    if (!rel.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Relatório não encontrado." });
+    }
+
+    const pastaIdBody = req.body?.pastaId;
+    if (pastaIdBody === null) {
+      await pool.query("UPDATE relatorios SET pasta_id = NULL WHERE id = $1", [id]);
+      return res.json({ ok: true });
+    }
+
+    const pastaId = parseInt(pastaIdBody, 10);
+    if (!Number.isFinite(pastaId) || pastaId <= 0) {
+      return res.status(400).json({ ok: false, erro: "pastaId inválido." });
+    }
+
+    const pasta = await pool.query("SELECT id FROM relatorio_pastas WHERE id = $1", [pastaId]);
+    if (!pasta.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Pasta não encontrada." });
+    }
+
+    await pool.query("UPDATE relatorios SET pasta_id = $1 WHERE id = $2", [pastaId, id]);
+    return res.json({ ok: true });
   } catch (err) {
     return res.status(500).json({ ok: false, erro: err.message });
   }
