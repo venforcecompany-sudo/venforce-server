@@ -3613,6 +3613,24 @@ function parseMeliRows(rows) {
           "cancelamentos e reembolsos",
         ])
       ),
+      tarifaVenda: toNumber(
+        findField(row, [
+          "tarifa de venda e impostos (brl)",
+          "tarifa de venda e impostos",
+        ])
+      ),
+      tarifaEnvio: toNumber(
+        findField(row, [
+          "tarifas de envio (brl)",
+          "tarifas de envio",
+        ])
+      ),
+      descontosBonus: toNumber(
+        findField(row, [
+          "descontos e bônus",
+          "descontos e bonus",
+        ])
+      ),
       adIdRaw,
       adId: normalizeId(adIdRaw),
       title: String(
@@ -3776,6 +3794,7 @@ function buildMeliBaseSheetRows(finalRows) {
     "Imposto",
     "Preço de custo",
     "Preço de custo total",
+    "Ajuste plataforma (BRL)",
     "LC",
     "MC",
   ]);
@@ -3791,6 +3810,7 @@ function buildMeliBaseSheetRows(finalRows) {
       row["Imposto"] / 100,
       row["Preço de custo"],
       row["Preço de custo total"],
+      row["Ajuste plataforma (BRL)"],
       row.LC,
       row.MC / 100,
     ]);
@@ -3807,6 +3827,7 @@ function buildMeliBaseSheetRows(finalRows) {
     const i = `I${rowIndex}`;
     const j = `J${rowIndex}`;
     const k = `K${rowIndex}`;
+    const l = `L${rowIndex}`;
 
     if (sheet[d]) sheet[d].z = "R$ #,##0.00";
     if (sheet[e]) sheet[e].z = "R$ #,##0.00";
@@ -3815,7 +3836,8 @@ function buildMeliBaseSheetRows(finalRows) {
     if (sheet[h]) sheet[h].z = "R$ #,##0.00";
     if (sheet[i]) sheet[i].z = "R$ #,##0.00";
     if (sheet[j]) sheet[j].z = "R$ #,##0.00";
-    if (sheet[k]) sheet[k].z = "0.00%";
+    if (sheet[k]) sheet[k].z = "R$ #,##0.00";
+    if (sheet[l]) sheet[l].z = "0.00%";
   }
 
   sheet["!cols"] = [
@@ -3828,11 +3850,12 @@ function buildMeliBaseSheetRows(finalRows) {
     { wch: 10 },
     { wch: 14 },
     { wch: 18 },
+    { wch: 18 },
     { wch: 14 },
     { wch: 10 },
   ];
 
-  sheet["!autofilter"] = { ref: "A1:K1" };
+  sheet["!autofilter"] = { ref: "A1:L1" };
 
   return sheet;
 }
@@ -3858,6 +3881,15 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     return !!row.adId && row.units > 0;
   }
 
+  function computePlatformAdjustment(row) {
+    const expected =
+      (row.productRevenue || 0) +
+      (row.tarifaVenda || 0) +
+      (row.tarifaEnvio || 0) +
+      (row.descontosBonus || 0);
+    return round2(expected - (row.total || 0));
+  }
+
   function getCostForAd(adId) {
     const normalized = normalizeId(adId);
     const noPrefix = normalized.replace(/^MLB/i, "");
@@ -3870,7 +3902,7 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     );
   }
 
-  function pushCalculatedRow(item, totalRateado) {
+  function pushCalculatedRow(item, totalRateado, ajustePlataforma = 0) {
     const id = normalizeId(item.adId || item.adIdRaw);
     let cost = item.modelIdRaw ? getCostForAd(item.modelIdRaw) : null;
     if (!cost) cost = getCostForAd(id);
@@ -3923,6 +3955,7 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       Imposto: impostoPercent,
       "Preço de custo": precoCusto,
       "Preço de custo total": precoCustoTotal,
+      "Ajuste plataforma (BRL)": round2(ajustePlataforma),
       LC: lc,
       MC: mc,
     });
@@ -3952,9 +3985,11 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
 
       if (children.length > 0) {
         const totalRateado = allocateByUnits(current.total, children);
+        const ajusteParent = computePlatformAdjustment(current);
+        const ajustesRateados = allocateByUnits(ajusteParent, children);
 
         for (let k = 0; k < children.length; k++) {
-          pushCalculatedRow(children[k], totalRateado[k]);
+          pushCalculatedRow(children[k], totalRateado[k], ajustesRateados[k]);
           consumedIndexes.add(childrenIndexes[k]);
         }
 
@@ -3967,7 +4002,7 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     }
 
     if (isItemRow(current)) {
-      pushCalculatedRow(current, current.total);
+      pushCalculatedRow(current, current.total, computePlatformAdjustment(current));
       consumedIndexes.add(i);
     }
   }
@@ -3983,6 +4018,16 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
   const contributionProfitTotal = round2(
     finalRows.reduce((sum, row) => sum + Number(row["LC"] || 0), 0)
   );
+
+  const platformAdjustmentTotal = round2(
+    finalRows.reduce(
+      (sum, row) => sum + Number(row["Ajuste plataforma (BRL)"] || 0),
+      0
+    )
+  );
+  const platformAdjustmentRowsCount = finalRows.filter(
+    (row) => Math.abs(Number(row["Ajuste plataforma (BRL)"] || 0)) > 0.01
+  ).length;
 
   const averageContributionMargin =
     grossRevenueTotal > 0 ? contributionProfitTotal / grossRevenueTotal : 0;
@@ -4003,6 +4048,8 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       finalResult,
       tacos,
       tacox,
+      platformAdjustmentTotal,
+      platformAdjustmentRowsCount,
     },
     preparedRows: finalRows,
     detailedRows: finalRows,
