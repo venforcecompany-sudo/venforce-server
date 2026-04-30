@@ -63,39 +63,52 @@
         </div>
         <div style="padding:1.25rem 1.75rem;">
           <div id="relatorios-feedback" style="display:none;margin-bottom:10px;font-size:.875rem;"></div>
-          <div id="relatorios-loading" class="vf-empty-state" style="display:none;padding:1.5rem 1rem;">
-            <p>Carregando relatórios...</p>
-          </div>
-          <div id="relatorios-erro" class="vf-empty-state" style="display:none;padding:1.5rem 1rem;">
-            <p style="color:var(--vf-danger);">Erro ao carregar relatórios.</p>
-          </div>
-          <div id="relatorios-vazio" class="vf-empty-state" style="display:none;padding:1.5rem 1rem;">
-            <p>Nenhum relatório encontrado</p>
-          </div>
-          <div id="relatorios-wrapper" class="vf-table-wrapper" style="display:none;">
-            <table class="vf-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Data</th>
-                  <th>Cliente</th>
-                  <th>Base</th>
-                  <th>Escopo</th>
-                  <th style="text-align:right;">Margem alvo</th>
-                  <th style="text-align:right;">Itens</th>
-                  <th style="text-align:right;">Críticos</th>
-                  <th style="text-align:right;">Atenção</th>
-                  <th style="text-align:right;">Saudáveis</th>
-                  <th style="text-align:right;">Sem base</th>
-                  <th style="text-align:right;">MC média</th>
-                  <th>Status</th>
-                  <th>Detalhes</th>
-                  <th>Exportar</th>
-                  <th>Excluir</th>
-                </tr>
-              </thead>
-              <tbody id="relatorios-tbody"></tbody>
-            </table>
+          <div class="vf-relatorios-layout">
+            <aside class="vf-relatorios-pastas-col">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+                <div style="font-weight:700;font-size:.95rem;">Pastas</div>
+                <button type="button" id="btn-nova-pasta" class="vf-btn-secondary" style="margin:0;padding:.3rem .55rem;font-size:.78rem;">Nova pasta</button>
+              </div>
+              <div id="relatorios-pastas-lista"></div>
+            </aside>
+
+            <section class="vf-relatorios-tabela-col">
+              <div id="relatorios-loading" class="vf-empty-state" style="display:none;padding:1.5rem 1rem;">
+                <p>Carregando relatórios...</p>
+              </div>
+              <div id="relatorios-erro" class="vf-empty-state" style="display:none;padding:1.5rem 1rem;">
+                <p style="color:var(--vf-danger);">Erro ao carregar relatórios.</p>
+              </div>
+              <div id="relatorios-vazio" class="vf-empty-state" style="display:none;padding:1.5rem 1rem;">
+                <p>Nenhum relatório encontrado</p>
+              </div>
+              <div id="relatorios-wrapper" class="vf-table-wrapper" style="display:none;">
+                <table class="vf-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Data</th>
+                      <th>Cliente</th>
+                      <th>Base</th>
+                      <th>Escopo</th>
+                      <th style="text-align:right;">Margem alvo</th>
+                      <th style="text-align:right;">Itens</th>
+                      <th style="text-align:right;">Críticos</th>
+                      <th style="text-align:right;">Atenção</th>
+                      <th style="text-align:right;">Saudáveis</th>
+                      <th style="text-align:right;">Sem base</th>
+                      <th style="text-align:right;">MC média</th>
+                      <th>Status</th>
+                      <th>Mover</th>
+                      <th>Detalhes</th>
+                      <th>Exportar</th>
+                      <th>Excluir</th>
+                    </tr>
+                  </thead>
+                  <tbody id="relatorios-tbody"></tbody>
+                </table>
+              </div>
+            </section>
           </div>
         </div>
       </div>

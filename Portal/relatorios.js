@@ -23,6 +23,8 @@ let TODOS_RELATORIOS = [];
 let RELATORIOS_FILTRADOS = [];
 let RELATORIO_DETALHE_ATUAL_ID = null;
 let CLIENTES_CACHE = [];
+let PASTAS = [];
+let PASTA_SELECIONADA = "todos";
 let DETALHE_ITENS = [];
 let DETALHE_FILTRO_ATIVO = "todos";
 let DETALHE_BUSCA = "";
@@ -132,6 +134,98 @@ function setListState(state, message = "") {
   }
 }
 
+function getContagemRelatoriosPorPasta() {
+  const mapa = new Map();
+  let semPasta = 0;
+  (Array.isArray(TODOS_RELATORIOS) ? TODOS_RELATORIOS : []).forEach((r) => {
+    const pastaId = Number(r?.pasta_id);
+    if (Number.isFinite(pastaId) && pastaId > 0) {
+      mapa.set(pastaId, (mapa.get(pastaId) || 0) + 1);
+    } else {
+      semPasta += 1;
+    }
+  });
+  return { mapa, semPasta, total: TODOS_RELATORIOS.length };
+}
+
+function selecionarPasta(pastaId) {
+  PASTA_SELECIONADA = pastaId;
+  renderPastas();
+  filtrarRelatorios();
+}
+
+function renderPastas() {
+  const container = document.getElementById("relatorios-pastas-lista");
+  if (!container) return;
+
+  const { mapa, semPasta, total } = getContagemRelatoriosPorPasta();
+  const pastas = Array.isArray(PASTAS) ? PASTAS : [];
+
+  const htmlItens = [];
+  htmlItens.push(`
+    <button type="button" class="vf-relatorio-pasta-item ${PASTA_SELECIONADA === "todos" ? "is-active" : ""}" data-pasta-filter="todos">
+      <span>Todos</span>
+      <span class="vf-relatorio-pasta-count">${total}</span>
+    </button>
+  `);
+  htmlItens.push(`
+    <button type="button" class="vf-relatorio-pasta-item ${PASTA_SELECIONADA === "sem_pasta" ? "is-active" : ""}" data-pasta-filter="sem_pasta">
+      <span>Sem pasta</span>
+      <span class="vf-relatorio-pasta-count">${semPasta}</span>
+    </button>
+  `);
+
+  pastas.forEach((pasta) => {
+    const id = Number(pasta.id);
+    const active = PASTA_SELECIONADA === id ? "is-active" : "";
+    const count = mapa.get(id) || 0;
+    htmlItens.push(`
+      <div class="vf-relatorio-pasta-row ${active}">
+        <button type="button" class="vf-relatorio-pasta-item" data-pasta-filter="${id}">
+          <span>${escapeHTML(pasta.nome || "Pasta")}</span>
+          <span class="vf-relatorio-pasta-count">${count}</span>
+        </button>
+        <div class="vf-relatorio-pasta-actions">
+          <button type="button" class="vf-relatorio-pasta-action" data-pasta-rename="${id}" title="Renomear">✎</button>
+          <button type="button" class="vf-relatorio-pasta-action" data-pasta-delete="${id}" title="Excluir">🗑</button>
+        </div>
+      </div>
+    `);
+  });
+
+  container.innerHTML = htmlItens.join("");
+
+  container.querySelectorAll("[data-pasta-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const raw = btn.getAttribute("data-pasta-filter");
+      if (raw === "todos" || raw === "sem_pasta") {
+        selecionarPasta(raw);
+        return;
+      }
+      const id = Number(raw);
+      if (Number.isFinite(id) && id > 0) selecionarPasta(id);
+    });
+  });
+
+  container.querySelectorAll("[data-pasta-rename]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = Number(btn.getAttribute("data-pasta-rename"));
+      if (!Number.isFinite(id) || id <= 0) return;
+      renomearPasta(id);
+    });
+  });
+
+  container.querySelectorAll("[data-pasta-delete]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = Number(btn.getAttribute("data-pasta-delete"));
+      if (!Number.isFinite(id) || id <= 0) return;
+      excluirPasta(id);
+    });
+  });
+}
+
 function preencherFiltroCliente() {
   const select = document.getElementById("filtro-cliente");
   if (!select) return;
@@ -198,6 +292,166 @@ async function carregarClientesParaFiltro() {
   }
 }
 
+async function carregarPastas() {
+  if (!TOKEN) return;
+  try {
+    const res = await fetch(`${API_BASE}/relatorios/pastas`, {
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+    if (res.status === 401) {
+      clearSession();
+      return;
+    }
+    if (res.status === 403) {
+      window.location.replace("dashboard.html");
+      return;
+    }
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+
+    PASTAS = Array.isArray(json.pastas) ? json.pastas : [];
+    if (typeof PASTA_SELECIONADA === "number") {
+      const existe = PASTAS.some((p) => Number(p.id) === PASTA_SELECIONADA);
+      if (!existe) PASTA_SELECIONADA = "todos";
+    }
+    renderPastas();
+  } catch (err) {
+    PASTAS = [];
+    renderPastas();
+    setFeedback(`Erro ao carregar pastas: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
+  }
+}
+
+async function criarPasta() {
+  if (!TOKEN) return;
+  const nome = window.prompt("Nome da nova pasta:");
+  if (nome == null) return;
+  const nomeTrim = String(nome).trim();
+  if (!nomeTrim) {
+    setFeedback("O nome da pasta é obrigatório.", "var(--vf-danger)");
+    return;
+  }
+  const descricaoInput = window.prompt("Descrição da pasta (opcional):", "");
+  if (descricaoInput == null) return;
+  const descricaoTrim = String(descricaoInput).trim();
+
+  try {
+    const res = await fetch(`${API_BASE}/relatorios/pastas`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + TOKEN,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        nome: nomeTrim,
+        descricao: descricaoTrim || null,
+      }),
+    });
+    if (res.status === 401) {
+      clearSession();
+      return;
+    }
+    if (res.status === 403) {
+      window.location.replace("dashboard.html");
+      return;
+    }
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+    setFeedback(`Pasta "${nomeTrim}" criada com sucesso.`, "var(--vf-success)");
+    await carregarPastas();
+  } catch (err) {
+    setFeedback(`Erro ao criar pasta: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
+  }
+}
+
+async function renomearPasta(id) {
+  if (!TOKEN) return;
+  const pasta = (Array.isArray(PASTAS) ? PASTAS : []).find((p) => Number(p.id) === Number(id));
+  if (!pasta) return;
+
+  const novoNome = window.prompt("Novo nome da pasta:", pasta.nome || "");
+  if (novoNome == null) return;
+  const nomeTrim = String(novoNome).trim();
+  if (!nomeTrim) {
+    setFeedback("O nome da pasta é obrigatório.", "var(--vf-danger)");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/relatorios/pastas/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer " + TOKEN,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ nome: nomeTrim }),
+    });
+    if (res.status === 401) {
+      clearSession();
+      return;
+    }
+    if (res.status === 403) {
+      window.location.replace("dashboard.html");
+      return;
+    }
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+    setFeedback("Pasta renomeada com sucesso.", "var(--vf-success)");
+    await carregarPastas();
+  } catch (err) {
+    setFeedback(`Erro ao renomear pasta: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
+  }
+}
+
+async function excluirPasta(id) {
+  if (!TOKEN) return;
+  const pasta = (Array.isArray(PASTAS) ? PASTAS : []).find((p) => Number(p.id) === Number(id));
+  const nome = pasta?.nome || `#${id}`;
+
+  const confirmar = window.confirm(`Excluir a pasta "${nome}"?`);
+  if (!confirmar) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/relatorios/pastas/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+    if (res.status === 401) {
+      clearSession();
+      return;
+    }
+    if (res.status === 403) {
+      window.location.replace("dashboard.html");
+      return;
+    }
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      const msg = String(json?.erro || `HTTP ${res.status}`);
+      if (msg.includes("Não é possível excluir uma pasta com relatórios")) {
+        throw new Error("Essa pasta ainda possui relatórios. Mova ou remova os relatórios antes de excluir.");
+      }
+      throw new Error(msg);
+    }
+
+    if (PASTA_SELECIONADA === Number(id)) {
+      PASTA_SELECIONADA = "todos";
+    }
+    setFeedback("Pasta excluída com sucesso.", "var(--vf-success)");
+    await carregarPastas();
+    filtrarRelatorios();
+  } catch (err) {
+    setFeedback(`Erro ao excluir pasta: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
+  }
+}
+
 async function carregarRelatorios() {
   if (!TOKEN) return;
 
@@ -225,10 +479,12 @@ async function carregarRelatorios() {
 
     TODOS_RELATORIOS = Array.isArray(json.relatorios) ? json.relatorios : [];
     preencherFiltroCliente();
+    renderPastas();
     filtrarRelatorios();
   } catch (err) {
     TODOS_RELATORIOS = [];
     RELATORIOS_FILTRADOS = [];
+    renderPastas();
     setListState("error", `Erro ao carregar relatórios: ${err?.message || "desconhecido"}`);
   }
 }
@@ -245,6 +501,13 @@ function filtrarRelatorios() {
     const baseSlug = String(r.base_slug || "").toLowerCase();
     const escopoTxt = String(r.escopo || "").toLowerCase();
     const statusTxt = String(r.status || "").toLowerCase();
+    const pastaIdNum = Number(r.pasta_id);
+
+    if (PASTA_SELECIONADA === "sem_pasta") {
+      if (Number.isFinite(pastaIdNum) && pastaIdNum > 0) return false;
+    } else if (typeof PASTA_SELECIONADA === "number" && Number.isFinite(PASTA_SELECIONADA)) {
+      if (!Number.isFinite(pastaIdNum) || pastaIdNum !== PASTA_SELECIONADA) return false;
+    }
 
     if (cliente && clienteSlug !== cliente) return false;
     if (escopo && escopoTxt !== escopo) return false;
@@ -277,11 +540,16 @@ function renderRelatorios() {
 
   setListState("table");
 
+  const opcoesPastasHtml = (Array.isArray(PASTAS) ? PASTAS : [])
+    .map((p) => `<option value="${escapeHTML(String(p.id))}">${escapeHTML(p.nome || `Pasta ${p.id}`)}</option>`)
+    .join("");
+
   RELATORIOS_FILTRADOS.forEach((r) => {
     const mcNum = Number(r.mc_media);
     const mcStyle = Number.isFinite(mcNum)
       ? (mcNum < 0 ? "color:var(--vf-danger);" : (mcNum > 0 ? "color:var(--vf-success);" : ""))
       : "";
+    const pastaAtual = Number(r.pasta_id);
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -299,6 +567,12 @@ function renderRelatorios() {
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcStyle}">${escapeHTML(formatarMcMedia(r.mc_media))}</td>
       <td><span class="vf-ml-badge ${classeStatus(r.status)}">${escapeHTML(r.status || "—")}</span></td>
       <td>
+        <select class="vf-input relatorio-pasta-select" data-id="${escapeHTML(String(r.id || ""))}" style="margin:0;padding:.32rem .5rem;font-size:.78rem;min-width:140px;">
+          <option value="">Sem pasta</option>
+          ${opcoesPastasHtml}
+        </select>
+      </td>
+      <td>
         <button type="button" class="vf-btn-secondary btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">Detalhes</button>
       </td>
       <td>
@@ -312,6 +586,15 @@ function renderRelatorios() {
       </td>
     `;
     tbody.appendChild(tr);
+
+    const selectPasta = tr.querySelector(".relatorio-pasta-select");
+    if (selectPasta) {
+      if (Number.isFinite(pastaAtual) && pastaAtual > 0) {
+        selectPasta.value = String(pastaAtual);
+      } else {
+        selectPasta.value = "";
+      }
+    }
   });
 
   tbody.querySelectorAll(".btn-detalhe").forEach((btn) => {
@@ -336,6 +619,17 @@ function renderRelatorios() {
       const id = btn.getAttribute("data-id");
       if (!id) return;
       excluirRelatorio(id);
+    });
+  });
+
+  tbody.querySelectorAll(".relatorio-pasta-select").forEach((select) => {
+    select.addEventListener("change", async () => {
+      const id = select.getAttribute("data-id");
+      if (!id) return;
+      const pastaIdValor = select.value ? Number(select.value) : null;
+      select.disabled = true;
+      await moverRelatorioParaPasta(id, pastaIdValor);
+      select.disabled = false;
     });
   });
 }
@@ -590,6 +884,39 @@ async function baixarRelatorio(id, formato) {
   }
 }
 
+async function moverRelatorioParaPasta(relatorioId, pastaId) {
+  if (!TOKEN || !relatorioId) return;
+  try {
+    const res = await fetch(`${API_BASE}/relatorios/${encodeURIComponent(relatorioId)}/pasta`, {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer " + TOKEN,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ pastaId: pastaId == null ? null : pastaId }),
+    });
+
+    if (res.status === 401) {
+      clearSession();
+      return;
+    }
+    if (res.status === 403) {
+      window.location.replace("dashboard.html");
+      return;
+    }
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+
+    setFeedback("Relatório movido com sucesso.", "var(--vf-success)");
+    await Promise.all([carregarPastas(), carregarRelatorios()]);
+  } catch (err) {
+    setFeedback(`Erro ao mover relatório: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
+  }
+}
+
 async function excluirRelatorio(id) {
   if (!id || !TOKEN) return;
 
@@ -617,7 +944,7 @@ async function excluirRelatorio(id) {
     }
 
     setFeedback(`Relatório #${id} excluído com sucesso.`, "var(--vf-success)");
-    await carregarRelatorios();
+    await Promise.all([carregarPastas(), carregarRelatorios()]);
   } catch (err) {
     setFeedback(
       err?.message
@@ -645,6 +972,9 @@ document.getElementById("filtro-status")?.addEventListener("change", filtrarRela
 document.getElementById("btn-atualizar-relatorios")?.addEventListener("click", () => {
   carregarRelatorios();
 });
+document.getElementById("btn-nova-pasta")?.addEventListener("click", () => {
+  criarPasta();
+});
 document.getElementById("vf-relatorio-detalhe-busca")?.addEventListener("input", (e) => {
   DETALHE_BUSCA = e.target.value || "";
   renderDetalheItens();
@@ -671,5 +1001,6 @@ document.getElementById("btn-relatorio-detalhe-xlsx")?.addEventListener("click",
 
 if (TOKEN) {
   carregarClientesParaFiltro();
+  carregarPastas();
   carregarRelatorios();
 }
