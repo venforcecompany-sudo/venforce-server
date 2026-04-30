@@ -3099,6 +3099,20 @@ function round2(value) {
   return Number((Number.isFinite(value) ? value : 0).toFixed(2));
 }
 
+function normalizeMatchKey(value) {
+  let text = String(value ?? "").trim();
+  if (!text) return "";
+  text = text
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+  if (/^-?\d+(\.0+)?$/.test(text)) {
+    text = text.replace(/\.0+$/, "");
+  }
+  return text;
+}
+
 function repairWorksheetRef(sheet) {
   if (!sheet || typeof sheet !== "object") return sheet;
 
@@ -3268,10 +3282,34 @@ function parseCostRows(rows) {
       "# de anuncio",
       "# de anúncio",
     ]);
+    const modelIdRaw = findField(row, [
+      "model_id",
+      "modelid",
+      "model id",
+      "id modelo",
+      "modelo",
+    ]);
+    const skuRaw = findField(row, [
+      "sku",
+      "sku da variacao",
+      "sku da variação",
+      "sku principle",
+      "sku principal",
+      "nº de referencia do sku principal",
+      "no de referencia do sku principal",
+      "numero de referencia sku",
+      "número de referência sku",
+      "codigo",
+      "código",
+      "codigo do produto",
+      "codigo do item",
+    ]);
 
     const id = normalizeIdNoPrefix(idRaw);
+    const modelId = normalizeIdNoPrefix(modelIdRaw);
+    const skuKey = normalizeMatchKey(skuRaw);
 
-    if (!id) continue;
+    if (!id && !modelId && !skuKey) continue;
 
     const cost = toNumber(
       findField(row, [
@@ -3303,18 +3341,26 @@ function parseCostRows(rows) {
       taxPercent = taxPercent * 100;
     }
 
-    const modelIdRaw = findField(row, [
-      "model_id",
-      "modelid",
-      "model id",
-      "id modelo",
-      "modelo",
-    ]);
-    const modelId = normalizeIdNoPrefix(modelIdRaw);
+    const keys = [];
+    const pushKey = (value) => {
+      const k = normalizeMatchKey(value);
+      if (!k) return;
+      if (!keys.includes(k)) keys.push(k);
+      const compact = k.replace(/\s+/g, "");
+      if (compact && !keys.includes(compact)) keys.push(compact);
+    };
+    pushKey(id);
+    pushKey(modelId);
+    pushKey(skuKey);
+    pushKey(idRaw);
+    pushKey(modelIdRaw);
+    pushKey(skuRaw);
 
     parsed.push({
       id,
       modelId,
+      sku: skuKey,
+      matchKeys: keys,
       cost,
       taxPercent,
     });
@@ -3557,18 +3603,23 @@ function parseShopeeFinancialRows(rows) {
     const product = String(
       findField(row, ["nome do produto", "produto", "product name"]) || ""
     ).trim();
-    const itemId = normalizeIdNoPrefix(
-      findField(row, ["id do item", "item id", "id item", "itemid"])
-    );
-    const variationId = normalizeIdNoPrefix(
-      findField(row, ["id da variacao", "id da variação", "variation id"])
-    );
-    const modelId = normalizeIdNoPrefix(
-      findField(row, ["model id", "model_id", "modelid", "id do modelo"])
-    );
-    const sku = String(
-      findField(row, ["sku da variacao", "sku da variação", "sku", "sku principle", "sku principal"]) || ""
-    ).trim();
+    const itemIdRaw = findField(row, ["id do item", "item id", "id item", "itemid"]);
+    const variationIdRaw = findField(row, ["id da variacao", "id da variação", "variation id"]);
+    const modelIdRaw = findField(row, ["model id", "model_id", "modelid", "id do modelo"]);
+    const skuRaw = findField(row, ["sku", "sku da variacao", "sku da variação"]);
+    const skuVariationRaw = findField(row, ["sku da variacao", "sku da variação"]);
+    const skuPrincipleRaw = findField(row, ["sku principle", "sku principal"]);
+    const skuMainRefRaw = findField(row, ["nº de referencia do sku principal", "no de referencia do sku principal"]);
+    const skuRefNumberRaw = findField(row, ["numero de referencia sku", "número de referência sku"]);
+
+    const itemId = normalizeIdNoPrefix(itemIdRaw);
+    const variationId = normalizeIdNoPrefix(variationIdRaw);
+    const modelId = normalizeIdNoPrefix(modelIdRaw);
+    const sku = normalizeMatchKey(skuRaw);
+    const skuVariation = normalizeMatchKey(skuVariationRaw);
+    const skuPrinciple = normalizeMatchKey(skuPrincipleRaw);
+    const skuMainRef = normalizeMatchKey(skuMainRefRaw);
+    const skuRefNumber = normalizeMatchKey(skuRefNumberRaw);
 
     const quantityRaw = toNumber(findField(row, ["quantidade", "qty"]));
     const quantity = quantityRaw > 0 ? quantityRaw : 1;
@@ -3598,12 +3649,21 @@ function parseShopeeFinancialRows(rows) {
     const cmvRaw = toNumber(findField(row, ["cmv"]));
     const profitRaw = toNumber(findField(row, ["lucro", "profit"]));
 
-    const transactionFee = toNumber(findField(row, ["taxa de transação", "taxa de transacao"]));
-    const commissionNet = toNumber(findField(row, ["taxa de comissão líquida", "taxa de comissao liquida"]));
-    const commissionGross = toNumber(findField(row, ["taxa de comissão bruta", "taxa de comissao bruta"]));
-    const serviceNet = toNumber(findField(row, ["taxa de serviço líquida", "taxa de servico liquida"]));
-    const serviceGross = toNumber(findField(row, ["taxa de serviço bruta", "taxa de servico bruta"]));
-    const feesRaw = transactionFee + commissionNet + commissionGross + serviceNet + serviceGross;
+    const transactionFeeRaw = findField(row, ["taxa de transação", "taxa de transacao"]);
+    const commissionNetRaw = findField(row, ["taxa de comissão líquida", "taxa de comissao liquida"]);
+    const commissionGrossRaw = findField(row, ["taxa de comissão bruta", "taxa de comissao bruta"]);
+    const serviceNetRaw = findField(row, ["taxa de serviço líquida", "taxa de servico liquida"]);
+    const serviceGrossRaw = findField(row, ["taxa de serviço bruta", "taxa de servico bruta"]);
+
+    const transactionFee = toNumber(transactionFeeRaw);
+    const commissionNet = toNumber(commissionNetRaw);
+    const commissionGross = toNumber(commissionGrossRaw);
+    const serviceNet = toNumber(serviceNetRaw);
+    const serviceGross = toNumber(serviceGrossRaw);
+    const commissionNetProvided = String(commissionNetRaw ?? "").trim() !== "";
+    const commissionGrossProvided = String(commissionGrossRaw ?? "").trim() !== "";
+    const serviceNetProvided = String(serviceNetRaw ?? "").trim() !== "";
+    const serviceGrossProvided = String(serviceGrossRaw ?? "").trim() !== "";
 
     const statusPedido = normalizeText(findField(row, ["status do pedido", "status pedido"]));
     const statusDevolucao = normalizeText(
@@ -3656,6 +3716,10 @@ function parseShopeeFinancialRows(rows) {
       variationId,
       modelId,
       sku,
+      skuVariation,
+      skuPrinciple,
+      skuMainRef,
+      skuRefNumber,
       statusPedido,
       statusDevolucao,
       quantity,
@@ -3664,7 +3728,15 @@ function parseShopeeFinancialRows(rows) {
       totalGlobal: totalGlobalRaw,
       tax: taxRaw,
       cmv: cmvRaw,
-      fees: feesRaw,
+      transactionFee,
+      commissionNet,
+      commissionGross,
+      serviceNet,
+      serviceGross,
+      commissionNetProvided,
+      commissionGrossProvided,
+      serviceNetProvided,
+      serviceGrossProvided,
       shipping: toNumber(findField(row, ["valor estimado do frete", "frete", "shipping"])),
       profit: profitRaw,
       isCancelled,
@@ -3748,62 +3820,95 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     const costRows = parseCostRows(costRowsRaw);
     const costMap = new Map();
     for (const row of costRows) {
-      if (!row.id) continue;
-      const id = normalizeIdNoPrefix(row.id);
-      if (id) costMap.set(id, row);
-      if (row.modelId) {
-        const m = normalizeIdNoPrefix(row.modelId);
-        if (m) costMap.set(m, row);
+      const keys = Array.isArray(row.matchKeys) ? row.matchKeys : [];
+      for (const key of keys) {
+        const normalized = normalizeMatchKey(key);
+        if (!normalized) continue;
+        if (!costMap.has(normalized)) costMap.set(normalized, row);
       }
     }
+
+    const validStatusMarkers = [
+      "enviado",
+      "a enviar",
+      "concluido",
+      "completed",
+      "shipped",
+      "to ship",
+      "entregue",
+      "delivered",
+    ];
+    const cancelledStatusMarkers = ["cancelado", "cancelada", "cancelled"];
+    const unpaidStatusMarkers = ["nao pago", "não pago", "unpaid"];
+
+    const toNegativeCost = (value) => {
+      const num = Number(value || 0);
+      if (!Number.isFinite(num) || num === 0) return 0;
+      return round2(num > 0 ? -Math.abs(num) : num);
+    };
+
+    const normalizeCandidate = (value) => {
+      const base = normalizeMatchKey(value);
+      if (!base) return [];
+      const variants = [base];
+      const compact = base.replace(/\s+/g, "");
+      if (compact && !variants.includes(compact)) variants.push(compact);
+      return variants;
+    };
 
     function getCostForFinancialRow(row) {
-      const keys = [
-        normalizeIdNoPrefix(row.itemId),
-        normalizeIdNoPrefix(row.variationId),
-        normalizeIdNoPrefix(row.modelId),
-        normalizeIdNoPrefix(row.id),
-        normalizeIdNoPrefix(row.sku),
-      ].filter(Boolean);
-      for (const k of keys) {
-        if (costMap.has(k)) return costMap.get(k);
+      const candidates = [
+        row.skuRefNumber,
+        row.skuMainRef,
+        row.sku,
+        row.skuVariation,
+        row.skuPrinciple,
+        row.itemId,
+        row.variationId,
+        row.id,
+        row.modelId,
+      ];
+      for (const raw of candidates) {
+        for (const key of normalizeCandidate(raw)) {
+          if (costMap.has(key)) {
+            return { costRow: costMap.get(key), matchedKey: key };
+          }
+        }
       }
-      return null;
+      return { costRow: null, matchedKey: "" };
     }
 
-    const cancelledRows = financialRows.filter((row) => row.isCancelled);
-    const returnRows = financialRows.filter((row) => row.isReturn && !row.isCancelled);
-    const validRows = financialRows.filter((row) => !row.isCancelled && !row.isReturn);
-
-    const cancellationBase = cancelledRows.reduce(
-      (sum, row) => sum + Number(row.grossRevenue || row.paidRevenue || 0),
-      0
-    );
-    const cancellationsTotal = round2(
-      cancellationBase > 0 ? -Math.abs(cancellationBase) : cancellationBase
-    );
-
-    const returnsBase = returnRows.reduce((sum, row) => {
-      const base = Number(row.grossRevenue || row.paidRevenue || 0);
-      return sum + base;
-    }, 0);
-    const hasReturnValue = returnRows.some(
-      (row) => Math.abs(Number(row.grossRevenue || row.paidRevenue || 0)) > 0.01
-    );
-    const returnsTotal = hasReturnValue
-      ? round2(returnsBase > 0 ? -Math.abs(returnsBase) : returnsBase)
-      : null;
-    if (returnRows.length === 0) {
-      executiveNotes.push(
-        "returnsTotal não disponível separado na planilha Shopee enviada."
+    function classifyFinancialRow(row) {
+      const statusPedido = normalizeText(row.statusPedido || "");
+      const isCancelled =
+        row.isCancelled ||
+        cancelledStatusMarkers.some((marker) => statusPedido.includes(normalizeText(marker)));
+      const isUnpaid = unpaidStatusMarkers.some((marker) =>
+        statusPedido.includes(normalizeText(marker))
       );
-    } else if (!hasReturnValue) {
-      executiveNotes.push(
-        "returnsTotal identificado por status, mas sem valor confiável separado na planilha Shopee."
+      const isReturned = !!row.isReturn;
+      const isValidStatus = validStatusMarkers.some((marker) =>
+        statusPedido.includes(normalizeText(marker))
       );
+      return {
+        isCancelled: !!isCancelled,
+        isUnpaid: !!isUnpaid,
+        isReturned: !!isReturned,
+        isValid: !isCancelled && !isUnpaid && !isReturned && isValidStatus,
+      };
+    }
+
+    function selectFee(netValue, grossValue, hasNet, hasGross) {
+      if (hasNet) return Number(netValue || 0);
+      if (hasGross) return Number(grossValue || 0);
+      return 0;
     }
 
     const detailRows = [];
+    const unmatchedIdsSet = new Set();
+    const unmatchedCostKeys = new Set();
+    const refundRowsSet = new Set();
+
     let grossRevenueTotal = 0;
     let paidRevenueTotal = 0;
     let marketplaceFeesTotal = 0;
@@ -3811,68 +3916,110 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     let taxValueTotal = 0;
     let cmvTotal = 0;
     let contributionProfitTotal = 0;
-    let missingCostRows = 0;
+    let cancellationsTotal = 0;
+    let returnsAccumulated = 0;
+    let hasReliableReturnValue = false;
+    let validRowsWithoutCost = 0;
+    let validRowsWithCost = 0;
+    let validRowsDetected = 0;
 
     for (const row of financialRows) {
-      const status = row.isCancelled
-        ? "Cancelado"
-        : row.isReturn
-          ? "Devolução/Reembolso"
-          : "Válido";
-      const receita = round2(Number(row.grossRevenue || 0));
+      const classification = classifyFinancialRow(row);
+      const quantity = Number(row.quantity || 0) > 0 ? Number(row.quantity || 0) : 1;
+      const receita = round2(
+        Number(row.grossRevenue || row.paidRevenue || row.totalGlobal || 0)
+      );
 
-      const feesRaw = Number(row.fees || 0);
-      const taxas = round2(feesRaw > 0 ? -Math.abs(feesRaw) : feesRaw);
+      const transactionFee = Number(row.transactionFee || 0);
+      const commissionChosen = selectFee(
+        row.commissionNet,
+        row.commissionGross,
+        row.commissionNetProvided,
+        row.commissionGrossProvided
+      );
+      const serviceChosen = selectFee(
+        row.serviceNet,
+        row.serviceGross,
+        row.serviceNetProvided,
+        row.serviceGrossProvided
+      );
+      const taxas = toNegativeCost(transactionFee + commissionChosen + serviceChosen);
+      const frete = toNegativeCost(row.shipping);
 
-      const shippingRaw = Number(row.shipping || 0);
-      const frete = round2(shippingRaw > 0 ? -Math.abs(shippingRaw) : shippingRaw);
-
-      const costRow = getCostForFinancialRow(row);
-      const quantity = Number(row.quantity || 0);
-      const costUnit = Number(costRow?.cost || row.cmv || 0);
+      const { costRow, matchedKey } = getCostForFinancialRow(row);
+      const hasCost = !!(costRow && Number(costRow.cost || 0) > 0);
+      const costUnit = Number(costRow?.cost || 0);
       const taxPercent = Number(costRow?.taxPercent || 0);
-      const cmv = round2(
-        costRow
-          ? (costUnit > 0 ? -Math.abs(costUnit * quantity) : 0)
-          : (Number(row.cmv || 0) > 0 ? -Math.abs(Number(row.cmv || 0)) : Number(row.cmv || 0))
-      );
-      const imposto = round2(
-        costRow && taxPercent > 0
-          ? -Math.abs(receita * (taxPercent / 100))
-          : (Number(row.tax || 0) > 0 ? -Math.abs(Number(row.tax || 0)) : Number(row.tax || 0))
-      );
+      const cmv = hasCost ? toNegativeCost(costUnit * quantity) : 0;
+      const imposto = hasCost && taxPercent > 0
+        ? toNegativeCost(receita * (taxPercent / 100))
+        : 0;
+
+      let statusLabel = "Ignorado";
+      if (classification.isCancelled) statusLabel = "Cancelado";
+      else if (classification.isUnpaid) statusLabel = "Não pago";
+      else if (classification.isReturned) statusLabel = "Devolução/Reembolso";
+      else if (classification.isValid) statusLabel = "Válido";
+
+      if (classification.isCancelled) {
+        if (receita > 0) cancellationsTotal += -Math.abs(receita);
+        refundRowsSet.add(row.id);
+      } else if (classification.isReturned) {
+        if (receita > 0) {
+          returnsAccumulated += -Math.abs(receita);
+          hasReliableReturnValue = true;
+        }
+        refundRowsSet.add(row.id);
+      }
 
       let lc = 0;
       let mc = 0;
-      if (!row.isCancelled && !row.isReturn) {
-        lc = round2(receita + taxas + frete + imposto + cmv);
-        mc = receita > 0 ? round2((lc / receita) * 100) : 0;
+      if (classification.isValid) {
+        validRowsDetected += 1;
+        if (hasCost) {
+          validRowsWithCost += 1;
+          lc = round2(receita + taxas + frete + imposto + cmv);
+          mc = receita > 0 ? round2((lc / receita) * 100) : 0;
 
-        grossRevenueTotal += receita;
-        paidRevenueTotal += receita;
-        marketplaceFeesTotal += taxas;
-        shippingFeesTotal += frete;
-        taxValueTotal += imposto;
-        cmvTotal += cmv;
-        contributionProfitTotal += lc;
+          grossRevenueTotal += receita;
+          paidRevenueTotal += receita;
+          marketplaceFeesTotal += taxas;
+          shippingFeesTotal += frete;
+          taxValueTotal += imposto;
+          cmvTotal += cmv;
+          contributionProfitTotal += lc;
+        } else {
+          validRowsWithoutCost += 1;
+          const fallbackKey = row.skuRefNumber || row.skuMainRef || row.sku || row.itemId || row.id;
+          const normalizedFallback = normalizeMatchKey(fallbackKey) || "SEM_CHAVE";
+          unmatchedCostKeys.add(normalizedFallback);
+          unmatchedIdsSet.add(String(row.id || row.itemId || row.variationId || "SEM_ID"));
+        }
       }
-
-      if (!costRow) missingCostRows += 1;
 
       detailRows.push({
         Marketplace: "Shopee",
         Produto: row.product || "—",
-        ID: row.id || row.itemId || row.variationId || "—",
-        Status: status,
+        "ID do pedido": row.id || "—",
+        Status: statusLabel,
+        "SKU usado": row.skuRefNumber || row.skuMainRef || row.sku || row.skuVariation || row.skuPrinciple || "—",
+        "Chave custo": matchedKey || "—",
+        "Custo encontrado": hasCost ? "sim" : "não",
         Faturamento: receita,
         Quantidade: round2(quantity),
-        CMV: cmv,
-        Imposto: imposto,
-        Taxas: taxas,
-        Frete: frete,
+        CMV: round2(cmv),
+        Imposto: round2(imposto),
+        Taxas: round2(taxas),
+        Frete: round2(frete),
         LC: round2(lc),
         MC: round2(mc),
       });
+    }
+
+    if (validRowsDetected > 0 && validRowsWithCost === 0) {
+      throw createBadRequestError(
+        "A planilha Shopee foi lida, mas nenhum item casou com a planilha de custos. Verifique se a base de custos usa o mesmo SKU/Número de referência SKU da Order.all."
+      );
     }
 
     grossRevenueTotal = round2(grossRevenueTotal);
@@ -3882,34 +4029,52 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     taxValueTotal = round2(taxValueTotal);
     cmvTotal = round2(cmvTotal);
     contributionProfitTotal = round2(contributionProfitTotal);
+    cancellationsTotal = round2(cancellationsTotal);
+
+    const returnsTotal = hasReliableReturnValue ? round2(returnsAccumulated) : null;
+    if (!hasReliableReturnValue && financialRows.some((row) => row.isReturn)) {
+      executiveNotes.push(
+        "returnsTotal identificado por status, mas sem valor confiável separado na planilha Shopee."
+      );
+    }
+
+    if (validRowsWithoutCost > 0) {
+      const unmatchedPreview = Array.from(unmatchedCostKeys).slice(0, 5).join(", ");
+      executiveNotes.push(
+        `${validRowsWithoutCost} linha(s) sem custo encontrado por SKU/ID.${unmatchedPreview ? ` Exemplos: ${unmatchedPreview}.` : ""}`
+      );
+    }
+    if (shippingFeesTotal !== 0) {
+      executiveNotes.push(
+        "Frete da Order.all tratado como valor estimado; revisar se representa custo do seller."
+      );
+    }
+    if (Math.abs(grossRevenueTotal) > 0.01) {
+      const marginCheck = contributionProfitTotal / grossRevenueTotal;
+      if (Math.abs(marginCheck) > 1) {
+        executiveNotes.push(
+          "Margem fora do intervalo esperado; revisar sinais de taxas/frete/imposto/CMV."
+        );
+      }
+    }
+    if (financialRows.some((row) => classifyFinancialRow(row).isUnpaid)) {
+      executiveNotes.push(
+        "Pedidos com status 'Não pago/Unpaid' foram excluídos da receita e do LC."
+      );
+    }
 
     const discountsBonusesTotal = null;
-
     const averageContributionMargin =
       grossRevenueTotal > 0 ? contributionProfitTotal / grossRevenueTotal : 0;
     const finalResult = contributionProfitTotal - ads - venforce - affiliates;
     const tacos = grossRevenueTotal > 0 ? ads / grossRevenueTotal : 0;
     const tacox =
       grossRevenueTotal > 0 ? (ads + venforce + affiliates) / grossRevenueTotal : 0;
-    const refundsCount = cancelledRows.length + returnRows.length;
+    const refundsCount = refundRowsSet.size;
     const refundsTotal = round2(cancellationsTotal + Number(returnsTotal || 0));
-    if (Math.abs(averageContributionMargin) > 1) {
-      executiveNotes.push(
-        "Margem fora do intervalo esperado; revisar sinais das taxas/custos."
-      );
-    }
-    if (missingCostRows > 0) {
-      executiveNotes.push(
-        `${missingCostRows} linha(s) sem custo encontrado por ID/SKU; CMV/imposto usaram fallback da planilha de pedidos quando disponível.`
-      );
-    }
-    if (Math.abs(shippingFeesTotal) <= 0.01) {
-      executiveNotes.push(
-        "shippingFeesTotal não disponível separado com segurança; valor de frete veio vazio/zerado na exportação."
-      );
-    }
+
     executiveNotes.push(
-      "Order.all processada com cancelamentos/devoluções excluídos da receita e do LC válidos."
+      "Order.all processada com receita válida apenas para pedidos pagos/enviados/concluídos."
     );
 
     return {
@@ -3942,9 +4107,9 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       },
       detailedRows: detailRows,
       excelFileName: "fechamento-shopee.xlsx",
-      unmatchedIds: [],
+      unmatchedIds: Array.from(unmatchedIdsSet).slice(0, 30),
       excludedVariationIds: [],
-      ignoredRowsWithoutCost: 0,
+      ignoredRowsWithoutCost: validRowsWithoutCost,
       ignoredRevenue: 0,
       message: "Processamento concluído com sucesso.",
     };
@@ -3976,9 +4141,12 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
 
   const costMap = new Map();
   for (const row of costRows) {
-    if (!row.id) continue;
-    costMap.set(row.id, row);
-    if (row.modelId) costMap.set(row.modelId, row);
+    const keys = Array.isArray(row.matchKeys) ? row.matchKeys : [];
+    for (const key of keys) {
+      const normalized = normalizeMatchKey(key);
+      if (!normalized) continue;
+      if (!costMap.has(normalized)) costMap.set(normalized, row);
+    }
   }
 
   const unmatchedIdsSet = new Set();
@@ -3993,9 +4161,9 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     }
 
     const costRow =
-      (sale.saleModelId && costMap.get(sale.saleModelId)) ||
-      costMap.get(sale.id) ||
-      costMap.get(sale.itemId);
+      (sale.saleModelId && costMap.get(normalizeMatchKey(sale.saleModelId))) ||
+      costMap.get(normalizeMatchKey(sale.id)) ||
+      costMap.get(normalizeMatchKey(sale.itemId));
 
     if (!costRow || costRow.cost <= 0) {
       unmatchedIdsSet.add(sale.id);
