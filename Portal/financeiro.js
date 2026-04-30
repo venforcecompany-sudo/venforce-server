@@ -35,7 +35,16 @@ function setStatus(msg, tipo) {
 }
 
 function limparFinStats() {
-  ["fin-bruto", "fin-liquido", "fin-lc", "fin-mc", "fin-resultado", "fin-tacos"].forEach((id) => {
+  [
+    "fin-bruto",
+    "fin-liquido",
+    "fin-lc",
+    "fin-mc",
+    "fin-resultado",
+    "fin-tacos",
+    "fin-cancelamentos",
+    "fin-cancelados-count",
+  ].forEach((id) => {
     const card = document.getElementById(id);
     const v = card?.querySelector?.(".fc-stat-value");
     if (v) {
@@ -64,6 +73,19 @@ function renderFinResumo(data) {
   setCard("fin-mc", s.averageContributionMargin, pct(s.averageContributionMargin));
   setCard("fin-resultado", s.finalResult, brl(s.finalResult));
   setCard("fin-tacos", s.tacos, pct(s.tacos));
+
+  // Cancelamentos: setCard já pinta vermelho quando valor < 0
+  setCard("fin-cancelamentos", s.refundsTotal, brl(s.refundsTotal));
+
+  // Pedidos cancelados: contagem; coloração customizada (não é financeiro)
+  const elCount = document
+    .getElementById("fin-cancelados-count")
+    ?.querySelector(".fc-stat-value");
+  if (elCount) {
+    const count = Number(s.refundsCount || 0);
+    elCount.textContent = num(count);
+    elCount.style.color = count > 0 ? "#f87171" : "";
+  }
 }
 
 function renderFinTabela(data) {

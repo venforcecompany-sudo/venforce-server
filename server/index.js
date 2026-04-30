@@ -3872,6 +3872,9 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
   const refundsTotal = round2(
     salesRows.reduce((sum, row) => sum + row.cancelRefund, 0)
   );
+  const refundsCount = salesRows.filter(
+    (row) => Math.abs(Number(row.cancelRefund || 0)) > 0.01
+  ).length;
 
   function isMainRow(row) {
     return !row.adId && Math.abs(row.productRevenue) > 0;
@@ -4042,6 +4045,7 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       grossRevenueTotal,
       refundsTotal,
       cancelledRevenue: refundsTotal,
+      refundsCount,
       paidRevenueTotal,
       contributionProfitTotal,
       averageContributionMargin,
