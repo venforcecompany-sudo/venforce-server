@@ -3113,6 +3113,20 @@ function normalizeMatchKey(value) {
   return text;
 }
 
+function normalizeShopeeId(value) {
+  let text = String(value ?? "").trim();
+  if (!text) return "";
+  text = text
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "");
+  if (/^-?\d+(\.0+)?$/.test(text)) {
+    text = text.replace(/\.0+$/, "");
+  }
+  return text;
+}
+
 function repairWorksheetRef(sheet) {
   if (!sheet || typeof sheet !== "object") return sheet;
 
@@ -3261,33 +3275,33 @@ function parseCostRows(rows) {
   const parsed = [];
 
   for (const row of rows) {
-    const idRaw = findField(row, [
+    const itemIdRaw = findField(row, [
       "id",
       "id do item",
       "id do produto",
-      "id da variacao",
-      "id da variação",
       "product id",
       "item id",
-      "variation id",
-      "sku",
-      "seller sku",
-      "sku do vendedor",
-      "codigo",
-      "código",
-      "codigo do produto",
-      "codigo do item",
-      "# do anuncio",
-      "# do anúncio",
-      "# de anuncio",
-      "# de anúncio",
+      "product_id",
+      "item_id",
+      "id do anuncio",
+      "id do anúncio",
+      "id anuncio",
+      "id anúncio",
     ]);
     const modelIdRaw = findField(row, [
+      "id da variacao",
+      "id da variação",
+      "id de variacao",
+      "id de variação",
+      "id da variacao do produto",
+      "id da variação do produto",
+      "id do modelo",
+      "id do model",
       "model_id",
-      "modelid",
       "model id",
-      "id modelo",
-      "modelo",
+      "modelid",
+      "variation_id",
+      "variation id",
     ]);
     const skuRaw = findField(row, [
       "sku",
@@ -3295,6 +3309,8 @@ function parseCostRows(rows) {
       "sku da variação",
       "sku principle",
       "sku principal",
+      "seller sku",
+      "sku do vendedor",
       "nº de referencia do sku principal",
       "no de referencia do sku principal",
       "numero de referencia sku",
@@ -3305,8 +3321,8 @@ function parseCostRows(rows) {
       "codigo do item",
     ]);
 
-    const id = normalizeIdNoPrefix(idRaw);
-    const modelId = normalizeIdNoPrefix(modelIdRaw);
+    const id = normalizeShopeeId(itemIdRaw);
+    const modelId = normalizeShopeeId(modelIdRaw);
     const skuKey = normalizeMatchKey(skuRaw);
 
     if (!id && !modelId && !skuKey) continue;
@@ -3360,6 +3376,8 @@ function parseCostRows(rows) {
       id,
       modelId,
       sku: skuKey,
+      rawItemId: String(itemIdRaw ?? "").trim(),
+      rawModelId: String(modelIdRaw ?? "").trim(),
       matchKeys: keys,
       cost,
       taxPercent,
@@ -3603,18 +3621,54 @@ function parseShopeeFinancialRows(rows) {
     const product = String(
       findField(row, ["nome do produto", "produto", "product name"]) || ""
     ).trim();
-    const itemIdRaw = findField(row, ["id do item", "item id", "id item", "itemid"]);
-    const variationIdRaw = findField(row, ["id da variacao", "id da variação", "variation id"]);
-    const modelIdRaw = findField(row, ["model id", "model_id", "modelid", "id do modelo"]);
+    const itemIdRaw = findField(row, [
+      "id do item",
+      "id do produto",
+      "item id",
+      "product id",
+      "item_id",
+      "product_id",
+      "id do anuncio",
+      "id anúncio",
+      "id anuncio",
+    ]);
+    const productIdRaw = findField(row, [
+      "id do produto",
+      "product id",
+      "product_id",
+      "id do item",
+      "item id",
+      "item_id",
+    ]);
+    const variationIdRaw = findField(row, [
+      "id da variacao",
+      "id da variação",
+      "id de variacao",
+      "id de variação",
+      "id da variacao do produto",
+      "id da variação do produto",
+      "variation id",
+      "variation_id",
+    ]);
+    const modelIdRaw = findField(row, [
+      "id do modelo",
+      "id do model",
+      "model id",
+      "model_id",
+      "modelid",
+      "id da variacao",
+      "id da variação",
+    ]);
     const skuRaw = findField(row, ["sku", "sku da variacao", "sku da variação"]);
     const skuVariationRaw = findField(row, ["sku da variacao", "sku da variação"]);
     const skuPrincipleRaw = findField(row, ["sku principle", "sku principal"]);
     const skuMainRefRaw = findField(row, ["nº de referencia do sku principal", "no de referencia do sku principal"]);
     const skuRefNumberRaw = findField(row, ["numero de referencia sku", "número de referência sku"]);
 
-    const itemId = normalizeIdNoPrefix(itemIdRaw);
-    const variationId = normalizeIdNoPrefix(variationIdRaw);
-    const modelId = normalizeIdNoPrefix(modelIdRaw);
+    const itemId = normalizeShopeeId(itemIdRaw);
+    const productId = normalizeShopeeId(productIdRaw);
+    const variationId = normalizeShopeeId(variationIdRaw);
+    const modelId = normalizeShopeeId(modelIdRaw);
     const sku = normalizeMatchKey(skuRaw);
     const skuVariation = normalizeMatchKey(skuVariationRaw);
     const skuPrinciple = normalizeMatchKey(skuPrincipleRaw);
@@ -3713,6 +3767,7 @@ function parseShopeeFinancialRows(rows) {
       id: orderId || String(parsed.length + 1),
       product: product || "—",
       itemId,
+      productId,
       variationId,
       modelId,
       sku,
@@ -3818,14 +3873,13 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     }
 
     const costRows = parseCostRows(costRowsRaw);
-    const costMap = new Map();
+    const costByItemId = new Map();
+    const costByModelId = new Map();
     for (const row of costRows) {
-      const keys = Array.isArray(row.matchKeys) ? row.matchKeys : [];
-      for (const key of keys) {
-        const normalized = normalizeMatchKey(key);
-        if (!normalized) continue;
-        if (!costMap.has(normalized)) costMap.set(normalized, row);
-      }
+      const itemId = normalizeShopeeId(row.id);
+      const modelId = normalizeShopeeId(row.modelId);
+      if (itemId && !costByItemId.has(itemId)) costByItemId.set(itemId, row);
+      if (modelId && !costByModelId.has(modelId)) costByModelId.set(modelId, row);
     }
 
     const validStatusMarkers = [
@@ -3848,34 +3902,54 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     };
 
     const normalizeCandidate = (value) => {
-      const base = normalizeMatchKey(value);
+      const base = normalizeShopeeId(value);
       if (!base) return [];
-      const variants = [base];
-      const compact = base.replace(/\s+/g, "");
-      if (compact && !variants.includes(compact)) variants.push(compact);
-      return variants;
+      return [base];
     };
 
     function getCostForFinancialRow(row) {
-      const candidates = [
-        row.skuRefNumber,
-        row.skuMainRef,
-        row.sku,
-        row.skuVariation,
-        row.skuPrinciple,
-        row.itemId,
+      const modelCandidates = [
         row.variationId,
-        row.id,
         row.modelId,
       ];
-      for (const raw of candidates) {
+      for (const raw of modelCandidates) {
         for (const key of normalizeCandidate(raw)) {
-          if (costMap.has(key)) {
-            return { costRow: costMap.get(key), matchedKey: key };
+          if (costByModelId.has(key)) {
+            return {
+              costRow: costByModelId.get(key),
+              matchedKey: key,
+              matchedKeyType: "model_id",
+              usedItemId: row.itemId || row.productId || "",
+              usedVariationId: row.variationId || row.modelId || "",
+            };
           }
         }
       }
-      return { costRow: null, matchedKey: "" };
+
+      const itemCandidates = [
+        row.itemId,
+        row.productId,
+      ];
+      for (const raw of itemCandidates) {
+        for (const key of normalizeCandidate(raw)) {
+          if (costByItemId.has(key)) {
+            return {
+              costRow: costByItemId.get(key),
+              matchedKey: key,
+              matchedKeyType: "id",
+              usedItemId: row.itemId || row.productId || "",
+              usedVariationId: row.variationId || row.modelId || "",
+            };
+          }
+        }
+      }
+      return {
+        costRow: null,
+        matchedKey: "",
+        matchedKeyType: "",
+        usedItemId: row.itemId || row.productId || "",
+        usedVariationId: row.variationId || row.modelId || "",
+      };
     }
 
     function classifyFinancialRow(row) {
@@ -3946,7 +4020,13 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       const taxas = toNegativeCost(transactionFee + commissionChosen + serviceChosen);
       const frete = toNegativeCost(row.shipping);
 
-      const { costRow, matchedKey } = getCostForFinancialRow(row);
+      const {
+        costRow,
+        matchedKey,
+        matchedKeyType,
+        usedItemId,
+        usedVariationId,
+      } = getCostForFinancialRow(row);
       const hasCost = !!(costRow && Number(costRow.cost || 0) > 0);
       const costUnit = Number(costRow?.cost || 0);
       const taxPercent = Number(costRow?.taxPercent || 0);
@@ -3990,10 +4070,17 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
           contributionProfitTotal += lc;
         } else {
           validRowsWithoutCost += 1;
-          const fallbackKey = row.skuRefNumber || row.skuMainRef || row.sku || row.itemId || row.id;
-          const normalizedFallback = normalizeMatchKey(fallbackKey) || "SEM_CHAVE";
+          const fallbackKey =
+            usedVariationId ||
+            usedItemId ||
+            row.id;
+          const normalizedFallback = normalizeShopeeId(fallbackKey) || "SEM_CHAVE";
           unmatchedCostKeys.add(normalizedFallback);
-          unmatchedIdsSet.add(String(row.id || row.itemId || row.variationId || "SEM_ID"));
+          unmatchedIdsSet.add(
+            `pedido=${String(row.id || "SEM_PEDIDO")} | produto=${String(row.product || "—")} | itemId=${String(
+              row.itemId || row.productId || "—"
+            )} | variationId=${String(row.variationId || row.modelId || "—")}`
+          );
         }
       }
 
@@ -4001,9 +4088,11 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
         Marketplace: "Shopee",
         Produto: row.product || "—",
         "ID do pedido": row.id || "—",
+        "ID do Item usado": usedItemId || "—",
+        "ID da Variação usada": usedVariationId || "—",
         Status: statusLabel,
-        "SKU usado": row.skuRefNumber || row.skuMainRef || row.sku || row.skuVariation || row.skuPrinciple || "—",
-        "Chave custo": matchedKey || "—",
+        "Chave custo usada": matchedKey || "—",
+        "Tipo da chave usada": matchedKeyType || "—",
         "Custo encontrado": hasCost ? "sim" : "não",
         Faturamento: receita,
         Quantidade: round2(quantity),
@@ -4018,7 +4107,7 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
 
     if (validRowsDetected > 0 && validRowsWithCost === 0) {
       throw createBadRequestError(
-        "A planilha Shopee foi lida, mas nenhum item casou com a planilha de custos. Verifique se a base de custos usa o mesmo SKU/Número de referência SKU da Order.all."
+        "A planilha Shopee foi lida, mas nenhum item casou com a base de custos por id ou model_id. Verifique se a Order.all exportada contém ID do Item/ID da Variação e se a base de custos usa esses mesmos IDs da Shopee."
       );
     }
 
@@ -4041,7 +4130,7 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     if (validRowsWithoutCost > 0) {
       const unmatchedPreview = Array.from(unmatchedCostKeys).slice(0, 5).join(", ");
       executiveNotes.push(
-        `${validRowsWithoutCost} linha(s) sem custo encontrado por SKU/ID.${unmatchedPreview ? ` Exemplos: ${unmatchedPreview}.` : ""}`
+        `${validRowsWithoutCost} linha(s) sem custo encontrado por ID do Item/ID da Variação.${unmatchedPreview ? ` Exemplos: ${unmatchedPreview}.` : ""}`
       );
     }
     if (shippingFeesTotal !== 0) {
