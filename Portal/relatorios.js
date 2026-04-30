@@ -23,6 +23,18 @@ let TODOS_RELATORIOS = [];
 let RELATORIOS_FILTRADOS = [];
 let RELATORIO_DETALHE_ATUAL_ID = null;
 let CLIENTES_CACHE = [];
+let DETALHE_ITENS = [];
+let DETALHE_FILTRO_ATIVO = "todos";
+let DETALHE_BUSCA = "";
+const DETALHE_FILTROS_RAPIDOS = [
+  { key: "todos", label: "Todos" },
+  { key: "critico", label: "Críticos" },
+  { key: "atencao", label: "Atenção" },
+  { key: "saudavel", label: "Saudáveis" },
+  { key: "sem_base", label: "Sem base" },
+  { key: "sem_frete", label: "Sem frete" },
+  { key: "sem_comissao", label: "Sem comissão" },
+];
 
 function clearSession() {
   localStorage.removeItem(STORAGE_KEY);
@@ -78,23 +90,21 @@ function classeStatus(status) {
   }
 }
 
-function classeDiagnostico(key) {
-  switch (String(key || "").toLowerCase()) {
-    case "critico":
-      return { label: "Crítico", tone: "danger" };
-    case "atencao":
-      return { label: "Atenção", tone: "warning" };
-    case "saudavel":
-      return { label: "Saudável", tone: "success" };
-    case "sem_base":
-      return { label: "Sem base", tone: "neutral" };
-    case "sem_frete":
-      return { label: "Sem frete", tone: "warning" };
-    case "sem_comissao":
-      return { label: "Sem comissão", tone: "warning" };
-    default:
-      return { label: key || "—", tone: "neutral" };
-  }
+function diagnosticoItemSalvo(item) {
+  const temBase = item?.tem_base === true || item?.tem_base === 1 || item?.tem_base === "1";
+  const freteNum = Number(item?.frete);
+  const comissaoNum = Number(item?.comissao);
+
+  if (!temBase) return { key: "sem_base", label: "Sem base", tone: "neutral" };
+  if (!Number.isFinite(freteNum)) return { key: "sem_frete", label: "Sem frete", tone: "warning" };
+  if (!Number.isFinite(comissaoNum)) return { key: "sem_comissao", label: "Sem comissão", tone: "warning" };
+
+  const raw = String(item?.diagnostico || "").toLowerCase();
+  if (raw === "critico") return { key: "critico", label: "Crítico", tone: "danger" };
+  if (raw === "atencao") return { key: "atencao", label: "Atenção", tone: "warning" };
+  if (raw === "saudavel") return { key: "saudavel", label: "Saudável", tone: "success" };
+
+  return { key: raw || "sem_dados", label: raw || "Sem dados", tone: "neutral" };
 }
 
 function setListState(state, message = "") {
@@ -338,7 +348,7 @@ function atualizarBotoesExportModal() {
   if (xlsxBtn) xlsxBtn.disabled = !habilitar;
 }
 
-function renderRelatorioDetalheResumo(relatorio) {
+function renderDetalheResumo(relatorio) {
   const container = document.getElementById("vf-relatorio-detalhe-resumo");
   const meta = document.getElementById("vf-relatorio-detalhe-meta");
   if (!container || !relatorio) return;
@@ -370,15 +380,55 @@ function renderRelatorioDetalheResumo(relatorio) {
   }
 }
 
-function renderRelatorioDetalheItens(itens) {
+function renderDetalheFiltros() {
+  const wrap = document.getElementById("vf-relatorio-detalhe-filter-buttons");
+  if (!wrap) return;
+
+  wrap.innerHTML = DETALHE_FILTROS_RAPIDOS.map((f) => {
+    const active = f.key === DETALHE_FILTRO_ATIVO ? "active" : "";
+    return `<button type="button" class="vf-ml-filter-btn ${active}" data-filter="${escapeHTML(f.key)}">${escapeHTML(f.label)}</button>`;
+  }).join("");
+
+  wrap.querySelectorAll("[data-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      DETALHE_FILTRO_ATIVO = btn.getAttribute("data-filter") || "todos";
+      renderDetalheFiltros();
+      renderDetalheItens();
+    });
+  });
+}
+
+function getItensDetalheFiltrados() {
+  const busca = DETALHE_BUSCA.trim().toLowerCase();
+  return (Array.isArray(DETALHE_ITENS) ? DETALHE_ITENS : []).filter((it) => {
+    const diag = diagnosticoItemSalvo(it);
+    if (DETALHE_FILTRO_ATIVO !== "todos" && diag.key !== DETALHE_FILTRO_ATIVO) {
+      return false;
+    }
+    if (!busca) return true;
+    const haystack = `${it?.item_id || ""} ${it?.sku || ""} ${it?.titulo || ""}`.toLowerCase();
+    return haystack.includes(busca);
+  });
+}
+
+function atualizarContadorDetalheFiltrado(qtdFiltrados, qtdTotal) {
+  const info = document.getElementById("vf-relatorio-detalhe-filtrados-info");
+  if (!info) return;
+  info.textContent = `${qtdFiltrados} de ${qtdTotal} itens`;
+}
+
+function renderDetalheItens() {
   const tbody = document.getElementById("vf-relatorio-detalhe-tbody");
   if (!tbody) return;
   tbody.innerHTML = "";
 
-  const lista = Array.isArray(itens) ? itens : [];
+  const lista = getItensDetalheFiltrados();
+  const total = Array.isArray(DETALHE_ITENS) ? DETALHE_ITENS.length : 0;
+  atualizarContadorDetalheFiltrado(lista.length, total);
+
   if (!lista.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="14" style="color:var(--vf-text-m);">Este relatório não possui itens salvos.</td>`;
+    tr.innerHTML = `<td colspan="14" style="color:var(--vf-text-m);">Nenhum item encontrado</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -389,17 +439,13 @@ function renderRelatorioDetalheItens(itens) {
     const n = Number(v);
     return Number.isFinite(n) ? brl.format(n) : "—";
   };
-  const fmtPctNum = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? pct.format(n) : "—";
-  };
   const fmtMcFraction = (v) => {
     const n = Number(v);
     return Number.isFinite(n) ? `${pct.format(n * 100)}%` : "—";
   };
 
   lista.forEach((it) => {
-    const diag = classeDiagnostico(it.diagnostico);
+    const diag = diagnosticoItemSalvo(it);
     const lcN = Number(it.lc);
     const mcN = Number(it.mc);
     const lcColor = !Number.isFinite(lcN) ? "" : (lcN > 0 ? "color:var(--vf-success);" : (lcN < 0 ? "color:var(--vf-danger);" : ""));
@@ -417,22 +463,29 @@ function renderRelatorioDetalheItens(itens) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(it.item_id || "—")}</td>
+      <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(it.sku || "—")}</td>
       <td style="white-space:normal;line-height:1.35;" title="${escapeHTML(it.titulo || "")}">${escapeHTML(it.titulo || "—")}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.custo))}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${originalStyle}">${escapeHTML(fmtMoney(it.preco_original))}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${promoStyle}">${escapeHTML(promoFmt)}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_efetivo))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.custo))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtPctNum(it.imposto_percentual))}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.frete))}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.comissao))}</td>
-      <td>${it.tem_base ? "Sim" : "Não"}</td>
-      <td><span class="vf-ml-badge vf-ml-badge-${diag.tone}">${escapeHTML(diag.label)}</span></td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(fmtMoney(it.lc))}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcColor}">${escapeHTML(fmtMcFraction(it.mc))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_alvo))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_sugerido ?? it.preco_alvo))}</td>
+      <td><span class="vf-ml-badge vf-ml-badge-${diag.tone}">${escapeHTML(diag.label)}</span></td>
+      <td>${escapeHTML(it.acao_recomendada || "—")}</td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+function resetDetalheFiltros() {
+  DETALHE_FILTRO_ATIVO = "todos";
+  DETALHE_BUSCA = "";
+  const buscaEl = document.getElementById("vf-relatorio-detalhe-busca");
+  if (buscaEl) buscaEl.value = "";
 }
 
 async function abrirDetalheRelatorio(id) {
@@ -478,8 +531,11 @@ async function abrirDetalheRelatorio(id) {
       titulo.textContent = `Relatório #${relatorio.id || id} — ${relatorio.cliente_slug || "—"}`;
     }
 
-    renderRelatorioDetalheResumo(relatorio);
-    renderRelatorioDetalheItens(itens);
+    DETALHE_ITENS = Array.isArray(itens) ? itens : [];
+    resetDetalheFiltros();
+    renderDetalheResumo(relatorio);
+    renderDetalheFiltros();
+    renderDetalheItens();
     loading.style.display = "none";
     content.style.display = "block";
   } catch (err) {
@@ -576,6 +632,8 @@ function fecharModalDetalhe() {
   const modal = document.getElementById("vf-relatorio-detalhe-modal");
   if (modal) modal.style.display = "none";
   RELATORIO_DETALHE_ATUAL_ID = null;
+  DETALHE_ITENS = [];
+  resetDetalheFiltros();
   atualizarBotoesExportModal();
 }
 
@@ -586,6 +644,10 @@ document.getElementById("filtro-status")?.addEventListener("change", filtrarRela
 
 document.getElementById("btn-atualizar-relatorios")?.addEventListener("click", () => {
   carregarRelatorios();
+});
+document.getElementById("vf-relatorio-detalhe-busca")?.addEventListener("input", (e) => {
+  DETALHE_BUSCA = e.target.value || "";
+  renderDetalheItens();
 });
 
 document.getElementById("vf-relatorio-detalhe-close")?.addEventListener("click", fecharModalDetalhe);
