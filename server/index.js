@@ -3099,8 +3099,41 @@ function round2(value) {
   return Number((Number.isFinite(value) ? value : 0).toFixed(2));
 }
 
+function repairWorksheetRef(sheet) {
+  if (!sheet || typeof sheet !== "object") return sheet;
+
+  const cells = Object.keys(sheet).filter((key) => key && key[0] !== "!");
+  if (!cells.length) return sheet;
+
+  let minR = Infinity;
+  let minC = Infinity;
+  let maxR = 0;
+  let maxC = 0;
+
+  for (const addr of cells) {
+    try {
+      const cell = XLSX.utils.decode_cell(addr);
+      minR = Math.min(minR, cell.r);
+      minC = Math.min(minC, cell.c);
+      maxR = Math.max(maxR, cell.r);
+      maxC = Math.max(maxC, cell.c);
+    } catch (_) {
+      // ignora chaves não compatíveis com endereço de célula
+    }
+  }
+
+  if (Number.isFinite(minR) && Number.isFinite(minC)) {
+    sheet["!ref"] = XLSX.utils.encode_range({
+      s: { r: minR, c: minC },
+      e: { r: maxR, c: maxC },
+    });
+  }
+
+  return sheet;
+}
+
 function readSheetRows(fileBuffer) {
-  const workbook = XLSX.read(fileBuffer, { type: "buffer", cellStyles: true });
+  const workbook = XLSX.read(fileBuffer, { type: "buffer" });
   const firstSheetName = workbook.SheetNames[0];
 
   if (!firstSheetName) {
@@ -3108,6 +3141,7 @@ function readSheetRows(fileBuffer) {
   }
 
   const sheet = workbook.Sheets[firstSheetName];
+  repairWorksheetRef(sheet);
 
   const rowsAsArrays = XLSX.utils.sheet_to_json(sheet, {
     header: 1,
@@ -3639,7 +3673,7 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     const financialRows = parseShopeeFinancialRows(salesRowsRaw);
     if (!financialRows.length) {
       throw createBadRequestError(
-        `Formato de planilha Shopee reconhecido como financeiro/pedidos, porém sem linhas válidas. Colunas detectadas: ${detectedColumns.join(", ")}`
+        "A planilha Shopee Order.all foi lida, mas não possui linhas de pedidos no período exportado."
       );
     }
 
