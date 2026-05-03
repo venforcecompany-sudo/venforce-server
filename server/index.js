@@ -3368,7 +3368,7 @@ function parseCostRows(rows) {
     pushKey(id);
     pushKey(modelId);
     pushKey(skuKey);
-    pushKey(idRaw);
+    pushKey(itemIdRaw);
     pushKey(modelIdRaw);
     pushKey(skuRaw);
 
