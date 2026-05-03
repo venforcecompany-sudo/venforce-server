@@ -16,6 +16,15 @@ const { getValidMlTokenByCliente, mlFetch } = require("./utils/mlClient");
 const { startTokenRefreshWorker } = require("./utils/tokenRefreshWorker");
 const { authMiddleware, requireAdmin } = require("./middlewares/authMiddleware");
 const { toNumber, positive, round2 } = require("./utils/numberUtils");
+const {
+  normalizeText,
+  normalizeKey,
+  normalizeId,
+  normalizeIdNoPrefix,
+  normalizeMatchKey,
+  normalizeShopeeId,
+  findField,
+} = require("./utils/textUtils");
 const authRoutes = require("./routes/authRoutes");
 const logsRoutes = require("./routes/logsRoutes");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
@@ -3012,74 +3021,6 @@ app.post("/fechamentos/compilar", authMiddleware, upload.array("files", 20), (re
   }
 });
 
-function normalizeText(value) {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-function normalizeKey(value) {
-  return normalizeText(value).replace(/\s+/g, " ");
-}
-
-function normalizeId(value) {
-  if (value === null || value === undefined) return "";
-
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) return "";
-    return Math.trunc(value).toString();
-  }
-
-  let text = String(value).trim();
-  if (!text) return "";
-
-  const scientificLike = text.replace(",", ".");
-  if (/^\d+(\.\d+)?e\+\d+$/i.test(scientificLike)) {
-    const num = Number(scientificLike);
-    if (Number.isFinite(num)) {
-      return Math.trunc(num).toString();
-    }
-  }
-
-  const cleaned = text.replace(/^MLB/i, "").replace(/\D/g, "");
-  return cleaned ? `MLB${cleaned}` : "";
-}
-
-function normalizeIdNoPrefix(value) {
-  const full = normalizeId(value);
-  return full.replace(/^MLB/i, "");
-}
-
-function normalizeMatchKey(value) {
-  let text = String(value ?? "").trim();
-  if (!text) return "";
-  text = text
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ");
-  if (/^-?\d+(\.0+)?$/.test(text)) {
-    text = text.replace(/\.0+$/, "");
-  }
-  return text;
-}
-
-function normalizeShopeeId(value) {
-  let text = String(value ?? "").trim();
-  if (!text) return "";
-  text = text
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "");
-  if (/^-?\d+(\.0+)?$/.test(text)) {
-    text = text.replace(/\.0+$/, "");
-  }
-  return text;
-}
-
 function repairWorksheetRef(sheet) {
   if (!sheet || typeof sheet !== "object") return sheet;
 
@@ -3200,28 +3141,6 @@ function createBadRequestError(message) {
   const err = new Error(message);
   err.statusCode = 400;
   return err;
-}
-
-function findField(row, candidates) {
-  const entries = Object.entries(row);
-
-  for (const [key, value] of entries) {
-    const normalized = normalizeKey(key);
-
-    for (const candidate of candidates) {
-      if (normalized === candidate) return value;
-    }
-  }
-
-  for (const [key, value] of entries) {
-    const normalized = normalizeKey(key);
-
-    for (const candidate of candidates) {
-      if (normalized.includes(candidate)) return value;
-    }
-  }
-
-  return "";
 }
 
 function parseCostRows(rows) {
