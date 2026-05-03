@@ -4393,7 +4393,17 @@ function parseMeliRows(rows) {
         "# de anuncio",
         "# do anúncio",
         "# do anuncio",
+        "id do anúncio",
+        "id do anuncio",
+        "anúncio",
+        "anuncio",
+        "mlb",
+        "id",
       ]) ?? ""
+    ).trim();
+
+    const modelIdRaw = String(
+      findField(row, ["model id", "model_id", "modelid", "modelo"]) ?? ""
     ).trim();
 
     return {
@@ -4433,7 +4443,7 @@ function parseMeliRows(rows) {
         ])
       ),
       adIdRaw,
-      adId: normalizeId(adIdRaw),
+      adId: normalizeId(adIdRaw || modelIdRaw),
       title: String(
         findField(row, [
           "título do anúncio",
@@ -4450,9 +4460,7 @@ function parseMeliRows(rows) {
           "preco unitario de venda do anuncio",
         ])
       ),
-      modelIdRaw: String(
-        findField(row, ["model id", "model_id", "modelid"]) ?? ""
-      ).trim(),
+      modelIdRaw,
     };
   });
 }
