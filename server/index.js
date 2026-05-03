@@ -4908,7 +4908,7 @@ app.post("/fechamentos/financeiro", authMiddleware, upload.fields([{ name: "sale
 
     const salesRowsRaw =
       marketplace === "meli"
-        ? parseSpreadsheet(salesBuffer, detectMeliHeaderRow(salesBuffer))
+        ? parseSpreadsheet(salesBuffer, 5)
         : parseSpreadsheet(salesBuffer, detectShopeeHeaderRow(salesBuffer));
 
     const costRowsRaw = parseSpreadsheet(costsBuffer);
