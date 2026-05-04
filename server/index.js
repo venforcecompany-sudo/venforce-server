@@ -64,19 +64,49 @@ function normalizarSlug(nome) {
 
 function normalizarMlItemId(valor) {
   const texto = String(valor || "").trim().toUpperCase();
-  const match = texto.match(/MLB\d+|MLBU\d+/);
-  return match ? match[0] : texto;
+  if (!texto) return "";
+  // Já tem MLB ou MLBU dentro do texto: extrai o padrão completo
+  const match = texto.match(/MLB[U]?\d+/);
+  if (match) return match[0];
+  // Limpa aspas e ".0" do final (Excel serializa números como "12345.0")
+  let limpo = texto.replace(/^['"]+|['"]+$/g, "").trim();
+  if (/^\d+\.0+$/.test(limpo)) limpo = limpo.replace(/\.0+$/, "");
+  // Se for puramente numérico, adiciona MLB
+  if (/^\d+$/.test(limpo)) return "MLB" + limpo;
+  // Outro formato (SKU customizado, etc): retorna sem alteração
+  return texto;
 }
 
 function numeroSeguro(valor) {
   if (valor === null || valor === undefined || valor === "") return 0;
   if (typeof valor === "number") return Number.isFinite(valor) ? valor : 0;
-  let texto = String(valor).trim().replace(/\s/g, "").replace("%", "");
+  let texto = String(valor)
+    .trim()
+    .replace(/\s/g, "")
+    .replace(/R\$/gi, "")
+    .replace(/US\$/gi, "")
+    .replace(/€/g, "")
+    .replace("%", "");
   if (!texto) return 0;
   if (texto.includes(",") && texto.includes(".")) { texto = texto.replace(/\./g, "").replace(",", "."); }
   else if (texto.includes(",")) { texto = texto.replace(",", "."); }
   const n = Number(texto);
   return Number.isFinite(n) ? n : 0;
+}
+
+function normalizarImposto(valor) {
+  // String contendo "%": parseia número e divide por 100
+  // Ex: "14,50%" → 0.145; "12%" → 0.12
+  if (typeof valor === "string" && valor.includes("%")) {
+    return numeroSeguro(valor) / 100;
+  }
+  const n = numeroSeguro(valor);
+  // Número >= 1: assume escala 0-100, converte pra decimal
+  // Ex: 12 → 0.12; 14.5 → 0.145
+  if (n >= 1) return n / 100;
+  // Número < 1: já é decimal, mantém
+  // Ex: 0.077 → 0.077; 0.12 → 0.12
+  return n;
 }
 
 function obterValorColuna(row, nomes) {
@@ -95,21 +125,36 @@ function parsePlanilha(buffer, originalName) {
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets[primeiraAba], { defval: "" });
   if (!rows.length) throw new Error("A planilha está vazia");
 
+  // Detectar se é planilha Shopee (tem coluna "model id" ou variantes).
+  // Em Shopee os IDs são numéricos do próprio Shopee — NÃO devem receber MLB.
+  const headers = Object.keys(rows[0] || {}).map((h) => h.trim().toLowerCase());
+  const isShopee = headers.some((h) =>
+    h === "model id" || h === "model_id" || h === "modelid" ||
+    h === "id da variacao" || h === "id da variação"
+  );
+
   const resultado = [];
   for (const row of rows) {
-    // Normaliza chaves: remove espaços e BOM invisíveis
     const r = {};
     for (const [k, v] of Object.entries(row)) {
       r[k.trim().replace(/^\uFEFF/, "")] = v;
     }
 
-    const id = String(obterValorColuna(r, ["id", "ID", "Id", "sku", "SKU", "Sku"])).trim();
+    const idRaw = String(obterValorColuna(r, ["id", "ID", "Id", "sku", "SKU", "Sku"])).trim();
+    if (!idRaw) continue;
+
+    // Limpa aspas e ".0" sobrante (Excel serializa números como string)
+    let idClean = idRaw.replace(/^['"]+|['"]+$/g, "").replace(/^\uFEFF/, "").trim();
+    if (/^\d+\.0+$/.test(idClean)) idClean = idClean.replace(/\.0+$/, "");
+
+    // Shopee: mantém ID como veio (numérico). MeLi: normaliza para garantir prefixo MLB.
+    const id = isShopee ? idClean : normalizarMlItemId(idClean);
     if (!id) continue;
 
     resultado.push({
       produto_id: id,
       custo_produto: numeroSeguro(obterValorColuna(r, ["Custo", "custo_produto", "CUSTO_PRODUTO", "custo", "CUSTO", "Custo Produto"])),
-      imposto_percentual: numeroSeguro(obterValorColuna(r, ["Imposto", "imposto_percentual", "IMPOSTO_PERCENTUAL", "imposto", "IMPOSTO", "Imposto Percentual"])),
+      imposto_percentual: normalizarImposto(obterValorColuna(r, ["Imposto", "imposto_percentual", "IMPOSTO_PERCENTUAL", "imposto", "IMPOSTO", "Imposto Percentual"])),
       taxa_fixa: numeroSeguro(obterValorColuna(r, ["Taxa", "taxa_fixa", "TAXA_FIXA", "taxa", "TAXA", "Taxa Fixa"]))
     });
   }
