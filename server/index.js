@@ -4111,6 +4111,14 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
   const refundsCount = salesRows.filter(
     (row) => Math.abs(Number(row.cancelRefund || 0)) > 0.01
   ).length;
+  // Faturamento perdido = soma da Receita por produtos (coluna I) nas linhas
+  // que tiveram cancelamento/reembolso. Mostra o quanto de venda integral
+  // foi perdida nessas operações (independente de quanto o ML reembolsou).
+  const lostRevenueTotal = round2(
+    salesRows
+      .filter((row) => Math.abs(Number(row.cancelRefund || 0)) > 0.01)
+      .reduce((sum, row) => sum + Number(row.productRevenue || 0), 0)
+  );
 
   function isMainRow(row) {
     return !row.adId && Math.abs(row.productRevenue) > 0;
@@ -4282,6 +4290,7 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       refundsTotal,
       cancelledRevenue: refundsTotal,
       refundsCount,
+      lostRevenueTotal,
       paidRevenueTotal,
       contributionProfitTotal,
       averageContributionMargin,

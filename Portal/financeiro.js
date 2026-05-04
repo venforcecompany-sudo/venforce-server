@@ -44,6 +44,7 @@ function limparFinStats() {
     "fin-tacos",
     "fin-cancelamentos",
     "fin-cancelados-count",
+    "fin-faturamento-perdido",
   ].forEach((id) => {
     const card = document.getElementById(id);
     const v = card?.querySelector?.(".fc-stat-value");
@@ -137,6 +138,11 @@ function renderFinResumo(data) {
 
   // Cancelamentos: setCard já pinta vermelho quando valor < 0
   setCard("fin-cancelamentos", s.refundsTotal, brl(s.refundsTotal));
+  // Faturamento perdido: valor integral dos produtos cancelados (I das linhas
+  // canceladas). Mostra como negativo porque é dinheiro de venda que o seller
+  // não recebeu. Usar -lostRevenueTotal para o setCard pintar de vermelho.
+  const lostNegative = -Number(s.lostRevenueTotal || 0);
+  setCard("fin-faturamento-perdido", lostNegative, brl(lostNegative));
 
   // Pedidos cancelados: contagem; coloração customizada (não é financeiro)
   const elCount = document
