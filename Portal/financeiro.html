@@ -573,6 +573,10 @@
               <label for="fin-costs">Planilha de Custos (.xlsx)</label>
               <input type="file" id="fin-costs" accept=".xlsx">
             </div>
+            <div class="fc-upload-card" id="fin-orders-all-wrapper" style="display:none;">
+              <p class="fc-upload-title">Order.all (.xlsx) — Shopee, opcional</p>
+              <input type="file" id="fin-orders-all" accept=".xlsx" />
+            </div>
 
             <div class="fc-operation-item">
               <label for="fin-ads">ADS (R$)</label>
@@ -699,6 +703,18 @@
               </div>
               <div class="fc-stat fc-stat-card" id="fin-cancelados-count">
                 <p class="fc-stat-title">Pedidos cancelados</p>
+                <p class="fc-stat-value">—</p>
+              </div>
+              <div class="fc-stat fc-stat-card" id="fin-shopee-cancelados-count">
+                <p class="fc-stat-title">Pedidos cancelados (Shopee)</p>
+                <p class="fc-stat-value">—</p>
+              </div>
+              <div class="fc-stat fc-stat-card" id="fin-shopee-faturamento-perdido">
+                <p class="fc-stat-title">Faturamento perdido (Shopee)</p>
+                <p class="fc-stat-value">—</p>
+              </div>
+              <div class="fc-stat fc-stat-card" id="fin-shopee-nao-pagos">
+                <p class="fc-stat-title">Não pagos (Shopee)</p>
                 <p class="fc-stat-value">—</p>
               </div>
           </div>

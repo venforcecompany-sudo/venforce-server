@@ -45,6 +45,9 @@ function limparFinStats() {
     "fin-cancelamentos",
     "fin-cancelados-count",
     "fin-faturamento-perdido",
+    "fin-shopee-cancelados-count",
+    "fin-shopee-faturamento-perdido",
+    "fin-shopee-nao-pagos",
   ].forEach((id) => {
     const card = document.getElementById(id);
     const v = card?.querySelector?.(".fc-stat-value");
@@ -144,6 +147,31 @@ function renderFinResumo(data) {
   const lostNegative = -Number(s.lostRevenueTotal || 0);
   setCard("fin-faturamento-perdido", lostNegative, brl(lostNegative));
 
+  // Cards Shopee — só populam se vieram no summary.
+  const shopeeCancCount = Number(s.cancelledCount || 0);
+  const elShopeeCancCount = document
+    .getElementById("fin-shopee-cancelados-count")
+    ?.querySelector(".fc-stat-value");
+  if (elShopeeCancCount) {
+    elShopeeCancCount.textContent = num(shopeeCancCount);
+    elShopeeCancCount.style.color = shopeeCancCount > 0 ? "#f87171" : "";
+  }
+
+  const shopeeLost = -Number(s.cancelledLostRevenue || 0);
+  setCard("fin-shopee-faturamento-perdido", shopeeLost, brl(shopeeLost));
+
+  const unpaidCount = Number(s.unpaidCount || 0);
+  const elUnpaid = document
+    .getElementById("fin-shopee-nao-pagos")
+    ?.querySelector(".fc-stat-value");
+  if (elUnpaid) {
+    const unpaidVal = Number(s.unpaidLostRevenue || 0);
+    elUnpaid.textContent = unpaidCount > 0
+      ? `${num(unpaidCount)} (${brl(unpaidVal)})`
+      : "—";
+    elUnpaid.style.color = unpaidCount > 0 ? "#fbbf24" : "";
+  }
+
   // Pedidos cancelados: contagem; coloração customizada (não é financeiro)
   const elCount = document
     .getElementById("fin-cancelados-count")
@@ -203,6 +231,30 @@ function renderFinTabela(data) {
 
     host.appendChild(panel);
   }
+
+  const unmatchedCancelled = Array.isArray(data?.unmatchedCancelled)
+    ? data.unmatchedCancelled
+    : [];
+  if (unmatchedCancelled.length > 0) {
+    const panel = document.createElement("div");
+    panel.className = "fc-content-panel";
+    panel.style.marginTop = "14px";
+    panel.style.background = "rgba(9,9,11,0.86)";
+    panel.style.border = "1px solid rgba(251,191,36,0.28)";
+    panel.style.fontFamily = "ui-monospace, monospace";
+
+    const itemsHtml = unmatchedCancelled
+      .map((c) => `<div style="padding:6px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:10px;user-select:text;">${escapeHTML(c.productName || "—")} <span style="color:#a1a1aa;">| SKU: ${escapeHTML(c.skuPrincipal || "—")} | ${escapeHTML(brl(c.subtotal || 0))}</span></div>`)
+      .join("");
+
+    panel.innerHTML = `
+      <div style="font-weight:900;color:#fbbf24;margin:0 0 10px;">⚠ ${unmatchedCancelled.length} pedido(s) cancelado(s) sem custo identificado</div>
+      <div style="color:#e5e7eb;margin:0 0 10px;">Esses pedidos cancelados não foram encontrados na sua base de custos via SKU. Cadastre o produto na base e processe novamente para incluir nos cálculos.</div>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:#f4f4f5;line-height:1.45;">${itemsHtml}</div>
+    `;
+
+    host.appendChild(panel);
+  }
 }
 
 function base64ToBlob(base64, mimeType) {
@@ -249,6 +301,11 @@ async function processarFechamentoFinanceiro() {
     formData.append("sales", sales);
     formData.append("costs", costs);
     formData.append("marketplace", marketplace);
+    // Order.all opcional, só Shopee
+    if (marketplace === "shopee") {
+      const ordersAll = document.getElementById("fin-orders-all")?.files?.[0];
+      if (ordersAll) formData.append("ordersAll", ordersAll);
+    }
     formData.append("ads", ads);
     formData.append("venforce", venforce);
     formData.append("affiliates", affiliates);
@@ -317,8 +374,10 @@ if (btnFinLimpar) {
   btnFinLimpar.addEventListener("click", () => {
     const sales = document.getElementById("fin-sales");
     const costs = document.getElementById("fin-costs");
+    const ordersAll = document.getElementById("fin-orders-all");
     if (sales) sales.value = "";
     if (costs) costs.value = "";
+    if (ordersAll) ordersAll.value = "";
 
     const finAds = document.getElementById("fin-ads");
     const finVenforce = document.getElementById("fin-venforce");
@@ -356,6 +415,26 @@ if (finCostsInput) {
     const f = finCostsInput.files?.[0];
     if (finCostsLabel) finCostsLabel.textContent = f ? f.name : "Escolher arquivo…";
   });
+}
+
+const finOrdersAllInput = document.getElementById("fin-orders-all");
+const finOrdersAllLabel = ensureFileLabelSpan(finOrdersAllInput);
+if (finOrdersAllInput) {
+  finOrdersAllInput.addEventListener("change", () => {
+    const f = finOrdersAllInput.files?.[0];
+    if (finOrdersAllLabel) finOrdersAllLabel.textContent = f ? f.name : "Escolher arquivo…";
+  });
+}
+
+const marketplaceSelect = document.getElementById("fin-marketplace");
+const ordersAllWrapper = document.getElementById("fin-orders-all-wrapper");
+if (marketplaceSelect && ordersAllWrapper) {
+  const updateOrdersAllVisibility = () => {
+    ordersAllWrapper.style.display =
+      marketplaceSelect.value === "shopee" ? "" : "none";
+  };
+  marketplaceSelect.addEventListener("change", updateOrdersAllVisibility);
+  updateOrdersAllVisibility();
 }
 
 limparFinStats();

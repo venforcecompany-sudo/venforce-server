@@ -3558,6 +3558,165 @@ function parseShopeeFinancialRows(rows) {
   return parsed;
 }
 
+// Lê uma planilha Order.all e retorna apenas pedidos cancelados
+// ou não pagos, com chaves SKU e valor (Subtotal do produto).
+// Usado para feature de Cancelados/Não Pagos da Shopee.
+// NÃO substitui processamento principal (que usa performance).
+function parseShopeeOrderAllForStatus(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const parsed = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || typeof row !== "object") continue;
+
+    const status = String(
+      findField(row, ["status do pedido", "status pedido"]) || ""
+    ).trim();
+    if (!status) continue;
+
+    const statusLower = normalizeText(status);
+    const isCancelled = statusLower === "cancelado";
+    const isUnpaid = statusLower === "nao pago" || statusLower === "não pago";
+    if (!isCancelled && !isUnpaid) continue;
+
+    const skuPrincipal = String(
+      findField(row, [
+        "no de referencia do sku principal",
+        "n. de referencia do sku principal",
+        "nº de referência do sku principal",
+        "sku principal",
+      ]) || ""
+    ).trim();
+
+    const skuRef = String(
+      findField(row, [
+        "numero de referencia sku",
+        "número de referência sku",
+        "n. de referencia sku",
+        "sku",
+      ]) || ""
+    ).trim();
+
+    const subtotal = toNumber(
+      findField(row, [
+        "subtotal do produto",
+        "subtotal produto",
+        "subtotal",
+      ])
+    );
+
+    const productName = String(
+      findField(row, ["nome do produto", "nome produto", "produto"]) || ""
+    ).trim();
+
+    const orderId = String(
+      findField(row, ["id do pedido", "id pedido"]) || ""
+    ).trim();
+
+    parsed.push({
+      orderId,
+      status,
+      kind: isCancelled ? "cancelled" : "unpaid",
+      skuPrincipal: normalizeShopeeId(skuPrincipal),
+      skuRef: normalizeShopeeId(skuRef),
+      productName,
+      subtotal,
+    });
+  }
+  return parsed;
+}
+
+// Constrói dicionário SKU → {idItem, idVariacao} a partir das linhas
+// brutas da planilha de performance. Usado como ponte para cruzar
+// pedidos da Order.all com a base de custos.
+function buildShopeePerfSkuBridge(rows) {
+  const bridge = new Map();
+  if (!Array.isArray(rows)) return bridge;
+
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+
+    const idItem = String(
+      findField(row, ["id do item", "id item", "item id"]) || ""
+    ).trim();
+    const idVariacao = String(
+      findField(row, ["id da variacao", "id da variação", "id variacao"]) || ""
+    ).trim();
+
+    const skuVar = normalizeShopeeId(
+      String(findField(row, ["sku da variacao", "sku da variação"]) || "")
+    );
+    const skuPri = normalizeShopeeId(
+      String(findField(row, ["sku principle", "sku principal"]) || "")
+    );
+
+    const ids = {
+      idItem: normalizeShopeeId(idItem),
+      idVariacao: normalizeShopeeId(idVariacao),
+    };
+
+    if (skuVar && !bridge.has(skuVar)) bridge.set(skuVar, ids);
+    if (skuPri && !bridge.has(skuPri)) bridge.set(skuPri, ids);
+  }
+  return bridge;
+}
+
+// Cruza pedidos cancelados/não pagos com base de custos via ponte da
+// performance. Retorna estatísticas e lista de não-encontrados.
+function buildShopeeStatusSummary(orderAllItems, perfBridge, costMap) {
+  const result = {
+    cancelledCount: 0,
+    cancelledLostRevenue: 0,
+    unpaidCount: 0,
+    unpaidLostRevenue: 0,
+    unmatchedCancelled: [],
+  };
+  if (!Array.isArray(orderAllItems)) return result;
+
+  for (const item of orderAllItems) {
+    const subtotal = Number(item.subtotal || 0);
+
+    if (item.kind === "cancelled") {
+      result.cancelledCount += 1;
+      result.cancelledLostRevenue += subtotal;
+    } else if (item.kind === "unpaid") {
+      result.unpaidCount += 1;
+      result.unpaidLostRevenue += subtotal;
+    }
+
+    // Tentar match (só relevante para o painel de unmatched)
+    let matched = false;
+    const tryKeys = [item.skuPrincipal, item.skuRef].filter(Boolean);
+    for (const sku of tryKeys) {
+      const ids = perfBridge.get(sku);
+      if (ids) {
+        // tenta achar custo via idItem ou idVariacao
+        if (
+          (ids.idItem && costMap.has(ids.idItem)) ||
+          (ids.idVariacao && costMap.has(ids.idVariacao))
+        ) {
+          matched = true;
+          break;
+        }
+      }
+    }
+
+    if (!matched && item.kind === "cancelled") {
+      result.unmatchedCancelled.push({
+        orderId: item.orderId,
+        productName: item.productName,
+        skuPrincipal: item.skuPrincipal,
+        subtotal,
+      });
+    }
+  }
+
+  result.cancelledLostRevenue = round2(result.cancelledLostRevenue);
+  result.unpaidLostRevenue = round2(result.unpaidLostRevenue);
+  return result;
+}
+
 function calculateShopeeItem(sale, costRow) {
   const averageTicket =
     sale.paidUnits > 0 ? sale.paidRevenue / sale.paidUnits : 0;
@@ -3612,7 +3771,7 @@ function calculateShopeeItem(sale, costRow) {
   };
 }
 
-function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
+function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ordersAllRowsRaw) {
   const detectedColumns =
     salesRowsRaw.length > 0 ? Object.keys(salesRowsRaw[0]) : [];
   const executiveNotes = [];
@@ -3753,6 +3912,28 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
   );
   const cmvTotal = round2(cmvBase > 0 ? -Math.abs(cmvBase) : cmvBase);
 
+  // Feature opcional: cruza Order.all (cancelados/não pagos) com a base
+  // de custos via ponte da própria planilha de performance.
+  // Só executa se o usuário subiu Order.all.
+  let shopeeStatusSummary = {
+    cancelledCount: 0,
+    cancelledLostRevenue: 0,
+    unpaidCount: 0,
+    unpaidLostRevenue: 0,
+    unmatchedCancelled: [],
+  };
+  if (Array.isArray(ordersAllRowsRaw) && ordersAllRowsRaw.length > 0) {
+    const orderAllItems = parseShopeeOrderAllForStatus(ordersAllRowsRaw);
+    if (orderAllItems.length > 0) {
+      const perfBridge = buildShopeePerfSkuBridge(salesRowsRaw);
+      shopeeStatusSummary = buildShopeeStatusSummary(
+        orderAllItems,
+        perfBridge,
+        costMap
+      );
+    }
+  }
+
   return {
     summary: {
       grossRevenueTotal: paidRevenueTotal,
@@ -3780,6 +3961,10 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       grossProfitTotal: round2(contributionProfitTotal),
       grossMargin: paidRevenueTotal > 0 ? round2(contributionProfitTotal / paidRevenueTotal) : 0,
       executiveNotes,
+      cancelledCount: shopeeStatusSummary.cancelledCount,
+      cancelledLostRevenue: shopeeStatusSummary.cancelledLostRevenue,
+      unpaidCount: shopeeStatusSummary.unpaidCount,
+      unpaidLostRevenue: shopeeStatusSummary.unpaidLostRevenue,
     },
     detailedRows,
     excelFileName: "fechamento-shopee.xlsx",
@@ -3787,6 +3972,7 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     excludedVariationIds: Array.from(excludedVariationIdsSet),
     ignoredRowsWithoutCost: unmatchedIdsSet.size,
     ignoredRevenue,
+    unmatchedCancelled: shopeeStatusSummary.unmatchedCancelled,
     message:
       unmatchedIdsSet.size > 0
         ? "Alguns IDs não possuem custo cadastrado e foram removidos do cálculo."
@@ -4314,7 +4500,11 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
   };
 }
 
-app.post("/fechamentos/financeiro", authMiddleware, upload.fields([{ name: "sales", maxCount: 1 }, { name: "costs", maxCount: 1 }]), (req, res) => {
+app.post("/fechamentos/financeiro", authMiddleware, upload.fields([
+  { name: "sales", maxCount: 1 },
+  { name: "costs", maxCount: 1 },
+  { name: "ordersAll", maxCount: 1 }
+]), (req, res) => {
   try {
     const salesFile = req.files && req.files["sales"] && req.files["sales"][0];
     const costsFile = req.files && req.files["costs"] && req.files["costs"][0];
@@ -4341,6 +4531,7 @@ app.post("/fechamentos/financeiro", authMiddleware, upload.fields([{ name: "sale
 
     const salesBuffer = salesFile.buffer;
     const costsBuffer = costsFile.buffer;
+    const ordersAllFile = req.files?.ordersAll?.[0];
 
     const salesRowsRaw =
       marketplace === "meli"
@@ -4348,11 +4539,20 @@ app.post("/fechamentos/financeiro", authMiddleware, upload.fields([{ name: "sale
         : parseSpreadsheet(salesBuffer, detectShopeeHeaderRow(salesBuffer));
 
     const costRowsRaw = parseSpreadsheet(costsBuffer);
+    let ordersAllRowsRaw = null;
+    if (ordersAllFile && marketplace === "shopee") {
+      try {
+        ordersAllRowsRaw = parseSpreadsheet(ordersAllFile.buffer, 0);
+      } catch (e) {
+        // Se o parse falhar, ignora silenciosamente — é opcional.
+        ordersAllRowsRaw = null;
+      }
+    }
 
     const result =
       marketplace === "meli"
         ? processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates)
-        : processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates);
+        : processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ordersAllRowsRaw);
 
     const workbook = XLSX.utils.book_new();
 
@@ -4391,6 +4591,7 @@ app.post("/fechamentos/financeiro", authMiddleware, upload.fields([{ name: "sale
       detailedRows: result.detailedRows,
       excelBase64,
       unmatchedIds: result.unmatchedIds,
+      unmatchedCancelled: result.unmatchedCancelled,
       ignoredRowsWithoutCost: result.ignoredRowsWithoutCost,
       ignoredRevenue: result.ignoredRevenue,
       message: result.message
