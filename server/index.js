@@ -137,10 +137,16 @@ function parsePlanilha(buffer, originalName) {
   for (const row of rows) {
     const r = {};
     for (const [k, v] of Object.entries(row)) {
-      r[k.trim().replace(/^\uFEFF/, "")] = v;
+      const cleanKey = k
+        .trim()
+        .replace(/^\uFEFF/, "")
+        .replace(/^['"]+|['"]+$/g, "");
+      const cleanVal =
+        typeof v === "string" ? v.replace(/^['"]+|['"]+$/g, "") : v;
+      r[cleanKey] = cleanVal;
     }
 
-    const idRaw = String(obterValorColuna(r, ["id", "ID", "Id", "sku", "SKU", "Sku"])).trim();
+    const idRaw = String(obterValorColuna(r, ["id", "ID", "Id", "sku", "SKU", "Sku", "mlb", "MLB", "Mlb"])).trim();
     if (!idRaw) continue;
 
     // Limpa aspas e ".0" sobrante (Excel serializa números como string)
