@@ -51,14 +51,8 @@ const {
 const authRoutes = require("./routes/authRoutes");
 const logsRoutes = require("./routes/logsRoutes");
 const fechamentosFinanceiroRoutes = require("./routes/fechamentosFinanceiroRoutes");
+const mlRoutes = require("./routes/mlRoutes");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
-const {
-  testarConexaoMlController,
-  listarMlItemsController,
-  conectarMlLegadoController,
-  iniciarConexaoMlController,
-  callbackMlController,
-} = require("./controllers/mlController");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -423,6 +417,7 @@ END $$;
 app.use("/auth", authRoutes);
 app.use("/admin/logs", logsRoutes);
 app.use("/fechamentos", fechamentosFinanceiroRoutes);
+app.use("/", mlRoutes);
 
 app.post("/scans", authMiddleware, async (req, res) => {
   try {
@@ -2723,16 +2718,6 @@ app.post("/download-ferramenta-or", authMiddleware, async (req, res) => {
   }
 });
 
-// ==========================
-// ML — ROTAS DE INTEGRAÇÃO
-// ==========================
-
-// Testa conexão e retorna dados do usuário ML
-app.get("/ml/teste/:clienteId", authMiddleware, requireAdmin, testarConexaoMlController);
-
-// Busca anúncios ativos do cliente no ML (até 20 por vez, com suporte a offset)
-app.get("/ml/items/:clienteId", authMiddleware, requireAdmin, listarMlItemsController);
-
 app.get("/callbacks", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const { base, status, de, ate, page = 1 } = req.query;
@@ -2838,18 +2823,6 @@ app.delete("/usuarios/:id", authMiddleware, requireAdmin, async (req, res) => {
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
-// ==========================
-// ML — INICIAR AUTORIZAÇÃO
-// ==========================
-app.get("/ml/conectar", conectarMlLegadoController);
-
-app.get("/ml/conectar/:clienteSlug", iniciarConexaoMlController);
-
-// ==========================
-// ML — CALLBACK
-// ==========================
-app.get("/callback", callbackMlController);
-
 app.post("/fechamentos/upload", authMiddleware, upload.single("file"), (req, res) => {
   try {
     if (!req.file) {
