@@ -39,7 +39,6 @@ const {
   buildMeliCostMap,
   buildMeliBaseSheetRows,
   allocateByUnits,
-  processMeli,
 } = require("./services/fechamentoFinanceiro/meliFinanceiroService");
 const {
   parseShopeeSalesRows,
@@ -51,8 +50,10 @@ const {
   buildShopeePerfSkuBridge,
   buildShopeeStatusSummary,
   parseCostRows,
-  processShopee,
 } = require("./services/fechamentoFinanceiro/shopeePerformanceService");
+const {
+  processFechamentoFinanceiro,
+} = require("./services/fechamentoFinanceiro");
 const authRoutes = require("./routes/authRoutes");
 const logsRoutes = require("./routes/logsRoutes");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
@@ -3159,10 +3160,15 @@ app.post("/fechamentos/financeiro", authMiddleware, upload.fields([
       }
     }
 
-    const result =
-      marketplace === "meli"
-        ? processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates)
-        : processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ordersAllRowsRaw);
+    const result = processFechamentoFinanceiro({
+      marketplace,
+      salesRowsRaw,
+      costRowsRaw,
+      ads,
+      venforce,
+      affiliates,
+      ordersAllRowsRaw,
+    });
 
     const workbook = XLSX.utils.book_new();
 
