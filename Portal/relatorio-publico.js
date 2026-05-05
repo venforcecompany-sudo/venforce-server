@@ -701,10 +701,10 @@ function renderEntrega(entrega) {
     });
 
   const metaBits = [];
-  if (marketplace) metaBits.push(`<span><strong>Marketplace:</strong> ${escapeHTML(String(marketplace).toUpperCase())}</span>`);
-  if (clienteNome || clienteSlug) metaBits.push(`<span><strong>Cliente:</strong> ${escapeHTML(clienteNome || clienteSlug)}</span>`);
-  if (periodo) metaBits.push(`<span><strong>Período:</strong> ${escapeHTML(periodo)}</span>`);
-  if (geradoEm) metaBits.push(`<span><strong>Data de geração:</strong> ${escapeHTML(formatDateTimePtBR(geradoEm))}</span>`);
+  if (marketplace) metaBits.push(`<span class="rp-chip"><strong>Marketplace</strong> ${escapeHTML(String(marketplace).toUpperCase())}</span>`);
+  if (clienteNome || clienteSlug) metaBits.push(`<span class="rp-chip"><strong>Cliente</strong> ${escapeHTML(clienteNome || clienteSlug)}</span>`);
+  if (periodo) metaBits.push(`<span class="rp-chip"><strong>Período</strong> ${escapeHTML(periodo)}</span>`);
+  if (geradoEm) metaBits.push(`<span class="rp-chip"><strong>Data</strong> ${escapeHTML(formatDateTimePtBR(geradoEm))}</span>`);
 
   const coverSubtitle = "Uma apresentação executiva com os principais números, pontos de atenção, gráficos e recomendações práticas para o próximo período.";
 
