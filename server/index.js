@@ -5,7 +5,6 @@ const bcrypt = require("bcrypt");
 const cors = require("cors");
 const multer = require("multer");
 const XLSX = require("xlsx");
-const jwt = require("jsonwebtoken");
 const path = require("path");
 const fs = require("fs");
 const archiver = require("archiver");
@@ -53,13 +52,19 @@ const authRoutes = require("./routes/authRoutes");
 const logsRoutes = require("./routes/logsRoutes");
 const fechamentosFinanceiroRoutes = require("./routes/fechamentosFinanceiroRoutes");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
+const {
+  buscarClienteAtivoPorSlug,
+  buscarClienteAtivoPorId,
+  gerarMlState,
+  verificarMlState,
+  gerarMlAuthorizationUrl,
+  trocarCodePorTokenMl,
+  calcularMlExpiresAt,
+  salvarMlToken,
+} = require("./services/mlApiService");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
-const JWT_SECRET = process.env.JWT_SECRET || "venforce_secret_local";
-const ML_CLIENT_ID     = process.env.ML_CLIENT_ID     || "";
-const ML_CLIENT_SECRET = process.env.ML_CLIENT_SECRET || "";
-const ML_REDIRECT_URI  = process.env.ML_REDIRECT_URI  || "https://venforce-server.onrender.com/callback";
 
 // MIDDLEWARES
 app.use(cors({ origin: true, credentials: false, methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"], allowedHeaders: ["Content-Type","Authorization"] }));
@@ -2905,35 +2910,20 @@ app.get("/ml/conectar", (req, res) => {
 
 app.get("/ml/conectar/:clienteSlug", async (req, res) => {
   try {
-    if (!ML_CLIENT_ID) return res.status(500).send("ML_CLIENT_ID não configurado.");
     const slug = normalizarSlug(req.params.clienteSlug);
-    const result = await pool.query(
-      "SELECT id, slug, nome FROM clientes WHERE slug = $1 AND ativo = true",
-      [slug]
-    );
-    const cliente = result.rows[0];
+    const cliente = await buscarClienteAtivoPorSlug(slug);
     if (!cliente) {
       return res.status(404).send("Cliente não encontrado.");
     }
 
-    const state = jwt.sign(
-      {
-        clienteId: cliente.id,
-        clienteSlug: cliente.slug,
-        nonce: crypto.randomBytes(16).toString("hex")
-      },
-      JWT_SECRET,
-      { expiresIn: "10m" }
-    );
+    const state = gerarMlState(cliente);
+    const url = gerarMlAuthorizationUrl(state);
 
-    const url = new URL("https://auth.mercadolivre.com.br/authorization");
-    url.searchParams.set("response_type", "code");
-    url.searchParams.set("client_id", ML_CLIENT_ID);
-    url.searchParams.set("redirect_uri", ML_REDIRECT_URI);
-    url.searchParams.set("state", state);
-
-    res.redirect(url.toString());
+    res.redirect(url);
   } catch (err) {
+    if (err.message === "ML_CLIENT_ID não configurado.") {
+      return res.status(500).send("ML_CLIENT_ID não configurado.");
+    }
     console.error("[ML conectar] erro:", err);
     res.status(500).send("Erro interno: " + err.message);
   }
@@ -2953,7 +2943,7 @@ app.get("/callback", async (req, res) => {
 
   let decoded;
   try {
-    decoded = jwt.verify(String(state), JWT_SECRET);
+    decoded = verificarMlState(state);
   } catch (e) {
     return res.status(400).send(
       `<html><body style="font-family:sans-serif;padding:2rem;"><h2>Erro</h2><p>state inválido ou expirado</p></body></html>`
@@ -2961,11 +2951,7 @@ app.get("/callback", async (req, res) => {
   }
 
   try {
-    const clienteRes = await pool.query(
-      "SELECT * FROM clientes WHERE id = $1 AND ativo = true",
-      [decoded.clienteId]
-    );
-    const cliente = clienteRes.rows[0];
+    const cliente = await buscarClienteAtivoPorId(decoded.clienteId);
     if (!cliente) {
       return res.status(400).send(
         `<html><body style="font-family:sans-serif;padding:2rem;"><h2>Erro</h2><p>Cliente inválido ou inativo.</p></body></html>`
@@ -2986,22 +2972,11 @@ app.get("/callback", async (req, res) => {
       );
     }
 
-    const tokenRes = await fetch("https://api.mercadolibre.com/oauth/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        client_id: ML_CLIENT_ID,
-        client_secret: ML_CLIENT_SECRET,
-        code,
-        redirect_uri: ML_REDIRECT_URI
-      })
-    });
-
-    const data = await tokenRes.json();
+    const tokenResult = await trocarCodePorTokenMl(code);
+    const data = tokenResult.data;
     console.log("[ML callback] resposta:", JSON.stringify(data));
 
-    if (!tokenRes.ok) {
+    if (!tokenResult.ok) {
       return res.status(502).send(`
         <html><body style="font-family:sans-serif;text-align:center;padding:3rem;background:#f8f9fc;">
           <h2>❌ Erro ao obter token</h2>
@@ -3010,18 +2985,15 @@ app.get("/callback", async (req, res) => {
     }
 
     const { access_token, refresh_token, user_id: mlUserId, expires_in } = data;
-    const expiresAt = new Date(Date.now() + (expires_in || 0) * 1000);
+    const expiresAt = calcularMlExpiresAt(expires_in);
 
-    await pool.query(
-      `INSERT INTO ml_tokens (cliente_id, ml_user_id, access_token, refresh_token, expires_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
-       ON CONFLICT (cliente_id, ml_user_id) DO UPDATE SET
-         access_token = EXCLUDED.access_token,
-         refresh_token = EXCLUDED.refresh_token,
-         expires_at = EXCLUDED.expires_at,
-         updated_at = NOW()`,
-      [cliente.id, String(mlUserId), access_token, refresh_token, expiresAt]
-    );
+    await salvarMlToken({
+      clienteId: cliente.id,
+      mlUserId,
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      expiresAt,
+    });
     registrarLog({
       userId: null,
       userEmail: null,
