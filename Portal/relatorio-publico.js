@@ -706,7 +706,7 @@ function renderEntrega(entrega) {
   if (periodo) metaBits.push(`<span><strong>Período:</strong> ${escapeHTML(periodo)}</span>`);
   if (geradoEm) metaBits.push(`<span><strong>Data de geração:</strong> ${escapeHTML(formatDateTimePtBR(geradoEm))}</span>`);
 
-  const coverSubtitle = "Uma apresentação executiva com os principais números, pontos de atenção e recomendações práticas para o próximo período.";
+  const coverSubtitle = "Uma apresentação executiva com os principais números, pontos de atenção, gráficos e recomendações práticas para o próximo período.";
 
   const cardsBase = cardsFromPayload.length ? cardsFromPayload : [
     {
