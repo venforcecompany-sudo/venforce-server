@@ -47,8 +47,6 @@ const {
   getShopeeFeesByTicket,
   isShopeePerformanceSheet,
   isShopeeMassUpdateSheet,
-  isShopeeFinancialOrderSheet,
-  parseShopeeFinancialRows,
   parseShopeeOrderAllForStatus,
   buildShopeePerfSkuBridge,
   buildShopeeStatusSummary,
