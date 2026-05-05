@@ -84,6 +84,66 @@ function getSummary(payload) {
   return snapshot?.summary || payload?.summary || {};
 }
 
+function getNormalizedSummary(payload) {
+  const direct = payload?.summaryNormalized || payload?.snapshot?.summaryNormalized || null;
+  if (direct && typeof direct === "object") return direct;
+
+  const s = getSummary(payload) || {};
+  const marketplaceRaw =
+    payload?.marketplace ||
+    payload?.metadados?.marketplace ||
+    payload?.snapshot?.marketplace ||
+    s.marketplace ||
+    "";
+  const marketplaceGuess = String(marketplaceRaw || "").trim().toLowerCase() ||
+    ((s.cancelledCount || s.unpaidCount || s.cancelledLostRevenue || s.unpaidLostRevenue) ? "shopee" : "meli");
+
+  const n = (v) => {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : 0;
+  };
+
+  const grossRevenueTotal = n(s.grossRevenueTotal);
+  const paidRevenueTotal = n(s.paidRevenueTotal);
+  const contributionProfitTotal = n(s.contributionProfitTotal);
+  const averageContributionMargin = n(s.averageContributionMargin);
+  const finalResult = n(s.finalResult);
+  const tacos = n(s.tacos);
+
+  const refundsTotal = typeof s.refundsTotal !== "undefined" ? n(s.refundsTotal) : 0;
+  const refundsCount = typeof s.refundsCount !== "undefined" ? n(s.refundsCount) : 0;
+  const lostRevenueTotal = typeof s.lostRevenueTotal !== "undefined" ? n(s.lostRevenueTotal) : 0;
+
+  const cancelledCount = n(s.cancelledCount);
+  const cancelledLostRevenue = n(s.cancelledLostRevenue);
+  const unpaidCount = n(s.unpaidCount);
+  const unpaidLostRevenue = n(s.unpaidLostRevenue);
+
+  const hasShopeeStatusData =
+    (cancelledCount || 0) > 0 ||
+    (cancelledLostRevenue || 0) > 0 ||
+    (unpaidCount || 0) > 0 ||
+    (unpaidLostRevenue || 0) > 0;
+
+  return {
+    marketplace: marketplaceGuess,
+    grossRevenueTotal,
+    paidRevenueTotal,
+    contributionProfitTotal,
+    averageContributionMargin,
+    finalResult,
+    tacos,
+    refundsTotal,
+    refundsCount,
+    lostRevenueTotal,
+    cancelledCount,
+    cancelledLostRevenue,
+    unpaidCount,
+    unpaidLostRevenue,
+    hasShopeeStatusData,
+  };
+}
+
 function getRows(payload) {
   const snapshot = payload?.snapshot || {};
   if (Array.isArray(snapshot?.detailedRows) && snapshot.detailedRows.length) return snapshot.detailedRows;
@@ -252,7 +312,7 @@ function classifyRow(row, unmatchedIds) {
 
 function buildChartData(payload) {
   const rows = getRows(payload);
-  const summary = getSummary(payload);
+  const normalized = getNormalizedSummary(payload);
   const snapshot = payload?.snapshot || {};
 
   const unmatchedIds = Array.isArray(snapshot?.unmatchedIds) ? snapshot.unmatchedIds : (Array.isArray(payload?.unmatchedIds) ? payload.unmatchedIds : []);
@@ -277,19 +337,30 @@ function buildChartData(payload) {
   const counts = { saudavel: 0, atencao: 0, critico: 0, sem_custo: 0 };
   items.forEach((it) => { counts[it.status] = (counts[it.status] || 0) + 1; });
 
-  const net = safeNumber(summary?.paidRevenueTotal, safeNumber(snapshot?.metricasDerivadas?.net, null)) ?? 0;
-  const finalResult = safeNumber(summary?.finalResult, safeNumber(snapshot?.metricasDerivadas?.finalResult, null)) ?? 0;
-  const refundsTotal = safeNumber(summary?.refundsTotal, safeNumber(snapshot?.metricasDerivadas?.refundsTotal, null)) ?? 0;
-  const lostRevenueTotal = safeNumber(summary?.lostRevenueTotal, null) ?? 0;
+  const net = safeNumber(normalized?.paidRevenueTotal, safeNumber(snapshot?.metricasDerivadas?.net, null)) ?? 0;
+  const finalResult = safeNumber(normalized?.finalResult, safeNumber(snapshot?.metricasDerivadas?.finalResult, null)) ?? 0;
+
+  const isShopee = String(normalized?.marketplace || "").toLowerCase() === "shopee" || !!normalized?.hasShopeeStatusData;
+  const lostRevenueMeli = safeNumber(normalized?.lostRevenueTotal, null) ?? 0;
+  const refundsTotal = safeNumber(normalized?.refundsTotal, safeNumber(snapshot?.metricasDerivadas?.refundsTotal, null)) ?? 0;
+
+  const cancelledLostRevenue = safeNumber(normalized?.cancelledLostRevenue, null) ?? 0;
+  const unpaidLostRevenue = safeNumber(normalized?.unpaidLostRevenue, null) ?? 0;
 
   return {
     items,
     topLc,
     topRev,
     composicao: {
-      labels: ["Receita líquida", "Resultado final", "Reembolsos/Cancelamentos", "Faturamento perdido"],
-      valuesAbs: [Math.abs(net), Math.abs(finalResult), Math.abs(refundsTotal), Math.abs(lostRevenueTotal)],
-      valuesSigned: [net, finalResult, refundsTotal, lostRevenueTotal],
+      labels: isShopee
+        ? ["Receita líquida", "Resultado final", "Faturamento perdido (cancelados)", "Faturamento não pago"]
+        : ["Receita líquida", "Resultado final", "Reembolsos/Cancelamentos", "Faturamento perdido"],
+      valuesAbs: isShopee
+        ? [Math.abs(net), Math.abs(finalResult), Math.abs(cancelledLostRevenue), Math.abs(unpaidLostRevenue)]
+        : [Math.abs(net), Math.abs(finalResult), Math.abs(refundsTotal), Math.abs(lostRevenueMeli)],
+      valuesSigned: isShopee
+        ? [net, finalResult, cancelledLostRevenue, unpaidLostRevenue]
+        : [net, finalResult, refundsTotal, lostRevenueMeli],
     },
     distrib: counts,
   };
@@ -629,7 +700,19 @@ function cardValueToText(card) {
   return String(card.valor || "—");
 }
 
-function buildResumoExecutivoMastigado({ finalResult, mcMedia, refundsCount, refundsTotal, unmatchedCount, lostRevenueTotal }) {
+function buildResumoExecutivoMastigado({
+  marketplace,
+  finalResult,
+  mcMedia,
+  refundsCount,
+  refundsTotal,
+  lostRevenueTotal,
+  cancelledCount,
+  cancelledLostRevenue,
+  unpaidCount,
+  unpaidLostRevenue,
+  unmatchedCount
+}) {
   const linhas = [];
 
   if (finalResult == null) {
@@ -652,12 +735,21 @@ function buildResumoExecutivoMastigado({ finalResult, mcMedia, refundsCount, ref
     linhas.push(`A margem média ficou em ${formatPercentSmart(mcMedia)}, em um patamar saudável para o período.`);
   }
 
-  if ((refundsCount || 0) > 0) {
-    linhas.push(`Foram identificados ${refundsCount} cancelamento(s)/reembolso(s), com impacto de ${brl(refundsTotal)} no período.`);
-  }
-
-  if ((lostRevenueTotal || 0) > 0) {
-    linhas.push(`O faturamento perdido associado a pedidos cancelados somou ${brl(-lostRevenueTotal)}, reduzindo o potencial de receita do mês.`);
+  const isShopee = String(marketplace || "").toLowerCase() === "shopee";
+  if (isShopee) {
+    if ((cancelledCount || 0) > 0) {
+      linhas.push(`Foram identificados ${cancelledCount} pedido(s) cancelado(s) na Shopee, com impacto estimado de ${brl(cancelledLostRevenue)}.`);
+    }
+    if ((unpaidCount || 0) > 0) {
+      linhas.push(`Houve ${unpaidCount} pedido(s) não pago(s), com faturamento não pago estimado de ${brl(unpaidLostRevenue)}.`);
+    }
+  } else {
+    if ((refundsCount || 0) > 0) {
+      linhas.push(`Foram identificados ${refundsCount} cancelamento(s)/reembolso(s), com impacto de ${brl(refundsTotal)} no período.`);
+    }
+    if ((lostRevenueTotal || 0) > 0) {
+      linhas.push(`O faturamento perdido associado a pedidos cancelados somou ${brl(-lostRevenueTotal)}, reduzindo o potencial de receita do mês.`);
+    }
   }
 
   if ((unmatchedCount || 0) > 0) {
@@ -672,6 +764,7 @@ function renderEntrega(entrega) {
   const payload = entrega?.payload_json || {};
   const snapshot = payload?.snapshot || {};
   const summary = snapshot?.summary || payload?.summary || payload?.metadados?.summary || {};
+  const normalized = getNormalizedSummary(payload);
   const metricas = snapshot?.metricasDerivadas || {};
 
   const titulo = payload?.titulo || entrega?.titulo || "Relatório";
@@ -679,7 +772,12 @@ function renderEntrega(entrega) {
   const cliente = payload?.cliente || {};
   const clienteNome = cliente?.nome || entrega?.cliente_nome || "";
   const clienteSlug = cliente?.slug || entrega?.cliente_slug || "";
-  const marketplace = payload?.metadados?.marketplace || snapshot?.marketplace || "";
+  const marketplace =
+    normalized?.marketplace ||
+    payload?.marketplace ||
+    payload?.metadados?.marketplace ||
+    snapshot?.marketplace ||
+    "";
   const geradoEm = payload?.metadados?.geradoEm || snapshot?.dataGeracao || entrega?.created_at || null;
 
   const detailedRows = Array.isArray(snapshot?.detailedRows) ? snapshot.detailedRows : (Array.isArray(payload?.detailedRows) ? payload.detailedRows : []);
@@ -691,33 +789,46 @@ function renderEntrega(entrega) {
   const secoesFromPayload = Array.isArray(payload?.secoes) ? payload.secoes : [];
   const tabelasFromPayload = Array.isArray(payload?.tabelas) ? payload.tabelas : [];
 
-  const finalResult = safeNumber(metricas.finalResult, safeNumber(summary?.finalResult, null));
-  const mcMedia = safeNumber(metricas.mcMedia, safeNumber(summary?.averageContributionMargin, null));
-  const lcTotal = safeNumber(metricas.lcTotal, safeNumber(summary?.contributionProfitTotal, null));
-  const gross = safeNumber(metricas.gross, safeNumber(summary?.grossRevenueTotal, null));
-  const net = safeNumber(metricas.net, safeNumber(summary?.paidRevenueTotal, null));
-  const tacos = safeNumber(metricas.tacos, safeNumber(summary?.tacos, null));
-  const refundsTotal = safeNumber(metricas.refundsTotal, safeNumber(summary?.refundsTotal, null));
-  const refundsCount = safeNumber(metricas.refundsCount, safeNumber(summary?.refundsCount, null));
-  const lostRevenueTotal = safeNumber(summary?.lostRevenueTotal, null);
+  const finalResult = safeNumber(metricas.finalResult, safeNumber(normalized?.finalResult, safeNumber(summary?.finalResult, null)));
+  const mcMedia = safeNumber(metricas.mcMedia, safeNumber(normalized?.averageContributionMargin, safeNumber(summary?.averageContributionMargin, null)));
+  const lcTotal = safeNumber(metricas.lcTotal, safeNumber(normalized?.contributionProfitTotal, safeNumber(summary?.contributionProfitTotal, null)));
+  const gross = safeNumber(metricas.gross, safeNumber(normalized?.grossRevenueTotal, safeNumber(summary?.grossRevenueTotal, null)));
+  const net = safeNumber(metricas.net, safeNumber(normalized?.paidRevenueTotal, safeNumber(summary?.paidRevenueTotal, null)));
+  const tacos = safeNumber(metricas.tacos, safeNumber(normalized?.tacos, safeNumber(summary?.tacos, null)));
+
+  const refundsTotal = safeNumber(metricas.refundsTotal, safeNumber(normalized?.refundsTotal, safeNumber(summary?.refundsTotal, null)));
+  const refundsCount = safeNumber(metricas.refundsCount, safeNumber(normalized?.refundsCount, safeNumber(summary?.refundsCount, null)));
+  const lostRevenueTotal = safeNumber(normalized?.lostRevenueTotal, safeNumber(summary?.lostRevenueTotal, null));
+
+  const cancelledCount = safeNumber(normalized?.cancelledCount, safeNumber(summary?.cancelledCount, null)) || 0;
+  const cancelledLostRevenue = safeNumber(normalized?.cancelledLostRevenue, safeNumber(summary?.cancelledLostRevenue, null)) || 0;
+  const unpaidCount = safeNumber(normalized?.unpaidCount, safeNumber(summary?.unpaidCount, null)) || 0;
+  const unpaidLostRevenue = safeNumber(normalized?.unpaidLostRevenue, safeNumber(summary?.unpaidLostRevenue, null)) || 0;
+  const hasShopeeStatusData = !!normalized?.hasShopeeStatusData || cancelledCount > 0 || unpaidCount > 0 || cancelledLostRevenue > 0 || unpaidLostRevenue > 0;
+  const isShopee = String(marketplace || "").toLowerCase() === "shopee" || hasShopeeStatusData;
 
   const statusGeral = getStatusGeral({
     finalResult,
     mcMedia,
     unmatchedCount: unmatchedIds.length,
     refundsCount: refundsCount || 0,
-    lostRevenueTotal: lostRevenueTotal || 0,
+    lostRevenueTotal: isShopee ? (cancelledLostRevenue || 0) + (unpaidLostRevenue || 0) : (lostRevenueTotal || 0),
   });
 
   const resumoExecutivoMastigado =
     payload?.resumoExecutivoMastigado ||
     buildResumoExecutivoMastigado({
+      marketplace,
       finalResult,
       mcMedia,
       refundsCount: refundsCount || 0,
       refundsTotal,
-      unmatchedCount: unmatchedIds.length,
       lostRevenueTotal: lostRevenueTotal || 0,
+      cancelledCount,
+      cancelledLostRevenue,
+      unpaidCount,
+      unpaidLostRevenue,
+      unmatchedCount: unmatchedIds.length,
     });
 
   const metaBits = [];
@@ -728,7 +839,27 @@ function renderEntrega(entrega) {
 
   const coverSubtitle = "Uma apresentação executiva com os principais números, pontos de atenção, gráficos e recomendações práticas para o próximo período.";
 
-  const cardsBase = cardsFromPayload.length ? cardsFromPayload : [
+  const cardsBase = cardsFromPayload.length
+    ? cardsFromPayload
+    : (isShopee ? [
+    {
+      titulo: "Resultado Final",
+      valor: finalResult == null ? "—" : brl(finalResult),
+      subtitulo: "Resultado após despesas (ADS/Venforce/Afiliados).",
+      destaque: true,
+      raw: finalResult,
+      status: finalResult > 0 ? "positivo" : (finalResult < 0 ? "critico" : "neutro"),
+    },
+    { titulo: "Receita Bruta", valor: gross == null ? "—" : brl(gross), subtitulo: "Total vendido no período.", raw: gross, status: "neutro" },
+    { titulo: "Receita Líquida", valor: net == null ? "—" : brl(net), subtitulo: "Receita recebida no período.", raw: net, status: "neutro" },
+    { titulo: "LC Total", valor: lcTotal == null ? "—" : brl(lcTotal), subtitulo: "Lucro de contribuição total.", raw: lcTotal, status: lcTotal > 0 ? "positivo" : (lcTotal < 0 ? "critico" : "neutro") },
+    { titulo: "MC Média", valor: mcMedia == null ? "—" : formatPercentSmart(mcMedia), subtitulo: "Margem de contribuição média.", raw: mcMedia, tipoValor: "pct", status: mcMedia >= 0.15 ? "positivo" : (mcMedia < 0 ? "critico" : "atencao") },
+    { titulo: "TACoS", valor: tacos == null ? "—" : formatPercentSmart(tacos), subtitulo: "ADS como % da receita.", raw: tacos, tipoValor: "pct", status: "neutro" },
+    { titulo: "Pedidos cancelados (Shopee)", valor: String(cancelledCount || 0), subtitulo: "Quantidade de pedidos cancelados.", raw: cancelledCount, status: cancelledCount > 0 ? "atencao" : "neutro" },
+    { titulo: "Faturamento perdido (cancelados)", valor: brl(-Math.abs(cancelledLostRevenue || 0)), subtitulo: "Impacto estimado de cancelados.", raw: cancelledLostRevenue, status: (cancelledLostRevenue || 0) > 0 ? "atencao" : "neutro" },
+    { titulo: "Não pagos (Shopee)", valor: `${String(unpaidCount || 0)} (${brl(unpaidLostRevenue || 0)})`, subtitulo: "Pedidos não pagos e impacto.", raw: unpaidCount, status: unpaidCount > 0 ? "atencao" : "neutro" },
+    { titulo: "Faturamento não pago", valor: brl(-Math.abs(unpaidLostRevenue || 0)), subtitulo: "Impacto estimado de não pagos.", raw: unpaidLostRevenue, status: (unpaidLostRevenue || 0) > 0 ? "atencao" : "neutro" },
+  ] : [
     {
       titulo: "Resultado Final",
       valor: finalResult == null ? "—" : brl(finalResult),
@@ -744,7 +875,7 @@ function renderEntrega(entrega) {
     { titulo: "TACoS", valor: tacos == null ? "—" : formatPercentSmart(tacos), subtitulo: "ADS como % da receita.", raw: tacos, tipoValor: "pct", status: "neutro" },
     { titulo: "Reembolsos / Cancelamentos", valor: refundsCount == null ? "—" : `${brl(refundsTotal)} (${refundsCount})`, subtitulo: "Impacto e volume de cancelamentos.", raw: refundsTotal, status: (refundsCount || 0) > 0 ? "atencao" : "neutro" },
     { titulo: "Faturamento Perdido", valor: lostRevenueTotal == null ? "—" : brl(-lostRevenueTotal), subtitulo: "Receita de pedidos cancelados.", raw: lostRevenueTotal, status: (lostRevenueTotal || 0) > 0 ? "atencao" : "neutro" },
-  ];
+  ]);
 
   const cardsHtml = cardsBase.length
     ? `<div class="rp-cards">${cardsBase.map((c) => {
@@ -952,6 +1083,34 @@ function renderEntrega(entrega) {
 
   // Seções "internas" do payload (ex.: unmatchedIds) - melhoradas e sem parecer erro técnico
   const secoesMelhoradas = [];
+
+  if (isShopee) {
+    if ((cancelledCount || 0) > 0 || (cancelledLostRevenue || 0) > 0) {
+      secoesMelhoradas.push({
+        tipo: "atencao",
+        titulo: "Cancelamentos Shopee",
+        texto: `No período, houve ${cancelledCount || 0} pedido(s) cancelado(s), com impacto estimado de ${brl(cancelledLostRevenue || 0)}. Recomendação: identificar causas e reduzir incidência.`,
+        bullets: [],
+      });
+    }
+    if ((unpaidCount || 0) > 0 || (unpaidLostRevenue || 0) > 0) {
+      secoesMelhoradas.push({
+        tipo: "atencao",
+        titulo: "Pedidos não pagos Shopee",
+        texto: `Foram identificados ${unpaidCount || 0} pedido(s) não pago(s), com faturamento não pago estimado de ${brl(unpaidLostRevenue || 0)}. Recomendação: revisar motivos e melhorar conversão/pagamento.`,
+        bullets: [],
+      });
+    }
+    if ((cancelledLostRevenue || 0) > 0 || (unpaidLostRevenue || 0) > 0) {
+      secoesMelhoradas.push({
+        tipo: "atencao",
+        titulo: "Faturamento perdido Shopee",
+        texto: `Impacto estimado: ${brl((cancelledLostRevenue || 0) + (unpaidLostRevenue || 0))} somando cancelados e não pagos.`,
+        bullets: [],
+      });
+    }
+  }
+
   for (const s of secoesFromPayload) {
     const titulo = String(s?.titulo || "").trim();
     const tipo = String(s?.tipo || "").toLowerCase() === "atencao" ? "atencao" : "nota";
@@ -967,7 +1126,7 @@ function renderEntrega(entrega) {
       });
       continue;
     }
-    if (titulo.toLowerCase().includes("cancelamentos") || titulo.toLowerCase().includes("reembols")) {
+    if (!isShopee && (titulo.toLowerCase().includes("cancelamentos") || titulo.toLowerCase().includes("reembols"))) {
       secoesMelhoradas.push({
         tipo,
         titulo: "Cancelamentos e reembolsos",
@@ -978,7 +1137,7 @@ function renderEntrega(entrega) {
       });
       continue;
     }
-    if (titulo.toLowerCase().includes("faturamento perdido")) {
+    if (!isShopee && titulo.toLowerCase().includes("faturamento perdido")) {
       secoesMelhoradas.push({
         tipo,
         titulo: "Faturamento perdido",
@@ -1144,8 +1303,14 @@ function renderEntrega(entrega) {
     }
 
     const pontos = [];
-    if ((refundsCount || 0) > 0) pontos.push("cancelamentos/reembolsos");
-    if ((lostRevenueTotal || 0) > 0) pontos.push("faturamento perdido");
+    if (isShopee) {
+      if ((cancelledCount || 0) > 0) pontos.push("pedidos cancelados");
+      if ((unpaidCount || 0) > 0) pontos.push("pedidos não pagos");
+      if ((cancelledLostRevenue || 0) > 0 || (unpaidLostRevenue || 0) > 0) pontos.push("faturamento perdido (cancelados/não pagos)");
+    } else {
+      if ((refundsCount || 0) > 0) pontos.push("cancelamentos/reembolsos");
+      if ((lostRevenueTotal || 0) > 0) pontos.push("faturamento perdido");
+    }
     if ((counts.sem_custo || 0) > 0) pontos.push("itens sem custo cadastrado");
     if ((counts.critico || 0) > 0) pontos.push("produtos críticos");
     if ((counts.atencao || 0) > 0) pontos.push("produtos em atenção");
@@ -1157,7 +1322,12 @@ function renderEntrega(entrega) {
     const recs = [];
     if ((counts.sem_custo || 0) > 0) recs.push("revisar a base de custos e reprocessar");
     if ((counts.critico || 0) > 0 || (counts.atencao || 0) > 0) recs.push("priorizar ajustes nos itens de menor margem");
-    if ((refundsCount || 0) > 0) recs.push("acompanhar cancelamentos para reduzir perdas");
+    if (isShopee) {
+      if ((cancelledCount || 0) > 0) recs.push("reduzir cancelamentos na Shopee");
+      if ((unpaidCount || 0) > 0) recs.push("atuar para reduzir não pagos e melhorar conversão");
+    } else {
+      if ((refundsCount || 0) > 0) recs.push("acompanhar cancelamentos para reduzir perdas");
+    }
     if (recs.length) {
       frases.push(`Recomendação: ${recs.slice(0, 3).join(", ")} antes do próximo período.`);
     }

@@ -98,20 +98,76 @@ function pickKeyByIncludes(obj, includesAny) {
   return null;
 }
 
+function normalizeFinancialSummaryForPublicReport(data) {
+  const s = data?.summary || {};
+  const meta = data?._vf_meta || {};
+
+  const marketplace =
+    String(meta.marketplace || s.marketplace || "").trim().toLowerCase() ||
+    ((s.cancelledCount || s.unpaidCount || s.cancelledLostRevenue || s.unpaidLostRevenue) ? "shopee" : "meli");
+
+  const n = (v) => {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : 0;
+  };
+
+  const grossRevenueTotal = n(s.grossRevenueTotal);
+  const paidRevenueTotal = n(s.paidRevenueTotal);
+  const contributionProfitTotal = n(s.contributionProfitTotal);
+  const averageContributionMargin = n(s.averageContributionMargin);
+  const finalResult = n(s.finalResult);
+  const tacos = n(s.tacos);
+
+  const refundsTotal = typeof s.refundsTotal !== "undefined" ? n(s.refundsTotal) : 0;
+  const refundsCount = typeof s.refundsCount !== "undefined" ? n(s.refundsCount) : 0;
+  const lostRevenueTotal = typeof s.lostRevenueTotal !== "undefined" ? n(s.lostRevenueTotal) : 0;
+
+  const cancelledCount = n(s.cancelledCount);
+  const cancelledLostRevenue = n(s.cancelledLostRevenue);
+  const unpaidCount = n(s.unpaidCount);
+  const unpaidLostRevenue = n(s.unpaidLostRevenue);
+
+  const hasShopeeStatusData =
+    (cancelledCount || 0) > 0 ||
+    (cancelledLostRevenue || 0) > 0 ||
+    (unpaidCount || 0) > 0 ||
+    (unpaidLostRevenue || 0) > 0;
+
+  return {
+    marketplace,
+    grossRevenueTotal,
+    paidRevenueTotal,
+    contributionProfitTotal,
+    averageContributionMargin,
+    finalResult,
+    tacos,
+    refundsTotal,
+    refundsCount,
+    lostRevenueTotal,
+    cancelledCount,
+    cancelledLostRevenue,
+    unpaidCount,
+    unpaidLostRevenue,
+    hasShopeeStatusData,
+  };
+}
+
 function montarPayloadFechamentoCliente(data) {
   const summary = data?.summary || {};
   const meta = data?._vf_meta || {};
 
-  const gross = safeNumber(summary.grossRevenueTotal);
-  const net = safeNumber(summary.paidRevenueTotal);
-  const lcTotal = safeNumber(summary.contributionProfitTotal);
-  const mcMedia = safeNumber(summary.averageContributionMargin);
-  const tacos = safeNumber(summary.tacos);
-  const refundsTotal = safeNumber(summary.refundsTotal);
-  const refundsCount = safeNumber(summary.refundsCount);
-  const finalResult = safeNumber(summary.finalResult);
+  const summaryNormalized = normalizeFinancialSummaryForPublicReport(data);
 
-  const lostRevenueTotal = safeNumber(summary.lostRevenueTotal);
+  const gross = safeNumber(summaryNormalized.grossRevenueTotal);
+  const net = safeNumber(summaryNormalized.paidRevenueTotal);
+  const lcTotal = safeNumber(summaryNormalized.contributionProfitTotal);
+  const mcMedia = safeNumber(summaryNormalized.averageContributionMargin);
+  const tacos = safeNumber(summaryNormalized.tacos);
+  const refundsTotal = safeNumber(summaryNormalized.refundsTotal);
+  const refundsCount = safeNumber(summaryNormalized.refundsCount);
+  const finalResult = safeNumber(summaryNormalized.finalResult);
+
+  const lostRevenueTotal = safeNumber(summaryNormalized.lostRevenueTotal);
   const faturamentoPerdido = lostRevenueTotal > 0 ? -lostRevenueTotal : 0;
 
   const resumoExecutivo = [
@@ -247,9 +303,12 @@ function montarPayloadFechamentoCliente(data) {
       affiliates: meta.affiliates ?? null,
       severidade,
     },
+    // Normalização do summary para relatório público (MELI + Shopee)
+    summaryNormalized,
     // Snapshot enriquecido (não altera cálculo / não altera endpoint de fechamento)
     snapshot: {
       summary,
+      summaryNormalized,
       detailedRows: detailedSample50,
       detailedRowsTotal: detailedAll.length,
       unmatchedIds: unmatched,
