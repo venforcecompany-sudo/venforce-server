@@ -11,16 +11,488 @@ function escapeHTML(s) {
 }
 
 function brl(v) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v) || 0);
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
 }
 
 function pct(v) {
-  const n = Number(v) || 0;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
   return (n * 100).toFixed(2) + "%";
 }
 
 function formatDateTimePtBR(d) {
   try { return new Date(d).toLocaleString("pt-BR"); } catch { return ""; }
+}
+
+function safeNumber(v, fallback = null) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeKey(k) {
+  return String(k || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function pickKey(obj, candidates) {
+  if (!obj || typeof obj !== "object") return null;
+  const keys = Object.keys(obj);
+  const map = keys.map((k) => ({ k, nk: normalizeKey(k) }));
+  for (const c of candidates) {
+    const nc = normalizeKey(c);
+    const hit = map.find((x) => x.nk === nc);
+    if (hit) return hit.k;
+  }
+  return null;
+}
+
+function pickKeyIncludes(obj, includesList) {
+  if (!obj || typeof obj !== "object") return null;
+  const keys = Object.keys(obj);
+  const map = keys.map((k) => ({ k, nk: normalizeKey(k) }));
+  for (const inc of includesList) {
+    const ni = normalizeKey(inc);
+    const hit = map.find((x) => x.nk.includes(ni));
+    if (hit) return hit.k;
+  }
+  return null;
+}
+
+function getStatusGeral({ finalResult, mcMedia, unmatchedCount, refundsCount, lostRevenueTotal }) {
+  if (finalResult != null && finalResult < 0) return { id: "critico", label: "Resultado crítico" };
+  if (mcMedia != null && mcMedia < 0) return { id: "critico", label: "Margem crítica" };
+  if ((mcMedia != null && mcMedia < 0.15) || (unmatchedCount || 0) > 0 || (refundsCount || 0) > 0 || (lostRevenueTotal || 0) > 0) {
+    return { id: "atencao", label: "Atenção necessária" };
+  }
+  return { id: "positivo", label: "Resultado positivo" };
+}
+
+function statusIdToCss(id) {
+  if (id === "positivo") return "rp-status-positive";
+  if (id === "atencao") return "rp-status-attn";
+  return "rp-status-critical";
+}
+
+function cardStatusToCss(id) {
+  if (id === "positivo") return "rp-card-positive";
+  if (id === "atencao") return "rp-card-attn";
+  if (id === "critico") return "rp-card-critical";
+  return "rp-card-neutral";
+}
+
+function getSummary(payload) {
+  const snapshot = payload?.snapshot || {};
+  return snapshot?.summary || payload?.summary || {};
+}
+
+function getRows(payload) {
+  const snapshot = payload?.snapshot || {};
+  if (Array.isArray(snapshot?.detailedRows) && snapshot.detailedRows.length) return snapshot.detailedRows;
+  if (Array.isArray(payload?.detailedRows) && payload.detailedRows.length) return payload.detailedRows;
+  const t0 = Array.isArray(payload?.tabelas) ? payload.tabelas[0] : null;
+  if (t0 && Array.isArray(t0.linhas) && t0.linhas.length) return t0.linhas;
+  return [];
+}
+
+function toNumberSafe(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const s = String(value).trim();
+  if (!s) return null;
+  let t = s.replace(/\s/g, "");
+  t = t.replace(/[R$\u00A0]/g, "");
+  if (t.includes(",") && t.includes(".")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (t.includes(",")) t = t.replace(",", ".");
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pickValue(row, possibleKeys) {
+  if (!row || typeof row !== "object") return null;
+  for (const k of possibleKeys) {
+    const kk = pickKey(row, [k]) || pickKeyIncludes(row, [k]);
+    if (kk) return row?.[kk];
+  }
+  return null;
+}
+
+function normalizePercent(value) {
+  const n = toNumberSafe(value);
+  if (n === null) return null;
+  if (n >= 1) return n / 100;
+  return n;
+}
+
+function classifyRow(row, unmatchedIds) {
+  const unmatchedSet = new Set((Array.isArray(unmatchedIds) ? unmatchedIds : []).map((x) => String(x)));
+  const idVal = pickValue(row, ["item_id", "produto_id", "id", "sku", "mlb", "MLB", "ID"]);
+  const idTxt = idVal == null ? "" : String(idVal).trim();
+
+  const temBaseVal = pickValue(row, ["tem_base", "temBase", "hasBase"]);
+  const custoVal = pickValue(row, ["custo", "custo_produto", "cost", "preco_custo", "Preço Custo"]);
+
+  const temBase = typeof temBaseVal === "boolean"
+    ? temBaseVal
+    : (String(temBaseVal || "").trim().toLowerCase() === "true");
+
+  const custoNum = toNumberSafe(custoVal);
+  const semCusto = unmatchedSet.has(idTxt) || temBase === false || (custoNum !== null && custoNum === 0);
+
+  const mcRaw = pickValue(row, ["mc", "MC", "margem", "margem_contribuicao"]);
+  const mc = normalizePercent(mcRaw);
+
+  if (semCusto) return "sem_custo";
+  if (mc === null) return "atencao";
+  if (mc < 0) return "critico";
+  if (mc < 0.15) return "atencao";
+  return "saudavel";
+}
+
+function buildChartData(payload) {
+  const rows = getRows(payload);
+  const summary = getSummary(payload);
+  const snapshot = payload?.snapshot || {};
+
+  const unmatchedIds = Array.isArray(snapshot?.unmatchedIds) ? snapshot.unmatchedIds : (Array.isArray(payload?.unmatchedIds) ? payload.unmatchedIds : []);
+
+  const lcKeys = ["LC", "lc", "Lucro", "lucro", "contributionProfit", "contribution_profit"];
+  const revKeys = ["vendaTotal", "Receita", "receita", "total", "Total", "valor", "Valor", "productRevenue", "paidRevenue"];
+  const labelKeys = ["produto", "Produto", "título", "titulo", "title", "item_id", "sku", "MLB", "mlb", "ID", "id"];
+
+  const items = rows.map((r, idx) => {
+    const labelRaw = pickValue(r, labelKeys);
+    const label = (labelRaw == null || String(labelRaw).trim() === "") ? `Item ${idx + 1}` : String(labelRaw).trim();
+    const lc = toNumberSafe(pickValue(r, lcKeys));
+    const rev = toNumberSafe(pickValue(r, revKeys));
+    const mc = normalizePercent(pickValue(r, ["mc", "MC", "margem"]));
+    const status = classifyRow(r, unmatchedIds);
+    return { r, label, lc: lc ?? 0, rev: rev ?? 0, mc, status };
+  });
+
+  const topLc = [...items].sort((a, b) => (b.lc || 0) - (a.lc || 0)).slice(0, 10);
+  const topRev = [...items].sort((a, b) => (b.rev || 0) - (a.rev || 0)).slice(0, 10);
+
+  const counts = { saudavel: 0, atencao: 0, critico: 0, sem_custo: 0 };
+  items.forEach((it) => { counts[it.status] = (counts[it.status] || 0) + 1; });
+
+  const net = safeNumber(summary?.paidRevenueTotal, safeNumber(snapshot?.metricasDerivadas?.net, null)) ?? 0;
+  const finalResult = safeNumber(summary?.finalResult, safeNumber(snapshot?.metricasDerivadas?.finalResult, null)) ?? 0;
+  const refundsTotal = safeNumber(summary?.refundsTotal, safeNumber(snapshot?.metricasDerivadas?.refundsTotal, null)) ?? 0;
+  const lostRevenueTotal = safeNumber(summary?.lostRevenueTotal, null) ?? 0;
+
+  return {
+    items,
+    topLc,
+    topRev,
+    composicao: {
+      labels: ["Receita líquida", "Resultado final", "Reembolsos/Cancelamentos", "Faturamento perdido"],
+      valuesAbs: [Math.abs(net), Math.abs(finalResult), Math.abs(refundsTotal), Math.abs(lostRevenueTotal)],
+      valuesSigned: [net, finalResult, refundsTotal, lostRevenueTotal],
+    },
+    distrib: counts,
+  };
+}
+
+function destroyChartSafe(instance) {
+  try { instance?.destroy?.(); } catch (_) {}
+}
+
+function renderCharts(payload) {
+  const host = document.getElementById("rp-charts-host");
+  if (!host) return;
+
+  const hasChart = typeof window.Chart !== "undefined";
+  if (!hasChart) {
+    host.innerHTML = `<div class="rp-muted-box">Biblioteca de gráficos indisponível no momento.</div>`;
+    return;
+  }
+
+  const data = buildChartData(payload);
+  const rows = getRows(payload);
+  if (!rows.length) {
+    host.innerHTML = `<div class="rp-muted-box">Dados insuficientes para exibir gráficos.</div>`;
+    return;
+  }
+
+  host.innerHTML = `
+    <div class="rp-charts-grid">
+      <div class="rp-chart-card">
+        <div class="rp-chart-title"><h3>Top produtos por LC</h3></div>
+        <div class="rp-chart-canvas"><canvas id="rp-chart-lc"></canvas></div>
+        <div class="rp-note" id="rp-chart-lc-note" style="display:none;"></div>
+      </div>
+      <div class="rp-chart-card">
+        <div class="rp-chart-title"><h3>Top produtos por faturamento</h3></div>
+        <div class="rp-chart-canvas"><canvas id="rp-chart-rev"></canvas></div>
+        <div class="rp-note" id="rp-chart-rev-note" style="display:none;"></div>
+      </div>
+      <div class="rp-chart-card">
+        <div class="rp-chart-title"><h3>Composição do fechamento</h3></div>
+        <div class="rp-chart-canvas"><canvas id="rp-chart-comp"></canvas></div>
+        <div class="rp-note">Valores absolutos no gráfico. Sinais e interpretação no resumo executivo.</div>
+      </div>
+      <div class="rp-chart-card">
+        <div class="rp-chart-title"><h3>Distribuição dos produtos</h3></div>
+        <div class="rp-chart-canvas"><canvas id="rp-chart-status"></canvas></div>
+      </div>
+    </div>
+  `;
+
+  if (!host._charts) host._charts = {};
+  Object.values(host._charts).forEach(destroyChartSafe);
+  host._charts = {};
+
+  const elLc = document.getElementById("rp-chart-lc");
+  const elRev = document.getElementById("rp-chart-rev");
+  const elComp = document.getElementById("rp-chart-comp");
+  const elStatus = document.getElementById("rp-chart-status");
+
+  const fmtBrl = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "—";
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(n);
+  };
+
+  if (elLc && data.topLc.some((x) => (x.lc || 0) !== 0)) {
+    host._charts.lc = new window.Chart(elLc, {
+      type: "bar",
+      data: {
+        labels: data.topLc.map((x) => x.label),
+        datasets: [{ label: "LC", data: data.topLc.map((x) => x.lc), backgroundColor: "rgba(124,58,237,0.55)", borderColor: "rgba(124,58,237,1)", borderWidth: 1 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => ` ${fmtBrl(ctx.parsed.y)}` } }
+        },
+        scales: {
+          x: { ticks: { color: "#374151", maxRotation: 0, autoSkip: true } },
+          y: { ticks: { color: "#6b7280", callback: (v) => fmtBrl(v) } }
+        }
+      }
+    });
+  } else {
+    const note = document.getElementById("rp-chart-lc-note");
+    if (note) { note.style.display = ""; note.textContent = "Dados insuficientes para este gráfico."; }
+  }
+
+  if (elRev && data.topRev.some((x) => (x.rev || 0) !== 0)) {
+    host._charts.rev = new window.Chart(elRev, {
+      type: "bar",
+      data: {
+        labels: data.topRev.map((x) => x.label),
+        datasets: [{ label: "Faturamento", data: data.topRev.map((x) => x.rev), backgroundColor: "rgba(22,163,74,0.55)", borderColor: "rgba(22,163,74,1)", borderWidth: 1 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => ` ${fmtBrl(ctx.parsed.y)}` } }
+        },
+        scales: {
+          x: { ticks: { color: "#374151", maxRotation: 0, autoSkip: true } },
+          y: { ticks: { color: "#6b7280", callback: (v) => fmtBrl(v) } }
+        }
+      }
+    });
+  } else {
+    const note = document.getElementById("rp-chart-rev-note");
+    if (note) { note.style.display = ""; note.textContent = "Dados insuficientes para este gráfico."; }
+  }
+
+  if (elComp && data.composicao.valuesAbs.some((v) => v > 0)) {
+    host._charts.comp = new window.Chart(elComp, {
+      type: "doughnut",
+      data: {
+        labels: data.composicao.labels,
+        datasets: [{
+          data: data.composicao.valuesAbs,
+          backgroundColor: ["rgba(2,132,199,0.55)", "rgba(124,58,237,0.55)", "rgba(245,158,11,0.55)", "rgba(220,38,38,0.55)"],
+          borderColor: ["rgba(2,132,199,1)", "rgba(124,58,237,1)", "rgba(245,158,11,1)", "rgba(220,38,38,1)"],
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "bottom", labels: { color: "#374151" } },
+          tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${fmtBrl(ctx.parsed)}` } }
+        }
+      }
+    });
+  }
+
+  if (elStatus) {
+    const values = [data.distrib.saudavel, data.distrib.atencao, data.distrib.critico, data.distrib.sem_custo];
+    host._charts.status = new window.Chart(elStatus, {
+      type: "doughnut",
+      data: {
+        labels: ["Saudável", "Atenção", "Crítico", "Sem custo"],
+        datasets: [{
+          data: values,
+          backgroundColor: ["rgba(22,163,74,0.55)", "rgba(245,158,11,0.55)", "rgba(220,38,38,0.55)", "rgba(124,58,237,0.55)"],
+          borderColor: ["rgba(22,163,74,1)", "rgba(245,158,11,1)", "rgba(220,38,38,1)", "rgba(124,58,237,1)"],
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "bottom", labels: { color: "#374151" } },
+          tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed}` } }
+        }
+      }
+    });
+  }
+}
+
+function applyTableFilters(state, rows, unmatchedIds) {
+  const q = String(state.q || "").trim().toLowerCase();
+  const status = String(state.status || "all");
+
+  const filtered = rows
+    .map((row, idx) => {
+      const label = pickValue(row, ["produto", "Produto", "titulo", "título", "title", "item_id", "sku", "id", "mlb", "MLB"]) ?? `Item ${idx + 1}`;
+      const lc = toNumberSafe(pickValue(row, ["LC", "lc", "Lucro", "lucro", "contributionProfit", "contribution_profit"])) ?? 0;
+      const receita = toNumberSafe(pickValue(row, ["vendaTotal", "Receita", "receita", "total", "Total", "valor", "Valor", "productRevenue", "paidRevenue"])) ?? 0;
+      const mc = normalizePercent(pickValue(row, ["MC", "mc", "margem", "margem_contribuicao"]));
+      const cls = classifyRow(row, unmatchedIds);
+      const obs = pickValue(row, ["observacao", "observação", "diagnostico", "diagnóstico", "status"]) ?? "";
+      const hay = `${label} ${JSON.stringify(row)}`.toLowerCase();
+      return { row, label: String(label), lc, receita, mc, cls, obs: String(obs || ""), hay };
+    })
+    .filter((it) => {
+      if (q && !it.hay.includes(q)) return false;
+      if (status !== "all" && it.cls !== status) return false;
+      return true;
+    });
+
+  const sort = String(state.sort || "lc_desc");
+  filtered.sort((a, b) => {
+    if (sort === "lc_desc") return (b.lc || 0) - (a.lc || 0);
+    if (sort === "mc_asc") return ((a.mc ?? 999) - (b.mc ?? 999));
+    if (sort === "rev_desc") return (b.receita || 0) - (a.receita || 0);
+    if (sort === "name_az") return String(a.label).localeCompare(String(b.label), "pt-BR");
+    return 0;
+  });
+
+  const limit = Math.max(1, Math.min(parseInt(state.limit, 10) || 20, 200));
+  return filtered.slice(0, limit);
+}
+
+function renderAdvancedTable(payload) {
+  const host = document.getElementById("rp-table-host");
+  if (!host) return;
+
+  const rows = getRows(payload);
+  const snapshot = payload?.snapshot || {};
+  const unmatchedIds = Array.isArray(snapshot?.unmatchedIds) ? snapshot.unmatchedIds : (Array.isArray(payload?.unmatchedIds) ? payload.unmatchedIds : []);
+
+  const state = host._state || { q: "", status: "all", limit: 20, sort: "lc_desc" };
+  host._state = state;
+
+  if (!rows.length) {
+    host.innerHTML = `<div class="rp-muted-box">Dados insuficientes para montar o detalhamento (sem linhas no snapshot).</div>`;
+    return;
+  }
+
+  const view = applyTableFilters(state, rows, unmatchedIds);
+
+  const emptyHtml = `
+    <div class="rp-muted-box">
+      <div style="font-weight:950;margin-bottom:6px;">Nenhum item encontrado</div>
+      <div class="rp-note">Ajuste busca/filtros para encontrar produtos específicos.</div>
+    </div>
+  `;
+
+  host.innerHTML = `
+    <div class="rp-table-tools no-print">
+      <div class="rp-tools-left" style="flex:1;">
+        <input id="rp-q" class="rp-input" type="search" placeholder="Buscar por produto, ID, SKU ou qualquer texto..." value="${escapeHTML(state.q)}" />
+        <select id="rp-status" class="rp-select">
+          <option value="all"${state.status === "all" ? " selected" : ""}>Todos</option>
+          <option value="saudavel"${state.status === "saudavel" ? " selected" : ""}>Saudável</option>
+          <option value="atencao"${state.status === "atencao" ? " selected" : ""}>Atenção</option>
+          <option value="critico"${state.status === "critico" ? " selected" : ""}>Crítico</option>
+          <option value="sem_custo"${state.status === "sem_custo" ? " selected" : ""}>Sem custo</option>
+        </select>
+      </div>
+      <div class="rp-tools-right">
+        <select id="rp-limit" class="rp-select" title="Quantidade">
+          ${[10,20,30,50].map((n) => `<option value="${n}"${Number(state.limit) === n ? " selected" : ""}>${n}</option>`).join("")}
+        </select>
+        <select id="rp-sort" class="rp-select" title="Ordenação">
+          <option value="lc_desc"${state.sort === "lc_desc" ? " selected" : ""}>Maior LC</option>
+          <option value="mc_asc"${state.sort === "mc_asc" ? " selected" : ""}>Menor MC</option>
+          <option value="rev_desc"${state.sort === "rev_desc" ? " selected" : ""}>Maior faturamento</option>
+          <option value="name_az"${state.sort === "name_az" ? " selected" : ""}>Nome A-Z</option>
+        </select>
+      </div>
+    </div>
+
+    ${view.length ? `
+      <div style="overflow:auto;margin-top:12px;">
+        <table class="rp-table">
+          <thead>
+            <tr>
+              <th>Produto / ID</th>
+              <th>Receita</th>
+              <th>LC</th>
+              <th>MC</th>
+              <th>Status</th>
+              <th>Observação</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${view.map((it) => {
+              const badgeClass =
+                it.cls === "saudavel" ? "rp-status-badge-inline rp-pill-healthy" :
+                it.cls === "critico" ? "rp-status-badge-inline rp-pill-critical" :
+                it.cls === "sem_custo" ? "rp-status-badge-inline rp-pill-nocost" :
+                "rp-status-badge-inline rp-pill-attn";
+              const badgeLabel =
+                it.cls === "saudavel" ? "Saudável" :
+                it.cls === "critico" ? "Crítico" :
+                it.cls === "sem_custo" ? "Sem custo" :
+                "Atenção";
+              return `
+                <tr>
+                  <td>${escapeHTML(it.label || "—")}</td>
+                  <td>${it.receita ? escapeHTML(brl(it.receita)) : "—"}</td>
+                  <td>${it.lc ? escapeHTML(brl(it.lc)) : "—"}</td>
+                  <td>${it.mc == null ? "—" : escapeHTML(pct(it.mc))}</td>
+                  <td><span class="${badgeClass}">${escapeHTML(badgeLabel)}</span></td>
+                  <td>${escapeHTML(it.obs || "")}</td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+      <div class="rp-note">Mostrando ${view.length} item(ns) com base nos filtros atuais.</div>
+    ` : emptyHtml}
+  `;
+
+  const qEl = document.getElementById("rp-q");
+  const stEl = document.getElementById("rp-status");
+  const limEl = document.getElementById("rp-limit");
+  const sortEl = document.getElementById("rp-sort");
+
+  const rerender = () => renderAdvancedTable(payload);
+  if (qEl) qEl.addEventListener("input", (e) => { state.q = e.target.value; rerender(); }, { once: true });
+  if (stEl) stEl.addEventListener("change", (e) => { state.status = e.target.value; rerender(); }, { once: true });
+  if (limEl) limEl.addEventListener("change", (e) => { state.limit = parseInt(e.target.value, 10) || 20; rerender(); }, { once: true });
+  if (sortEl) sortEl.addEventListener("change", (e) => { state.sort = e.target.value; rerender(); }, { once: true });
 }
 
 function renderErro(msg) {
@@ -40,41 +512,320 @@ function cardValueToText(card) {
   return String(card.valor || "—");
 }
 
+function buildResumoExecutivoMastigado({ finalResult, mcMedia, refundsCount, refundsTotal, unmatchedCount, lostRevenueTotal }) {
+  const linhas = [];
+
+  if (finalResult == null) {
+    linhas.push("Este relatório resume o desempenho financeiro do período com base nas planilhas enviadas.");
+  } else if (finalResult > 0) {
+    linhas.push("O fechamento do período apresentou resultado positivo, indicando boa eficiência operacional após as despesas.");
+  } else if (finalResult < 0) {
+    linhas.push("O fechamento do período apresentou resultado negativo. Recomendamos atenção aos principais custos e perdas do mês.");
+  } else {
+    linhas.push("O fechamento do período encerrou próximo do ponto de equilíbrio.");
+  }
+
+  if (mcMedia == null) {
+    // nada
+  } else if (mcMedia < 0) {
+    linhas.push(`A margem média ficou em ${pct(mcMedia)}, o que caracteriza um cenário crítico (margem negativa).`);
+  } else if (mcMedia < 0.15) {
+    linhas.push(`A margem média ficou em ${pct(mcMedia)} — é uma faixa que exige atenção e ajustes finos em preço, frete, comissões e custo.`);
+  } else {
+    linhas.push(`A margem média ficou em ${pct(mcMedia)}, em um patamar saudável para o período.`);
+  }
+
+  if ((refundsCount || 0) > 0) {
+    linhas.push(`Foram identificados ${refundsCount} cancelamento(s)/reembolso(s), com impacto de ${brl(refundsTotal)} no período.`);
+  }
+
+  if ((lostRevenueTotal || 0) > 0) {
+    linhas.push(`O faturamento perdido associado a pedidos cancelados somou ${brl(-lostRevenueTotal)}, reduzindo o potencial de receita do mês.`);
+  }
+
+  if ((unmatchedCount || 0) > 0) {
+    linhas.push("Há produtos sem custo cadastrado na base. Ao completar os custos e reprocessar, a precisão do fechamento tende a melhorar.");
+  }
+
+  const texto = linhas.join(" ");
+  return texto || "—";
+}
+
 function renderEntrega(entrega) {
   const payload = entrega?.payload_json || {};
+  const snapshot = payload?.snapshot || {};
+  const summary = snapshot?.summary || payload?.summary || payload?.metadados?.summary || {};
+  const metricas = snapshot?.metricasDerivadas || {};
+
   const titulo = payload?.titulo || entrega?.titulo || "Relatório";
   const periodo = payload?.periodo || entrega?.periodo || "";
   const cliente = payload?.cliente || {};
   const clienteNome = cliente?.nome || entrega?.cliente_nome || "";
   const clienteSlug = cliente?.slug || entrega?.cliente_slug || "";
-  const geradoEm = payload?.metadados?.geradoEm || entrega?.created_at || null;
+  const marketplace = payload?.metadados?.marketplace || snapshot?.marketplace || "";
+  const geradoEm = payload?.metadados?.geradoEm || snapshot?.dataGeracao || entrega?.created_at || null;
 
-  const resumo = payload?.resumoExecutivo || "";
-  const cards = Array.isArray(payload?.cards) ? payload.cards : [];
-  const secoes = Array.isArray(payload?.secoes) ? payload.secoes : [];
-  const tabelas = Array.isArray(payload?.tabelas) ? payload.tabelas : [];
-  const conclusao = payload?.conclusao || "";
+  const detailedRows = Array.isArray(snapshot?.detailedRows) ? snapshot.detailedRows : (Array.isArray(payload?.detailedRows) ? payload.detailedRows : []);
+  const unmatchedIds = Array.isArray(snapshot?.unmatchedIds) ? snapshot.unmatchedIds : (Array.isArray(payload?.unmatchedIds) ? payload.unmatchedIds : []);
+  const unmatchedCancelled = Array.isArray(snapshot?.unmatchedCancelled) ? snapshot.unmatchedCancelled : [];
+  const ignoredRevenue = safeNumber(snapshot?.ignoredRevenue, null);
+
+  const cardsFromPayload = Array.isArray(payload?.cards) ? payload.cards : [];
+  const secoesFromPayload = Array.isArray(payload?.secoes) ? payload.secoes : [];
+  const tabelasFromPayload = Array.isArray(payload?.tabelas) ? payload.tabelas : [];
+
+  const finalResult = safeNumber(metricas.finalResult, safeNumber(summary?.finalResult, null));
+  const mcMedia = safeNumber(metricas.mcMedia, safeNumber(summary?.averageContributionMargin, null));
+  const lcTotal = safeNumber(metricas.lcTotal, safeNumber(summary?.contributionProfitTotal, null));
+  const gross = safeNumber(metricas.gross, safeNumber(summary?.grossRevenueTotal, null));
+  const net = safeNumber(metricas.net, safeNumber(summary?.paidRevenueTotal, null));
+  const tacos = safeNumber(metricas.tacos, safeNumber(summary?.tacos, null));
+  const refundsTotal = safeNumber(metricas.refundsTotal, safeNumber(summary?.refundsTotal, null));
+  const refundsCount = safeNumber(metricas.refundsCount, safeNumber(summary?.refundsCount, null));
+  const lostRevenueTotal = safeNumber(summary?.lostRevenueTotal, null);
+
+  const statusGeral = getStatusGeral({
+    finalResult,
+    mcMedia,
+    unmatchedCount: unmatchedIds.length,
+    refundsCount: refundsCount || 0,
+    lostRevenueTotal: lostRevenueTotal || 0,
+  });
+
+  const resumoExecutivoMastigado =
+    payload?.resumoExecutivoMastigado ||
+    buildResumoExecutivoMastigado({
+      finalResult,
+      mcMedia,
+      refundsCount: refundsCount || 0,
+      refundsTotal,
+      unmatchedCount: unmatchedIds.length,
+      lostRevenueTotal: lostRevenueTotal || 0,
+    });
 
   const metaBits = [];
+  if (marketplace) metaBits.push(`<span><strong>Marketplace:</strong> ${escapeHTML(String(marketplace).toUpperCase())}</span>`);
   if (clienteNome || clienteSlug) metaBits.push(`<span><strong>Cliente:</strong> ${escapeHTML(clienteNome || clienteSlug)}</span>`);
   if (periodo) metaBits.push(`<span><strong>Período:</strong> ${escapeHTML(periodo)}</span>`);
-  if (geradoEm) metaBits.push(`<span><strong>Gerado em:</strong> ${escapeHTML(formatDateTimePtBR(geradoEm))}</span>`);
+  if (geradoEm) metaBits.push(`<span><strong>Data de geração:</strong> ${escapeHTML(formatDateTimePtBR(geradoEm))}</span>`);
 
-  const cardsHtml = cards.length
-    ? `<div class="rp-cards">${cards.map((c) => {
+  const coverSubtitle = "Uma apresentação executiva com os principais números, pontos de atenção e recomendações práticas para o próximo período.";
+
+  const cardsBase = cardsFromPayload.length ? cardsFromPayload : [
+    {
+      titulo: "Resultado Final",
+      valor: finalResult == null ? "—" : brl(finalResult),
+      subtitulo: "Resultado após despesas (ADS/Venforce/Afiliados).",
+      destaque: true,
+      raw: finalResult,
+      status: finalResult > 0 ? "positivo" : (finalResult < 0 ? "critico" : "neutro"),
+    },
+    { titulo: "Receita Bruta", valor: gross == null ? "—" : brl(gross), subtitulo: "Total vendido no período.", raw: gross, status: "neutro" },
+    { titulo: "Receita Líquida", valor: net == null ? "—" : brl(net), subtitulo: "Receita após taxas/reembolsos.", raw: net, status: "neutro" },
+    { titulo: "LC Total", valor: lcTotal == null ? "—" : brl(lcTotal), subtitulo: "Lucro de contribuição total.", raw: lcTotal, status: lcTotal > 0 ? "positivo" : (lcTotal < 0 ? "critico" : "neutro") },
+    { titulo: "MC Média", valor: mcMedia == null ? "—" : pct(mcMedia), subtitulo: "Margem de contribuição média.", raw: mcMedia, tipoValor: "pct", status: mcMedia >= 0.15 ? "positivo" : (mcMedia < 0 ? "critico" : "atencao") },
+    { titulo: "TACoS", valor: tacos == null ? "—" : pct(tacos), subtitulo: "ADS como % da receita.", raw: tacos, tipoValor: "pct", status: "neutro" },
+    { titulo: "Reembolsos / Cancelamentos", valor: refundsCount == null ? "—" : `${brl(refundsTotal)} (${refundsCount})`, subtitulo: "Impacto e volume de cancelamentos.", raw: refundsTotal, status: (refundsCount || 0) > 0 ? "atencao" : "neutro" },
+    { titulo: "Faturamento Perdido", valor: lostRevenueTotal == null ? "—" : brl(-lostRevenueTotal), subtitulo: "Receita de pedidos cancelados.", raw: lostRevenueTotal, status: (lostRevenueTotal || 0) > 0 ? "atencao" : "neutro" },
+  ];
+
+  const cardsHtml = cardsBase.length
+    ? `<div class="rp-cards">${cardsBase.map((c) => {
         const featured = c.destaque ? "rp-card-featured" : "";
+        const statusCss = cardStatusToCss(c.status);
+        const statusLabel =
+          c.status === "positivo" ? "Positivo" :
+          c.status === "atencao" ? "Atenção" :
+          c.status === "critico" ? "Crítico" : "Neutro";
         return `
           <div class="rp-card ${featured}">
             <div class="rp-card-title">${escapeHTML(c.titulo || "Indicador")}</div>
             <div class="rp-card-value">${escapeHTML(cardValueToText(c))}</div>
+            <div class="rp-card-subtitle">${escapeHTML(c.subtitulo || "")}</div>
+            <div class="rp-card-status ${statusCss}">${escapeHTML(statusLabel)}</div>
           </div>
         `;
       }).join("")}</div>`
-    : `<p class="rp-lead">Sem cards disponíveis.</p>`;
+    : `<p class="rp-lead">Sem indicadores disponíveis.</p>`;
 
-  const secoesHtml = secoes.length
-    ? secoes.map((s) => {
-        const isAttn = String(s.tipo || "").toLowerCase() === "atencao";
+  // Seções executivas dinâmicas
+  const pontosPositivos = [];
+  const pontosAtencao = [];
+  const recomendacoes = [];
+  const proximosPassos = [];
+
+  if (finalResult != null && finalResult > 0) pontosPositivos.push("Resultado final positivo no período.");
+  if (mcMedia != null && mcMedia >= 0.15) pontosPositivos.push(`Margem média saudável (${pct(mcMedia)}).`);
+  if ((refundsCount || 0) === 0) pontosPositivos.push("Sem cancelamentos/reembolsos relevantes no período.");
+
+  if (unmatchedIds.length > 0) pontosAtencao.push(`Base de custos incompleta: ${unmatchedIds.length} item(ns) sem custo cruzado.`);
+  if ((refundsCount || 0) > 0) pontosAtencao.push(`Cancelamentos/reembolsos: ${refundsCount} ocorrência(s) com impacto de ${brl(refundsTotal)}.`);
+  if ((lostRevenueTotal || 0) > 0) pontosAtencao.push(`Faturamento perdido: ${brl(-lostRevenueTotal)} em pedidos cancelados.`);
+  if (mcMedia != null && mcMedia < 0) pontosAtencao.push(`Margem média negativa (${pct(mcMedia)}): revisar preços e custos é prioritário.`);
+  else if (mcMedia != null && mcMedia < 0.15) pontosAtencao.push(`Margem média em faixa de atenção (${pct(mcMedia)}).`);
+
+  if (unmatchedIds.length > 0) recomendacoes.push("Completar a base de custos dos itens pendentes e reprocessar o fechamento para maior precisão.");
+  if ((refundsCount || 0) > 0) recomendacoes.push("Acompanhar motivos de cancelamento e revisar anúncios/estoque/prazo para reduzir perdas.");
+  if ((lostRevenueTotal || 0) > 0) recomendacoes.push("Mapear os itens mais envolvidos em cancelamentos e atuar com melhorias (prazo, preço, qualidade, logística).");
+  if (mcMedia != null && mcMedia < 0.15) recomendacoes.push("Priorizar itens com menor margem: ajustar preço, frete, comissões ou custo antes do próximo ciclo.");
+  recomendacoes.push("Manter monitoramento dos itens saudáveis para preservar performance e evitar regressões.");
+
+  proximosPassos.push("Atualizar custos e validar fretes/comissões nos itens críticos.");
+  proximosPassos.push("Reprocessar o fechamento após ajustes e comparar evolução (resultado, MC, cancelamentos).");
+  proximosPassos.push("Repetir o acompanhamento semanal dos indicadores principais.");
+
+  // Produtos de destaque / em atenção (tolerante a colunas)
+  const produtos = detailedRows;
+  const firstRow = produtos[0] || {};
+  const kId = pickKey(firstRow, ["item_id", "produto_id", "id", "sku"]) || pickKeyIncludes(firstRow, ["item", "produto", "sku", "id"]);
+  const kNome = pickKey(firstRow, ["titulo", "title", "nome"]) || pickKeyIncludes(firstRow, ["titul", "nome", "descr"]);
+  const kLc = pickKey(firstRow, ["lc"]) || pickKeyIncludes(firstRow, ["lc", "lucro", "contrib"]);
+  const kMc = pickKey(firstRow, ["mc"]) || pickKeyIncludes(firstRow, ["mc", "margem"]);
+  const kReceita = pickKey(firstRow, ["receita", "revenue", "paidrevenue", "grossrevenue"]) || pickKeyIncludes(firstRow, ["receita", "revenue", "fatur", "venda"]);
+
+  function produtoLabel(row) {
+    const nome = kNome ? row?.[kNome] : null;
+    const id = kId ? row?.[kId] : null;
+    const base = String(nome || "").trim() || String(id || "").trim();
+    return base || "Item";
+  }
+
+  function asNum(row, key) {
+    if (!key) return null;
+    const n = Number(row?.[key]);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  const sortedByLc = [...produtos].sort((a, b) => (asNum(b, kLc) ?? -Infinity) - (asNum(a, kLc) ?? -Infinity));
+  const sortedByMc = [...produtos].sort((a, b) => (asNum(b, kMc) ?? -Infinity) - (asNum(a, kMc) ?? -Infinity));
+  const sortedByRevenue = kReceita ? [...produtos].sort((a, b) => (asNum(b, kReceita) ?? -Infinity) - (asNum(a, kReceita) ?? -Infinity)) : [];
+
+  const destaque = [];
+  if (sortedByLc.length) destaque.push(...sortedByLc.slice(0, 5).map((r) => ({ titulo: produtoLabel(r), pill: "Melhor LC", main: kLc ? brl(asNum(r, kLc)) : "—", sub: kMc ? `MC: ${pct(asNum(r, kMc))}` : "" })));
+  if (!destaque.length && sortedByMc.length) destaque.push(...sortedByMc.slice(0, 5).map((r) => ({ titulo: produtoLabel(r), pill: "Melhor MC", main: kMc ? pct(asNum(r, kMc)) : "—", sub: kLc ? `LC: ${brl(asNum(r, kLc))}` : "" })));
+  if (!destaque.length && sortedByRevenue.length) destaque.push(...sortedByRevenue.slice(0, 5).map((r) => ({ titulo: produtoLabel(r), pill: "Maior receita", main: brl(asNum(r, kReceita)), sub: kMc ? `MC: ${pct(asNum(r, kMc))}` : "" })));
+  const destaqueUnique = destaque.slice(0, 5);
+
+  const atencao = [...produtos]
+    .map((r) => {
+      const mc = asNum(r, kMc);
+      const lc = asNum(r, kLc);
+      const semCusto = false; // no snapshot de itens individuais ainda não temos flag consistente
+      let tag = "Atenção";
+      if (lc != null && lc < 0) tag = "Crítico";
+      if (mc != null && mc < 0) tag = "Crítico";
+      if (semCusto) tag = "Sem custo";
+      return { r, mc, lc, tag };
+    })
+    .sort((a, b) => {
+      const aScore = (a.mc ?? 0) + (a.lc ?? 0) / 100000;
+      const bScore = (b.mc ?? 0) + (b.lc ?? 0) / 100000;
+      return aScore - bScore;
+    })
+    .slice(0, 8);
+
+  const produtosDestaqueHtml = destaqueUnique.length
+    ? `
+      <section class="rp-section">
+        <h2 class="rp-section-title">Produtos de destaque</h2>
+        <div class="rp-mini-cards">
+          ${destaqueUnique.map((it) => `
+            <div class="rp-mini">
+              <div class="rp-mini-title">${escapeHTML(it.pill)}</div>
+              <div class="rp-mini-main" style="font-size:14px;">${escapeHTML(it.titulo)}</div>
+              <div class="rp-mini-main" style="font-size:18px;margin-top:6px;">${escapeHTML(it.main)}</div>
+              ${it.sub ? `<div class="rp-mini-sub">${escapeHTML(it.sub)}</div>` : `<div class="rp-mini-sub">—</div>`}
+            </div>
+          `).join("")}
+        </div>
+      </section>
+    ` : "";
+
+  const produtosAtencaoHtml = atencao.length
+    ? `
+      <section class="rp-section">
+        <h2 class="rp-section-title">Produtos em atenção</h2>
+        <div style="overflow:auto;">
+          <table class="rp-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>MC</th>
+                <th>LC</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${atencao.map((x) => {
+                const pillClass =
+                  x.tag === "Crítico" ? "rp-pill rp-pill-critical" :
+                  x.tag === "Sem custo" ? "rp-pill rp-pill-attn" :
+                  "rp-pill rp-pill-attn";
+                return `
+                  <tr>
+                    <td>${escapeHTML(produtoLabel(x.r))}</td>
+                    <td>${x.mc == null ? "—" : escapeHTML(pct(x.mc))}</td>
+                    <td>${x.lc == null ? "—" : escapeHTML(brl(x.lc))}</td>
+                    <td><span class="${pillClass}">${escapeHTML(x.tag)}</span></td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    ` : "";
+
+  // Seções "internas" do payload (ex.: unmatchedIds) - melhoradas e sem parecer erro técnico
+  const secoesMelhoradas = [];
+  for (const s of secoesFromPayload) {
+    const titulo = String(s?.titulo || "").trim();
+    const tipo = String(s?.tipo || "").toLowerCase() === "atencao" ? "atencao" : "nota";
+    if (titulo.toLowerCase().includes("produtos sem custo")) {
+      secoesMelhoradas.push({
+        tipo,
+        titulo: "Itens sem custo cadastrado",
+        texto:
+          `Alguns produtos não foram cruzados com a base de custos. Isso não é um erro do relatório — significa apenas que faltam custos cadastrados para esses itens. ` +
+          `Ao completar os custos e reprocessar, o fechamento fica mais preciso. ` +
+          (ignoredRevenue != null ? `Receita não considerada no cálculo: ${brl(ignoredRevenue)}.` : ""),
+        bullets: Array.isArray(s?.bullets) ? s.bullets.slice(0, 30) : [],
+      });
+      continue;
+    }
+    if (titulo.toLowerCase().includes("cancelamentos") || titulo.toLowerCase().includes("reembols")) {
+      secoesMelhoradas.push({
+        tipo,
+        titulo: "Cancelamentos e reembolsos",
+        texto:
+          `No período, houve ${refundsCount == null ? "—" : refundsCount} ocorrência(s), com impacto total de ${brl(refundsTotal)}. ` +
+          `Recomendação: acompanhar motivos e atuar nos itens/fluxos com maior incidência.`,
+        bullets: [],
+      });
+      continue;
+    }
+    if (titulo.toLowerCase().includes("faturamento perdido")) {
+      secoesMelhoradas.push({
+        tipo,
+        titulo: "Faturamento perdido",
+        texto:
+          `Estimamos ${brl(lostRevenueTotal == null ? null : -lostRevenueTotal)} de faturamento perdido por cancelamentos. ` +
+          `Recomendação: identificar os itens mais envolvidos e reduzir causas (prazo, estoque, qualidade, logística).`,
+        bullets: [],
+      });
+      continue;
+    }
+    secoesMelhoradas.push({
+      tipo,
+      titulo: titulo || "Observação",
+      texto: String(s?.texto || "").trim(),
+      bullets: Array.isArray(s?.bullets) ? s.bullets.slice(0, 30) : [],
+    });
+  }
+
+  const secoesHtml = secoesMelhoradas.length
+    ? secoesMelhoradas.map((s) => {
+        const isAttn = s.tipo === "atencao";
         const badge = isAttn ? `<span class="rp-badge rp-badge-attn">Atenção</span>` : `<span class="rp-badge">Nota</span>`;
         const bullets = Array.isArray(s.bullets) && s.bullets.length
           ? `<ul style="margin:10px 0 0;padding-left:18px;color:#374151;line-height:1.6;">${s.bullets.map((b) => `<li>${escapeHTML(String(b))}</li>`).join("")}</ul>`
@@ -82,67 +833,102 @@ function renderEntrega(entrega) {
         return `
           <section class="rp-section">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-              <h2 class="rp-section-title">${escapeHTML(s.titulo || "Seção")}</h2>
+              <h2 class="rp-section-title">${escapeHTML(s.titulo)}</h2>
               ${badge}
             </div>
-            <p class="rp-lead">${escapeHTML(s.texto || "")}</p>
+            <p class="rp-lead">${escapeHTML(s.texto || "—")}</p>
             ${bullets}
           </section>
         `;
       }).join("")
     : "";
 
-  const tabelasHtml = tabelas.length
-    ? tabelas.map((t) => {
-        const cols = Array.isArray(t.colunas) ? t.colunas : [];
-        const linhas = Array.isArray(t.linhas) ? t.linhas : [];
-        const head = cols.map((c) => `<th>${escapeHTML(c)}</th>`).join("");
-        const body = linhas.map((row) => {
-          const tds = cols.map((c) => `<td>${escapeHTML(row?.[c] ?? "")}</td>`).join("");
-          return `<tr>${tds}</tr>`;
-        }).join("");
-        const desc = t.descricao ? `<p class="rp-lead" style="margin-top:0;">${escapeHTML(t.descricao)}</p>` : "";
-        const foot = Number(t.totalOriginal) > linhas.length
-          ? `<div style="margin-top:10px;color:#6b7280;font-size:12.5px;">Exibindo ${linhas.length} de ${t.totalOriginal} linha(s).</div>`
-          : "";
-        return `
-          <section class="rp-section">
-            <h2 class="rp-section-title">${escapeHTML(t.titulo || "Tabela")}</h2>
-            ${desc}
-            <div style="overflow:auto;">
-              <table class="rp-table">
-                <thead><tr>${head}</tr></thead>
-                <tbody>${body}</tbody>
-              </table>
-            </div>
-            ${foot}
-          </section>
-        `;
-      }).join("")
-    : "";
-
-  const conclusaoHtml = conclusao
-    ? `
+  // Tabela amostra tolerante (preferir snapshot.detailedRows; fallback payload.tabelas)
+  let tabelasHtml = "";
+  if (Array.isArray(detailedRows) && detailedRows.length > 0) {
+    const sample = detailedRows.slice(0, 30);
+    const first = sample[0] || {};
+    const cols = Object.keys(first).slice(0, 10);
+    const head = cols.map((c) => `<th>${escapeHTML(c)}</th>`).join("");
+    const body = sample.map((row) => {
+      const tds = cols.map((c) => `<td>${escapeHTML(row?.[c] ?? "")}</td>`).join("");
+      return `<tr>${tds}</tr>`;
+    }).join("");
+    const totalOriginal = safeNumber(snapshot?.detailedRowsTotal, null);
+    tabelasHtml = `
       <section class="rp-section">
-        <h2 class="rp-section-title">Conclusão</h2>
-        <p class="rp-lead">${escapeHTML(conclusao)}</p>
+        <h2 class="rp-section-title">Amostra de itens</h2>
+        <p class="rp-lead">Para leitura rápida, exibimos uma amostra dos itens. O relatório completo permanece registrado no sistema.</p>
+        <div style="overflow:auto;">
+          <table class="rp-table">
+            <thead><tr>${head}</tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>
+        ${totalOriginal != null && totalOriginal > sample.length
+          ? `<div style="margin-top:10px;color:#6b7280;font-size:12.5px;">Exibindo ${sample.length} de ${totalOriginal} linha(s).</div>`
+          : ""}
       </section>
-    `
-    : "";
+    `;
+  } else if (tabelasFromPayload.length) {
+    tabelasHtml = tabelasFromPayload.map((t) => {
+      const cols = Array.isArray(t.colunas) ? t.colunas : [];
+      const linhas = Array.isArray(t.linhas) ? t.linhas : [];
+      const head = cols.map((c) => `<th>${escapeHTML(c)}</th>`).join("");
+      const body = linhas.map((row) => {
+        const tds = cols.map((c) => `<td>${escapeHTML(row?.[c] ?? "")}</td>`).join("");
+        return `<tr>${tds}</tr>`;
+      }).join("");
+      return `
+        <section class="rp-section">
+          <h2 class="rp-section-title">${escapeHTML(t.titulo || "Tabela")}</h2>
+          ${t.descricao ? `<p class="rp-lead" style="margin-top:0;">${escapeHTML(t.descricao)}</p>` : ""}
+          <div style="overflow:auto;">
+            <table class="rp-table">
+              <thead><tr>${head}</tr></thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>
+        </section>
+      `;
+    }).join("");
+  }
+
+  const resumoFinal = (() => {
+    const frases = [];
+    if (statusGeral.id === "positivo") frases.push("Cenário geral positivo. Foque em manter consistência e escalar os itens com melhor margem.");
+    if (statusGeral.id === "atencao") frases.push("Cenário geral com pontos de atenção. Priorize ajustes nos itens críticos e revalide custos.");
+    if (statusGeral.id === "critico") frases.push("Cenário geral crítico. Recomendamos ação imediata em preços/custos e redução de perdas.");
+    if (unmatchedIds.length > 0) frases.push("Completar custos pendentes deve ser a primeira etapa para aumentar a precisão.");
+    return frases.join(" ");
+  })();
 
   const root = document.getElementById("rp-root");
   if (!root) return;
   root.innerHTML = `
     <article class="rp-sheet">
       <header class="rp-cover">
-        <div class="rp-kicker">VENFORCE · RELATÓRIO</div>
-        <div class="rp-title">${escapeHTML(titulo)}</div>
-        <div class="rp-meta">${metaBits.join("")}</div>
+        <div class="rp-cover-grid">
+          <div>
+            <div class="rp-cover-brand">
+              <div class="rp-cover-mark">V</div>
+              <div class="rp-cover-brand-lines">
+                <div class="rp-cover-brand-name">VenForce</div>
+                <div class="rp-cover-brand-tagline">Relatório executivo · entrega para cliente</div>
+              </div>
+            </div>
+            <div class="rp-kicker">FECHAMENTO FINANCEIRO</div>
+            <div class="rp-title">${escapeHTML("Relatório de Fechamento Financeiro")}</div>
+            <p class="rp-subtitle">${escapeHTML(coverSubtitle)}</p>
+            <div class="rp-meta">${metaBits.join("")}</div>
+          </div>
+          <div class="rp-status-badge ${statusIdToCss(statusGeral.id)}">${escapeHTML(statusGeral.label)}</div>
+        </div>
       </header>
 
       <section class="rp-section">
         <h2 class="rp-section-title">Resumo executivo</h2>
-        <p class="rp-lead">${escapeHTML(resumo || "—")}</p>
+        <p class="rp-lead">${escapeHTML(resumoExecutivoMastigado)}</p>
       </section>
 
       <section class="rp-section">
@@ -150,11 +936,56 @@ function renderEntrega(entrega) {
         ${cardsHtml}
       </section>
 
+      <section class="rp-section">
+        <h2 class="rp-section-title">Análise visual</h2>
+        <div id="rp-charts-host" class="rp-muted-box">Preparando gráficos…</div>
+      </section>
+
+      <section class="rp-section">
+        <h2 class="rp-section-title">Visão geral do mês</h2>
+        <div class="rp-grid-2">
+          <div class="rp-callout">
+            <div class="rp-callout-title">Pontos positivos</div>
+            <p>${escapeHTML(pontosPositivos.length ? pontosPositivos.join(" ") : "Sem destaques positivos automáticos para este período.")}</p>
+          </div>
+          <div class="rp-callout">
+            <div class="rp-callout-title">Pontos de atenção</div>
+            <p>${escapeHTML(pontosAtencao.length ? pontosAtencao.join(" ") : "Nenhum ponto crítico identificado a partir do snapshot.")}</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="rp-section">
+        <h2 class="rp-section-title">Recomendações práticas</h2>
+        <p class="rp-lead">${escapeHTML(recomendacoes.slice(0, 5).join(" "))}</p>
+      </section>
+
+      <section class="rp-section">
+        <h2 class="rp-section-title">Próximos passos</h2>
+        <ul style="margin:10px 0 0;padding-left:18px;color:#374151;line-height:1.6;">
+          ${proximosPassos.slice(0, 5).map((x) => `<li>${escapeHTML(x)}</li>`).join("")}
+        </ul>
+      </section>
+
+      ${produtosDestaqueHtml}
+      ${produtosAtencaoHtml}
       ${secoesHtml}
       ${tabelasHtml}
-      ${conclusaoHtml}
+
+      <section class="rp-section">
+        <h2 class="rp-section-title">Detalhamento dos produtos</h2>
+        <div id="rp-table-host"></div>
+      </section>
+
+      <section class="rp-section">
+        <h2 class="rp-section-title">Resumo final</h2>
+        <p class="rp-lead">${escapeHTML(resumoFinal || "—")}</p>
+      </section>
     </article>
   `;
+
+  try { renderCharts(payload); } catch (_) {}
+  try { renderAdvancedTable(payload); } catch (_) {}
 }
 
 async function main() {

@@ -120,25 +120,43 @@ function montarPayloadFechamentoCliente(data) {
     `Resultado final (após ADS/Venforce/Afiliados): ${brl(finalResult)} · TACoS: ${pct(tacos)}.`,
   ].join(" ");
 
+  const unmatched = Array.isArray(data?.unmatchedIds) ? data.unmatchedIds : [];
+  const unmatchedCancelled = Array.isArray(data?.unmatchedCancelled) ? data.unmatchedCancelled : [];
+  const ignoredRevenue = safeNumber(data?.ignoredRevenue);
+  const detailedAll = Array.isArray(data?.detailedRows) ? data.detailedRows : [];
+  const detailedSample50 = detailedAll.slice(0, 50);
+
+  const severidade = (() => {
+    if (finalResult < 0 || mcMedia < 0) return "critico";
+    if (mcMedia < 0.15 || unmatched.length > 0 || refundsCount > 0 || lostRevenueTotal > 0) return "atencao";
+    return "positivo";
+  })();
+
   const cards = [
-    { titulo: "Resultado Final", valor: brl(finalResult), destaque: true, raw: finalResult },
-    { titulo: "Receita Bruta", valor: brl(gross), raw: gross },
-    { titulo: "Receita Líquida", valor: brl(net), raw: net },
-    { titulo: "LC Total", valor: brl(lcTotal), raw: lcTotal },
-    { titulo: "MC Média", valor: pct(mcMedia), raw: mcMedia, tipoValor: "pct" },
-    { titulo: "TACoS", valor: pct(tacos), raw: tacos, tipoValor: "pct" },
-    { titulo: "Reembolsos / Cancelamentos", valor: `${brl(refundsTotal)} (${num(refundsCount)})`, raw: refundsTotal },
-    { titulo: "Faturamento perdido", valor: brl(faturamentoPerdido), raw: faturamentoPerdido },
+    {
+      titulo: "Resultado Final",
+      valor: brl(finalResult),
+      subtitulo: "Resultado após despesas (ADS/Venforce/Afiliados).",
+      destaque: true,
+      raw: finalResult,
+      status: finalResult > 0 ? "positivo" : (finalResult < 0 ? "critico" : "neutro"),
+    },
+    { titulo: "Receita Bruta", valor: brl(gross), subtitulo: "Total vendido no período.", raw: gross, status: gross > 0 ? "neutro" : "neutro" },
+    { titulo: "Receita Líquida", valor: brl(net), subtitulo: "Receita após taxas/reembolsos conforme planilhas.", raw: net, status: net > 0 ? "neutro" : "neutro" },
+    { titulo: "LC Total", valor: brl(lcTotal), subtitulo: "Lucro de contribuição total.", raw: lcTotal, status: lcTotal > 0 ? "positivo" : (lcTotal < 0 ? "critico" : "neutro") },
+    { titulo: "MC Média", valor: pct(mcMedia), subtitulo: "Margem de contribuição média.", raw: mcMedia, tipoValor: "pct", status: mcMedia >= 0.15 ? "positivo" : (mcMedia < 0 ? "critico" : "atencao") },
+    { titulo: "TACoS", valor: pct(tacos), subtitulo: "ADS como % da receita.", raw: tacos, tipoValor: "pct", status: "neutro" },
+    { titulo: "Reembolsos / Cancelamentos", valor: `${brl(refundsTotal)} (${num(refundsCount)})`, subtitulo: "Impacto e volume de cancelamentos.", raw: refundsTotal, status: refundsCount > 0 ? "atencao" : "neutro" },
+    { titulo: "Faturamento Perdido", valor: brl(faturamentoPerdido), subtitulo: "Receita de pedidos cancelados.", raw: faturamentoPerdido, status: faturamentoPerdido < 0 ? "atencao" : "neutro" },
   ];
 
   const secoes = [];
 
-  const unmatched = Array.isArray(data?.unmatchedIds) ? data.unmatchedIds : [];
   if (unmatched.length > 0) {
     secoes.push({
       tipo: "atencao",
       titulo: "Produtos sem custo cadastrado",
-      texto: `Há ${unmatched.length} ID(s) que não foram encontrados na planilha/base de custos. Receita ignorada: ${brl(data?.ignoredRevenue || 0)}.`,
+      texto: `Identificamos ${unmatched.length} produto(s) que não foram cruzados com a base de custos. Isso pode afetar a precisão do fechamento. Receita ignorada: ${brl(ignoredRevenue)}.`,
       bullets: unmatched.slice(0, 30).map((x) => String(x)),
     });
   }
@@ -168,9 +186,8 @@ function montarPayloadFechamentoCliente(data) {
   }
 
   const tabelas = [];
-  const detailed = Array.isArray(data?.detailedRows) ? data.detailedRows : [];
-  if (detailed.length > 0) {
-    const sample = detailed.slice(0, 30);
+  if (detailedAll.length > 0) {
+    const sample = detailedAll.slice(0, 30);
     const first = sample[0] || {};
 
     const colProduto =
@@ -206,7 +223,7 @@ function montarPayloadFechamentoCliente(data) {
       descricao: "A tabela completa fica registrada no sistema; aqui exibimos uma amostra para leitura rápida.",
       colunas: uniqueCols,
       linhas,
-      totalOriginal: detailed.length,
+      totalOriginal: detailedAll.length,
     });
   }
 
@@ -228,7 +245,34 @@ function montarPayloadFechamentoCliente(data) {
       ads: meta.ads ?? null,
       venforce: meta.venforce ?? null,
       affiliates: meta.affiliates ?? null,
+      severidade,
     },
+    // Snapshot enriquecido (não altera cálculo / não altera endpoint de fechamento)
+    snapshot: {
+      summary,
+      detailedRows: detailedSample50,
+      detailedRowsTotal: detailedAll.length,
+      unmatchedIds: unmatched,
+      ignoredRevenue,
+      unmatchedCancelled,
+      marketplace: meta.marketplace || null,
+      ads: meta.ads ?? null,
+      venforce: meta.venforce ?? null,
+      affiliates: meta.affiliates ?? null,
+      dataGeracao: meta.dataGeracao || null,
+      metricasDerivadas: {
+        gross,
+        net,
+        lcTotal,
+        mcMedia,
+        tacos,
+        refundsTotal,
+        refundsCount,
+        finalResult,
+        faturamentoPerdido,
+        hasUnmatchedIds: unmatched.length > 0,
+      }
+    }
   };
 }
 
