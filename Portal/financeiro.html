@@ -345,6 +345,69 @@
           color: var(--fc-text-2);
         }
 
+        .fc-link-cliente-panel {
+          border-radius: 18px;
+          background: rgba(255,255,255,0.035);
+          border: 1px solid rgba(196,181,253,0.16);
+          padding: 14px 14px;
+        }
+
+        .fc-link-cliente-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 10px;
+        }
+
+        .fc-link-cliente-title {
+          font-size: 13px;
+          font-weight: 850;
+          letter-spacing: 0.10em;
+          text-transform: uppercase;
+          color: #ddd6fe;
+          margin-bottom: 3px;
+        }
+
+        .fc-link-cliente-subtitle {
+          font-size: 12.5px;
+          color: var(--fc-text-2);
+          line-height: 1.45;
+          max-width: 72ch;
+        }
+
+        .fc-link-cliente-row {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 10px;
+          align-items: center;
+        }
+
+        .fc-link-cliente-input {
+          width: 100%;
+          color: #e4e4e7;
+          background: rgba(9,9,11,0.55);
+          border: 1px dashed rgba(255,255,255,0.18);
+          border-radius: 14px;
+          padding: 10px 12px;
+          outline: none;
+          min-height: 40px;
+          font-size: 13px;
+        }
+
+        .fc-link-cliente-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .fc-link-cliente-status {
+          margin-top: 10px;
+          font-size: 12.5px;
+          color: var(--fc-text-2);
+        }
+
         .fc-stat-card {
           border-radius: 16px;
           background: rgba(255,255,255,0.04);
@@ -514,6 +577,7 @@
           .fc-operation-actions { justify-content: stretch; }
           .fc-operation-actions .fc-btn { flex: 1; }
           .fc-tab { padding: 9px 12px; font-size: 12px; }
+          .fc-link-cliente-row { grid-template-columns: 1fr; }
         }
 
         @media (max-width: 1360px) {
@@ -599,6 +663,29 @@
             <button id="btn-fin-limpar" class="fc-btn fc-btn-secondary" type="button">Limpar</button>
           </div>
           <div id="fin-status" class="fc-status" style="display:none;"></div>
+
+          <!-- Entrega para cliente (inicialmente escondido) -->
+          <div id="fin-link-cliente-actions" style="display:none;margin-top:14px;">
+            <div class="fc-link-cliente-panel">
+              <div class="fc-link-cliente-header">
+                <div>
+                  <div class="fc-link-cliente-title">Entrega para cliente</div>
+                  <div class="fc-link-cliente-subtitle">Gere um link público com uma apresentação limpa deste fechamento.</div>
+                </div>
+                <button id="btn-fin-gerar-link-cliente" class="fc-btn fc-btn-primary" type="button">Gerar link para cliente</button>
+              </div>
+
+              <div class="fc-link-cliente-row">
+                <input id="fin-link-cliente-output" class="fc-link-cliente-input" type="text" readonly value="" placeholder="Clique em “Gerar link para cliente” para criar um link público." />
+                <div class="fc-link-cliente-actions">
+                  <button id="btn-fin-copiar-link-cliente" class="fc-btn fc-btn-secondary" type="button" disabled>Copiar link</button>
+                  <button id="btn-fin-abrir-link-cliente" class="fc-btn fc-btn-secondary" type="button" disabled>Abrir link</button>
+                </div>
+              </div>
+
+              <div id="fin-link-cliente-status" class="fc-link-cliente-status" style="display:none;"></div>
+            </div>
+          </div>
         </section>
 
         <section class="fc-dashboard-panel">

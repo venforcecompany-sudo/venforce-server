@@ -15,6 +15,9 @@ const TOKEN = localStorage.getItem("vf-token");
 if (!TOKEN) window.location.replace("index.html");
 const API_BASE = "https://venforce-server.onrender.com";
 
+// Último fechamento processado (snapshot para entrega ao cliente)
+let ultimoFechamentoFinanceiro = null;
+
 function escapeHTML(s) {
   const d = document.createElement("div");
   d.textContent = s == null ? "" : String(s);
@@ -32,6 +35,260 @@ function setStatus(msg, tipo) {
   else if (tipo === "danger") el.style.color = "var(--vf-danger)";
   else if (tipo === "info") el.style.color = "var(--vf-text-m)";
   else el.style.color = "var(--vf-text-m)";
+}
+
+function setStatusLinkCliente(msg, tipo) {
+  const el = document.getElementById("fin-link-cliente-status");
+  if (!el) return;
+  if (!msg) { el.style.display = "none"; return; }
+  el.textContent = msg;
+  el.style.display = "block";
+  if (tipo === "success") el.style.color = "#86efac";
+  else if (tipo === "danger") el.style.color = "#f87171";
+  else if (tipo === "info") el.style.color = "#a1a1aa";
+  else el.style.color = "#a1a1aa";
+}
+
+function showLinkClienteActions(show) {
+  const host = document.getElementById("fin-link-cliente-actions");
+  if (!host) return;
+  host.style.display = show ? "" : "none";
+}
+
+function setLinkClienteOutput(url) {
+  const input = document.getElementById("fin-link-cliente-output");
+  const btnCopiar = document.getElementById("btn-fin-copiar-link-cliente");
+  const btnAbrir = document.getElementById("btn-fin-abrir-link-cliente");
+  if (input) input.value = url || "";
+  const enable = !!url;
+  if (btnCopiar) btnCopiar.disabled = !enable;
+  if (btnAbrir) btnAbrir.disabled = !enable;
+}
+
+function formatDateTimePtBR(d) {
+  try { return new Date(d).toLocaleString("pt-BR"); } catch { return ""; }
+}
+
+function safeNumber(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function pickFirstKey(obj, candidates) {
+  if (!obj || typeof obj !== "object") return null;
+  const keys = Object.keys(obj);
+  const lowerKeys = keys.map((k) => ({ k, l: k.toLowerCase() }));
+  for (const c of candidates) {
+    const cLower = String(c).toLowerCase();
+    const hit = lowerKeys.find((x) => x.l === cLower);
+    if (hit) return hit.k;
+  }
+  return null;
+}
+
+function pickKeyByIncludes(obj, includesAny) {
+  if (!obj || typeof obj !== "object") return null;
+  const keys = Object.keys(obj);
+  const lower = keys.map((k) => ({ k, l: k.toLowerCase() }));
+  for (const inc of includesAny) {
+    const incLower = String(inc).toLowerCase();
+    const hit = lower.find((x) => x.l.includes(incLower));
+    if (hit) return hit.k;
+  }
+  return null;
+}
+
+function montarPayloadFechamentoCliente(data) {
+  const summary = data?.summary || {};
+  const meta = data?._vf_meta || {};
+
+  const gross = safeNumber(summary.grossRevenueTotal);
+  const net = safeNumber(summary.paidRevenueTotal);
+  const lcTotal = safeNumber(summary.contributionProfitTotal);
+  const mcMedia = safeNumber(summary.averageContributionMargin);
+  const tacos = safeNumber(summary.tacos);
+  const refundsTotal = safeNumber(summary.refundsTotal);
+  const refundsCount = safeNumber(summary.refundsCount);
+  const finalResult = safeNumber(summary.finalResult);
+
+  const lostRevenueTotal = safeNumber(summary.lostRevenueTotal);
+  const faturamentoPerdido = lostRevenueTotal > 0 ? -lostRevenueTotal : 0;
+
+  const resumoExecutivo = [
+    `Fechamento financeiro processado para ${String(meta.marketplace || "").toUpperCase()} em ${formatDateTimePtBR(meta.dataGeracao)}.`,
+    `Receita bruta: ${brl(gross)} · Receita líquida: ${brl(net)} · LC total: ${brl(lcTotal)} · MC média: ${pct(mcMedia)}.`,
+    `Resultado final (após ADS/Venforce/Afiliados): ${brl(finalResult)} · TACoS: ${pct(tacos)}.`,
+  ].join(" ");
+
+  const cards = [
+    { titulo: "Resultado Final", valor: brl(finalResult), destaque: true, raw: finalResult },
+    { titulo: "Receita Bruta", valor: brl(gross), raw: gross },
+    { titulo: "Receita Líquida", valor: brl(net), raw: net },
+    { titulo: "LC Total", valor: brl(lcTotal), raw: lcTotal },
+    { titulo: "MC Média", valor: pct(mcMedia), raw: mcMedia, tipoValor: "pct" },
+    { titulo: "TACoS", valor: pct(tacos), raw: tacos, tipoValor: "pct" },
+    { titulo: "Reembolsos / Cancelamentos", valor: `${brl(refundsTotal)} (${num(refundsCount)})`, raw: refundsTotal },
+    { titulo: "Faturamento perdido", valor: brl(faturamentoPerdido), raw: faturamentoPerdido },
+  ];
+
+  const secoes = [];
+
+  const unmatched = Array.isArray(data?.unmatchedIds) ? data.unmatchedIds : [];
+  if (unmatched.length > 0) {
+    secoes.push({
+      tipo: "atencao",
+      titulo: "Produtos sem custo cadastrado",
+      texto: `Há ${unmatched.length} ID(s) que não foram encontrados na planilha/base de custos. Receita ignorada: ${brl(data?.ignoredRevenue || 0)}.`,
+      bullets: unmatched.slice(0, 30).map((x) => String(x)),
+    });
+  }
+
+  if (refundsCount > 0) {
+    secoes.push({
+      tipo: "atencao",
+      titulo: "Cancelamentos / reembolsos",
+      texto: `Foram identificados ${num(refundsCount)} cancelamento(s)/reembolso(s), totalizando ${brl(refundsTotal)}.`,
+    });
+  }
+
+  if (safeNumber(summary.lostRevenueTotal) > 0) {
+    secoes.push({
+      tipo: "atencao",
+      titulo: "Faturamento perdido",
+      texto: `O faturamento perdido estimado (produtos cancelados) foi de ${brl(faturamentoPerdido)}.`,
+    });
+  }
+
+  if (mcMedia <= 0.02) {
+    secoes.push({
+      tipo: "atencao",
+      titulo: "Margem de contribuição baixa",
+      texto: `A MC média está em ${pct(mcMedia)}. Isso indica pressão de custos/comissões/frete ou necessidade de revisão de preços.`,
+    });
+  }
+
+  const tabelas = [];
+  const detailed = Array.isArray(data?.detailedRows) ? data.detailedRows : [];
+  if (detailed.length > 0) {
+    const sample = detailed.slice(0, 30);
+    const first = sample[0] || {};
+
+    const colProduto =
+      pickFirstKey(first, ["item_id", "produto_id", "id", "sku"]) ||
+      pickKeyByIncludes(first, ["item", "produto", "sku", "id"]);
+    const colTitulo =
+      pickFirstKey(first, ["titulo", "title", "nome"]) ||
+      pickKeyByIncludes(first, ["titul", "nome", "descr"]);
+    const colPreco =
+      pickFirstKey(first, ["preco_efetivo", "preco", "preço", "price"]) ||
+      pickKeyByIncludes(first, ["preco", "price"]);
+    const colMc =
+      pickFirstKey(first, ["mc", "margem"]) ||
+      pickKeyByIncludes(first, ["mc", "margem"]);
+    const colLc =
+      pickFirstKey(first, ["lc", "lucro", "contribution"]) ||
+      pickKeyByIncludes(first, ["lc", "lucro", "contrib"]);
+    const colDiagnostico =
+      pickFirstKey(first, ["diagnostico", "diagnóstico", "status"]) ||
+      pickKeyByIncludes(first, ["diagn", "status"]);
+
+    const cols = [colProduto, colTitulo, colPreco, colLc, colMc, colDiagnostico].filter(Boolean);
+    const uniqueCols = Array.from(new Set(cols));
+
+    const linhas = sample.map((row) => {
+      const o = {};
+      uniqueCols.forEach((k) => { o[k] = row?.[k]; });
+      return o;
+    });
+
+    tabelas.push({
+      titulo: "Amostra de itens (top 30)",
+      descricao: "A tabela completa fica registrada no sistema; aqui exibimos uma amostra para leitura rápida.",
+      colunas: uniqueCols,
+      linhas,
+      totalOriginal: detailed.length,
+    });
+  }
+
+  return {
+    versao: 1,
+    tipo: "fechamento_mensal",
+    titulo: "Relatório de Fechamento Financeiro",
+    periodo: meta.periodo || "",
+    resumoExecutivo,
+    cliente: meta.cliente || {},
+    cards,
+    secoes,
+    tabelas,
+    graficos: [],
+    conclusao: "",
+    metadados: {
+      geradoEm: meta.dataGeracao || new Date().toISOString(),
+      marketplace: meta.marketplace || null,
+      ads: meta.ads ?? null,
+      venforce: meta.venforce ?? null,
+      affiliates: meta.affiliates ?? null,
+    },
+  };
+}
+
+async function gerarLinkClienteFinanceiro() {
+  if (!TOKEN) return;
+  if (!ultimoFechamentoFinanceiro?.data) {
+    setStatusLinkCliente("Processa um fechamento antes de gerar o link.", "danger");
+    return;
+  }
+
+  const btn = document.getElementById("btn-fin-gerar-link-cliente");
+  if (btn) { btn.disabled = true; btn.textContent = "Gerando..."; }
+  setStatusLinkCliente("Gerando entrega e publicando…", "info");
+  setLinkClienteOutput("");
+
+  try {
+    const data = ultimoFechamentoFinanceiro.data;
+    const payload = montarPayloadFechamentoCliente(data);
+
+    const criarResp = await fetch(`${API_BASE}/entregas-cliente`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + TOKEN },
+      body: JSON.stringify({
+        tipo: "fechamento_mensal",
+        titulo: payload.titulo || "Relatório de Fechamento Financeiro",
+        periodo: payload.periodo || "",
+        status: "rascunho",
+        payload_json: payload,
+        origem_tipo: "fechamento_financeiro",
+        origem_id: null,
+      }),
+    });
+
+    if (criarResp.status === 401) { window.location.replace("index.html"); return; }
+    const criarJson = await criarResp.json();
+    if (!criarResp.ok) throw new Error(criarJson?.erro || criarJson?.error || "Falha ao criar entrega.");
+
+    const entregaId = criarJson?.entrega?.id;
+    if (!entregaId) throw new Error("Entrega criada sem id.");
+
+    const pubResp = await fetch(`${API_BASE}/entregas-cliente/${encodeURIComponent(entregaId)}/publicar`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+
+    if (pubResp.status === 401) { window.location.replace("index.html"); return; }
+    const pubJson = await pubResp.json();
+    if (!pubResp.ok) throw new Error(pubJson?.erro || pubJson?.error || "Falha ao publicar entrega.");
+
+    const token = pubJson?.entrega?.token_publico;
+    if (!token) throw new Error("Entrega publicada sem token_publico.");
+
+    const publicUrl = `${window.location.origin}/relatorio-publico.html?token=${encodeURIComponent(token)}`;
+    setLinkClienteOutput(publicUrl);
+    setStatusLinkCliente("✓ Link público gerado. Você pode copiar e enviar ao cliente.", "success");
+  } catch (err) {
+    setStatusLinkCliente("Erro: " + (err?.message || "Falha ao gerar link."), "danger");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Gerar link para cliente"; }
+  }
 }
 
 function limparFinStats() {
@@ -321,6 +578,17 @@ async function processarFechamentoFinanceiro() {
     const json = await res.json();
     if (!res.ok) throw new Error(json.erro || json.error || json.message || "HTTP " + res.status);
 
+    // Snapshot do fechamento para gerar entrega ao cliente (não altera cálculo)
+    const adsNum = Number(document.getElementById("fin-ads")?.value || 0);
+    const venforceNum = Number(document.getElementById("fin-venforce")?.value || 0);
+    const affiliatesNum = Number(document.getElementById("fin-affiliates")?.value || 0);
+    const dataGeracao = new Date().toISOString();
+    json._vf_meta = { marketplace, ads: adsNum, venforce: venforceNum, affiliates: affiliatesNum, dataGeracao };
+    ultimoFechamentoFinanceiro = { data: json, marketplace, ads: adsNum, venforce: venforceNum, affiliates: affiliatesNum, dataGeracao };
+    showLinkClienteActions(true);
+    setStatusLinkCliente("Pronto para gerar a entrega do cliente.", "info");
+    setLinkClienteOutput("");
+
     renderFinResumo(json);
     renderFinResumoExecutivo(json);
     renderFinTabela(json);
@@ -395,7 +663,45 @@ if (btnFinLimpar) {
     const tabela = document.getElementById("fin-tabela");
     if (tabela) tabela.innerHTML = "";
 
+    ultimoFechamentoFinanceiro = null;
+    showLinkClienteActions(false);
+    setLinkClienteOutput("");
+    setStatusLinkCliente("", "");
     setStatus("", "");
+  });
+}
+
+const btnGerarLinkCliente = document.getElementById("btn-fin-gerar-link-cliente");
+if (btnGerarLinkCliente) btnGerarLinkCliente.addEventListener("click", gerarLinkClienteFinanceiro);
+
+const btnCopiarLinkCliente = document.getElementById("btn-fin-copiar-link-cliente");
+if (btnCopiarLinkCliente) {
+  btnCopiarLinkCliente.addEventListener("click", async () => {
+    const input = document.getElementById("fin-link-cliente-output");
+    const url = String(input?.value || "").trim();
+    if (!url) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        input.focus();
+        input.select();
+        document.execCommand("copy");
+      }
+      setStatusLinkCliente("Link copiado.", "success");
+    } catch (_) {
+      setStatusLinkCliente("Não foi possível copiar automaticamente. Selecione e copie manualmente.", "danger");
+    }
+  });
+}
+
+const btnAbrirLinkCliente = document.getElementById("btn-fin-abrir-link-cliente");
+if (btnAbrirLinkCliente) {
+  btnAbrirLinkCliente.addEventListener("click", () => {
+    const input = document.getElementById("fin-link-cliente-output");
+    const url = String(input?.value || "").trim();
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
   });
 }
 

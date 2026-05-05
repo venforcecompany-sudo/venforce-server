@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VenForce — Relatório público</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
+  <link rel="stylesheet" href="relatorio-publico.css" />
+</head>
+<body>
+  <div class="rp-topbar no-print">
+    <div class="rp-brand">
+      <div class="rp-mark">VF</div>
+      <div class="rp-brand-text">
+        <div class="rp-brand-title">VenForce</div>
+        <div class="rp-brand-subtitle">Entrega para cliente</div>
+      </div>
+    </div>
+    <div class="rp-topbar-actions">
+      <button id="btn-rp-pdf" class="rp-btn rp-btn-primary" type="button">Baixar PDF</button>
+    </div>
+  </div>
+
+  <main class="rp-page">
+    <div id="rp-root" class="rp-root">
+      <div class="rp-loading" id="rp-loading">Carregando relatório…</div>
+    </div>
+  </main>
+
+  <script src="relatorio-publico.js"></script>
+</body>
+</html>
+

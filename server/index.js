@@ -57,6 +57,7 @@ const logsRoutes = require("./routes/logsRoutes");
 const fechamentosFinanceiroRoutes = require("./routes/fechamentosFinanceiroRoutes");
 const mlRoutes = require("./routes/mlRoutes");
 const automacoesRoutes = require("./routes/automacoesRoutes");
+const entregasClienteRoutes = require("./routes/entregasClienteRoutes");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
 
 const app = express();
@@ -315,6 +316,32 @@ CREATE TABLE IF NOT EXISTS callbacks (
       );
       CREATE INDEX IF NOT EXISTS idx_relatorio_itens_relatorio ON relatorio_itens(relatorio_id);
       CREATE INDEX IF NOT EXISTS idx_relatorio_itens_diagnostico ON relatorio_itens(relatorio_id, diagnostico);
+
+      CREATE TABLE IF NOT EXISTS entregas_cliente (
+        id SERIAL PRIMARY KEY,
+        tipo VARCHAR(50) NOT NULL,
+        cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
+        cliente_slug VARCHAR(255),
+        cliente_nome VARCHAR(255),
+        titulo VARCHAR(255) NOT NULL,
+        periodo VARCHAR(100),
+        status VARCHAR(30) DEFAULT 'rascunho',
+        token_publico VARCHAR(120) UNIQUE,
+        publicado BOOLEAN DEFAULT FALSE,
+        payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        origem_tipo VARCHAR(50),
+        origem_id INTEGER,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        published_at TIMESTAMP,
+        expires_at TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_entregas_cliente_cliente_id ON entregas_cliente(cliente_id);
+      CREATE INDEX IF NOT EXISTS idx_entregas_cliente_token_publico ON entregas_cliente(token_publico);
+      CREATE INDEX IF NOT EXISTS idx_entregas_cliente_tipo ON entregas_cliente(tipo);
+      CREATE INDEX IF NOT EXISTS idx_entregas_cliente_created_at ON entregas_cliente(created_at);
     `);   
 
     await pool.query(`
@@ -380,6 +407,7 @@ app.use("/admin/logs", logsRoutes);
 app.use("/fechamentos", fechamentosFinanceiroRoutes);
 app.use("/", mlRoutes);
 app.use("/", automacoesRoutes);
+app.use("/", entregasClienteRoutes);
 
 app.post("/scans", authMiddleware, async (req, res) => {
   try {
