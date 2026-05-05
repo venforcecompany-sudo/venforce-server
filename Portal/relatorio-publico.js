@@ -16,12 +16,6 @@ function brl(v) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
 }
 
-function pct(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "—";
-  return (n * 100).toFixed(2) + "%";
-}
-
 function formatDateTimePtBR(d) {
   try { return new Date(d).toLocaleString("pt-BR"); } catch { return ""; }
 }
@@ -106,6 +100,7 @@ function toNumberSafe(value) {
   if (!s) return null;
   let t = s.replace(/\s/g, "");
   t = t.replace(/[R$\u00A0]/g, "");
+  t = t.replace(/%/g, "");
   if (t.includes(",") && t.includes(".")) t = t.replace(/\./g, "").replace(",", ".");
   else if (t.includes(",")) t = t.replace(",", ".");
   const n = Number(t);
@@ -121,36 +116,138 @@ function pickValue(row, possibleKeys) {
   return null;
 }
 
-function normalizePercent(value) {
+function normalizePercentToDecimal(value) {
   const n = toNumberSafe(value);
   if (n === null) return null;
-  if (n >= 1) return n / 100;
+
+  const abs = Math.abs(n);
+  if (abs <= 1) return n;
+  if (abs > 1 && abs <= 100) return n / 100;
+  if (abs > 100 && abs <= 10000) return n / 10000;
+  if (abs > 10000) return n / 10000;
   return n;
 }
 
+function formatPercentSmart(value) {
+  const dec = normalizePercentToDecimal(value);
+  if (dec === null) return "—";
+  return (dec * 1e2).toFixed(2) + "%";
+}
+
+function getMcValue(row) {
+  return pickValue(row, [
+    "mc",
+    "MC",
+    "margem",
+    "Margem",
+    "margem_contribuicao",
+    "margemContribuicao",
+    "Margem de Contribuição",
+    "MARGEM DE CONTRIBUIÇÃO",
+    "averageContributionMargin",
+    "contributionMargin",
+  ]);
+}
+
+function getCostValue(row) {
+  const raw = pickValue(row, [
+    "custo",
+    "Custo",
+    "CUSTO",
+    "custo_produto",
+    "custoProduto",
+    "Custo Produto",
+    "CUSTO PRODUTO",
+    "preço de custo",
+    "preco de custo",
+    "Preço de Custo",
+    "PREÇO DE CUSTO",
+    "preco_custo",
+    "preço de custo total",
+    "preco de custo total",
+    "Preço de Custo Total",
+    "PREÇO DE CUSTO TOTAL",
+    "preco_custo_total",
+    "cost",
+    "unitCost",
+    "totalCost",
+  ]);
+  return toNumberSafe(raw);
+}
+
+function normalizeIdentifier(v) {
+  return String(v || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .replace(/[^\w\-#]/g, "");
+}
+
+function getRowIdentifiers(row) {
+  const vals = [];
+  [
+    "item_id",
+    "itemId",
+    "produto_id",
+    "produtoId",
+    "id",
+    "ID",
+    "# de anúncio",
+    "# DE ANÚNCIO",
+    "anuncio",
+    "anúncio",
+    "Anúncio",
+    "MLB",
+    "mlb",
+    "sku",
+    "SKU",
+  ].forEach((k) => {
+    const v = pickValue(row, [k]);
+    if (v !== null && v !== undefined && String(v).trim() !== "") vals.push(v);
+  });
+  return Array.from(new Set(vals.map(normalizeIdentifier).filter(Boolean)));
+}
+
 function classifyRow(row, unmatchedIds) {
-  const unmatchedSet = new Set((Array.isArray(unmatchedIds) ? unmatchedIds : []).map((x) => String(x)));
-  const idVal = pickValue(row, ["item_id", "produto_id", "id", "sku", "mlb", "MLB", "ID"]);
-  const idTxt = idVal == null ? "" : String(idVal).trim();
+  const unmatchedNorm = new Set(
+    (Array.isArray(unmatchedIds) ? unmatchedIds : [])
+      .map((x) => normalizeIdentifier(x))
+      .filter(Boolean)
+  );
+
+  const ids = getRowIdentifiers(row);
+  const isUnmatched = ids.some((id) => unmatchedNorm.has(id));
 
   const temBaseVal = pickValue(row, ["tem_base", "temBase", "hasBase"]);
-  const custoVal = pickValue(row, ["custo", "custo_produto", "cost", "preco_custo", "Preço Custo"]);
+  const temBaseExplicitFalse =
+    temBaseVal === false || String(temBaseVal || "").trim().toLowerCase() === "false";
 
-  const temBase = typeof temBaseVal === "boolean"
-    ? temBaseVal
-    : (String(temBaseVal || "").trim().toLowerCase() === "true");
+  const cost = getCostValue(row);
+  if (!(cost !== null && cost > 0)) {
+    if (isUnmatched || temBaseExplicitFalse) {
+      return "sem_custo";
+    }
+    const lc = toNumberSafe(pickValue(row, ["LC", "lc", "Lucro", "lucro", "contributionProfit", "contribution_profit"]));
+    const receita = toNumberSafe(pickValue(row, ["vendaTotal", "Receita", "receita", "total", "Total", "valor", "Valor", "productRevenue", "paidRevenue"]));
+    const mcDec = normalizePercentToDecimal(getMcValue(row));
+    const hasFinance = (lc !== null) || (receita !== null) || (mcDec !== null);
+    const costKnownZeroOrInvalid = cost === null || cost === 0;
+    if (costKnownZeroOrInvalid && !hasFinance) {
+      return "sem_custo";
+    }
+  }
 
-  const custoNum = toNumberSafe(custoVal);
-  const semCusto = unmatchedSet.has(idTxt) || temBase === false || (custoNum !== null && custoNum === 0);
+  const mc = normalizePercentToDecimal(getMcValue(row));
+  const lc = toNumberSafe(pickValue(row, ["LC", "lc", "Lucro", "lucro", "contributionProfit", "contribution_profit"]));
 
-  const mcRaw = pickValue(row, ["mc", "MC", "margem", "margem_contribuicao"]);
-  const mc = normalizePercent(mcRaw);
+  if (mc !== null) {
+    if (mc < 0) return "critico";
+    if (mc < 0.15) return "atencao";
+    return "saudavel";
+  }
 
-  if (semCusto) return "sem_custo";
-  if (mc === null) return "atencao";
-  if (mc < 0) return "critico";
-  if (mc < 0.15) return "atencao";
-  return "saudavel";
+  if (lc !== null && lc < 0) return "critico";
+  return "atencao";
 }
 
 function buildChartData(payload) {
@@ -169,7 +266,7 @@ function buildChartData(payload) {
     const label = (labelRaw == null || String(labelRaw).trim() === "") ? `Item ${idx + 1}` : String(labelRaw).trim();
     const lc = toNumberSafe(pickValue(r, lcKeys));
     const rev = toNumberSafe(pickValue(r, revKeys));
-    const mc = normalizePercent(pickValue(r, ["mc", "MC", "margem"]));
+    const mc = normalizePercentToDecimal(getMcValue(r));
     const status = classifyRow(r, unmatchedIds);
     return { r, label, lc: lc ?? 0, rev: rev ?? 0, mc, status };
   });
@@ -365,7 +462,7 @@ function applyTableFilters(state, rows, unmatchedIds) {
       const label = pickValue(row, ["produto", "Produto", "titulo", "título", "title", "item_id", "sku", "id", "mlb", "MLB"]) ?? `Item ${idx + 1}`;
       const lc = toNumberSafe(pickValue(row, ["LC", "lc", "Lucro", "lucro", "contributionProfit", "contribution_profit"])) ?? 0;
       const receita = toNumberSafe(pickValue(row, ["vendaTotal", "Receita", "receita", "total", "Total", "valor", "Valor", "productRevenue", "paidRevenue"])) ?? 0;
-      const mc = normalizePercent(pickValue(row, ["MC", "mc", "margem", "margem_contribuicao"]));
+      const mc = normalizePercentToDecimal(getMcValue(row));
       const cls = classifyRow(row, unmatchedIds);
       const obs = pickValue(row, ["observacao", "observação", "diagnostico", "diagnóstico", "status"]) ?? "";
       const hay = `${label} ${JSON.stringify(row)}`.toLowerCase();
@@ -470,7 +567,7 @@ function renderAdvancedTable(payload) {
                   <td>${escapeHTML(it.label || "—")}</td>
                   <td>${it.receita ? escapeHTML(brl(it.receita)) : "—"}</td>
                   <td>${it.lc ? escapeHTML(brl(it.lc)) : "—"}</td>
-                  <td>${it.mc == null ? "—" : escapeHTML(pct(it.mc))}</td>
+                  <td>${it.mc == null ? "—" : escapeHTML(formatPercentSmart(it.mc))}</td>
                   <td><span class="${badgeClass}">${escapeHTML(badgeLabel)}</span></td>
                   <td>${escapeHTML(it.obs || "")}</td>
                 </tr>
@@ -508,7 +605,7 @@ function renderErro(msg) {
 
 function cardValueToText(card) {
   if (!card) return "—";
-  if (card.tipoValor === "pct") return pct(card.raw);
+  if (card.tipoValor === "pct") return formatPercentSmart(card.raw);
   return String(card.valor || "—");
 }
 
@@ -528,11 +625,11 @@ function buildResumoExecutivoMastigado({ finalResult, mcMedia, refundsCount, ref
   if (mcMedia == null) {
     // nada
   } else if (mcMedia < 0) {
-    linhas.push(`A margem média ficou em ${pct(mcMedia)}, o que caracteriza um cenário crítico (margem negativa).`);
+    linhas.push(`A margem média ficou em ${formatPercentSmart(mcMedia)}, o que caracteriza um cenário crítico (margem negativa).`);
   } else if (mcMedia < 0.15) {
-    linhas.push(`A margem média ficou em ${pct(mcMedia)} — é uma faixa que exige atenção e ajustes finos em preço, frete, comissões e custo.`);
+    linhas.push(`A margem média ficou em ${formatPercentSmart(mcMedia)} — é uma faixa que exige atenção e ajustes finos em preço, frete, comissões e custo.`);
   } else {
-    linhas.push(`A margem média ficou em ${pct(mcMedia)}, em um patamar saudável para o período.`);
+    linhas.push(`A margem média ficou em ${formatPercentSmart(mcMedia)}, em um patamar saudável para o período.`);
   }
 
   if ((refundsCount || 0) > 0) {
@@ -623,8 +720,8 @@ function renderEntrega(entrega) {
     { titulo: "Receita Bruta", valor: gross == null ? "—" : brl(gross), subtitulo: "Total vendido no período.", raw: gross, status: "neutro" },
     { titulo: "Receita Líquida", valor: net == null ? "—" : brl(net), subtitulo: "Receita após taxas/reembolsos.", raw: net, status: "neutro" },
     { titulo: "LC Total", valor: lcTotal == null ? "—" : brl(lcTotal), subtitulo: "Lucro de contribuição total.", raw: lcTotal, status: lcTotal > 0 ? "positivo" : (lcTotal < 0 ? "critico" : "neutro") },
-    { titulo: "MC Média", valor: mcMedia == null ? "—" : pct(mcMedia), subtitulo: "Margem de contribuição média.", raw: mcMedia, tipoValor: "pct", status: mcMedia >= 0.15 ? "positivo" : (mcMedia < 0 ? "critico" : "atencao") },
-    { titulo: "TACoS", valor: tacos == null ? "—" : pct(tacos), subtitulo: "ADS como % da receita.", raw: tacos, tipoValor: "pct", status: "neutro" },
+    { titulo: "MC Média", valor: mcMedia == null ? "—" : formatPercentSmart(mcMedia), subtitulo: "Margem de contribuição média.", raw: mcMedia, tipoValor: "pct", status: mcMedia >= 0.15 ? "positivo" : (mcMedia < 0 ? "critico" : "atencao") },
+    { titulo: "TACoS", valor: tacos == null ? "—" : formatPercentSmart(tacos), subtitulo: "ADS como % da receita.", raw: tacos, tipoValor: "pct", status: "neutro" },
     { titulo: "Reembolsos / Cancelamentos", valor: refundsCount == null ? "—" : `${brl(refundsTotal)} (${refundsCount})`, subtitulo: "Impacto e volume de cancelamentos.", raw: refundsTotal, status: (refundsCount || 0) > 0 ? "atencao" : "neutro" },
     { titulo: "Faturamento Perdido", valor: lostRevenueTotal == null ? "—" : brl(-lostRevenueTotal), subtitulo: "Receita de pedidos cancelados.", raw: lostRevenueTotal, status: (lostRevenueTotal || 0) > 0 ? "atencao" : "neutro" },
   ];
@@ -655,14 +752,14 @@ function renderEntrega(entrega) {
   const proximosPassos = [];
 
   if (finalResult != null && finalResult > 0) pontosPositivos.push("Resultado final positivo no período.");
-  if (mcMedia != null && mcMedia >= 0.15) pontosPositivos.push(`Margem média saudável (${pct(mcMedia)}).`);
+    if (mcMedia != null && mcMedia >= 0.15) pontosPositivos.push(`Margem média saudável (${formatPercentSmart(mcMedia)}).`);
   if ((refundsCount || 0) === 0) pontosPositivos.push("Sem cancelamentos/reembolsos relevantes no período.");
 
   if (unmatchedIds.length > 0) pontosAtencao.push(`Base de custos incompleta: ${unmatchedIds.length} item(ns) sem custo cruzado.`);
   if ((refundsCount || 0) > 0) pontosAtencao.push(`Cancelamentos/reembolsos: ${refundsCount} ocorrência(s) com impacto de ${brl(refundsTotal)}.`);
   if ((lostRevenueTotal || 0) > 0) pontosAtencao.push(`Faturamento perdido: ${brl(-lostRevenueTotal)} em pedidos cancelados.`);
-  if (mcMedia != null && mcMedia < 0) pontosAtencao.push(`Margem média negativa (${pct(mcMedia)}): revisar preços e custos é prioritário.`);
-  else if (mcMedia != null && mcMedia < 0.15) pontosAtencao.push(`Margem média em faixa de atenção (${pct(mcMedia)}).`);
+    if (mcMedia != null && mcMedia < 0) pontosAtencao.push(`Margem média negativa (${formatPercentSmart(mcMedia)}): revisar preços e custos é prioritário.`);
+    else if (mcMedia != null && mcMedia < 0.15) pontosAtencao.push(`Margem média em faixa de atenção (${formatPercentSmart(mcMedia)}).`);
 
   if (unmatchedIds.length > 0) recomendacoes.push("Completar a base de custos dos itens pendentes e reprocessar o fechamento para maior precisão.");
   if ((refundsCount || 0) > 0) recomendacoes.push("Acompanhar motivos de cancelamento e revisar anúncios/estoque/prazo para reduzir perdas.");
@@ -701,9 +798,9 @@ function renderEntrega(entrega) {
   const sortedByRevenue = kReceita ? [...produtos].sort((a, b) => (asNum(b, kReceita) ?? -Infinity) - (asNum(a, kReceita) ?? -Infinity)) : [];
 
   const destaque = [];
-  if (sortedByLc.length) destaque.push(...sortedByLc.slice(0, 5).map((r) => ({ titulo: produtoLabel(r), pill: "Melhor LC", main: kLc ? brl(asNum(r, kLc)) : "—", sub: kMc ? `MC: ${pct(asNum(r, kMc))}` : "" })));
-  if (!destaque.length && sortedByMc.length) destaque.push(...sortedByMc.slice(0, 5).map((r) => ({ titulo: produtoLabel(r), pill: "Melhor MC", main: kMc ? pct(asNum(r, kMc)) : "—", sub: kLc ? `LC: ${brl(asNum(r, kLc))}` : "" })));
-  if (!destaque.length && sortedByRevenue.length) destaque.push(...sortedByRevenue.slice(0, 5).map((r) => ({ titulo: produtoLabel(r), pill: "Maior receita", main: brl(asNum(r, kReceita)), sub: kMc ? `MC: ${pct(asNum(r, kMc))}` : "" })));
+  if (sortedByLc.length) destaque.push(...sortedByLc.slice(0, 5).map((r) => ({ titulo: produtoLabel(r), pill: "Melhor LC", main: kLc ? brl(asNum(r, kLc)) : "—", sub: kMc ? `MC: ${formatPercentSmart(asNum(r, kMc))}` : "" })));
+  if (!destaque.length && sortedByMc.length) destaque.push(...sortedByMc.slice(0, 5).map((r) => ({ titulo: produtoLabel(r), pill: "Melhor MC", main: kMc ? formatPercentSmart(asNum(r, kMc)) : "—", sub: kLc ? `LC: ${brl(asNum(r, kLc))}` : "" })));
+  if (!destaque.length && sortedByRevenue.length) destaque.push(...sortedByRevenue.slice(0, 5).map((r) => ({ titulo: produtoLabel(r), pill: "Maior receita", main: brl(asNum(r, kReceita)), sub: kMc ? `MC: ${formatPercentSmart(asNum(r, kMc))}` : "" })));
   const destaqueUnique = destaque.slice(0, 5);
 
   const atencao = [...produtos]
@@ -764,7 +861,7 @@ function renderEntrega(entrega) {
                 return `
                   <tr>
                     <td>${escapeHTML(produtoLabel(x.r))}</td>
-                    <td>${x.mc == null ? "—" : escapeHTML(pct(x.mc))}</td>
+                    <td>${x.mc == null ? "—" : escapeHTML(formatPercentSmart(x.mc))}</td>
                     <td>${x.lc == null ? "—" : escapeHTML(brl(x.lc))}</td>
                     <td><span class="${pillClass}">${escapeHTML(x.tag)}</span></td>
                   </tr>
