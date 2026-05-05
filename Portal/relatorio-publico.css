@@ -706,6 +706,7 @@ html, body{
   .rp-sheet{ box-shadow: none; border: none; border-radius: 0; }
   .rp-cover{ box-shadow:none; border: none; border-radius: 0; padding: 0 0 14px; }
   .rp-section{ box-shadow:none; border: none; border-radius: 0; padding: 14px 0; page-break-inside: avoid; }
+  .rp-print-break{ break-before: page; }
   .rp-card{ page-break-inside: avoid; }
   .rp-callout{ page-break-inside: avoid; }
   .rp-mini{ page-break-inside: avoid; }

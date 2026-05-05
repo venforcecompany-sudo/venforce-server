@@ -321,12 +321,12 @@ function renderCharts(payload) {
       <div class="rp-chart-card">
         <div class="rp-chart-title"><h3>Top produtos por LC</h3></div>
         <div class="rp-chart-canvas"><canvas id="rp-chart-lc"></canvas></div>
-        <div class="rp-note" id="rp-chart-lc-note" style="display:none;"></div>
+        <div class="rp-note" id="rp-chart-lc-note">Top 10 itens por lucro de contribuição. Passe o mouse para ver o nome completo.</div>
       </div>
       <div class="rp-chart-card">
         <div class="rp-chart-title"><h3>Top produtos por faturamento</h3></div>
         <div class="rp-chart-canvas"><canvas id="rp-chart-rev"></canvas></div>
-        <div class="rp-note" id="rp-chart-rev-note" style="display:none;"></div>
+        <div class="rp-note" id="rp-chart-rev-note">Top 10 itens por receita/faturamento. Labels longas são truncadas no eixo.</div>
       </div>
       <div class="rp-chart-card">
         <div class="rp-chart-title"><h3>Composição do fechamento</h3></div>
@@ -336,6 +336,7 @@ function renderCharts(payload) {
       <div class="rp-chart-card">
         <div class="rp-chart-title"><h3>Distribuição dos produtos</h3></div>
         <div class="rp-chart-canvas"><canvas id="rp-chart-status"></canvas></div>
+        <div class="rp-note">Classificação por MC e itens sem custo real (base incompleta).</div>
       </div>
     </div>
   `;
@@ -355,54 +356,73 @@ function renderCharts(payload) {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(n);
   };
 
+  const truncateLabel = (s, max = 24) => {
+    const txt = String(s || "");
+    return txt.length > max ? txt.slice(0, max - 1) + "…" : txt;
+  };
+
   if (elLc && data.topLc.some((x) => (x.lc || 0) !== 0)) {
+    const full = data.topLc.map((x) => x.label);
     host._charts.lc = new window.Chart(elLc, {
       type: "bar",
       data: {
-        labels: data.topLc.map((x) => x.label),
-        datasets: [{ label: "LC", data: data.topLc.map((x) => x.lc), backgroundColor: "rgba(124,58,237,0.55)", borderColor: "rgba(124,58,237,1)", borderWidth: 1 }]
+        labels: full.map((x) => truncateLabel(x, 24)),
+        datasets: [{ label: "LC", data: data.topLc.map((x) => x.lc), backgroundColor: "rgba(109,40,217,0.40)", borderColor: "rgba(109,40,217,1)", borderWidth: 1 }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        indexAxis: "y",
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: (ctx) => ` ${fmtBrl(ctx.parsed.y)}` } }
+          tooltip: {
+            callbacks: {
+              title: (items) => full[items?.[0]?.dataIndex] || "Item",
+              label: (ctx) => ` ${fmtBrl(ctx.parsed.x)}`
+            }
+          }
         },
         scales: {
-          x: { ticks: { color: "#374151", maxRotation: 0, autoSkip: true } },
-          y: { ticks: { color: "#6b7280", callback: (v) => fmtBrl(v) } }
+          x: { ticks: { color: "#6b7280", callback: (v) => fmtBrl(v) }, grid: { color: "rgba(15,23,42,0.06)" } },
+          y: { ticks: { color: "#334155" }, grid: { display: false } }
         }
       }
     });
   } else {
     const note = document.getElementById("rp-chart-lc-note");
-    if (note) { note.style.display = ""; note.textContent = "Dados insuficientes para este gráfico."; }
+    if (note) { note.textContent = "Dados insuficientes para este gráfico."; }
   }
 
   if (elRev && data.topRev.some((x) => (x.rev || 0) !== 0)) {
+    const full = data.topRev.map((x) => x.label);
     host._charts.rev = new window.Chart(elRev, {
       type: "bar",
       data: {
-        labels: data.topRev.map((x) => x.label),
-        datasets: [{ label: "Faturamento", data: data.topRev.map((x) => x.rev), backgroundColor: "rgba(22,163,74,0.55)", borderColor: "rgba(22,163,74,1)", borderWidth: 1 }]
+        labels: full.map((x) => truncateLabel(x, 24)),
+        datasets: [{ label: "Faturamento", data: data.topRev.map((x) => x.rev), backgroundColor: "rgba(22,163,74,0.36)", borderColor: "rgba(22,163,74,1)", borderWidth: 1 }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        indexAxis: "y",
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: (ctx) => ` ${fmtBrl(ctx.parsed.y)}` } }
+          tooltip: {
+            callbacks: {
+              title: (items) => full[items?.[0]?.dataIndex] || "Item",
+              label: (ctx) => ` ${fmtBrl(ctx.parsed.x)}`
+            }
+          }
         },
         scales: {
-          x: { ticks: { color: "#374151", maxRotation: 0, autoSkip: true } },
-          y: { ticks: { color: "#6b7280", callback: (v) => fmtBrl(v) } }
+          x: { ticks: { color: "#6b7280", callback: (v) => fmtBrl(v) }, grid: { color: "rgba(15,23,42,0.06)" } },
+          y: { ticks: { color: "#334155" }, grid: { display: false } }
         }
       }
     });
   } else {
     const note = document.getElementById("rp-chart-rev-note");
-    if (note) { note.style.display = ""; note.textContent = "Dados insuficientes para este gráfico."; }
+    if (note) { note.textContent = "Dados insuficientes para este gráfico."; }
   }
 
   if (elComp && data.composicao.valuesAbs.some((v) => v > 0)) {
@@ -803,23 +823,42 @@ function renderEntrega(entrega) {
   if (!destaque.length && sortedByRevenue.length) destaque.push(...sortedByRevenue.slice(0, 5).map((r) => ({ titulo: produtoLabel(r), pill: "Maior receita", main: brl(asNum(r, kReceita)), sub: kMc ? `MC: ${formatPercentSmart(asNum(r, kMc))}` : "" })));
   const destaqueUnique = destaque.slice(0, 5);
 
-  const atencao = [...produtos]
-    .map((r) => {
-      const mc = asNum(r, kMc);
-      const lc = asNum(r, kLc);
-      const semCusto = false; // no snapshot de itens individuais ainda não temos flag consistente
-      let tag = "Atenção";
-      if (lc != null && lc < 0) tag = "Crítico";
-      if (mc != null && mc < 0) tag = "Crítico";
-      if (semCusto) tag = "Sem custo";
-      return { r, mc, lc, tag };
-    })
+  const lcValueFromRow = (r) =>
+    toNumberSafe(pickValue(r, ["LC", "lc", "Lucro", "lucro", "contributionProfit", "contribution_profit"])) ??
+    (kLc ? asNum(r, kLc) : null);
+  const mcDecFromRow = (r) => normalizePercentToDecimal(getMcValue(r));
+
+  const classificados = produtos.map((r) => {
+    const cls = classifyRow(r, unmatchedIds);
+    return {
+      r,
+      cls,
+      mc: mcDecFromRow(r),
+      lc: lcValueFromRow(r),
+    };
+  });
+
+  const prioridade = (cls) => (cls === "critico" ? 0 : cls === "sem_custo" ? 1 : cls === "atencao" ? 2 : 3);
+
+  const produtosAtencaoLista = classificados
+    .filter((x) => x.cls !== "saudavel")
     .sort((a, b) => {
-      const aScore = (a.mc ?? 0) + (a.lc ?? 0) / 100000;
-      const bScore = (b.mc ?? 0) + (b.lc ?? 0) / 100000;
-      return aScore - bScore;
+      const pa = prioridade(a.cls);
+      const pb = prioridade(b.cls);
+      if (pa !== pb) return pa - pb;
+      const amc = a.mc ?? 999;
+      const bmc = b.mc ?? 999;
+      if (amc !== bmc) return amc - bmc;
+      const alc = a.lc ?? 0;
+      const blc = b.lc ?? 0;
+      return alc - blc;
     })
-    .slice(0, 8);
+    .slice(0, 10);
+
+  const saudaveisMenorMargem = classificados
+    .filter((x) => x.cls === "saudavel" && x.mc !== null)
+    .sort((a, b) => (a.mc ?? 999) - (b.mc ?? 999))
+    .slice(0, 5);
 
   const produtosDestaqueHtml = destaqueUnique.length
     ? `
@@ -838,10 +877,10 @@ function renderEntrega(entrega) {
       </section>
     ` : "";
 
-  const produtosAtencaoHtml = atencao.length
-    ? `
-      <section class="rp-section">
-        <h2 class="rp-section-title">Produtos em atenção</h2>
+  const produtosAtencaoHtml = `
+    <section class="rp-section">
+      <h2 class="rp-section-title">Produtos em atenção</h2>
+      ${produtosAtencaoLista.length ? `
         <div style="overflow:auto;">
           <table class="rp-table">
             <thead>
@@ -853,25 +892,63 @@ function renderEntrega(entrega) {
               </tr>
             </thead>
             <tbody>
-              ${atencao.map((x) => {
+              ${produtosAtencaoLista.map((x) => {
+                const tag =
+                  x.cls === "critico" ? "Crítico" :
+                  x.cls === "sem_custo" ? "Sem custo" :
+                  "Atenção";
                 const pillClass =
-                  x.tag === "Crítico" ? "rp-pill rp-pill-critical" :
-                  x.tag === "Sem custo" ? "rp-pill rp-pill-attn" :
+                  x.cls === "critico" ? "rp-pill rp-pill-critical" :
+                  x.cls === "sem_custo" ? "rp-pill rp-pill-attn" :
                   "rp-pill rp-pill-attn";
                 return `
                   <tr>
                     <td>${escapeHTML(produtoLabel(x.r))}</td>
                     <td>${x.mc == null ? "—" : escapeHTML(formatPercentSmart(x.mc))}</td>
                     <td>${x.lc == null ? "—" : escapeHTML(brl(x.lc))}</td>
-                    <td><span class="${pillClass}">${escapeHTML(x.tag)}</span></td>
+                    <td><span class="${pillClass}">${escapeHTML(tag)}</span></td>
                   </tr>
                 `;
               }).join("")}
             </tbody>
           </table>
         </div>
+      ` : `
+        <div class="rp-muted-box">Nenhum produto crítico ou em atenção encontrado neste fechamento.</div>
+      `}
+    </section>
+  `;
+
+  const produtosMenorMargemHtml = saudaveisMenorMargem.length
+    ? `
+      <section class="rp-section">
+        <h2 class="rp-section-title">Produtos de menor margem</h2>
+        <p class="rp-lead">Itens saudáveis (MC ≥ 15%), mas que merecem acompanhamento por estarem entre as menores margens da amostra.</p>
+        <div style="overflow:auto;">
+          <table class="rp-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>MC</th>
+                <th>LC</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${saudaveisMenorMargem.map((x) => `
+                <tr>
+                  <td>${escapeHTML(produtoLabel(x.r))}</td>
+                  <td>${x.mc == null ? "—" : escapeHTML(formatPercentSmart(x.mc))}</td>
+                  <td>${x.lc == null ? "—" : escapeHTML(brl(x.lc))}</td>
+                  <td><span class="rp-pill rp-pill-muted">Saudável</span></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
       </section>
-    ` : "";
+    `
+    : "";
 
   // Seções "internas" do payload (ex.: unmatchedIds) - melhoradas e sem parecer erro técnico
   const secoesMelhoradas = [];
@@ -944,11 +1021,70 @@ function renderEntrega(entrega) {
   let tabelasHtml = "";
   if (Array.isArray(detailedRows) && detailedRows.length > 0) {
     const sample = detailedRows.slice(0, 30);
+
+    const headerMap = (col) => {
+      const k = normalizeKey(col);
+      if (k === "lc") return "LC (R$)";
+      if (k === "mc") return "MC (%)";
+      if (k.includes("imposto")) return "Imposto (%)";
+      if (k.includes("total") && k.includes("brl")) return "Total recebido";
+      if (k.includes("venda") && k.includes("total")) return "Valor vendido";
+      if (k.includes("#") && k.includes("anuncio")) return "Anúncio";
+      if (k.includes("anuncio")) return "Anúncio";
+      if (k.includes("preco") && k.includes("custo") && k.includes("total")) return "Custo total";
+      if (k.includes("preco") && k.includes("custo")) return "Custo unit.";
+      if (k.includes("titulo") || k.includes("title")) return "Produto";
+      return col;
+    };
+
+    const isPercentCol = (col) => {
+      const k = normalizeKey(col);
+      return k === "mc" || k.includes("imposto") || k.includes("percent") || k.includes("%");
+    };
+    const isMoneyCol = (col) => {
+      const k = normalizeKey(col);
+      return k === "lc" || k.includes("custo") || k.includes("preco") || k.includes("valor") || k.includes("receita") || k.includes("total") || k.includes("brl") || k.includes("lucro");
+    };
+    const isQtyCol = (col) => {
+      const k = normalizeKey(col);
+      return k.includes("qtd") || k.includes("quant") || k.includes("unid") || k.includes("units") || k.includes("qty");
+    };
+
+    const formatCell = (col, value) => {
+      if (value === null || value === undefined || String(value).trim() === "") return "—";
+      const n = toNumberSafe(value);
+      if (n === null) return String(value);
+      if (isPercentCol(col)) {
+        // para MC e imposto: aceitar escala 0-1, 0-100 ou bugada
+        return formatPercentSmart(value);
+      }
+      if (isMoneyCol(col)) return brl(n);
+      if (isQtyCol(col)) return new Intl.NumberFormat("pt-BR").format(n);
+      return String(value);
+    };
+
+    // Colunas prioritárias (com fallback a colunas existentes)
     const first = sample[0] || {};
-    const cols = Object.keys(first).slice(0, 10);
-    const head = cols.map((c) => `<th>${escapeHTML(c)}</th>`).join("");
+    const allCols = Object.keys(first);
+    const pickFromAll = (cands) => allCols.find((c) => cands.includes(normalizeKey(c))) || null;
+    const colsPreferred = [
+      pickFromAll(["titulo", "title", "titulo_do_anuncio", "titulodoanuncio"]),
+      pickFromAll(["item_id", "produto_id", "id", "sku", "mlb"]),
+      pickFromAll(["venda_total", "vendatotal", "receita", "total", "valor", "paidrevenue", "productrevenue"]),
+      pickFromAll(["lc", "lucro", "contributionprofit"]),
+      pickFromAll(["mc", "margem", "margem_contribuicao"]),
+      pickFromAll(["imposto", "imposto_percentual"]),
+      pickFromAll(["preco_de_custo", "preco_custo", "custo", "custo_produto"]),
+      pickFromAll(["preco_de_custo_total", "preco_custo_total", "custo_total", "totalcost"]),
+      pickFromAll(["#_de_anuncio", "#deanuncio", "anuncio"]),
+    ].filter(Boolean);
+
+    const colsFallback = colsPreferred.length ? colsPreferred : allCols.slice(0, 10);
+    const cols = Array.from(new Set(colsFallback)).slice(0, 10);
+
+    const head = cols.map((c) => `<th>${escapeHTML(headerMap(c))}</th>`).join("");
     const body = sample.map((row) => {
-      const tds = cols.map((c) => `<td>${escapeHTML(row?.[c] ?? "")}</td>`).join("");
+      const tds = cols.map((c) => `<td>${escapeHTML(formatCell(c, row?.[c]))}</td>`).join("");
       return `<tr>${tds}</tr>`;
     }).join("");
     const totalOriginal = safeNumber(snapshot?.detailedRowsTotal, null);
@@ -991,12 +1127,41 @@ function renderEntrega(entrega) {
     }).join("");
   }
 
-  const resumoFinal = (() => {
+  const conclusaoFechamento = (() => {
+    const rowsAll = getRows(payload);
+    const counts = { saudavel: 0, atencao: 0, critico: 0, sem_custo: 0 };
+    rowsAll.forEach((r) => { const c = classifyRow(r, unmatchedIds); counts[c] = (counts[c] || 0) + 1; });
+
     const frases = [];
-    if (statusGeral.id === "positivo") frases.push("Cenário geral positivo. Foque em manter consistência e escalar os itens com melhor margem.");
-    if (statusGeral.id === "atencao") frases.push("Cenário geral com pontos de atenção. Priorize ajustes nos itens críticos e revalide custos.");
-    if (statusGeral.id === "critico") frases.push("Cenário geral crítico. Recomendamos ação imediata em preços/custos e redução de perdas.");
-    if (unmatchedIds.length > 0) frases.push("Completar custos pendentes deve ser a primeira etapa para aumentar a precisão.");
+    if (finalResult != null && finalResult > 0) frases.push("O fechamento apresentou resultado positivo.");
+    else if (finalResult != null && finalResult < 0) frases.push("O fechamento apresentou resultado negativo.");
+    else frases.push("O fechamento ficou próximo do ponto de equilíbrio.");
+
+    if (mcMedia != null) {
+      if (mcMedia < 0) frases.push(`A margem média está crítica (${formatPercentSmart(mcMedia)}).`);
+      else if (mcMedia < 0.15) frases.push(`A margem média exige atenção (${formatPercentSmart(mcMedia)}).`);
+      else frases.push(`A margem média está saudável (${formatPercentSmart(mcMedia)}).`);
+    }
+
+    const pontos = [];
+    if ((refundsCount || 0) > 0) pontos.push("cancelamentos/reembolsos");
+    if ((lostRevenueTotal || 0) > 0) pontos.push("faturamento perdido");
+    if ((counts.sem_custo || 0) > 0) pontos.push("itens sem custo cadastrado");
+    if ((counts.critico || 0) > 0) pontos.push("produtos críticos");
+    if ((counts.atencao || 0) > 0) pontos.push("produtos em atenção");
+
+    if (pontos.length) {
+      frases.push(`Os principais pontos de atenção foram: ${pontos.slice(0, 4).join(", ")}.`);
+    }
+
+    const recs = [];
+    if ((counts.sem_custo || 0) > 0) recs.push("revisar a base de custos e reprocessar");
+    if ((counts.critico || 0) > 0 || (counts.atencao || 0) > 0) recs.push("priorizar ajustes nos itens de menor margem");
+    if ((refundsCount || 0) > 0) recs.push("acompanhar cancelamentos para reduzir perdas");
+    if (recs.length) {
+      frases.push(`Recomendação: ${recs.slice(0, 3).join(", ")} antes do próximo período.`);
+    }
+
     return frases.join(" ");
   })();
 
@@ -1066,17 +1231,18 @@ function renderEntrega(entrega) {
 
       ${produtosDestaqueHtml}
       ${produtosAtencaoHtml}
+      ${produtosMenorMargemHtml}
       ${secoesHtml}
       ${tabelasHtml}
 
-      <section class="rp-section">
+      <section class="rp-section rp-print-break">
         <h2 class="rp-section-title">Detalhamento dos produtos</h2>
         <div id="rp-table-host"></div>
       </section>
 
       <section class="rp-section">
-        <h2 class="rp-section-title">Resumo final</h2>
-        <p class="rp-lead">${escapeHTML(resumoFinal || "—")}</p>
+        <h2 class="rp-section-title">Conclusão do fechamento</h2>
+        <p class="rp-lead">${escapeHTML(conclusaoFechamento || "—")}</p>
       </section>
     </article>
   `;
