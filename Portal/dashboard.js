@@ -44,6 +44,141 @@ const stateError   = document.getElementById("state-error");
 const basesCount   = document.getElementById("bases-count");
 const basesTbody   = document.getElementById("bases-tbody");
 
+// ─── Estado (filtros frontend) ───
+let TODAS_BASES = [];
+let BASES_FILTRO_MARKETPLACE = "todos";
+let BASES_BUSCA = "";
+
+// ─── Estado (exclusão) ───
+let BASE_DELETE_PENDENTE = null; // { slug, nome, btn }
+
+function setDashboardFeedback(msg, type = "neutral") {
+  const el = document.getElementById("bases-feedback");
+  if (!el) return;
+  el.classList.remove("show", "vf-alert-success", "vf-alert-danger");
+  el.textContent = "";
+  if (!msg) { el.style.display = "none"; return; }
+  const cls = type === "success" ? "vf-alert-success" : (type === "danger" ? "vf-alert-danger" : "");
+  if (cls) el.classList.add(cls);
+  el.classList.add("show");
+  el.style.display = "flex";
+  el.textContent = msg;
+}
+
+function detectarMarketplaceBase(base) {
+  const raw = String(base?.marketplace || "").toLowerCase().trim();
+  if (raw) {
+    const key = raw.includes("shop") ? "shopee" : (raw.includes("meli") || raw.includes("ml") ? "meli" : "outro");
+    if (key === "shopee") return { key: "shopee", label: "Shopee" };
+    if (key === "meli") return { key: "meli", label: "Mercado Livre" };
+    return { key: "outro", label: "Não identificado" };
+  }
+
+  const nome = String(base?.nome || "").toLowerCase();
+  const slug = String(base?.slug || "").toLowerCase();
+  const hay = `${nome} ${slug}`;
+
+  if (/(shopee|\\bshop\\b|\\bspf\\b|seller\\s*shopee)/i.test(hay)) return { key: "shopee", label: "Shopee" };
+  if (/(\\bmeli\\b|\\bml\\b|mercado[_\\-\\s]?livre|mercadolivre)/i.test(hay)) return { key: "meli", label: "Mercado Livre" };
+  return { key: "outro", label: "Não identificado" };
+}
+
+function getBasesFiltradas() {
+  const termo = String(BASES_BUSCA || "").toLowerCase().trim();
+  return (Array.isArray(TODAS_BASES) ? TODAS_BASES : []).filter((b) => {
+    const mp = detectarMarketplaceBase(b);
+    if (BASES_FILTRO_MARKETPLACE !== "todos" && mp.key !== BASES_FILTRO_MARKETPLACE) return false;
+    if (!termo) return true;
+    const hay = `${b?.nome || ""} ${b?.slug || ""}`.toLowerCase();
+    return hay.includes(termo);
+  });
+}
+
+function renderBasesChips() {
+  const wrap = document.getElementById("bases-filter-chips");
+  if (!wrap) return;
+  const chips = [
+    { key: "todos", label: "Todos" },
+    { key: "meli", label: "Mercado Livre" },
+    { key: "shopee", label: "Shopee" },
+    { key: "outro", label: "Não identificado" },
+  ];
+  wrap.innerHTML = chips.map((c) => {
+    const active = c.key === BASES_FILTRO_MARKETPLACE ? "active" : "";
+    return `<button type="button" class="vf-ml-filter-btn ${active}" data-base-filter="${escapeHTML(c.key)}">${escapeHTML(c.label)}</button>`;
+  }).join("");
+  wrap.querySelectorAll("[data-base-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      BASES_FILTRO_MARKETPLACE = btn.getAttribute("data-base-filter") || "todos";
+      renderBasesChips();
+      renderBases(getBasesFiltradas());
+    });
+  });
+}
+
+function renderBasesSummary() {
+  const el = document.getElementById("bases-summary");
+  if (!el) return;
+  const bases = getBasesFiltradas();
+  const total = bases.length;
+  const meli = bases.filter((b) => detectarMarketplaceBase(b).key === "meli").length;
+  const shopee = bases.filter((b) => detectarMarketplaceBase(b).key === "shopee").length;
+  const outro = bases.filter((b) => detectarMarketplaceBase(b).key === "outro").length;
+  const cards = [
+    { label: "Total de bases", value: String(total) },
+    { label: "Mercado Livre", value: String(meli) },
+    { label: "Shopee", value: String(shopee) },
+    { label: "Não identificado", value: String(outro) },
+  ];
+  el.innerHTML = cards.map((c) => `
+    <div class="vf-relatorios-summary-card">
+      <div class="vf-relatorios-summary-label">${escapeHTML(c.label)}</div>
+      <div class="vf-relatorios-summary-value">${escapeHTML(c.value)}</div>
+    </div>
+  `).join("");
+}
+
+function abrirModalExcluirBase({ slug, nome, btn }) {
+  const modal = document.getElementById("vf-excluir-base-modal");
+  const sub = document.getElementById("vf-excluir-base-subtitle");
+  const danger = document.getElementById("vf-excluir-base-danger");
+  const confirmBtn = document.getElementById("vf-excluir-base-confirm");
+  if (!modal || !confirmBtn) return;
+
+  BASE_DELETE_PENDENTE = { slug, nome, btn };
+  if (sub) sub.textContent = nome || slug || "";
+  if (danger) { danger.style.display = "none"; danger.textContent = ""; }
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = "Excluir base";
+  modal.style.display = "flex";
+}
+
+function fecharModalExcluirBase() {
+  const modal = document.getElementById("vf-excluir-base-modal");
+  if (modal) modal.style.display = "none";
+  BASE_DELETE_PENDENTE = null;
+}
+
+async function confirmarExclusaoBase() {
+  const danger = document.getElementById("vf-excluir-base-danger");
+  const confirmBtn = document.getElementById("vf-excluir-base-confirm");
+  if (!BASE_DELETE_PENDENTE) return;
+  const { slug, btn } = BASE_DELETE_PENDENTE;
+
+  if (danger) { danger.style.display = "none"; danger.textContent = ""; }
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = "Excluindo..."; }
+
+  try {
+    await deleteBase(slug, btn);
+    fecharModalExcluirBase();
+  } catch (err) {
+    const msg = err?.message || "Não foi possível excluir a base.";
+    if (danger) { danger.style.display = "block"; danger.textContent = msg; }
+    else setDashboardFeedback(msg, "danger");
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "Excluir base"; }
+  }
+}
+
 function showLoading() {
   stateLoading.style.display = "flex";
   stateTable.style.display   = stateEmpty.style.display = stateError.style.display = "none";
@@ -72,7 +207,10 @@ async function loadBases() {
     if (res.status === 401) { clearSession(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { bases } = await res.json();
-    renderBases(Array.isArray(bases) ? bases : []);
+    TODAS_BASES = Array.isArray(bases) ? bases : [];
+    renderBasesChips();
+    renderBasesSummary();
+    renderBases(getBasesFiltradas());
   } catch (err) {
     showError("Não foi possível carregar as bases. Tente novamente.");
   }
@@ -88,6 +226,7 @@ function renderBases(bases) {
   bases.forEach((base, i) => {
     const data = new Date(base.updated_at).toLocaleString();
     const ativo = base.ativo !== false;
+    const mp = detectarMarketplaceBase(base);
     const tr    = document.createElement("tr");
     tr.classList.add("animate-fade-up");
     tr.style.animationDelay = `${i * 0.04}s`;
@@ -99,20 +238,23 @@ function renderBases(bases) {
     ${data || "--"}
   </td>
       <td style="text-align:center;">
-        <span class="${ativo ? "base-status--active" : "base-status--inactive"}">${ativo ? "Ativa" : "Inativa"}</span>
+        <span class="vf-status-pill ${mp.key === "meli" ? "vf-status-pill-success" : (mp.key === "shopee" ? "vf-status-pill-warning" : "vf-status-pill-neutral")}">${escapeHTML(mp.label)}</span>
       </td>
       <td style="text-align:center;">
-        <button class="vf-btn-danger-sm" data-slug="${escapeHTML(base.slug)}" data-nome="${escapeHTML(base.nome || base.slug)}">Excluir</button>
+        <span class="vf-status-pill ${ativo ? "vf-status-pill-success" : "vf-status-pill-danger"}">${ativo ? "Ativa" : "Inativa"}</span>
+      </td>
+      <td style="text-align:center;">
+        <div class="vf-table-actions">
+          <button class="vf-action-btn vf-action-btn-danger" data-slug="${escapeHTML(base.slug)}" data-nome="${escapeHTML(base.nome || base.slug)}">Excluir</button>
+        </div>
       </td>`;
     basesTbody.appendChild(tr);
   });
 
-  basesTbody.querySelectorAll(".vf-btn-danger-sm").forEach(btn => {
+  basesTbody.querySelectorAll("button[data-slug]").forEach(btn => {
     btn.addEventListener("click", () => {
       const { slug, nome } = btn.dataset;
-      if (confirm(`Excluir permanentemente a base "${nome}"?\n\nEsta ação não pode ser desfeita.`)) {
-        deleteBase(slug, btn);
-      }
+      abrirModalExcluirBase({ slug, nome, btn });
     });
   });
 
@@ -130,11 +272,14 @@ async function deleteBase(slug, btn) {
     if (res.status === 401) { clearSession(); return; }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.erro || `HTTP ${res.status}`);
+    setDashboardFeedback(`Base "${slug}" excluída com sucesso.`, "success");
     loadBases();
+    return true;
   } catch (err) {
-    alert("Erro ao excluir: " + err.message);
+    setDashboardFeedback("Erro ao excluir: " + err.message, "danger");
     btn.disabled    = false;
     btn.textContent = "Excluir";
+    throw err;
   }
 }
 
@@ -144,6 +289,54 @@ document.getElementById("import-arquivo").addEventListener("change", (e) => {
   document.getElementById("file-label-text").textContent = f ? f.name : "Escolher arquivo…";
   document.getElementById("file-label").classList.toggle("has-file", !!f);
 });
+
+function validarArquivoImportacao(file) {
+  const name = String(file?.name || "").toLowerCase();
+  return name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv");
+}
+
+function setArquivoSelecionado(file) {
+  const input = document.getElementById("import-arquivo");
+  if (!input || !file) return;
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  input.files = dt.files;
+  document.getElementById("file-label-text").textContent = file.name;
+  document.getElementById("file-label").classList.add("has-file");
+}
+
+// Drag & drop (1 arquivo) na dropzone
+const dropLabel = document.getElementById("file-label");
+if (dropLabel) {
+  ["dragenter", "dragover"].forEach((evt) => {
+    dropLabel.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropLabel.classList.add("vf-dropzone-dragover");
+    });
+  });
+  ["dragleave", "drop"].forEach((evt) => {
+    dropLabel.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropLabel.classList.remove("vf-dropzone-dragover");
+    });
+  });
+  dropLabel.addEventListener("drop", (e) => {
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (!files.length) return;
+    const file = files[0];
+    if (files.length > 1) {
+      setImportStatus("Nesta versão, é permitido apenas 1 arquivo. Usando o primeiro.", "var(--vf-text-m)");
+    }
+    if (!validarArquivoImportacao(file)) {
+      setImportStatus("Arquivo inválido. Envie .xlsx, .xls ou .csv.", "var(--vf-danger)");
+      return;
+    }
+    setImportStatus("", "");
+    setArquivoSelecionado(file);
+  });
+}
 
 // ─── Preview ───
 let pendingPreviewData = null; // guarda payload para confirmar depois
@@ -263,8 +456,30 @@ document.getElementById("btn-importar").addEventListener("click", async () => {
   }
 });
 
+// Busca + chips
+const basesBuscaInput = document.getElementById("bases-busca");
+if (basesBuscaInput) {
+  basesBuscaInput.addEventListener("input", (e) => {
+    BASES_BUSCA = e.target.value || "";
+    renderBasesSummary();
+    renderBases(getBasesFiltradas());
+  });
+}
+
 // ─── Logout + Retry ───
 document.getElementById("btn-retry").addEventListener("click", loadBases);
+
+// Modal excluir base
+document.getElementById("vf-excluir-base-close")?.addEventListener("click", fecharModalExcluirBase);
+document.getElementById("vf-excluir-base-cancel")?.addEventListener("click", fecharModalExcluirBase);
+document.getElementById("vf-excluir-base-confirm")?.addEventListener("click", confirmarExclusaoBase);
+document.getElementById("vf-excluir-base-modal")?.addEventListener("click", (e) => {
+  if (e.target?.id === "vf-excluir-base-modal") fecharModalExcluirBase();
+});
+document.addEventListener("keydown", (e) => {
+  const modal = document.getElementById("vf-excluir-base-modal");
+  if (e.key === "Escape" && modal && modal.style.display !== "none") fecharModalExcluirBase();
+});
 
 // ─── Init ───
 if (TOKEN) loadBases();
