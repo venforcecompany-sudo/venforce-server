@@ -58,6 +58,7 @@ const fechamentosFinanceiroRoutes = require("./routes/fechamentosFinanceiroRoute
 const mlRoutes = require("./routes/mlRoutes");
 const automacoesRoutes = require("./routes/automacoesRoutes");
 const entregasClienteRoutes = require("./routes/entregasClienteRoutes");
+const basesRoutes = require("./routes/basesRoutes");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
 
 const app = express();
@@ -408,6 +409,7 @@ app.use("/fechamentos", fechamentosFinanceiroRoutes);
 app.use("/", mlRoutes);
 app.use("/", automacoesRoutes);
 app.use("/", entregasClienteRoutes);
+app.use("/", basesRoutes);
 
 app.post("/scans", authMiddleware, async (req, res) => {
   try {
