@@ -28,6 +28,10 @@ let PASTA_SELECIONADA = "todos";
 let DETALHE_ITENS = [];
 let DETALHE_FILTRO_ATIVO = "todos";
 let DETALHE_BUSCA = "";
+let DETALHE_RELATORIO_ATUAL = null;
+let BASE_EDITOR_ITEM_ATUAL = null;
+let BASE_EDITOR_BASE_SLUG_ATUAL = null;
+let BASE_EDITOR_PADRAO_CACHE = new Map(); // baseSlug -> { imposto_percentual, taxa_fixa }
 const DETALHE_FILTROS_RAPIDOS = [
   { key: "todos", label: "Todos" },
   { key: "critico", label: "Críticos" },
@@ -107,6 +111,229 @@ function diagnosticoItemSalvo(item) {
   if (raw === "saudavel") return { key: "saudavel", label: "Saudável", tone: "success" };
 
   return { key: raw || "sem_dados", label: raw || "Sem dados", tone: "neutral" };
+}
+
+function formatarPercentualInput(valorDecimal) {
+  const n = Number(valorDecimal);
+  if (!Number.isFinite(n)) return "";
+  return String((n * 100));
+}
+
+function parsePercentualInput(valorUsuario) {
+  const raw = String(valorUsuario ?? "").trim();
+  if (!raw) return null;
+  const n = Number(raw.replace(",", "."));
+  if (!Number.isFinite(n)) return null;
+  return n / 100;
+}
+
+function setEditorBaseFeedback(msg, color = "var(--vf-text-m)") {
+  const el = document.getElementById("vf-base-custo-rapido-feedback");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.style.color = color;
+  el.style.display = msg ? "block" : "none";
+}
+
+async function carregarPadraoCustoBase(baseSlug) {
+  const slug = String(baseSlug || "").trim();
+  if (!slug || !TOKEN) return { imposto_percentual: 0, taxa_fixa: 0 };
+  if (BASE_EDITOR_PADRAO_CACHE.has(slug)) return BASE_EDITOR_PADRAO_CACHE.get(slug);
+
+  const res = await fetch(`${API_BASE}/bases/${encodeURIComponent(slug)}/custos/padrao`, {
+    headers: { Authorization: "Bearer " + TOKEN },
+  });
+
+  if (res.status === 401) {
+    clearSession();
+    return { imposto_percentual: 0, taxa_fixa: 0 };
+  }
+  if (res.status === 403) {
+    window.location.replace("dashboard.html");
+    return { imposto_percentual: 0, taxa_fixa: 0 };
+  }
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.ok) {
+    throw new Error(json?.erro || `HTTP ${res.status}`);
+  }
+
+  const padrao = {
+    imposto_percentual: Number(json?.padrao?.imposto_percentual) || 0,
+    taxa_fixa: Number(json?.padrao?.taxa_fixa) || 0,
+  };
+  BASE_EDITOR_PADRAO_CACHE.set(slug, padrao);
+  return padrao;
+}
+
+async function abrirEditorCustoBase(item) {
+  const modal = document.getElementById("vf-base-custo-rapido-modal");
+  if (!modal) return;
+
+  const baseSlug = String(DETALHE_RELATORIO_ATUAL?.base_slug || "").trim();
+  if (!baseSlug) {
+    setFeedback("Relatório sem base_slug. Não foi possível abrir o editor rápido.", "var(--vf-danger)");
+    return;
+  }
+
+  BASE_EDITOR_ITEM_ATUAL = item || null;
+  BASE_EDITOR_BASE_SLUG_ATUAL = baseSlug;
+
+  setEditorBaseFeedback("");
+  modal.style.display = "flex";
+
+  const subtitulo = document.getElementById("vf-base-custo-rapido-subtitulo");
+  if (subtitulo) subtitulo.textContent = `base=${baseSlug}`;
+
+  const produtoIdEl = document.getElementById("vf-base-custo-produto-id");
+  const skuEl = document.getElementById("vf-base-custo-sku");
+  const tituloEl = document.getElementById("vf-base-custo-titulo");
+  const custoEl = document.getElementById("vf-base-custo-custo-produto");
+  const impostoEl = document.getElementById("vf-base-custo-imposto");
+  const taxaEl = document.getElementById("vf-base-custo-taxa");
+
+  if (produtoIdEl) produtoIdEl.value = String(item?.item_id || "");
+  if (skuEl) skuEl.textContent = item?.sku ? String(item.sku) : "—";
+  if (tituloEl) tituloEl.textContent = item?.titulo ? String(item.titulo) : "—";
+
+  const custoNum = Number(item?.custo);
+  if (custoEl) custoEl.value = Number.isFinite(custoNum) && custoNum > 0 ? String(custoNum) : "";
+
+  if (impostoEl) impostoEl.value = "";
+  if (taxaEl) taxaEl.value = "";
+
+  const saveBtn = document.getElementById("vf-base-custo-rapido-save");
+  if (saveBtn) saveBtn.disabled = true;
+
+  try {
+    const padrao = await carregarPadraoCustoBase(baseSlug);
+    if (impostoEl) impostoEl.value = formatarPercentualInput(padrao.imposto_percentual);
+    if (taxaEl) taxaEl.value = String(padrao.taxa_fixa ?? 0);
+  } catch (err) {
+    setEditorBaseFeedback(
+      `Não foi possível carregar o padrão da base. Você ainda pode salvar informando os campos manualmente. (${err?.message || "erro"})`,
+      "var(--vf-danger)"
+    );
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+function fecharEditorCustoBase() {
+  const modal = document.getElementById("vf-base-custo-rapido-modal");
+  if (modal) modal.style.display = "none";
+  setEditorBaseFeedback("");
+  BASE_EDITOR_ITEM_ATUAL = null;
+  BASE_EDITOR_BASE_SLUG_ATUAL = null;
+}
+
+async function salvarCustoBaseRapido() {
+  if (!TOKEN) return;
+  const baseSlug = String(BASE_EDITOR_BASE_SLUG_ATUAL || "").trim();
+  if (!baseSlug) return;
+
+  const produtoIdEl = document.getElementById("vf-base-custo-produto-id");
+  const custoEl = document.getElementById("vf-base-custo-custo-produto");
+  const impostoEl = document.getElementById("vf-base-custo-imposto");
+  const taxaEl = document.getElementById("vf-base-custo-taxa");
+  const saveBtn = document.getElementById("vf-base-custo-rapido-save");
+
+  const produto_id = String(produtoIdEl?.value || "").trim();
+  const custoRaw = String(custoEl?.value || "").trim();
+  const custoNum = Number(custoRaw.replace(",", "."));
+
+  if (!produto_id) {
+    setEditorBaseFeedback("Produto ID / MLB é obrigatório.", "var(--vf-danger)");
+    produtoIdEl?.classList.add("is-invalid");
+    return;
+  }
+  produtoIdEl?.classList.remove("is-invalid");
+
+  if (!custoRaw || !Number.isFinite(custoNum)) {
+    setEditorBaseFeedback("Custo produto é obrigatório e numérico.", "var(--vf-danger)");
+    custoEl?.classList.add("is-invalid");
+    return;
+  }
+  custoEl?.classList.remove("is-invalid");
+
+  const impostoDec = parsePercentualInput(impostoEl?.value);
+  const taxaRaw = String(taxaEl?.value ?? "").trim();
+  const taxaNum = taxaRaw ? Number(taxaRaw.replace(",", ".")) : null;
+  if (taxaRaw && !Number.isFinite(taxaNum)) {
+    setEditorBaseFeedback("Taxa fixa deve ser numérica.", "var(--vf-danger)");
+    taxaEl?.classList.add("is-invalid");
+    return;
+  }
+  taxaEl?.classList.remove("is-invalid");
+
+  if (impostoEl?.value && impostoDec == null) {
+    setEditorBaseFeedback("Imposto % deve ser numérico.", "var(--vf-danger)");
+    impostoEl?.classList.add("is-invalid");
+    return;
+  }
+  impostoEl?.classList.remove("is-invalid");
+
+  const payload = {
+    produto_id,
+    custo_produto: custoNum,
+  };
+
+  // Se imposto/taxa estiverem vazios, não envia (service aplica padrão / mantém antigo)
+  if (impostoDec != null) payload.imposto_percentual = impostoDec;
+  if (taxaNum != null) payload.taxa_fixa = taxaNum;
+
+  try {
+    setEditorBaseFeedback("");
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = `<span class="btn-spinner" style="border-color:rgba(255,255,255,.35);border-top-color:#fff;"></span> Salvando...`;
+    }
+
+    const res = await fetch(`${API_BASE}/bases/${encodeURIComponent(baseSlug)}/custos/upsert`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + TOKEN,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.status === 401) {
+      clearSession();
+      return;
+    }
+    if (res.status === 403) {
+      window.location.replace("dashboard.html");
+      return;
+    }
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+
+    setEditorBaseFeedback(
+      "Item salvo na base. Para atualizar este relatório, use a próxima etapa: Atualizar com base nova.",
+      "var(--vf-success)"
+    );
+
+    // opcional: marcar botão da linha como salvo na base (sem alterar item visualmente)
+    const itemId = String(BASE_EDITOR_ITEM_ATUAL?.item_id || "");
+    const btnLinha = itemId
+      ? document.querySelector(`button[data-base-editor-item="${CSS.escape(itemId)}"]`)
+      : null;
+    if (btnLinha) {
+      btnLinha.textContent = "Salvo na base";
+      btnLinha.disabled = true;
+    }
+  } catch (err) {
+    setEditorBaseFeedback(`Erro ao salvar na base: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Salvar na base";
+    }
+  }
 }
 
 function setListState(state, message = "") {
@@ -722,7 +949,7 @@ function renderDetalheItens() {
 
   if (!lista.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="14" style="color:var(--vf-text-m);">Nenhum item encontrado</td>`;
+    tr.innerHTML = `<td colspan="15" style="color:var(--vf-text-m);">Nenhum item encontrado</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -740,6 +967,9 @@ function renderDetalheItens() {
 
   lista.forEach((it) => {
     const diag = diagnosticoItemSalvo(it);
+    const temBase = it?.tem_base === true || it?.tem_base === 1 || it?.tem_base === "1";
+    const baseBtnLabel = temBase ? "Atualizar custo" : "Adicionar à base";
+    const baseBtnDisabled = false;
     const lcN = Number(it.lc);
     const mcN = Number(it.mc);
     const lcColor = !Number.isFinite(lcN) ? "" : (lcN > 0 ? "color:var(--vf-success);" : (lcN < 0 ? "color:var(--vf-danger);" : ""));
@@ -770,8 +1000,27 @@ function renderDetalheItens() {
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_sugerido ?? it.preco_alvo))}</td>
       <td><span class="vf-ml-badge vf-ml-badge-${diag.tone}">${escapeHTML(diag.label)}</span></td>
       <td>${escapeHTML(it.acao_recomendada || "—")}</td>
+      <td>
+        <button
+          type="button"
+          class="vf-btn-secondary btn-base-editor"
+          data-base-editor-item="${escapeHTML(String(it.item_id || ""))}"
+          style="margin:0;padding:.25rem .6rem;font-size:.75rem;white-space:nowrap;"
+          ${baseBtnDisabled ? "disabled" : ""}
+        >${escapeHTML(baseBtnLabel)}</button>
+      </td>
     `;
     tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll(".btn-base-editor").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const itemId = btn.getAttribute("data-base-editor-item");
+      if (!itemId) return;
+      const item = (Array.isArray(DETALHE_ITENS) ? DETALHE_ITENS : []).find((x) => String(x?.item_id || "") === String(itemId));
+      if (!item) return;
+      abrirEditorCustoBase(item);
+    });
   });
 }
 
@@ -825,6 +1074,7 @@ async function abrirDetalheRelatorio(id) {
       titulo.textContent = `Relatório #${relatorio.id || id} — ${relatorio.cliente_slug || "—"}`;
     }
 
+    DETALHE_RELATORIO_ATUAL = relatorio;
     DETALHE_ITENS = Array.isArray(itens) ? itens : [];
     resetDetalheFiltros();
     renderDetalheResumo(relatorio);
@@ -960,6 +1210,7 @@ function fecharModalDetalhe() {
   if (modal) modal.style.display = "none";
   RELATORIO_DETALHE_ATUAL_ID = null;
   DETALHE_ITENS = [];
+  DETALHE_RELATORIO_ATUAL = null;
   resetDetalheFiltros();
   atualizarBotoesExportModal();
 }
@@ -998,6 +1249,13 @@ document.getElementById("btn-relatorio-detalhe-xlsx")?.addEventListener("click",
   if (!RELATORIO_DETALHE_ATUAL_ID) return;
   baixarRelatorio(RELATORIO_DETALHE_ATUAL_ID, "xlsx");
 });
+
+document.getElementById("vf-base-custo-rapido-close")?.addEventListener("click", fecharEditorCustoBase);
+document.getElementById("vf-base-custo-rapido-cancel")?.addEventListener("click", fecharEditorCustoBase);
+document.getElementById("vf-base-custo-rapido-modal")?.addEventListener("click", (e) => {
+  if (e.target?.id === "vf-base-custo-rapido-modal") fecharEditorCustoBase();
+});
+document.getElementById("vf-base-custo-rapido-save")?.addEventListener("click", salvarCustoBaseRapido);
 
 if (TOKEN) {
   carregarClientesParaFiltro();
