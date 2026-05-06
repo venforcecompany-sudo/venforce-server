@@ -66,6 +66,7 @@ const clientesFeedback = document.getElementById("clientes-feedback");
 
 let CLIENTES_CONFIRM_OPEN = false;
 let CLIENTES_CONFIRM_ACTION = null;
+let CLIENTE_DELETE_PENDENTE = null; // { slug, btn }
 
 function setClientesFeedback(message, type = "neutral") {
   if (!clientesFeedback) return;
@@ -111,12 +112,13 @@ function fecharModalConfirmacaoClientes() {
   if (modal) modal.style.display = "none";
   CLIENTES_CONFIRM_OPEN = false;
   CLIENTES_CONFIRM_ACTION = null;
+  CLIENTE_DELETE_PENDENTE = null;
 }
 
 async function confirmarModalClientes() {
   const ok = document.getElementById("vf-clientes-confirm-ok");
   const dangerBox = document.getElementById("vf-clientes-confirm-danger");
-  if (!CLIENTES_CONFIRM_ACTION) return;
+  if (!CLIENTE_DELETE_PENDENTE && !CLIENTES_CONFIRM_ACTION) return;
 
   if (dangerBox) {
     dangerBox.style.display = "none";
@@ -124,11 +126,18 @@ async function confirmarModalClientes() {
   }
   if (ok) {
     ok.disabled = true;
-    ok.textContent = "Processando…";
+    ok.textContent = CLIENTE_DELETE_PENDENTE ? "Excluindo..." : "Processando…";
   }
 
   try {
-    await CLIENTES_CONFIRM_ACTION();
+    if (CLIENTE_DELETE_PENDENTE) {
+      const { slug, btn } = CLIENTE_DELETE_PENDENTE;
+      if (!slug) throw new Error("Cliente inválido.");
+      await deleteCliente(slug, btn);
+      CLIENTE_DELETE_PENDENTE = null;
+    } else {
+      await CLIENTES_CONFIRM_ACTION();
+    }
     fecharModalConfirmacaoClientes();
   } catch (err) {
     const msg = err?.message || "Não foi possível concluir a ação.";
@@ -140,7 +149,7 @@ async function confirmarModalClientes() {
     }
     if (ok) {
       ok.disabled = false;
-      ok.textContent = "Confirmar";
+      ok.textContent = CLIENTE_DELETE_PENDENTE ? "Excluir cliente" : "Confirmar";
     }
   }
 }
@@ -274,13 +283,14 @@ function renderClientes(clientes) {
     btn.addEventListener("click", () => {
       const slug = btn.getAttribute("data-slug") || "";
       if (!slug) return;
+      CLIENTE_DELETE_PENDENTE = { slug, btn };
       abrirModalConfirmacaoClientes({
         title: "Excluir cliente",
         subtitle: slug,
-        description: `Esta ação remove o cliente do portal. Não pode ser desfeita.`,
+        description: `Esta ação remove o cliente "${slug}" do portal. Não pode ser desfeita.`,
         confirmLabel: "Excluir cliente",
         danger: true,
-        onConfirm: () => deleteCliente(slug, btn),
+        onConfirm: null,
       });
     });
   });
