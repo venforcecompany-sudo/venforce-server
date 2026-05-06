@@ -317,6 +317,33 @@ async function executarDiagnosticoCompleto(relatorioId) {
     return;
   }
 
+  console.log(
+    `[diag ${relatorioId}] iniciando — cliente_id=${cliente.id} slug=${cliente.slug} mlUserId=${mlUserId} base_id=${base.id} base_slug=${base.slug}`
+  );
+
+  // Validar que o token pertence ao mlUserId esperado
+  try {
+    const meResp = await mlFetch(cliente.id, "/users/me");
+    if (!meResp.ok) {
+      throw new Error(`Falha ao validar token ML: HTTP ${meResp.status}`);
+    }
+    const meData = meResp.data;
+    const meId = String(meData?.id || "");
+    const dbId = String(mlUserId || "");
+    if (meId !== dbId) {
+      throw new Error(
+        `Token ML inválido: token pertence ao usuário ${meId}, mas esperado ${dbId}. ` +
+        `Reconecte a conta ML do cliente "${cliente.slug}".`
+      );
+    }
+    console.log(
+      `[diag ${relatorioId}] token confirmado — ml_user_id_db=${mlUserId} ml_user_id_token=${meData.id}`
+    );
+  } catch (err) {
+    await diagMarcarErro(relatorioId, err.message);
+    return;
+  }
+
   const custosMapExact = new Map();
   const custosMapNorm = new Map();
   const custosMapNumeric = new Map();
@@ -367,7 +394,7 @@ async function executarDiagnosticoCompleto(relatorioId) {
 
       const scan = await mlFetch(
         cliente.id,
-        `/users/${mlUserId}/items/search?${params.toString()}`
+        `/users/me/items/search?${params.toString()}`
       );
       if (!scan.ok) {
         throw new Error(`Falha no scroll do ML (HTTP ${scan.status}): ${scan.data?.message || "erro"}`);
