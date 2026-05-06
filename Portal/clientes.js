@@ -62,6 +62,88 @@ const stateEmpty = document.getElementById("state-empty");
 const stateError = document.getElementById("state-error");
 const clientesCount = document.getElementById("clientes-count");
 const clientesTbody = document.getElementById("clientes-tbody");
+const clientesFeedback = document.getElementById("clientes-feedback");
+
+let CLIENTES_CONFIRM_OPEN = false;
+let CLIENTES_CONFIRM_ACTION = null;
+
+function setClientesFeedback(message, type = "neutral") {
+  if (!clientesFeedback) return;
+  clientesFeedback.classList.remove("show", "vf-alert-success", "vf-alert-danger");
+  clientesFeedback.textContent = "";
+  if (!message) return;
+  const cls = type === "success" ? "vf-alert-success" : (type === "danger" ? "vf-alert-danger" : "");
+  if (cls) clientesFeedback.classList.add(cls);
+  clientesFeedback.classList.add("show");
+  clientesFeedback.textContent = message;
+}
+
+function abrirModalConfirmacaoClientes({ title, subtitle = "", description, confirmLabel = "Confirmar", danger = false, onConfirm }) {
+  const modal = document.getElementById("vf-clientes-confirm-modal");
+  const t = document.getElementById("vf-clientes-confirm-title");
+  const sub = document.getElementById("vf-clientes-confirm-subtitle");
+  const desc = document.getElementById("vf-clientes-confirm-desc");
+  const ok = document.getElementById("vf-clientes-confirm-ok");
+  const dangerBox = document.getElementById("vf-clientes-confirm-danger");
+  if (!modal || !ok || !desc || !t) return;
+
+  CLIENTES_CONFIRM_OPEN = true;
+  CLIENTES_CONFIRM_ACTION = typeof onConfirm === "function" ? onConfirm : null;
+
+  t.textContent = title || "Confirmar";
+  if (sub) sub.textContent = subtitle || "";
+  desc.textContent = description || "";
+
+  ok.textContent = confirmLabel || "Confirmar";
+  ok.classList.remove("vf-action-btn-secondary");
+  ok.classList.add(danger ? "vf-action-btn-danger" : "vf-action-btn-secondary");
+
+  if (dangerBox) {
+    dangerBox.style.display = "none";
+    dangerBox.textContent = "";
+  }
+
+  modal.style.display = "flex";
+}
+
+function fecharModalConfirmacaoClientes() {
+  const modal = document.getElementById("vf-clientes-confirm-modal");
+  if (modal) modal.style.display = "none";
+  CLIENTES_CONFIRM_OPEN = false;
+  CLIENTES_CONFIRM_ACTION = null;
+}
+
+async function confirmarModalClientes() {
+  const ok = document.getElementById("vf-clientes-confirm-ok");
+  const dangerBox = document.getElementById("vf-clientes-confirm-danger");
+  if (!CLIENTES_CONFIRM_ACTION) return;
+
+  if (dangerBox) {
+    dangerBox.style.display = "none";
+    dangerBox.textContent = "";
+  }
+  if (ok) {
+    ok.disabled = true;
+    ok.textContent = "Processando…";
+  }
+
+  try {
+    await CLIENTES_CONFIRM_ACTION();
+    fecharModalConfirmacaoClientes();
+  } catch (err) {
+    const msg = err?.message || "Não foi possível concluir a ação.";
+    if (dangerBox) {
+      dangerBox.style.display = "block";
+      dangerBox.textContent = msg;
+    } else {
+      setClientesFeedback(msg, "danger");
+    }
+    if (ok) {
+      ok.disabled = false;
+      ok.textContent = "Confirmar";
+    }
+  }
+}
 
 function showLoading() {
   stateLoading.style.display = "flex";
@@ -119,6 +201,7 @@ function renderClientes(clientes) {
   clientesTbody.innerHTML = "";
   if (!clientes.length) { showEmpty(); return; }
 
+  setClientesFeedback("");
   clientesCount.textContent = String(clientes.length);
   clientesCount.style.display = "inline-block";
 
@@ -140,7 +223,8 @@ function renderClientes(clientes) {
           <span style="font-family:var(--vf-mono);font-size:.8rem;color:var(--vf-text-m);">${escapeHTML(apiKeyMasked)}</span>
           <button type="button" data-action="copy" data-apikey="${escapeHTML(apiKey)}"
             title="Copiar API key"
-            style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;border:1px solid var(--vf-border);background:var(--vf-bg);color:var(--vf-text-m);cursor:pointer;">
+            class="vf-action-btn"
+            style="width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -149,13 +233,15 @@ function renderClientes(clientes) {
         </div>
       </td>
       <td style="text-align:center;">
-        <span class="${ativo ? "base-status--active" : "base-status--inactive"}">${ativo ? "Ativo" : "Inativo"}</span>
+        <span class="vf-status-pill ${ativo ? "vf-status-pill-success" : "vf-status-pill-danger"}">${ativo ? "Ativo" : "Inativo"}</span>
       </td>
       <td id="ml-cell-${escapeHTML(c.slug || "")}" style="text-align:center;">
         <span style="color:var(--vf-text-l);font-size:.8rem;">…</span>
       </td>
       <td style="text-align:center;">
-        <button class="vf-btn-danger-sm" data-action="delete" data-slug="${escapeHTML(c.slug || "")}">Excluir</button>
+        <div class="vf-table-actions">
+          <button class="vf-action-btn vf-action-btn-danger" data-action="delete" data-slug="${escapeHTML(c.slug || "")}">Excluir</button>
+        </div>
       </td>
     `;
 
@@ -177,8 +263,9 @@ function renderClientes(clientes) {
           btn.style.borderColor = "var(--vf-border)";
           btn.style.background = "var(--vf-bg)";
         }, 900);
+        setClientesFeedback("API key copiada.", "success");
       } catch {
-        alert("Não foi possível copiar.");
+        setClientesFeedback("Não foi possível copiar a API key.", "danger");
       }
     });
   });
@@ -187,9 +274,14 @@ function renderClientes(clientes) {
     btn.addEventListener("click", () => {
       const slug = btn.getAttribute("data-slug") || "";
       if (!slug) return;
-      if (confirm(`Excluir permanentemente o cliente "${slug}"?\n\nEsta ação não pode ser desfeita.`)) {
-        deleteCliente(slug, btn);
-      }
+      abrirModalConfirmacaoClientes({
+        title: "Excluir cliente",
+        subtitle: slug,
+        description: `Esta ação remove o cliente do portal. Não pode ser desfeita.`,
+        confirmLabel: "Excluir cliente",
+        danger: true,
+        onConfirm: () => deleteCliente(slug, btn),
+      });
     });
   });
 
@@ -216,17 +308,25 @@ async function fetchMlStatus(slug) {
     if (data.conectado) {
       cell.innerHTML = `
         <div style="display:flex;align-items:center;gap:6px;justify-content:center;">
-          <span class="base-status--active">Conectado</span>
-          <button type="button" class="vf-btn-danger-sm" data-action="ml-desconectar"
-            data-slug="${escapeHTML(slug)}" style="font-size:.7rem;padding:2px 8px;">Desvincular</button>
+          <span class="vf-status-pill vf-status-pill-success">Conectado</span>
+          <button type="button" class="vf-action-btn vf-action-btn-danger" data-action="ml-desconectar"
+            data-slug="${escapeHTML(slug)}" style="font-size:.72rem;padding:.28rem .5rem;">Desvincular</button>
         </div>`;
       cell.querySelector('[data-action="ml-desconectar"]').addEventListener("click", () => {
-        if (confirm(`Desvincular conta ML do cliente "${slug}"?`)) desvincularMl(slug, cell);
+        abrirModalConfirmacaoClientes({
+          title: "Desvincular Mercado Livre",
+          subtitle: slug,
+          description: "Esta ação remove a conexão do Mercado Livre deste cliente.",
+          confirmLabel: "Desvincular",
+          danger: true,
+          onConfirm: () => desvincularMl(slug, cell),
+        });
       });
     } else {
       const link = getMlConectarLink(slug);
       cell.innerHTML = `
   <div style="display:flex;align-items:center;gap:6px;justify-content:center;">
+    <span class="vf-status-pill vf-status-pill-neutral" title="Conta Mercado Livre não conectada">Desconectado</span>
     <a href="${link}" target="_blank" class="vf-btn-secondary"
       style="font-size:.75rem;padding:4px 12px;text-decoration:none;display:inline-block;">
       Conectar ML
@@ -258,8 +358,9 @@ if (copyBtn) {
         copyBtn.style.color = "";
         copyBtn.style.borderColor = "";
       }, 2000);
+      setClientesFeedback(`Link de conexão ML copiado para "${slug}".`, "success");
     } catch {
-      alert("Não foi possível copiar o link.");
+      setClientesFeedback("Não foi possível copiar o link de conexão ML.", "danger");
     }
   });
 }
@@ -282,9 +383,12 @@ async function desvincularMl(slug, cell) {
       throw new Error(d.erro || `HTTP ${res.status}`);
     }
     fetchMlStatus(slug);
+    setClientesFeedback(`Mercado Livre desvinculado de "${slug}".`, "success");
+    return true;
   } catch (err) {
-    alert("Erro ao desvincular: " + err.message);
+    setClientesFeedback(`Erro ao desvincular: ${err.message}`, "danger");
     fetchMlStatus(slug);
+    throw err;
   }
 }
 async function deleteCliente(slug, btn) {
@@ -298,11 +402,14 @@ async function deleteCliente(slug, btn) {
     if (res.status === 401) { clearSession(); return; }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.erro || `HTTP ${res.status}`);
+    setClientesFeedback(`Cliente "${slug}" excluído com sucesso.`, "success");
     loadClientes();
+    return true;
   } catch (err) {
-    alert("Erro ao excluir: " + err.message);
+    setClientesFeedback(`Erro ao excluir: ${err.message}`, "danger");
     btn.disabled = false;
     btn.textContent = "Excluir";
+    throw err;
   }
 }
 
@@ -353,6 +460,16 @@ nomeInput.addEventListener("input", () => {
 
 document.getElementById("btn-criar-cliente").addEventListener("click", createCliente);
 document.getElementById("btn-retry").addEventListener("click", loadClientes);
+
+document.getElementById("vf-clientes-confirm-close")?.addEventListener("click", fecharModalConfirmacaoClientes);
+document.getElementById("vf-clientes-confirm-cancel")?.addEventListener("click", fecharModalConfirmacaoClientes);
+document.getElementById("vf-clientes-confirm-ok")?.addEventListener("click", confirmarModalClientes);
+document.getElementById("vf-clientes-confirm-modal")?.addEventListener("click", (e) => {
+  if (e.target?.id === "vf-clientes-confirm-modal") fecharModalConfirmacaoClientes();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && CLIENTES_CONFIRM_OPEN) fecharModalConfirmacaoClientes();
+});
 
 const buscaInput = document.getElementById("busca-cliente");
 if (buscaInput) {

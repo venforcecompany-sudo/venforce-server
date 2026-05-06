@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
 </head>
-<body class="vf-page">
+<body class="vf-page vf-page-clientes">
 
   <div class="vf-main-with-sidebar">
     <main class="vf-content">
@@ -32,7 +32,7 @@
           </h5>
         </div>
         <div style="padding:1.5rem 1.75rem;">
-          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:1rem;align-items:end;">
+          <div class="vf-clientes-create-grid" style="display:grid;grid-template-columns:1fr 1fr auto;gap:1rem;align-items:end;">
             <div class="vf-form-group" style="margin:0;">
               <label for="cliente-nome">Nome do cliente</label>
               <input type="text" id="cliente-nome" class="vf-input" placeholder="ex: Cliente XYZ">
@@ -79,6 +79,7 @@
         </div>
 
         <div id="clientes-content" style="min-height:200px;">
+          <div id="clientes-feedback" class="vf-alert" style="margin:14px 1.75rem 0;"></div>
           <div id="state-loading" class="vf-loading">
             <div class="loading-dots"><span></span><span></span><span></span></div>
             <p>Carregando clientes…</p>
@@ -93,7 +94,7 @@
                   <th style="width:240px;">API Key</th>
                   <th style="width:120px;text-align:center;">Status</th>
                   <th style="width:160px;text-align:center;">Mercado Livre</th>
-                  <th style="width:90px;text-align:center;">Ações</th>
+                  <th style="width:220px;text-align:center;">Ações</th>
                 </tr>
               </thead>
               <tbody id="clientes-tbody"></tbody>
@@ -116,6 +117,26 @@
       </div>
 
     </main>
+  </div>
+
+  <div id="vf-clientes-confirm-modal" class="vf-modal-overlay" style="display:none;">
+    <div class="vf-modal-shell" role="dialog" aria-modal="true" aria-labelledby="vf-clientes-confirm-title">
+      <div class="vf-modal-header">
+        <div>
+          <div id="vf-clientes-confirm-title" class="vf-modal-title">Confirmar</div>
+          <div id="vf-clientes-confirm-subtitle" class="vf-modal-subtitle"></div>
+        </div>
+        <button type="button" id="vf-clientes-confirm-close" class="vf-modal-close" aria-label="Fechar">×</button>
+      </div>
+      <div class="vf-modal-body">
+        <p id="vf-clientes-confirm-desc" style="margin:0;color:var(--vf-text-m);"></p>
+        <div id="vf-clientes-confirm-danger" class="vf-danger-message" style="display:none;margin-top:12px;"></div>
+      </div>
+      <div class="vf-modal-footer">
+        <button type="button" id="vf-clientes-confirm-cancel" class="vf-action-btn vf-action-btn-secondary">Cancelar</button>
+        <button type="button" id="vf-clientes-confirm-ok" class="vf-action-btn vf-action-btn-danger">Confirmar</button>
+      </div>
+    </div>
   </div>
 
   <script src="layout.js"></script>
