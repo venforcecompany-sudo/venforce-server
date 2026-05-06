@@ -394,7 +394,7 @@ async function executarDiagnosticoCompleto(relatorioId) {
 
       const scan = await mlFetch(
         cliente.id,
-        `/users/me/items/search?${params.toString()}`
+        `/users/${mlUserId}/items/search?${params.toString()}`
       );
       if (!scan.ok) {
         throw new Error(`Falha no scroll do ML (HTTP ${scan.status}): ${scan.data?.message || "erro"}`);
