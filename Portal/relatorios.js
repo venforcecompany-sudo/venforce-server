@@ -836,11 +836,13 @@ function filtrarRelatorios() {
 }
 
 function renderRelatorios() {
-  const tbody = document.getElementById("relatorios-tbody");
+  const list = document.getElementById("vf-relatorio-card-list");
+  const summary = document.getElementById("vf-relatorios-summary-grid");
   const badge = document.getElementById("relatorios-total");
-  if (!tbody || !badge) return;
+  if (!list || !summary || !badge) return;
 
-  tbody.innerHTML = "";
+  list.innerHTML = "";
+  summary.innerHTML = "";
   badge.style.display = "inline-block";
   badge.textContent = String(RELATORIOS_FILTRADOS.length);
 
@@ -851,56 +853,97 @@ function renderRelatorios() {
 
   setListState("table");
 
+  // Métricas gerais (frontend) — baseado nos relatórios filtrados
+  const rels = RELATORIOS_FILTRADOS;
+  const total = rels.length;
+  const lojaCompleta = rels.filter((r) => String(r.escopo || "").toLowerCase() === "loja_completa").length;
+  const paginaAtual = rels.filter((r) => String(r.escopo || "").toLowerCase() === "pagina_atual").length;
+  const criticosTot = rels.reduce((acc, r) => acc + (Number(r.itens_criticos) || 0), 0);
+  const semBaseTot = rels.reduce((acc, r) => acc + (Number(r.itens_sem_base) || 0), 0);
+  const mcVals = rels.map((r) => Number(r.mc_media)).filter((n) => Number.isFinite(n));
+  const mcMediaGeral = mcVals.length ? (mcVals.reduce((a, b) => a + b, 0) / mcVals.length) : null;
+
+  const mcFmt = mcMediaGeral == null ? "—" : `${(mcMediaGeral * 100).toFixed(2)}%`;
+  const summaryCards = [
+    { label: "Relatórios", value: String(total) },
+    { label: "Loja completa", value: String(lojaCompleta) },
+    { label: "Página atual", value: String(paginaAtual) },
+    { label: "Críticos (total)", value: String(criticosTot) },
+    { label: "Sem base (total)", value: String(semBaseTot) },
+    { label: "MC média geral", value: mcFmt },
+  ];
+  summary.innerHTML = summaryCards.map((c) => `
+    <div class="vf-relatorios-summary-card">
+      <div class="vf-relatorios-summary-label">${escapeHTML(c.label)}</div>
+      <div class="vf-relatorios-summary-value">${escapeHTML(c.value)}</div>
+    </div>
+  `).join("");
+
   RELATORIOS_FILTRADOS.forEach((r) => {
     const mcNum = Number(r.mc_media);
-    const mcStyle = Number.isFinite(mcNum)
-      ? (mcNum < 0 ? "color:var(--vf-danger);" : (mcNum > 0 ? "color:var(--vf-success);" : ""))
-      : "";
     const pastaAtual = Number(r.pasta_id);
     const pastaNome =
       Number.isFinite(pastaAtual) && pastaAtual > 0
         ? ((Array.isArray(PASTAS) ? PASTAS : []).find((p) => Number(p.id) === pastaAtual)?.nome || `Pasta ${pastaAtual}`)
         : "Sem pasta";
 
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td style="font-family:var(--vf-mono);font-size:.8rem;">#${escapeHTML(String(r.id || "—"))}</td>
-      <td>${escapeHTML(formatarDataRelatorio(r.created_at))}</td>
-      <td class="vf-relatorios-clientebase">
-        <div class="vf-relatorios-cliente"><strong>${escapeHTML(r.cliente_slug || "—")}</strong></div>
-        <div class="vf-relatorios-base">Base: <span style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.base_slug || "—")}</span></div>
-      </td>
-      <td>${escapeHTML(r.escopo || "—")}</td>
-      <td class="vf-relatorios-resumo">
-        <div class="vf-mini-metrics">
-          <span class="vf-mini-chip">${escapeHTML(String(r.total_itens ?? 0))} itens</span>
-          <span class="vf-mini-chip">${escapeHTML(String(r.itens_com_base ?? 0))} base</span>
-          <span class="vf-mini-chip">${escapeHTML(String(r.itens_sem_base ?? 0))} sem base</span>
+    const escopo = String(r.escopo || "—");
+    const data = formatarDataRelatorio(r.created_at);
+    const cliente = String(r.cliente_slug || "—");
+    const base = String(r.base_slug || "—");
+    const status = String(r.status || "—");
+
+    const mcClass =
+      Number.isFinite(mcNum) ? (mcNum > 0 ? "vf-good" : (mcNum < 0 ? "vf-bad" : "")) : "";
+    const mcTxt = Number.isFinite(mcNum) ? `${(mcNum * 100).toFixed(2)}%` : "—";
+
+    const card = document.createElement("div");
+    card.className = "vf-relatorio-card";
+    card.innerHTML = `
+      <div class="vf-relatorio-card-header">
+        <div class="vf-relatorio-card-title">
+          <div class="vf-relatorio-card-id">#${escapeHTML(String(r.id || "—"))}</div>
+          <div class="vf-relatorio-card-cliente">${escapeHTML(cliente)}</div>
         </div>
-      </td>
-      <td class="vf-relatorios-alertas">
-        <div class="vf-mini-metrics">
-          <span class="vf-mini-badge vf-mini-badge-danger">Críticos ${escapeHTML(String(r.itens_criticos ?? 0))}</span>
-          <span class="vf-mini-badge vf-mini-badge-warning">Atenção ${escapeHTML(String(r.itens_atencao ?? 0))}</span>
-          <span class="vf-mini-badge vf-mini-badge-success">Saudáveis ${escapeHTML(String(r.itens_saudaveis ?? 0))}</span>
+        <div class="vf-relatorio-card-status">
+          <span class="vf-ml-badge ${classeStatus(status)}">${escapeHTML(status)}</span>
         </div>
-      </td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcStyle}">${escapeHTML(formatarMcMedia(r.mc_media))}</td>
-      <td><span class="vf-ml-badge ${classeStatus(r.status)}">${escapeHTML(r.status || "—")}</span></td>
-      <td>
-        <div class="vf-relatorios-acoes">
-          <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-main btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}">Detalhes</button>
-          <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="xlsx" data-id="${escapeHTML(String(r.id || ""))}">XLSX</button>
-          <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="csv" data-id="${escapeHTML(String(r.id || ""))}">CSV</button>
-          <button type="button" class="vf-btn-secondary vf-btn-xs btn-mover" data-id="${escapeHTML(String(r.id || ""))}" data-pasta="${escapeHTML(String(pastaAtual || ""))}" data-pasta-nome="${escapeHTML(String(pastaNome))}">Mover</button>
-          <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-danger btn-excluir" data-id="${escapeHTML(String(r.id || ""))}">Excluir</button>
+      </div>
+
+      <div class="vf-relatorio-card-meta">
+        <span class="vf-relatorio-card-meta-item">Base: <strong>${escapeHTML(base)}</strong></span>
+        <span class="vf-relatorio-card-meta-sep">·</span>
+        <span class="vf-relatorio-card-meta-item">${escapeHTML(escopo)}</span>
+        <span class="vf-relatorio-card-meta-sep">·</span>
+        <span class="vf-relatorio-card-meta-item">${escapeHTML(data)}</span>
+      </div>
+
+      <div class="vf-relatorio-card-metrics">
+        <div class="vf-pill-row">
+          <span class="vf-pill">${escapeHTML(String(r.total_itens ?? 0))} itens</span>
+          <span class="vf-pill">${escapeHTML(String(r.itens_com_base ?? 0))} com base</span>
+          <span class="vf-pill">${escapeHTML(String(r.itens_sem_base ?? 0))} sem base</span>
         </div>
-      </td>
+        <div class="vf-pill-row">
+          <span class="vf-pill vf-pill-danger">Críticos ${escapeHTML(String(r.itens_criticos ?? 0))}</span>
+          <span class="vf-pill vf-pill-warning">Atenção ${escapeHTML(String(r.itens_atencao ?? 0))}</span>
+          <span class="vf-pill vf-pill-success">Saudáveis ${escapeHTML(String(r.itens_saudaveis ?? 0))}</span>
+          <span class="vf-pill">MC <span class="vf-num ${mcClass}">${escapeHTML(mcTxt)}</span></span>
+        </div>
+      </div>
+
+      <div class="vf-relatorio-card-actions">
+        <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-main btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}">Detalhes</button>
+        <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="xlsx" data-id="${escapeHTML(String(r.id || ""))}">XLSX</button>
+        <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="csv" data-id="${escapeHTML(String(r.id || ""))}">CSV</button>
+        <button type="button" class="vf-btn-secondary vf-btn-xs btn-mover" data-id="${escapeHTML(String(r.id || ""))}" data-pasta="${escapeHTML(String(pastaAtual || ""))}" data-pasta-nome="${escapeHTML(String(pastaNome))}">Mover</button>
+        <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-danger btn-excluir" data-id="${escapeHTML(String(r.id || ""))}">Excluir</button>
+      </div>
     `;
-    tbody.appendChild(tr);
+    list.appendChild(card);
   });
 
-  tbody.querySelectorAll(".btn-detalhe").forEach((btn) => {
+  list.querySelectorAll(".btn-detalhe").forEach((btn) => {
     btn.addEventListener("click", () => {
       const id = btn.getAttribute("data-id");
       if (!id) return;
@@ -908,7 +951,7 @@ function renderRelatorios() {
     });
   });
 
-  tbody.querySelectorAll(".btn-exportar").forEach((btn) => {
+  list.querySelectorAll(".btn-exportar").forEach((btn) => {
     btn.addEventListener("click", () => {
       const id = btn.getAttribute("data-id");
       const formato = btn.getAttribute("data-formato");
@@ -917,7 +960,7 @@ function renderRelatorios() {
     });
   });
 
-  tbody.querySelectorAll(".btn-excluir").forEach((btn) => {
+  list.querySelectorAll(".btn-excluir").forEach((btn) => {
     btn.addEventListener("click", () => {
       const id = btn.getAttribute("data-id");
       if (!id) return;
@@ -925,7 +968,7 @@ function renderRelatorios() {
     });
   });
 
-  tbody.querySelectorAll(".btn-mover").forEach((btn) => {
+  list.querySelectorAll(".btn-mover").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-id");
       if (!id) return;

@@ -72,7 +72,7 @@
               <div id="relatorios-pastas-lista"></div>
             </aside>
 
-            <section class="vf-relatorios-tabela-col">
+            <section class="vf-relatorios-tabela-col vf-relatorios-dashboard">
               <div id="relatorios-loading" class="vf-empty-state" style="display:none;padding:1.5rem 1rem;">
                 <p>Carregando relatórios...</p>
               </div>
@@ -82,23 +82,9 @@
               <div id="relatorios-vazio" class="vf-empty-state" style="display:none;padding:1.5rem 1rem;">
                 <p>Nenhum relatório encontrado</p>
               </div>
-              <div id="relatorios-wrapper" class="vf-table-wrapper" style="display:none;">
-                <table class="vf-table">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Data</th>
-                      <th>Cliente/Base</th>
-                      <th>Escopo</th>
-                      <th>Resumo</th>
-                      <th>Alertas</th>
-                      <th style="text-align:right;">MC média</th>
-                      <th>Status</th>
-                      <th>Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody id="relatorios-tbody"></tbody>
-                </table>
+              <div id="relatorios-wrapper" style="display:none;">
+                <div id="vf-relatorios-summary-grid" class="vf-relatorios-summary-grid"></div>
+                <div id="vf-relatorio-card-list" class="vf-relatorio-card-list"></div>
               </div>
             </section>
           </div>
@@ -134,8 +120,8 @@
               0 de 0 itens
             </div>
           </div>
-          <div class="vf-table-wrapper">
-            <table class="vf-table">
+          <div class="vf-table-wrapper vf-detail-table-wrap">
+            <table class="vf-table vf-detail-table">
               <thead>
                 <tr>
                   <th>MLB/SKU</th>
