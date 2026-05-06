@@ -30,6 +30,7 @@
         </div>
 
         <div id="usuarios-content" style="min-height:200px;">
+          <div id="usuarios-feedback" class="vf-alert" style="margin:14px 1.75rem 0;"></div>
           <div id="state-loading" class="vf-loading">
             <div class="loading-dots"><span></span><span></span><span></span></div>
             <p>Carregando usuários…</p>
@@ -67,6 +68,28 @@
       </div>
 
     </main>
+  </div>
+
+  <div id="vf-remover-usuario-modal" class="vf-modal-overlay" style="display:none;">
+    <div class="vf-modal-shell" role="dialog" aria-modal="true" aria-labelledby="vf-remover-usuario-title">
+      <div class="vf-modal-header">
+        <div>
+          <div id="vf-remover-usuario-title" class="vf-modal-title">Remover usuário</div>
+          <div id="vf-remover-usuario-subtitle" class="vf-modal-subtitle"></div>
+        </div>
+        <button type="button" id="vf-remover-usuario-close" class="vf-modal-close" aria-label="Fechar">×</button>
+      </div>
+      <div class="vf-modal-body">
+        <p style="margin:0;color:var(--vf-text-m);">
+          Esta ação remove o acesso do usuário ao portal. Você poderá criar ou reativar o acesso futuramente.
+        </p>
+        <div id="vf-remover-usuario-danger" class="vf-danger-message" style="display:none;margin-top:12px;"></div>
+      </div>
+      <div class="vf-modal-footer">
+        <button type="button" id="vf-remover-usuario-cancel" class="vf-action-btn vf-action-btn-secondary">Cancelar</button>
+        <button type="button" id="vf-remover-usuario-confirm" class="vf-action-btn vf-action-btn-danger">Remover usuário</button>
+      </div>
+    </div>
   </div>
 
   <script src="layout.js"></script>

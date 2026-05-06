@@ -30,6 +30,94 @@ const stateEmpty = document.getElementById("state-empty");
 const stateError = document.getElementById("state-error");
 const tbody = document.getElementById("usuarios-tbody");
 const countBadge = document.getElementById("usuarios-count");
+const usuariosFeedback = document.getElementById("usuarios-feedback");
+
+let MODAL_REMOVER_ABERTO = false;
+let REMOVER_USUARIO_ID = null;
+let REMOVER_USUARIO_BTN = null;
+
+function setUsuariosFeedback(message, type = "neutral") {
+  if (!usuariosFeedback) return;
+  usuariosFeedback.classList.remove("show", "vf-alert-success", "vf-alert-danger");
+  usuariosFeedback.innerHTML = "";
+  if (!message) return;
+
+  const cls = type === "success" ? "vf-alert-success" : (type === "danger" ? "vf-alert-danger" : "");
+  if (cls) usuariosFeedback.classList.add(cls);
+  usuariosFeedback.classList.add("show");
+  usuariosFeedback.textContent = message;
+}
+
+function abrirModalRemoverUsuario({ id, btn, nome, email }) {
+  const modal = document.getElementById("vf-remover-usuario-modal");
+  const subtitle = document.getElementById("vf-remover-usuario-subtitle");
+  const danger = document.getElementById("vf-remover-usuario-danger");
+  const confirmBtn = document.getElementById("vf-remover-usuario-confirm");
+  if (!modal || !confirmBtn) return;
+
+  if (user && user.id != null && String(user.id) === String(id)) return;
+
+  REMOVER_USUARIO_ID = id;
+  REMOVER_USUARIO_BTN = btn || null;
+  MODAL_REMOVER_ABERTO = true;
+
+  if (subtitle) {
+    const sub = [nome, email].filter(Boolean).join(" · ");
+    subtitle.textContent = sub || `ID ${id}`;
+  }
+
+  if (danger) {
+    danger.style.display = "none";
+    danger.textContent = "";
+  }
+
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = "Remover usuário";
+
+  modal.style.display = "flex";
+}
+
+function fecharModalRemoverUsuario() {
+  const modal = document.getElementById("vf-remover-usuario-modal");
+  if (modal) modal.style.display = "none";
+  MODAL_REMOVER_ABERTO = false;
+  REMOVER_USUARIO_ID = null;
+  REMOVER_USUARIO_BTN = null;
+}
+
+async function confirmarRemocaoUsuario() {
+  const danger = document.getElementById("vf-remover-usuario-danger");
+  const confirmBtn = document.getElementById("vf-remover-usuario-confirm");
+  if (!REMOVER_USUARIO_ID) return;
+  if (user && user.id != null && String(user.id) === String(REMOVER_USUARIO_ID)) return;
+
+  if (danger) {
+    danger.style.display = "none";
+    danger.textContent = "";
+  }
+
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "Removendo…";
+  }
+
+  try {
+    await deleteUsuario(REMOVER_USUARIO_ID, REMOVER_USUARIO_BTN);
+    fecharModalRemoverUsuario();
+  } catch (err) {
+    const msg = err?.message || "Não foi possível remover o usuário.";
+    if (danger) {
+      danger.style.display = "block";
+      danger.textContent = msg;
+    } else {
+      setUsuariosFeedback(msg, "danger");
+    }
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Remover usuário";
+    }
+  }
+}
 
 function showLoading() {
   stateLoading.style.display = "flex";
@@ -70,24 +158,20 @@ async function loadUsuarios() {
 
 function roleBadge(role) {
   const isAdmin = role === "admin";
-  const bg = isAdmin ? "#f4eef9" : "#f3f4f6";
-  const color = isAdmin ? "#5a2a8f" : "var(--vf-text-m)";
   const label = isAdmin ? "admin" : "membro";
-  return `<span style="display:inline-flex;align-items:center;padding:.25rem .6rem;border-radius:999px;border:1px solid var(--vf-border);background:${bg};color:${color};font-size:.75rem;font-weight:600;">${label}</span>`;
+  return `<span class="vf-role-pill ${isAdmin ? "is-admin" : ""}">${label}</span>`;
 }
 
 function statusBadge(ativo) {
-  if (ativo) return `<span class="base-status--active">Ativo</span>`;
-  return `<span style="display:inline-flex;align-items:center;gap:.4rem;font-size:.8125rem;font-weight:500;color:var(--vf-text-m);">
-    <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span>
-    Pendente
-  </span>`;
+  if (ativo) return `<span class="vf-status-pill vf-status-pill-success">Ativo</span>`;
+  return `<span class="vf-status-pill vf-status-pill-warning">Pendente</span>`;
 }
 
 function renderUsuarios(lista) {
   tbody.innerHTML = "";
   if (!lista.length) { showEmpty(); return; }
 
+  setUsuariosFeedback("");
   countBadge.textContent = String(lista.length);
   countBadge.style.display = "inline-block";
 
@@ -107,9 +191,7 @@ function renderUsuarios(lista) {
     tr.style.animationDelay = `${i * 0.04}s`;
 
     const toggleLabel = ativo ? "Desativar" : "Ativar";
-    const toggleStyle = ativo
-      ? "background:var(--vf-bg);border:1px solid var(--vf-border);color:var(--vf-text-m);"
-      : "background:#ecfdf5;border:1px solid rgba(4,120,87,.2);color:var(--vf-success);";
+    const toggleClass = ativo ? "vf-action-btn" : "vf-action-btn vf-action-btn-secondary";
 
     tr.innerHTML = `
       <td style="color:var(--vf-text-l);font-family:var(--vf-mono);font-size:.8rem;">${String(i + 1).padStart(2, "0")}</td>
@@ -119,12 +201,12 @@ function renderUsuarios(lista) {
       <td style="text-align:center;">${statusBadge(ativo)}</td>
       <td style="color:var(--vf-text-m);font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(createdTxt)}</td>
       <td style="text-align:center;">
-        <div style="display:inline-flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;">
+        <div class="vf-table-actions">
           <button type="button" data-action="toggle" data-id="${escapeHTML(id)}" data-ativo="${ativo ? "1" : "0"}"
-            style="font-family:var(--vf-font);font-size:.8125rem;font-weight:600;border-radius:8px;padding:6px 10px;cursor:pointer;transition:all .15s;${toggleStyle}">
+            class="${toggleClass}">
             ${toggleLabel}
           </button>
-          <button type="button" class="vf-btn-danger-sm" data-action="delete" data-id="${escapeHTML(id)}" ${isSelf ? "disabled" : ""}>
+          <button type="button" class="vf-action-btn vf-action-btn-danger" data-action="delete" data-id="${escapeHTML(id)}" ${isSelf ? "disabled" : ""}>
             Remover
           </button>
         </div>
@@ -146,7 +228,10 @@ function renderUsuarios(lista) {
       const id = btn.getAttribute("data-id");
       if (!id) return;
       if (user && user.id != null && String(user.id) === String(id)) return;
-      if (confirm("Remover este usuário?")) deleteUsuario(id, btn);
+      const tr = btn.closest("tr");
+      const nome = tr?.querySelector("td:nth-child(2)")?.textContent?.trim() || "";
+      const email = tr?.querySelector("td:nth-child(3)")?.textContent?.trim() || "";
+      abrirModalRemoverUsuario({ id, btn, nome, email });
     });
   });
 
@@ -169,9 +254,10 @@ async function toggleAtivo(id, ativoAtual, btn) {
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) { clearSession(); return; }
     if (!res.ok) throw new Error(data.erro || `HTTP ${res.status}`);
+    setUsuariosFeedback(`Usuário ${!ativoAtual ? "ativado" : "desativado"} com sucesso.`, "success");
     loadUsuarios();
   } catch (err) {
-    alert("Erro: " + err.message);
+    setUsuariosFeedback(`Erro ao salvar: ${err.message}`, "danger");
     btn.disabled = false;
     btn.textContent = old;
   }
@@ -179,8 +265,10 @@ async function toggleAtivo(id, ativoAtual, btn) {
 
 async function deleteUsuario(id, btn) {
   if (user && user.id != null && String(user.id) === String(id)) return;
-  btn.disabled = true;
-  btn.textContent = "Removendo…";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Removendo…";
+  }
   try {
     const res = await fetch(`${API_BASE}/usuarios/${encodeURIComponent(id)}`, {
       method: "DELETE",
@@ -189,15 +277,30 @@ async function deleteUsuario(id, btn) {
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) { clearSession(); return; }
     if (!res.ok) throw new Error(data.erro || `HTTP ${res.status}`);
+    setUsuariosFeedback("Usuário removido com sucesso.", "success");
     loadUsuarios();
+    return true;
   } catch (err) {
-    alert("Erro ao remover: " + err.message);
-    btn.disabled = false;
-    btn.textContent = "Remover";
+    setUsuariosFeedback(`Erro ao remover: ${err.message}`, "danger");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Remover";
+    }
+    throw err;
   }
 }
 
 document.getElementById("btn-retry").addEventListener("click", loadUsuarios);
+
+document.getElementById("vf-remover-usuario-close")?.addEventListener("click", fecharModalRemoverUsuario);
+document.getElementById("vf-remover-usuario-cancel")?.addEventListener("click", fecharModalRemoverUsuario);
+document.getElementById("vf-remover-usuario-confirm")?.addEventListener("click", confirmarRemocaoUsuario);
+document.getElementById("vf-remover-usuario-modal")?.addEventListener("click", (e) => {
+  if (e.target?.id === "vf-remover-usuario-modal") fecharModalRemoverUsuario();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && MODAL_REMOVER_ABERTO) fecharModalRemoverUsuario();
+});
 
 if (TOKEN) loadUsuarios();
 
