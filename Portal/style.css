@@ -594,6 +594,39 @@ body {
   padding-left: clamp(1.25rem, 3vw, 2.25rem);
   padding-right: clamp(1.25rem, 3vw, 2.25rem);
 }
+
+/* Usuários: largura útil maior e ações visíveis */
+.vf-page-usuarios .vf-content {
+  max-width: 1440px;
+  margin-inline: auto;
+  padding-left: clamp(1.25rem, 3vw, 2.25rem);
+  padding-right: clamp(1.25rem, 3vw, 2.25rem);
+}
+
+.vf-page-usuarios .vf-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.vf-page-usuarios .vf-table {
+  min-width: 1040px;
+}
+
+.vf-page-usuarios .vf-table thead th,
+.vf-page-usuarios .vf-table tbody td {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.vf-page-usuarios .vf-table thead th:last-child,
+.vf-page-usuarios .vf-table tbody td:last-child {
+  min-width: 210px;
+}
+
+.vf-page-usuarios .vf-table-actions {
+  justify-content: center;
+  flex-wrap: nowrap;
+}
 .vf-relatorios-layout {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
