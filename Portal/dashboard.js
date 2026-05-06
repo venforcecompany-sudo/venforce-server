@@ -66,20 +66,43 @@ function setDashboardFeedback(msg, type = "neutral") {
 }
 
 function detectarMarketplaceBase(base) {
-  const raw = String(base?.marketplace || "").toLowerCase().trim();
-  if (raw) {
-    const key = raw.includes("shop") ? "shopee" : (raw.includes("meli") || raw.includes("ml") ? "meli" : "outro");
-    if (key === "shopee") return { key: "shopee", label: "Shopee" };
-    if (key === "meli") return { key: "meli", label: "Mercado Livre" };
-    return { key: "outro", label: "Não identificado" };
+  const norm = (v) =>
+    String(v || "")
+      .toLowerCase()
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  const rawMarketplace = norm(base?.marketplace);
+  if (rawMarketplace) {
+    if (rawMarketplace.includes("shopee")) return { key: "shopee", label: "Shopee" };
+    if (rawMarketplace.includes("meli") || rawMarketplace.includes("mercado")) return { key: "meli", label: "Mercado Livre" };
   }
 
-  const nome = String(base?.nome || "").toLowerCase();
-  const slug = String(base?.slug || "").toLowerCase();
+  const nome = norm(base?.nome);
+  const slug = norm(base?.slug);
   const hay = `${nome} ${slug}`;
 
-  if (/(shopee|\\bshop\\b|\\bspf\\b|seller\\s*shopee)/i.test(hay)) return { key: "shopee", label: "Shopee" };
-  if (/(\\bmeli\\b|\\bml\\b|mercado[_\\-\\s]?livre|mercadolivre)/i.test(hay)) return { key: "meli", label: "Mercado Livre" };
+  // Shopee: detectar se contiver shopee/shop/shp/sp_
+  // Prioridade só quando "shopee" aparece explicitamente e conflita com meli.
+  const hasShopeeExplicit = hay.includes("shopee");
+  const hasShopee = hasShopeeExplicit || hay.includes("shop") || hay.includes("shp") || hay.includes("sp_");
+
+  // Mercado Livre: detectar se contiver meli, variações de "mercado livre", ml separado por _/- ou mlb
+  const hasMeli =
+    hay.includes("meli") ||                 // cobre jf_meli1, influencia_meli2, etc.
+    hay.includes("mercado_livre") ||
+    hay.includes("mercado-livre") ||
+    hay.includes("mercadolivre") ||
+    hay.includes("mercado livre") ||
+    hay.includes("mlb") ||
+    /(^|[_\-\s])ml([_\-\s]|$)/i.test(hay) || // _ml, ml_, -ml, ml-, etc.
+    /(^|[_\-\s])mlb([_\-\s]|\d|$)/i.test(hay);
+
+  // Regra: se tiver shopee e meli no mesmo texto, prioriza Shopee apenas se "shopee" explícito.
+  if (hasShopeeExplicit) return { key: "shopee", label: "Shopee" };
+  if (hasMeli) return { key: "meli", label: "Mercado Livre" };
+  if (hasShopee) return { key: "shopee", label: "Shopee" };
   return { key: "outro", label: "Não identificado" };
 }
 
