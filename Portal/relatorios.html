@@ -108,40 +108,19 @@
       <div id="vf-relatorio-detalhe-body" style="padding:1.25rem 1.5rem;overflow:auto;flex:1;">
         <div id="vf-relatorio-detalhe-loading" style="color:var(--vf-text-m);">Carregando...</div>
         <div id="vf-relatorio-detalhe-content" style="display:none;">
-          <div id="vf-relatorio-detalhe-resumo" class="vf-ml-insights" style="display:grid;"></div>
-          <div id="vf-relatorio-detalhe-meta" style="margin:14px 0;color:var(--vf-text-m);font-size:.875rem;"></div>
-          <div id="vf-relatorio-detalhe-filtros" class="vf-ml-controls" style="margin-bottom:12px;">
-            <div class="vf-form-group" style="margin:0;max-width:360px;">
+          <div id="vf-relatorio-detalhe-resumo" class="vf-detalhe-resumo-wrap"></div>
+          <div id="vf-relatorio-detalhe-meta" class="vf-detalhe-meta-line"></div>
+          <div id="vf-relatorio-detalhe-filtros" class="vf-detalhe-toolbar vf-ml-controls">
+            <div class="vf-form-group vf-detalhe-busca">
               <label for="vf-relatorio-detalhe-busca">Buscar nos itens</label>
               <input id="vf-relatorio-detalhe-busca" class="vf-input" type="search" placeholder="Buscar por SKU, MLB ou título..." autocomplete="off">
             </div>
-            <div id="vf-relatorio-detalhe-filter-buttons" class="vf-ml-filter-buttons"></div>
-            <div id="vf-relatorio-detalhe-filtrados-info" style="margin-left:auto;color:var(--vf-text-m);font-size:.85rem;white-space:nowrap;">
+            <div id="vf-relatorio-detalhe-filter-buttons" class="vf-ml-filter-buttons vf-detalhe-chips"></div>
+            <div id="vf-relatorio-detalhe-filtrados-info" class="vf-detalhe-contador">
               0 de 0 itens
             </div>
           </div>
-          <div class="vf-table-wrapper vf-detail-table-wrap">
-            <table class="vf-table vf-detail-table">
-              <thead>
-                <tr>
-                  <th>MLB/SKU</th>
-                  <th>Título</th>
-                  <th>Base</th>
-                  <th style="text-align:right;">Custo</th>
-                  <th style="text-align:right;">Preço original</th>
-                  <th style="text-align:right;">Promocional</th>
-                  <th style="text-align:right;">Frete (R$)</th>
-                  <th style="text-align:right;">Comissão (R$)</th>
-                  <th style="text-align:right;">LC (R$)</th>
-                  <th style="text-align:right;">MC (%)</th>
-                  <th style="text-align:right;">Preço sugerido</th>
-                  <th>Diagnóstico</th>
-                  <th>Ação recomendada</th>
-                </tr>
-              </thead>
-              <tbody id="vf-relatorio-detalhe-tbody"></tbody>
-            </table>
-          </div>
+          <div id="vf-detail-item-list" class="vf-detail-item-list"></div>
         </div>
       </div>
     </div>

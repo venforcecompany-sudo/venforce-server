@@ -919,16 +919,16 @@ function renderRelatorios() {
       </div>
 
       <div class="vf-relatorio-card-metrics">
-        <div class="vf-pill-row">
+        <div class="vf-pill-row vf-pill-row-metrics">
           <span class="vf-pill">${escapeHTML(String(r.total_itens ?? 0))} itens</span>
           <span class="vf-pill">${escapeHTML(String(r.itens_com_base ?? 0))} com base</span>
           <span class="vf-pill">${escapeHTML(String(r.itens_sem_base ?? 0))} sem base</span>
         </div>
-        <div class="vf-pill-row">
+        <div class="vf-pill-row vf-pill-row-metrics">
           <span class="vf-pill vf-pill-danger">Críticos ${escapeHTML(String(r.itens_criticos ?? 0))}</span>
           <span class="vf-pill vf-pill-warning">Atenção ${escapeHTML(String(r.itens_atencao ?? 0))}</span>
           <span class="vf-pill vf-pill-success">Saudáveis ${escapeHTML(String(r.itens_saudaveis ?? 0))}</span>
-          <span class="vf-pill">MC <span class="vf-num ${mcClass}">${escapeHTML(mcTxt)}</span></span>
+          <span class="vf-pill vf-pill-mc"><span class="vf-pill-prefix">MC</span><span class="vf-num ${mcClass}">${escapeHTML(mcTxt)}</span></span>
         </div>
       </div>
 
@@ -1055,19 +1055,26 @@ function atualizarContadorDetalheFiltrado(qtdFiltrados, qtdTotal) {
   info.textContent = `${qtdFiltrados} de ${qtdTotal} itens`;
 }
 
+function renderDetalheMetric(label, valueHtml) {
+  return `
+    <div class="vf-detail-metric">
+      <div class="vf-detail-metric-label">${escapeHTML(label)}</div>
+      <div class="vf-detail-metric-value">${valueHtml}</div>
+    </div>
+  `;
+}
+
 function renderDetalheItens() {
-  const tbody = document.getElementById("vf-relatorio-detalhe-tbody");
-  if (!tbody) return;
-  tbody.innerHTML = "";
+  const list = document.getElementById("vf-detail-item-list");
+  if (!list) return;
+  list.innerHTML = "";
 
   const lista = getItensDetalheFiltrados();
   const total = Array.isArray(DETALHE_ITENS) ? DETALHE_ITENS.length : 0;
   atualizarContadorDetalheFiltrado(lista.length, total);
 
   if (!lista.length) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="14" style="color:var(--vf-text-m);">Nenhum item encontrado</td>`;
-    tbody.appendChild(tr);
+    list.innerHTML = `<div class="vf-detail-empty">Nenhum item encontrado</div>`;
     return;
   }
 
@@ -1077,31 +1084,42 @@ function renderDetalheItens() {
   lista.forEach((it) => {
     const diag = diagnosticoItemSalvo(it);
     const temBase = it?.tem_base === true || it?.tem_base === 1 || it?.tem_base === "1";
-    const baseBtnLabel = temBase ? "Atualizar custo" : "Adicionar";
+    const baseBtnLabel = temBase ? "Atualizar custo" : "Adicionar à base";
     const baseBtnDisabled = false;
-    const lcN = Number(it.lc);
-    const mcN = Number(it.mc);
-    const lcColor = !Number.isFinite(lcN) ? "" : (lcN > 0 ? "color:var(--vf-success);" : (lcN < 0 ? "color:var(--vf-danger);" : ""));
-    const mcColor = !Number.isFinite(mcN) ? "" : (mcN > 0 ? "color:var(--vf-success);" : (mcN < 0 ? "color:var(--vf-danger);" : ""));
 
     const precoOriginalN = Number(it.preco_original);
     const precoPromoN = Number(it.preco_promocional);
     const temPromo =
       Number.isFinite(precoPromoN) && precoPromoN > 0 &&
       Number.isFinite(precoOriginalN) && precoPromoN < precoOriginalN;
-    const efetivoSub = Number.isFinite(Number(it.preco_efetivo))
-      ? `<div class="vf-subnum">Efetivo: ${fmtMoneyHtml(it.preco_efetivo)}</div>`
+    const temEfetivo = Number.isFinite(Number(it.preco_efetivo));
+    const efetivoLinha = temEfetivo
+      ? `<div class="vf-detail-metric-sub">Efetivo ${fmtMoneyHtml(it.preco_efetivo)}</div>`
       : "";
 
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td style="font-family:var(--vf-mono);font-size:.8rem;">
-        <div>${escapeHTML(it.item_id || "—")}</div>
-        <div style="color:var(--vf-text-m);font-size:.75rem;">${escapeHTML(it.sku || "—")}</div>
-      </td>
-      <td class="vf-item-titulo" title="${escapeHTML(it.titulo || "")}">${escapeHTML(it.titulo || "—")}</td>
-      <td>
-        <div class="vf-base-cell">
+    const promoBloco = `
+      ${temPromo ? fmtMoneyHtml(precoPromoN, "vf-good") : renderDash()}
+      ${temPromo && efetivoLinha ? efetivoLinha : ""}
+    `;
+    const cheioBloco = `
+      ${fmtMoneyHtml(it.preco_original, temPromo ? "vf-muted vf-strike" : "")}
+      ${!temPromo && temEfetivo ? efetivoLinha : ""}
+    `;
+
+    const skuLinha = it?.sku
+      ? `<div class="vf-detail-item-sku">SKU: ${escapeHTML(String(it.sku))}</div>`
+      : "";
+
+    const card = document.createElement("div");
+    card.className = "vf-detail-item-card";
+    card.innerHTML = `
+      <div class="vf-detail-item-header">
+        <div class="vf-detail-item-identity">
+          <div class="vf-detail-item-mlb">${escapeHTML(it.item_id || "—")}</div>
+          ${skuLinha}
+        </div>
+        <div class="vf-detail-item-title" title="${escapeHTML(it.titulo || "")}">${escapeHTML(it.titulo || "—")}</div>
+        <div class="vf-detail-base-box">
           <span class="vf-base-badge ${temBase ? "is-ok" : "is-missing"}">${temBase ? "Com base" : "Sem base"}</span>
           <button
             type="button"
@@ -1110,25 +1128,25 @@ function renderDetalheItens() {
             ${baseBtnDisabled ? "disabled" : ""}
           >${escapeHTML(baseBtnLabel)}</button>
         </div>
-      </td>
-      <td class="vf-td-num">${fmtMoneyHtml(it.custo)}</td>
-      <td class="vf-td-num">${fmtMoneyHtml(it.preco_original, temPromo ? "vf-muted vf-strike" : "")}</td>
-      <td class="vf-td-num">
-        ${temPromo ? fmtMoneyHtml(precoPromoN, "vf-good") : renderDash()}
-        ${efetivoSub}
-      </td>
-      <td class="vf-td-num">${fmtMoneyHtml(it.frete)}</td>
-      <td class="vf-td-num">${fmtMoneyHtml(it.comissao)}</td>
-      <td class="vf-td-num">${fmtMoneyHtml(it.lc, Number(it.lc) > 0 ? "vf-good" : (Number(it.lc) < 0 ? "vf-bad" : ""))}</td>
-      <td class="vf-td-num">${fmtPctHtml(it.mc, Number(it.mc) > 0 ? "vf-good" : (Number(it.mc) < 0 ? "vf-bad" : ""))}</td>
-      <td class="vf-td-num">${fmtMoneyHtml(it.preco_sugerido ?? it.preco_alvo)}</td>
-      <td><span class="vf-ml-badge ${diag.key === "sem_base" ? "vf-ml-badge-sembase" : `vf-ml-badge-${diag.tone}`}" title="${escapeHTML(diag.label)}">${escapeHTML(diag.label)}</span></td>
-      <td class="vf-item-acao" title="${escapeHTML(it.acao_recomendada || "")}">${escapeHTML(it.acao_recomendada || "—")}</td>
+      </div>
+      <div class="vf-detail-metrics-grid">
+        ${renderDetalheMetric("Custo", fmtMoneyHtml(it.custo))}
+        ${renderDetalheMetric("Cheio", cheioBloco)}
+        ${renderDetalheMetric("Promo", promoBloco)}
+        ${renderDetalheMetric("Frete", fmtMoneyHtml(it.frete))}
+        ${renderDetalheMetric("Comissão", fmtMoneyHtml(it.comissao))}
+        ${renderDetalheMetric("LC", fmtMoneyHtml(it.lc, Number(it.lc) > 0 ? "vf-good" : (Number(it.lc) < 0 ? "vf-bad" : "")))}
+        ${renderDetalheMetric("MC", fmtPctHtml(it.mc, Number(it.mc) > 0 ? "vf-good" : (Number(it.mc) < 0 ? "vf-bad" : "")))}
+        ${renderDetalheMetric("Sugerido", fmtMoneyHtml(it.preco_sugerido ?? it.preco_alvo))}
+      </div>
+      <div class="vf-detail-item-footer">
+        <span class="vf-ml-badge vf-ml-badge-sm ${diag.key === "sem_base" ? "vf-ml-badge-sembase" : `vf-ml-badge-${diag.tone}`}" title="${escapeHTML(diag.label)}">${escapeHTML(diag.label)}</span>
+      </div>
     `;
-    tbody.appendChild(tr);
+    list.appendChild(card);
   });
 
-  tbody.querySelectorAll(".btn-base-editor").forEach((btn) => {
+  list.querySelectorAll(".btn-base-editor").forEach((btn) => {
     btn.addEventListener("click", () => {
       const itemId = btn.getAttribute("data-base-editor-item");
       if (!itemId) return;
