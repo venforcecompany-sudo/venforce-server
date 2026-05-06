@@ -32,6 +32,7 @@ let DETALHE_RELATORIO_ATUAL = null;
 let BASE_EDITOR_ITEM_ATUAL = null;
 let BASE_EDITOR_BASE_SLUG_ATUAL = null;
 let BASE_EDITOR_PADRAO_CACHE = new Map(); // baseSlug -> { imposto_percentual, taxa_fixa }
+let BASE_EDITOR_TAXA_FIXA_ATUAL = 0;
 const DETALHE_FILTROS_RAPIDOS = [
   { key: "todos", label: "Todos" },
   { key: "critico", label: "Críticos" },
@@ -190,7 +191,6 @@ async function abrirEditorCustoBase(item) {
   const tituloEl = document.getElementById("vf-base-custo-titulo");
   const custoEl = document.getElementById("vf-base-custo-custo-produto");
   const impostoEl = document.getElementById("vf-base-custo-imposto");
-  const taxaEl = document.getElementById("vf-base-custo-taxa");
 
   if (produtoIdEl) produtoIdEl.value = String(item?.item_id || "");
   if (skuEl) skuEl.textContent = item?.sku ? String(item.sku) : "—";
@@ -200,7 +200,7 @@ async function abrirEditorCustoBase(item) {
   if (custoEl) custoEl.value = Number.isFinite(custoNum) && custoNum > 0 ? String(custoNum) : "";
 
   if (impostoEl) impostoEl.value = "";
-  if (taxaEl) taxaEl.value = "";
+  BASE_EDITOR_TAXA_FIXA_ATUAL = 0;
 
   const saveBtn = document.getElementById("vf-base-custo-rapido-save");
   if (saveBtn) saveBtn.disabled = true;
@@ -208,7 +208,7 @@ async function abrirEditorCustoBase(item) {
   try {
     const padrao = await carregarPadraoCustoBase(baseSlug);
     if (impostoEl) impostoEl.value = formatarPercentualInput(padrao.imposto_percentual);
-    if (taxaEl) taxaEl.value = String(padrao.taxa_fixa ?? 0);
+    BASE_EDITOR_TAXA_FIXA_ATUAL = Number(padrao.taxa_fixa) || 0;
   } catch (err) {
     setEditorBaseFeedback(
       `Não foi possível carregar o padrão da base. Você ainda pode salvar informando os campos manualmente. (${err?.message || "erro"})`,
@@ -235,7 +235,6 @@ async function salvarCustoBaseRapido() {
   const produtoIdEl = document.getElementById("vf-base-custo-produto-id");
   const custoEl = document.getElementById("vf-base-custo-custo-produto");
   const impostoEl = document.getElementById("vf-base-custo-imposto");
-  const taxaEl = document.getElementById("vf-base-custo-taxa");
   const saveBtn = document.getElementById("vf-base-custo-rapido-save");
 
   const produto_id = String(produtoIdEl?.value || "").trim();
@@ -257,14 +256,6 @@ async function salvarCustoBaseRapido() {
   custoEl?.classList.remove("is-invalid");
 
   const impostoDec = parsePercentualInput(impostoEl?.value);
-  const taxaRaw = String(taxaEl?.value ?? "").trim();
-  const taxaNum = taxaRaw ? Number(taxaRaw.replace(",", ".")) : null;
-  if (taxaRaw && !Number.isFinite(taxaNum)) {
-    setEditorBaseFeedback("Taxa fixa deve ser numérica.", "var(--vf-danger)");
-    taxaEl?.classList.add("is-invalid");
-    return;
-  }
-  taxaEl?.classList.remove("is-invalid");
 
   if (impostoEl?.value && impostoDec == null) {
     setEditorBaseFeedback("Imposto % deve ser numérico.", "var(--vf-danger)");
@@ -280,7 +271,7 @@ async function salvarCustoBaseRapido() {
 
   // Se imposto/taxa estiverem vazios, não envia (service aplica padrão / mantém antigo)
   if (impostoDec != null) payload.imposto_percentual = impostoDec;
-  if (taxaNum != null) payload.taxa_fixa = taxaNum;
+  payload.taxa_fixa = Number.isFinite(Number(BASE_EDITOR_TAXA_FIXA_ATUAL)) ? Number(BASE_EDITOR_TAXA_FIXA_ATUAL) : 0;
 
   try {
     setEditorBaseFeedback("");
@@ -767,61 +758,50 @@ function renderRelatorios() {
 
   setListState("table");
 
-  const opcoesPastasHtml = (Array.isArray(PASTAS) ? PASTAS : [])
-    .map((p) => `<option value="${escapeHTML(String(p.id))}">${escapeHTML(p.nome || `Pasta ${p.id}`)}</option>`)
-    .join("");
-
   RELATORIOS_FILTRADOS.forEach((r) => {
     const mcNum = Number(r.mc_media);
     const mcStyle = Number.isFinite(mcNum)
       ? (mcNum < 0 ? "color:var(--vf-danger);" : (mcNum > 0 ? "color:var(--vf-success);" : ""))
       : "";
     const pastaAtual = Number(r.pasta_id);
+    const pastaNome =
+      Number.isFinite(pastaAtual) && pastaAtual > 0
+        ? ((Array.isArray(PASTAS) ? PASTAS : []).find((p) => Number(p.id) === pastaAtual)?.nome || `Pasta ${pastaAtual}`)
+        : "Sem pasta";
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td style="font-family:var(--vf-mono);font-size:.8rem;">#${escapeHTML(String(r.id || "—"))}</td>
       <td>${escapeHTML(formatarDataRelatorio(r.created_at))}</td>
-      <td>${escapeHTML(r.cliente_slug || "—")}</td>
-      <td>${escapeHTML(r.base_slug || "—")}</td>
+      <td class="vf-relatorios-clientebase">
+        <div><span class="vf-relatorios-mini-label">Cliente</span> <strong>${escapeHTML(r.cliente_slug || "—")}</strong></div>
+        <div><span class="vf-relatorios-mini-label">Base</span> <span style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.base_slug || "—")}</span></div>
+      </td>
       <td>${escapeHTML(r.escopo || "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(formatarMargemAlvo(r.margem_alvo))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.total_itens ?? 0))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;color:var(--vf-danger);">${escapeHTML(String(r.itens_criticos ?? 0))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;color:var(--vf-warning, #d97706);">${escapeHTML(String(r.itens_atencao ?? 0))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;color:var(--vf-success);">${escapeHTML(String(r.itens_saudaveis ?? 0))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.itens_sem_base ?? 0))}</td>
+      <td class="vf-relatorios-resumo">
+        <div><strong>${escapeHTML(String(r.total_itens ?? 0))}</strong> itens</div>
+        <div style="color:var(--vf-text-m);font-size:.82rem;">
+          ${escapeHTML(String(r.itens_com_base ?? 0))} com base · ${escapeHTML(String(r.itens_sem_base ?? 0))} sem base
+        </div>
+      </td>
+      <td class="vf-relatorios-alertas">
+        <div><span class="vf-relatorios-mini-label">Críticos</span> <strong style="color:var(--vf-danger);">${escapeHTML(String(r.itens_criticos ?? 0))}</strong></div>
+        <div><span class="vf-relatorios-mini-label">Atenção</span> <strong style="color:var(--vf-warning, #d97706);">${escapeHTML(String(r.itens_atencao ?? 0))}</strong></div>
+        <div><span class="vf-relatorios-mini-label">Saudáveis</span> <strong style="color:var(--vf-success);">${escapeHTML(String(r.itens_saudaveis ?? 0))}</strong></div>
+      </td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcStyle}">${escapeHTML(formatarMcMedia(r.mc_media))}</td>
       <td><span class="vf-ml-badge ${classeStatus(r.status)}">${escapeHTML(r.status || "—")}</span></td>
       <td>
-        <select class="vf-input relatorio-pasta-select" data-id="${escapeHTML(String(r.id || ""))}" style="margin:0;padding:.32rem .5rem;font-size:.78rem;min-width:140px;">
-          <option value="">Sem pasta</option>
-          ${opcoesPastasHtml}
-        </select>
-      </td>
-      <td>
-        <button type="button" class="vf-btn-secondary btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">Detalhes</button>
-      </td>
-      <td>
-        <div style="display:flex;gap:6px;align-items:center;white-space:nowrap;">
-          <button type="button" class="vf-btn-secondary btn-exportar" data-formato="xlsx" data-id="${escapeHTML(String(r.id || ""))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">XLSX</button>
-          <button type="button" class="vf-btn-secondary btn-exportar" data-formato="csv" data-id="${escapeHTML(String(r.id || ""))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">CSV</button>
+        <div class="vf-relatorios-acoes">
+          <button type="button" class="vf-btn-secondary vf-btn-xs btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}">Detalhes</button>
+          <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="xlsx" data-id="${escapeHTML(String(r.id || ""))}">XLSX</button>
+          <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="csv" data-id="${escapeHTML(String(r.id || ""))}">CSV</button>
+          <button type="button" class="vf-btn-secondary vf-btn-xs btn-mover" data-id="${escapeHTML(String(r.id || ""))}" data-pasta="${escapeHTML(String(pastaAtual || ""))}" data-pasta-nome="${escapeHTML(String(pastaNome))}">Mover</button>
+          <button type="button" class="vf-btn-secondary vf-btn-xs btn-excluir" data-id="${escapeHTML(String(r.id || ""))}">Excluir</button>
         </div>
-      </td>
-      <td>
-        <button type="button" class="vf-btn-secondary btn-excluir" data-id="${escapeHTML(String(r.id || ""))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">Excluir</button>
       </td>
     `;
     tbody.appendChild(tr);
-
-    const selectPasta = tr.querySelector(".relatorio-pasta-select");
-    if (selectPasta) {
-      if (Number.isFinite(pastaAtual) && pastaAtual > 0) {
-        selectPasta.value = String(pastaAtual);
-      } else {
-        selectPasta.value = "";
-      }
-    }
   });
 
   tbody.querySelectorAll(".btn-detalhe").forEach((btn) => {
@@ -849,16 +829,35 @@ function renderRelatorios() {
     });
   });
 
-  tbody.querySelectorAll(".relatorio-pasta-select").forEach((select) => {
-    select.addEventListener("change", async () => {
-      const id = select.getAttribute("data-id");
+  tbody.querySelectorAll(".btn-mover").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-id");
       if (!id) return;
-      const pastaIdValor = select.value ? Number(select.value) : null;
-      select.disabled = true;
-      await moverRelatorioParaPasta(id, pastaIdValor);
-      select.disabled = false;
+      await promptMoverRelatorioParaPasta(id);
     });
   });
+}
+
+async function promptMoverRelatorioParaPasta(relatorioId) {
+  const pastas = Array.isArray(PASTAS) ? PASTAS : [];
+  const linhas = [
+    "Mover para qual pasta? (digite o ID)",
+    "0 = Sem pasta",
+    "",
+    ...pastas.map((p) => `${p.id} = ${p.nome || `Pasta ${p.id}`}`),
+    "",
+  ];
+  const entrada = window.prompt(linhas.join("\n"));
+  if (entrada == null) return;
+  const raw = String(entrada).trim();
+  if (!raw) return;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    setFeedback("Pasta inválida. Informe um ID numérico (0 para sem pasta).", "var(--vf-danger)");
+    return;
+  }
+  const pastaIdValor = n === 0 ? null : n;
+  await moverRelatorioParaPasta(relatorioId, pastaIdValor);
 }
 
 function atualizarBotoesExportModal() {
@@ -949,7 +948,7 @@ function renderDetalheItens() {
 
   if (!lista.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="15" style="color:var(--vf-text-m);">Nenhum item encontrado</td>`;
+    tr.innerHTML = `<td colspan="14" style="color:var(--vf-text-m);">Nenhum item encontrado</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -986,20 +985,13 @@ function renderDetalheItens() {
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(it.item_id || "—")}</td>
-      <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(it.sku || "—")}</td>
-      <td style="white-space:normal;line-height:1.35;" title="${escapeHTML(it.titulo || "")}">${escapeHTML(it.titulo || "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.custo))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${originalStyle}">${escapeHTML(fmtMoney(it.preco_original))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${promoStyle}">${escapeHTML(promoFmt)}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_efetivo))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.frete))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.comissao))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(fmtMoney(it.lc))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcColor}">${escapeHTML(fmtMcFraction(it.mc))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_sugerido ?? it.preco_alvo))}</td>
+      <td style="font-family:var(--vf-mono);font-size:.8rem;">
+        <div>${escapeHTML(it.item_id || "—")}</div>
+        <div style="color:var(--vf-text-m);font-size:.75rem;">${escapeHTML(it.sku || "—")}</div>
+      </td>
+      <td class="vf-item-titulo" title="${escapeHTML(it.titulo || "")}">${escapeHTML(it.titulo || "—")}</td>
       <td><span class="vf-ml-badge vf-ml-badge-${diag.tone}">${escapeHTML(diag.label)}</span></td>
-      <td>${escapeHTML(it.acao_recomendada || "—")}</td>
+      <td class="vf-item-acao">${escapeHTML(it.acao_recomendada || "—")}</td>
       <td>
         <button
           type="button"
@@ -1009,6 +1001,15 @@ function renderDetalheItens() {
           ${baseBtnDisabled ? "disabled" : ""}
         >${escapeHTML(baseBtnLabel)}</button>
       </td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.custo))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_efetivo))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcColor}">${escapeHTML(fmtMcFraction(it.mc))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_sugerido ?? it.preco_alvo))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${originalStyle}">${escapeHTML(fmtMoney(it.preco_original))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${promoStyle}">${escapeHTML(promoFmt)}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.frete))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.comissao))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(fmtMoney(it.lc))}</td>
     `;
     tbody.appendChild(tr);
   });

@@ -283,6 +283,12 @@ body {
   border-color: #d1d5db;
 }
 
+.vf-btn-xs {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.1;
+}
+
 .btn-spinner {
   width: 18px; height: 18px;
   border: 2px solid rgba(255,255,255,.35);
@@ -413,6 +419,13 @@ body {
   border-radius: 12px;
   background: var(--vf-bg);
   padding: 12px;
+  max-height: 74vh;
+  overflow: hidden;
+}
+.vf-page-relatorios #relatorios-pastas-lista {
+  max-height: calc(74vh - 44px);
+  overflow: auto;
+  padding-right: 4px;
 }
 .vf-relatorios-tabela-col {
   min-width: 0;
@@ -557,6 +570,47 @@ body {
 .vf-table tbody tr { transition: background var(--vf-ease); }
 .vf-table tbody tr:hover { background: rgba(var(--vf-primary-rgb), 0.04); }
 .vf-table tbody td strong { font-weight: 600; color: var(--vf-text); letter-spacing: -0.01em; }
+
+/* Relatórios — células condensadas e ações visíveis */
+.vf-relatorios-mini-label {
+  color: var(--vf-text-l);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 6px;
+}
+.vf-relatorios-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 240px;
+}
+.vf-relatorios-clientebase > div {
+  line-height: 1.25;
+}
+
+/* Detalhe do relatório — limitar texto para não “estourar” */
+.vf-item-titulo {
+  white-space: normal;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vf-item-acao {
+  white-space: normal;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--vf-text-m);
+  font-size: 0.85rem;
+}
 
 /* ---------- Automações: Preview ML (ajustes conservadores de largura) ---------- */
 .vf-ml-preview .vf-table-wrapper { overflow-x: auto; }
