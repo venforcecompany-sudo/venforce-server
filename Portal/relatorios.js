@@ -33,6 +33,91 @@ let BASE_EDITOR_ITEM_ATUAL = null;
 let BASE_EDITOR_BASE_SLUG_ATUAL = null;
 let BASE_EDITOR_PADRAO_CACHE = new Map(); // baseSlug -> { imposto_percentual, taxa_fixa }
 let BASE_EDITOR_TAXA_FIXA_ATUAL = 0;
+let MOVER_RELATORIO_ID_ATUAL = null;
+
+function setMoverRelatorioFeedback(msg, color = "var(--vf-text-m)") {
+  const el = document.getElementById("vf-mover-relatorio-feedback");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.style.color = color;
+  el.style.display = msg ? "block" : "none";
+}
+
+function abrirModalMoverRelatorio(relatorioId) {
+  const modal = document.getElementById("vf-mover-relatorio-modal");
+  const select = document.getElementById("vf-mover-relatorio-select");
+  const sub = document.getElementById("vf-mover-relatorio-sub");
+  if (!modal || !select) return;
+
+  MOVER_RELATORIO_ID_ATUAL = relatorioId;
+  setMoverRelatorioFeedback("");
+
+  if (sub) sub.textContent = `#${relatorioId}`;
+
+  const pastas = Array.isArray(PASTAS) ? PASTAS : [];
+  const optHtml = [
+    `<option value="">Sem pasta</option>`,
+    ...pastas.map((p) => `<option value="${escapeHTML(String(p.id))}">${escapeHTML(p.nome || `Pasta ${p.id}`)}</option>`),
+  ];
+  select.innerHTML = optHtml.join("");
+
+  const rel = (Array.isArray(TODOS_RELATORIOS) ? TODOS_RELATORIOS : []).find((r) => String(r.id) === String(relatorioId));
+  const pastaAtual = Number(rel?.pasta_id);
+  if (Number.isFinite(pastaAtual) && pastaAtual > 0) select.value = String(pastaAtual);
+  else select.value = "";
+
+  modal.style.display = "flex";
+}
+
+function fecharModalMoverRelatorio() {
+  const modal = document.getElementById("vf-mover-relatorio-modal");
+  if (modal) modal.style.display = "none";
+  setMoverRelatorioFeedback("");
+  MOVER_RELATORIO_ID_ATUAL = null;
+}
+
+async function confirmarMoverRelatorio() {
+  if (!TOKEN || !MOVER_RELATORIO_ID_ATUAL) return;
+  const select = document.getElementById("vf-mover-relatorio-select");
+  const saveBtn = document.getElementById("vf-mover-relatorio-save");
+  const id = MOVER_RELATORIO_ID_ATUAL;
+  const pastaIdValor = select?.value ? Number(select.value) : null;
+
+  try {
+    setMoverRelatorioFeedback("");
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = `<span class="btn-spinner" style="border-color:rgba(255,255,255,.35);border-top-color:#fff;"></span> Movendo...`;
+    }
+    await moverRelatorioParaPasta(id, pastaIdValor);
+    fecharModalMoverRelatorio();
+  } catch (err) {
+    setMoverRelatorioFeedback(`Erro ao mover: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Mover";
+    }
+  }
+}
+
+function renderDash(v) {
+  return `<span class="vf-num vf-dash">—</span>`;
+}
+
+function renderMoney(v, extraClass = "") {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return renderDash();
+  const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `<span class="vf-num vf-money ${extraClass}">${escapeHTML(brl.format(n))}</span>`;
+}
+
+function renderPercentFromFraction(v, extraClass = "") {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return renderDash();
+  const pct = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `<span class="vf-num vf-percent ${extraClass}">${escapeHTML(`${pct.format(n * 100)}%`)}</span>`;
+}
 const DETALHE_FILTROS_RAPIDOS = [
   { key: "todos", label: "Todos" },
   { key: "critico", label: "Críticos" },
@@ -380,6 +465,7 @@ function renderPastas() {
   const pastas = Array.isArray(PASTAS) ? PASTAS : [];
 
   const htmlItens = [];
+  htmlItens.push(`<div class="vf-pastas-section-label">Fixas</div>`);
   htmlItens.push(`
     <button type="button" class="vf-relatorio-pasta-item ${PASTA_SELECIONADA === "todos" ? "is-active" : ""}" data-pasta-filter="todos">
       <span>Todos</span>
@@ -393,23 +479,30 @@ function renderPastas() {
     </button>
   `);
 
-  pastas.forEach((pasta) => {
-    const id = Number(pasta.id);
-    const active = PASTA_SELECIONADA === id ? "is-active" : "";
-    const count = mapa.get(id) || 0;
-    htmlItens.push(`
-      <div class="vf-relatorio-pasta-row ${active}">
-        <button type="button" class="vf-relatorio-pasta-item" data-pasta-filter="${id}">
-          <span>${escapeHTML(pasta.nome || "Pasta")}</span>
-          <span class="vf-relatorio-pasta-count">${count}</span>
-        </button>
-        <div class="vf-relatorio-pasta-actions">
-          <button type="button" class="vf-relatorio-pasta-action" data-pasta-rename="${id}" title="Renomear">✎</button>
-          <button type="button" class="vf-relatorio-pasta-action" data-pasta-delete="${id}" title="Excluir">🗑</button>
+  htmlItens.push(`<div class="vf-pastas-sep"></div>`);
+  htmlItens.push(`<div class="vf-pastas-section-label">Minhas pastas</div>`);
+
+  if (!pastas.length) {
+    htmlItens.push(`<div class="vf-pastas-vazio">Nenhuma pasta criada</div>`);
+  } else {
+    pastas.forEach((pasta) => {
+      const id = Number(pasta.id);
+      const active = PASTA_SELECIONADA === id ? "is-active" : "";
+      const count = mapa.get(id) || 0;
+      htmlItens.push(`
+        <div class="vf-relatorio-pasta-row ${active}">
+          <button type="button" class="vf-relatorio-pasta-item" data-pasta-filter="${id}">
+            <span>${escapeHTML(pasta.nome || "Pasta")}</span>
+            <span class="vf-relatorio-pasta-count">${count}</span>
+          </button>
+          <div class="vf-relatorio-pasta-actions">
+            <button type="button" class="vf-relatorio-pasta-action" data-pasta-rename="${id}" title="Renomear">Editar</button>
+            <button type="button" class="vf-relatorio-pasta-action" data-pasta-delete="${id}" title="Excluir">Excluir</button>
+          </div>
         </div>
-      </div>
-    `);
-  });
+      `);
+    });
+  }
 
   container.innerHTML = htmlItens.join("");
 
@@ -774,30 +867,33 @@ function renderRelatorios() {
       <td style="font-family:var(--vf-mono);font-size:.8rem;">#${escapeHTML(String(r.id || "—"))}</td>
       <td>${escapeHTML(formatarDataRelatorio(r.created_at))}</td>
       <td class="vf-relatorios-clientebase">
-        <div><span class="vf-relatorios-mini-label">Cliente</span> <strong>${escapeHTML(r.cliente_slug || "—")}</strong></div>
-        <div><span class="vf-relatorios-mini-label">Base</span> <span style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.base_slug || "—")}</span></div>
+        <div class="vf-relatorios-cliente"><strong>${escapeHTML(r.cliente_slug || "—")}</strong></div>
+        <div class="vf-relatorios-base">Base: <span style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.base_slug || "—")}</span></div>
       </td>
       <td>${escapeHTML(r.escopo || "—")}</td>
       <td class="vf-relatorios-resumo">
-        <div><strong>${escapeHTML(String(r.total_itens ?? 0))}</strong> itens</div>
-        <div style="color:var(--vf-text-m);font-size:.82rem;">
-          ${escapeHTML(String(r.itens_com_base ?? 0))} com base · ${escapeHTML(String(r.itens_sem_base ?? 0))} sem base
+        <div class="vf-mini-metrics">
+          <span class="vf-mini-chip">${escapeHTML(String(r.total_itens ?? 0))} itens</span>
+          <span class="vf-mini-chip">${escapeHTML(String(r.itens_com_base ?? 0))} base</span>
+          <span class="vf-mini-chip">${escapeHTML(String(r.itens_sem_base ?? 0))} sem base</span>
         </div>
       </td>
       <td class="vf-relatorios-alertas">
-        <div><span class="vf-relatorios-mini-label">Críticos</span> <strong style="color:var(--vf-danger);">${escapeHTML(String(r.itens_criticos ?? 0))}</strong></div>
-        <div><span class="vf-relatorios-mini-label">Atenção</span> <strong style="color:var(--vf-warning, #d97706);">${escapeHTML(String(r.itens_atencao ?? 0))}</strong></div>
-        <div><span class="vf-relatorios-mini-label">Saudáveis</span> <strong style="color:var(--vf-success);">${escapeHTML(String(r.itens_saudaveis ?? 0))}</strong></div>
+        <div class="vf-mini-metrics">
+          <span class="vf-mini-badge vf-mini-badge-danger">Críticos ${escapeHTML(String(r.itens_criticos ?? 0))}</span>
+          <span class="vf-mini-badge vf-mini-badge-warning">Atenção ${escapeHTML(String(r.itens_atencao ?? 0))}</span>
+          <span class="vf-mini-badge vf-mini-badge-success">Saudáveis ${escapeHTML(String(r.itens_saudaveis ?? 0))}</span>
+        </div>
       </td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcStyle}">${escapeHTML(formatarMcMedia(r.mc_media))}</td>
       <td><span class="vf-ml-badge ${classeStatus(r.status)}">${escapeHTML(r.status || "—")}</span></td>
       <td>
         <div class="vf-relatorios-acoes">
-          <button type="button" class="vf-btn-secondary vf-btn-xs btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}">Detalhes</button>
+          <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-main btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}">Detalhes</button>
           <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="xlsx" data-id="${escapeHTML(String(r.id || ""))}">XLSX</button>
           <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="csv" data-id="${escapeHTML(String(r.id || ""))}">CSV</button>
           <button type="button" class="vf-btn-secondary vf-btn-xs btn-mover" data-id="${escapeHTML(String(r.id || ""))}" data-pasta="${escapeHTML(String(pastaAtual || ""))}" data-pasta-nome="${escapeHTML(String(pastaNome))}">Mover</button>
-          <button type="button" class="vf-btn-secondary vf-btn-xs btn-excluir" data-id="${escapeHTML(String(r.id || ""))}">Excluir</button>
+          <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-danger btn-excluir" data-id="${escapeHTML(String(r.id || ""))}">Excluir</button>
         </div>
       </td>
     `;
@@ -833,31 +929,9 @@ function renderRelatorios() {
     btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-id");
       if (!id) return;
-      await promptMoverRelatorioParaPasta(id);
+      abrirModalMoverRelatorio(id);
     });
   });
-}
-
-async function promptMoverRelatorioParaPasta(relatorioId) {
-  const pastas = Array.isArray(PASTAS) ? PASTAS : [];
-  const linhas = [
-    "Mover para qual pasta? (digite o ID)",
-    "0 = Sem pasta",
-    "",
-    ...pastas.map((p) => `${p.id} = ${p.nome || `Pasta ${p.id}`}`),
-    "",
-  ];
-  const entrada = window.prompt(linhas.join("\n"));
-  if (entrada == null) return;
-  const raw = String(entrada).trim();
-  if (!raw) return;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0) {
-    setFeedback("Pasta inválida. Informe um ID numérico (0 para sem pasta).", "var(--vf-danger)");
-    return;
-  }
-  const pastaIdValor = n === 0 ? null : n;
-  await moverRelatorioParaPasta(relatorioId, pastaIdValor);
 }
 
 function atualizarBotoesExportModal() {
@@ -874,14 +948,15 @@ function renderDetalheResumo(relatorio) {
   if (!container || !relatorio) return;
 
   container.innerHTML = `
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Total</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.total_itens ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Com base</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_com_base ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Sem base</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_sem_base ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Críticos</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_criticos ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Atenção</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_atencao ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Saudáveis</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_saudaveis ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">MC média</div><div class="vf-ml-insight-value">${escapeHTML(formatarMcMedia(relatorio.mc_media))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Margem alvo</div><div class="vf-ml-insight-value">${escapeHTML(formatarMargemAlvo(relatorio.margem_alvo))}</div></div>
+    <div class="vf-resumo-bar">
+      <span class="vf-resumo-pill"><strong>${escapeHTML(String(relatorio.total_itens ?? 0))}</strong> total</span>
+      <span class="vf-resumo-pill">${escapeHTML(String(relatorio.itens_com_base ?? 0))} com base</span>
+      <span class="vf-resumo-pill">${escapeHTML(String(relatorio.itens_sem_base ?? 0))} sem base</span>
+      <span class="vf-resumo-pill vf-resumo-danger">Críticos ${escapeHTML(String(relatorio.itens_criticos ?? 0))}</span>
+      <span class="vf-resumo-pill vf-resumo-warning">Atenção ${escapeHTML(String(relatorio.itens_atencao ?? 0))}</span>
+      <span class="vf-resumo-pill vf-resumo-success">Saudáveis ${escapeHTML(String(relatorio.itens_saudaveis ?? 0))}</span>
+      <span class="vf-resumo-pill">MC média ${escapeHTML(formatarMcMedia(relatorio.mc_media))}</span>
+    </div>
   `;
 
   if (meta) {
@@ -953,21 +1028,13 @@ function renderDetalheItens() {
     return;
   }
 
-  const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const pct = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const fmtMoney = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? brl.format(n) : "—";
-  };
-  const fmtMcFraction = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? `${pct.format(n * 100)}%` : "—";
-  };
+  const fmtMoneyHtml = (v, extra = "") => renderMoney(v, extra);
+  const fmtPctHtml = (v, extra = "") => renderPercentFromFraction(v, extra);
 
   lista.forEach((it) => {
     const diag = diagnosticoItemSalvo(it);
     const temBase = it?.tem_base === true || it?.tem_base === 1 || it?.tem_base === "1";
-    const baseBtnLabel = temBase ? "Atualizar custo" : "Adicionar à base";
+    const baseBtnLabel = temBase ? "Atualizar custo" : "Adicionar";
     const baseBtnDisabled = false;
     const lcN = Number(it.lc);
     const mcN = Number(it.mc);
@@ -979,9 +1046,9 @@ function renderDetalheItens() {
     const temPromo =
       Number.isFinite(precoPromoN) && precoPromoN > 0 &&
       Number.isFinite(precoOriginalN) && precoPromoN < precoOriginalN;
-    const originalStyle = temPromo ? "text-decoration:line-through;color:var(--vf-text-m);" : "";
-    const promoStyle = temPromo ? "color:var(--vf-success);font-weight:600;" : "color:var(--vf-text-m);";
-    const promoFmt = temPromo ? fmtMoney(precoPromoN) : "—";
+    const efetivoSub = Number.isFinite(Number(it.preco_efetivo))
+      ? `<div class="vf-subnum">Efetivo: ${fmtMoneyHtml(it.preco_efetivo)}</div>`
+      : "";
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -990,26 +1057,30 @@ function renderDetalheItens() {
         <div style="color:var(--vf-text-m);font-size:.75rem;">${escapeHTML(it.sku || "—")}</div>
       </td>
       <td class="vf-item-titulo" title="${escapeHTML(it.titulo || "")}">${escapeHTML(it.titulo || "—")}</td>
-      <td><span class="vf-ml-badge vf-ml-badge-${diag.tone}">${escapeHTML(diag.label)}</span></td>
-      <td class="vf-item-acao">${escapeHTML(it.acao_recomendada || "—")}</td>
       <td>
-        <button
-          type="button"
-          class="vf-btn-secondary btn-base-editor"
-          data-base-editor-item="${escapeHTML(String(it.item_id || ""))}"
-          style="margin:0;padding:.25rem .6rem;font-size:.75rem;white-space:nowrap;"
-          ${baseBtnDisabled ? "disabled" : ""}
-        >${escapeHTML(baseBtnLabel)}</button>
+        <div class="vf-base-cell">
+          <span class="vf-base-badge ${temBase ? "is-ok" : "is-missing"}">${temBase ? "Com base" : "Sem base"}</span>
+          <button
+            type="button"
+            class="vf-btn-secondary vf-btn-xs vf-btn-base-action btn-base-editor"
+            data-base-editor-item="${escapeHTML(String(it.item_id || ""))}"
+            ${baseBtnDisabled ? "disabled" : ""}
+          >${escapeHTML(baseBtnLabel)}</button>
+        </div>
       </td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.custo))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_efetivo))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcColor}">${escapeHTML(fmtMcFraction(it.mc))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_sugerido ?? it.preco_alvo))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${originalStyle}">${escapeHTML(fmtMoney(it.preco_original))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${promoStyle}">${escapeHTML(promoFmt)}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.frete))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.comissao))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(fmtMoney(it.lc))}</td>
+      <td class="vf-td-num">${fmtMoneyHtml(it.custo)}</td>
+      <td class="vf-td-num">${fmtMoneyHtml(it.preco_original, temPromo ? "vf-muted vf-strike" : "")}</td>
+      <td class="vf-td-num">
+        ${temPromo ? fmtMoneyHtml(precoPromoN, "vf-good") : renderDash()}
+        ${efetivoSub}
+      </td>
+      <td class="vf-td-num">${fmtMoneyHtml(it.frete)}</td>
+      <td class="vf-td-num">${fmtMoneyHtml(it.comissao)}</td>
+      <td class="vf-td-num">${fmtMoneyHtml(it.lc, Number(it.lc) > 0 ? "vf-good" : (Number(it.lc) < 0 ? "vf-bad" : ""))}</td>
+      <td class="vf-td-num">${fmtPctHtml(it.mc, Number(it.mc) > 0 ? "vf-good" : (Number(it.mc) < 0 ? "vf-bad" : ""))}</td>
+      <td class="vf-td-num">${fmtMoneyHtml(it.preco_sugerido ?? it.preco_alvo)}</td>
+      <td><span class="vf-ml-badge ${diag.key === "sem_base" ? "vf-ml-badge-sembase" : `vf-ml-badge-${diag.tone}`}" title="${escapeHTML(diag.label)}">${escapeHTML(diag.label)}</span></td>
+      <td class="vf-item-acao" title="${escapeHTML(it.acao_recomendada || "")}">${escapeHTML(it.acao_recomendada || "—")}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -1257,6 +1328,13 @@ document.getElementById("vf-base-custo-rapido-modal")?.addEventListener("click",
   if (e.target?.id === "vf-base-custo-rapido-modal") fecharEditorCustoBase();
 });
 document.getElementById("vf-base-custo-rapido-save")?.addEventListener("click", salvarCustoBaseRapido);
+
+document.getElementById("vf-mover-relatorio-close")?.addEventListener("click", fecharModalMoverRelatorio);
+document.getElementById("vf-mover-relatorio-cancel")?.addEventListener("click", fecharModalMoverRelatorio);
+document.getElementById("vf-mover-relatorio-modal")?.addEventListener("click", (e) => {
+  if (e.target?.id === "vf-mover-relatorio-modal") fecharModalMoverRelatorio();
+});
+document.getElementById("vf-mover-relatorio-save")?.addEventListener("click", confirmarMoverRelatorio);
 
 if (TOKEN) {
   carregarClientesParaFiltro();
