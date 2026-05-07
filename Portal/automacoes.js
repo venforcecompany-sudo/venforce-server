@@ -461,9 +461,9 @@ function renderPreviewMlTable() {
   rows.forEach((r) => {
     const diag = diagnosticarLinhaMl(r);
     const comissaoFmt =
-      r.comissaoMarketplace == null || !Number.isFinite(Number(r.comissaoMarketplace))
+      r.comissaoPercentual == null || !Number.isFinite(Number(r.comissaoPercentual))
         ? "—"
-        : brlFormatter.format(Number(r.comissaoMarketplace));
+        : `${pctFormatter.format(Number(r.comissaoPercentual))}%`;
     const lcNumber = Number(r.lucroContribuicao);
     const lcFmt =
       r.lucroContribuicao == null || !Number.isFinite(lcNumber)
@@ -1414,7 +1414,7 @@ function renderRelatorioDetalheItens(itens) {
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.custo))}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtPctNum(it.imposto_percentual))}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.frete))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.comissao))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtPctNum(it.comissao_percentual))}</td>
       <td>${it.tem_base ? "Sim" : "Não"}</td>
       <td><span class="vf-ml-badge vf-ml-badge-${diag.tone}">${escapeHTML(diag.label)}</span></td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(fmtMoney(it.lc))}</td>
