@@ -371,6 +371,42 @@
           .fc-stats-grid { grid-template-columns: 1fr 1fr; }
           .fc-tab { padding: 9px 12px; font-size: 12px; }
         }
+
+        .fc-mp-selector {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 18px;
+        }
+        .fc-mp-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 9px 16px;
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(255,255,255,0.05);
+          color: #e4e4e7;
+          transition: all 0.2s;
+          white-space: nowrap;
+        }
+        .fc-mp-pill:hover {
+          background: rgba(255,255,255,0.10);
+        }
+        .fc-mp-pill.fc-mp-active {
+          background: #7c3aed;
+          border-color: transparent;
+          color: #fff;
+          box-shadow: 0 0 20px rgba(124,58,237,0.35);
+        }
+        .fc-mp-pill img {
+          width: 18px;
+          height: 18px;
+          border-radius: 4px;
+          object-fit: contain;
+        }
       </style>
 
       <div id="fc-wrap" class="fc-wrap">
@@ -388,9 +424,19 @@
           <div class="fc-panel">
             <h2>Envio de arquivo</h2>
 
+            <!-- Seletor de marketplace -->
+            <div class="fc-mp-selector" id="fc-mp-selector">
+              <button class="fc-mp-pill fc-mp-active" type="button" data-mp="shopee" id="mp-shopee">
+                🛒 Shopee
+              </button>
+              <button class="fc-mp-pill" type="button" data-mp="meli" id="mp-meli">
+                🛍️ Mercado Livre
+              </button>
+            </div>
+
             <div class="fc-upload-grid">
               <div class="fc-upload-card">
-                <span class="fc-upload-label">Planilha de performance Shopee</span>
+                <span class="fc-upload-label" id="fc-upload-label-single">Planilha de performance Shopee</span>
                 <label class="fc-file">
                   <input type="file" id="fechamento-arquivo" accept=".xlsx">
                 </label>

@@ -21,6 +21,31 @@ const API_BASE = "https://venforce-server.onrender.com";
 let dadosAtuais = null;
 let abaAtiva = "abc";
 
+let marketplaceAtivo = "shopee"; // "shopee" | "meli"
+
+// Tabs que NÃO têm dados na planilha Meli (ficam desabilitadas)
+const TABS_SEM_DADOS_MELI = new Set(["impressoes", "cliques", "ctr", "conversao"]);
+
+function atualizarTabsParaMarketplace() {
+  document.querySelectorAll(".fc-tab").forEach((btn) => {
+    const tab = btn.dataset.tab || "";
+    const indisponivel = marketplaceAtivo === "meli" && TABS_SEM_DADOS_MELI.has(tab);
+    btn.disabled = indisponivel;
+    btn.title = indisponivel ? "Dado não disponível na planilha de vendas do Mercado Livre" : "";
+    btn.style.opacity = indisponivel ? "0.35" : "";
+    btn.style.cursor = indisponivel ? "not-allowed" : "";
+  });
+
+  // Se a aba ativa ficou indisponível, volta para "abc"
+  if (marketplaceAtivo === "meli" && TABS_SEM_DADOS_MELI.has(abaAtiva)) {
+    abaAtiva = "abc";
+    document.querySelectorAll(".fc-tab").forEach((b) => {
+      b.classList.toggle("fc-tab-active", b.dataset.tab === "abc");
+      b.setAttribute("aria-selected", b.dataset.tab === "abc" ? "true" : "false");
+    });
+  }
+}
+
 function escapeHTML(s) {
   const d = document.createElement("div");
   d.textContent = s == null ? "" : String(s);
@@ -333,6 +358,7 @@ async function processarArquivo() {
 
   try {
     const formData = new FormData();
+    formData.append("marketplace", marketplaceAtivo);
     formData.append("file", arquivo);
 
     const res = await fetch(`${API_BASE}/fechamentos/upload`, {
@@ -375,6 +401,7 @@ async function compilarArquivos() {
 
   try {
     const formData = new FormData();
+    formData.append("marketplace", marketplaceAtivo);
     Array.from(arquivos).forEach((arquivo) => {
       formData.append("files", arquivo);
     });
@@ -453,6 +480,36 @@ document.querySelectorAll(".fc-tab").forEach((btn) => {
   });
 });
 
+// Seletor de marketplace
+document.querySelectorAll(".fc-mp-pill").forEach((pill) => {
+  pill.addEventListener("click", () => {
+    const mp = pill.dataset.mp || "shopee";
+    marketplaceAtivo = mp;
+
+    document.querySelectorAll(".fc-mp-pill").forEach((p) => {
+      p.classList.toggle("fc-mp-active", p.dataset.mp === mp);
+    });
+
+    // Atualiza label do upload único
+    const label = document.getElementById("fc-upload-label-single");
+    if (label) {
+      label.textContent = mp === "meli"
+        ? "Planilha de vendas Mercado Livre"
+        : "Planilha de performance Shopee";
+    }
+
+    // Reset de estado ao trocar de marketplace
+    dadosAtuais = null;
+    limparStats();
+    const el = ensureTabContentEl();
+    if (el) el.innerHTML = "";
+    setStatus("", "");
+
+    atualizarTabsParaMarketplace();
+  });
+});
+
 // Estado inicial
 limparStats();
 renderTabContent();
+atualizarTabsParaMarketplace();

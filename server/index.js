@@ -11,6 +11,7 @@ const archiver = require("archiver");
 const crypto = require("crypto");
 const pool = require("./config/database");
 const { processarFechamento, compilarFechamentos } = require("./utils/fechamento/process");
+const { processarFechamentoMeli, compilarFechamentosMeli } = require("./utils/fechamento/meliConversaoService");
 const { getValidMlTokenByCliente, mlFetch } = require("./utils/mlClient");
 const { startTokenRefreshWorker } = require("./utils/tokenRefreshWorker");
 const { authMiddleware, requireAdmin } = require("./middlewares/authMiddleware");
@@ -1196,49 +1197,41 @@ app.delete("/usuarios/:id", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 app.post("/fechamentos/upload", authMiddleware, upload.single("file"), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ ok: false, erro: "Arquivo não enviado" });
-    }
+  const marketplace = String(req.body.marketplace || "shopee").trim().toLowerCase();
+  const buffer = req.file && req.file.buffer;
 
-    const resultado = processarFechamento(req.file.buffer);
-
-    res.json({
-      ok: true,
-      data: resultado
-    });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      ok: false,
-      erro: err.message
-    });
+  if (!buffer) {
+    return res.status(400).json({ erro: "Arquivo não enviado." });
   }
+
+  const resultado = marketplace === "meli"
+    ? processarFechamentoMeli(buffer)
+    : processarFechamento(buffer);
+
+  if (resultado.error || resultado.erro) {
+    return res.status(400).json({ erro: resultado.error || resultado.erro });
+  }
+
+  return res.json({ data: resultado });
 });
 
 app.post("/fechamentos/compilar", authMiddleware, upload.array("files", 20), (req, res) => {
-  try {
-    const files = req.files || [];
-    if (!files.length) {
-      return res.status(400).json({ ok: false, erro: "Arquivo não enviado" });
-    }
+  const marketplace = String(req.body.marketplace || "shopee").trim().toLowerCase();
+  const buffers = (req.files || []).map((f) => f.buffer);
 
-    const buffers = files.map((file) => file.buffer);
-    const resultado = compilarFechamentos(buffers);
-
-    res.json({
-      ok: true,
-      data: resultado
-    });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      ok: false,
-      erro: err.message
-    });
+  if (!buffers.length) {
+    return res.status(400).json({ erro: "Nenhum arquivo enviado." });
   }
+
+  const resultado = marketplace === "meli"
+    ? compilarFechamentosMeli(buffers)
+    : compilarFechamentos(buffers);
+
+  if (resultado.error || resultado.erro) {
+    return res.status(400).json({ erro: resultado.error || resultado.erro });
+  }
+
+  return res.json({ data: resultado });
 });
 /* ========================= SHOPEE ========================= */
 // Lê uma planilha Order.all e retorna apenas pedidos cancelados
