@@ -216,11 +216,15 @@ async function gerarPreviewPrecificacaoMl({
       if (itemId) {
         const pricesResp = await mlFetch(cliente.id, `/items/${encodeURIComponent(itemId)}/prices`);
         const pricesList = Array.isArray(pricesResp?.data?.prices) ? pricesResp.data.prices : [];
-        const amounts = pricesList
-          .map((p) => Number(p?.amount))
-          .filter((n) => Number.isFinite(n) && n > 0);
-        if (amounts.length > 0) {
-          precoPromocionado = Math.min(...amounts);
+        const promoEntry = pricesList.find(p => p?.type === "promotion" && Number.isFinite(Number(p?.amount)) && Number(p.amount) > 0);
+        const standardEntry = pricesList.find(p => p?.type === "standard" && Number.isFinite(Number(p?.amount)) && Number(p.amount) > 0);
+        if (promoEntry) {
+          precoPromocionado = Number(promoEntry.amount);
+        } else if (standardEntry) {
+          precoPromocionado = Number(standardEntry.amount);
+        } else {
+          const amounts = pricesList.map(p => Number(p?.amount)).filter(n => Number.isFinite(n) && n > 0);
+          if (amounts.length > 0) precoPromocionado = Math.min(...amounts);
         }
       }
     } catch (_) {

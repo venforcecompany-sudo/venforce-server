@@ -118,8 +118,16 @@ async function diagEnriquecerItem({ clienteId, body, baseRow, margemAlvo }) {
     if (itemId) {
       const r = await mlFetch(clienteId, `/items/${encodeURIComponent(itemId)}/prices`);
       const lista = Array.isArray(r?.data?.prices) ? r.data.prices : [];
-      const valores = lista.map((p) => Number(p?.amount)).filter((n) => Number.isFinite(n) && n > 0);
-      if (valores.length > 0) precoPromocional = Math.min(...valores);
+      const promoEntry = lista.find(p => p?.type === "promotion" && Number.isFinite(Number(p?.amount)) && Number(p.amount) > 0);
+      const standardEntry = lista.find(p => p?.type === "standard" && Number.isFinite(Number(p?.amount)) && Number(p.amount) > 0);
+      if (promoEntry) {
+        precoPromocional = Number(promoEntry.amount);
+      } else if (standardEntry) {
+        precoPromocional = Number(standardEntry.amount);
+      } else {
+        const valores = lista.map(p => Number(p?.amount)).filter(n => Number.isFinite(n) && n > 0);
+        if (valores.length > 0) precoPromocional = Math.min(...valores);
+      }
     }
   } catch (_) { precoPromocional = null; }
 
