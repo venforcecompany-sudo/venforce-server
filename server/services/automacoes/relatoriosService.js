@@ -632,11 +632,11 @@ async function gerarExportRelatorioXlsx({ idRaw }) {
   };
 
   for (let row = 4; row < 4 + itens.length; row++) {
-    setFormula(matrizSheet, `K${row}`, `IFERROR(J${row}-J${row}*G${row}-H${row}-I${row}-F${row},"")`, "R$ #,##0.00");
+    setFormula(matrizSheet, `K${row}`, `IFERROR(J${row}-J${row}*G${row}-J${row}*I${row}-H${row}-F${row},"")`, "R$ #,##0.00");
     setFormula(matrizSheet, `L${row}`, `IFERROR(K${row}/J${row},"")`, "0.00%");
-    setFormula(matrizSheet, `O${row}`, `IFERROR(N${row}-N${row}*G${row}-H${row}-I${row}-F${row},"")`, "R$ #,##0.00");
+    setFormula(matrizSheet, `O${row}`, `IFERROR(N${row}-N${row}*G${row}-N${row}*I${row}-H${row}-F${row},"")`, "R$ #,##0.00");
     setFormula(matrizSheet, `P${row}`, `IFERROR(O${row}/N${row},"")`, "0.00%");
-    setFormula(matrizSheet, `T${row}`, `IFERROR((F${row}+H${row}+I${row})/(1-G${row}-S${row}),"")`, "R$ #,##0.00");
+    setFormula(matrizSheet, `T${row}`, `IFERROR((F${row}+H${row})/(1-G${row}-I${row}-S${row}),"")`, "R$ #,##0.00");
     setFormula(matrizSheet, `U${row}`, `IFERROR(T${row}*S${row},"")`, "R$ #,##0.00");
     setFormula(matrizSheet, `W${row}`, `IF(AA${row}="sem_base","Revisar custo/base",IF(AA${row}="sem_frete","Revisar frete",IF(AA${row}="sem_comissao","Revisar comissão",IF(Q${row}<T${row},"Subir preço",IF(Q${row}>T${row},"Avaliar redução","Manter")))))`);
     setFormula(matrizSheet, `X${row}`, `IF(W${row}="Subir preço",T${row},Q${row})`, "R$ #,##0.00");
