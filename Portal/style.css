@@ -931,6 +931,52 @@ body {
 .vf-page-relatorios .vf-report-actions .btn-exportar:hover {
   opacity: 1;
 }
+
+/* =========================================================
+   Relatórios — Modais de pasta (UI, sem lógica)
+   ========================================================= */
+.vf-page-relatorios .vf-modal-overlay {
+  backdrop-filter: blur(3px);
+}
+.vf-page-relatorios .vf-modal-card {
+  border-radius: 18px !important;
+  border-color: rgba(15, 23, 42, 0.10) !important;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.35) !important;
+  transform: translateY(4px);
+  animation: vfModalPop 0.18s ease-out both;
+}
+.vf-page-relatorios .vf-modal-x {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--vf-ease), transform var(--vf-ease);
+}
+.vf-page-relatorios .vf-modal-x:hover {
+  background: rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
+}
+.vf-page-relatorios #vf-pasta-modal-feedback,
+.vf-page-relatorios #vf-pasta-delete-feedback {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.03);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.vf-page-relatorios #vf-pasta-modal-desc-wrap .vf-input {
+  line-height: 1.35;
+}
+.vf-page-relatorios #vf-pasta-delete-confirm.vf-btn-danger {
+  border-radius: 12px;
+  box-shadow: 0 10px 22px rgba(220, 38, 38, 0.14);
+}
+
+@keyframes vfModalPop {
+  from { opacity: 0; transform: translateY(10px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 .vf-relatorios-pastas-col {
   border: 1px solid var(--vf-border);
   border-radius: 14px;
