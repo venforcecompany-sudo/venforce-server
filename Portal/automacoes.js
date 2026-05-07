@@ -28,6 +28,8 @@ let DIAG_ULTIMO_RELATORIO = null;
 let RELATORIO_DETALHE_ATUAL_ID = null;
 let ULTIMO_RELATORIO_SALVO_ID = null;
 let ULTIMO_RELATORIO_SALVO_META = null;
+let ULTIMO_RELATORIO_PRONTO_ID = null;
+let ULTIMO_RELATORIO_PRONTO_META = null;
 const PREVIEW_ML_FILTERS = [
   { key: "todos", label: "Todos" },
   { key: "critico", label: "Críticos" },
@@ -111,6 +113,74 @@ function setClientesOptions(select, clientes) {
 function esconderPainelPosSalvar() {
   const box = document.getElementById("vf-pos-salvar-relatorio");
   if (box) box.style.display = "none";
+}
+
+function esconderPainelRelatorioPronto() {
+  const box = document.getElementById("vf-relatorio-pronto-panel");
+  if (box) box.style.display = "none";
+}
+
+function buildResumoRelatorioPronto(meta = {}) {
+  const idTxt = meta?.relatorioId ? `#${meta.relatorioId}` : "—";
+  const bits = [];
+  bits.push(`<span style="font-family:var(--vf-mono);">${escapeHTML(idTxt)}</span>`);
+
+  const addSep = () => bits.push(`<span class="vf-meta-sep">·</span>`);
+  const add = (label, valueHtml) => {
+    addSep();
+    bits.push(`${escapeHTML(label)} ${valueHtml}`);
+  };
+
+  const n = (v) => (Number.isFinite(Number(v)) ? String(Number(v)) : null);
+  const mcMedia = meta?.mcMedia != null && typeof formatarMcMedia === "function"
+    ? formatarMcMedia(meta.mcMedia)
+    : null;
+
+  if (meta?.clienteSlug) add("Cliente", `<strong>${escapeHTML(meta.clienteSlug)}</strong>`);
+  if (meta?.baseSlug) add("Base", `<strong>${escapeHTML(meta.baseSlug)}</strong>`);
+
+  if (n(meta?.total) != null) add("Total", `<strong>${escapeHTML(n(meta.total))}</strong>`);
+  if (n(meta?.comBase) != null) add("Com base", `<strong>${escapeHTML(n(meta.comBase))}</strong>`);
+  if (n(meta?.semBase) != null) add("Sem base", `<strong>${escapeHTML(n(meta.semBase))}</strong>`);
+  if (n(meta?.criticos) != null) add("Críticos", `<strong>${escapeHTML(n(meta.criticos))}</strong>`);
+  if (n(meta?.atencao) != null) add("Atenção", `<strong>${escapeHTML(n(meta.atencao))}</strong>`);
+  if (n(meta?.saudaveis) != null) add("Saudáveis", `<strong>${escapeHTML(n(meta.saudaveis))}</strong>`);
+  if (mcMedia != null && mcMedia !== "—") add("MC média", `<strong>${escapeHTML(mcMedia)}</strong>`);
+
+  // fallback do fluxo manual
+  if (n(meta?.itensSalvos) != null) add("Itens salvos", `<strong>${escapeHTML(n(meta.itensSalvos))}</strong>`);
+  if (meta?.margemAlvo != null && typeof formatarMargemAlvo === "function") {
+    const margemTxt = formatarMargemAlvo(meta.margemAlvo);
+    if (margemTxt && margemTxt !== "—") add("Margem alvo", `<strong>${escapeHTML(margemTxt)}</strong>`);
+  }
+
+  return bits.join(" ");
+}
+
+function mostrarRelatorioPronto(meta = {}) {
+  const relatorioId = meta?.relatorioId ?? meta?.id ?? null;
+  if (!relatorioId) return;
+
+  ULTIMO_RELATORIO_PRONTO_ID = relatorioId;
+  ULTIMO_RELATORIO_PRONTO_META = { ...meta, relatorioId };
+
+  // Painel do diagnóstico
+  const diagBox = document.getElementById("vf-relatorio-pronto-panel");
+  const diagResumo = document.getElementById("vf-relatorio-pronto-resumo");
+  if (diagBox && diagResumo) {
+    diagResumo.innerHTML = buildResumoRelatorioPronto(ULTIMO_RELATORIO_PRONTO_META);
+    diagBox.style.display = "block";
+  }
+
+  // Painel pós-salvar (já existente) — reaproveita a mesma meta
+  const saveBox = document.getElementById("vf-pos-salvar-relatorio");
+  const saveResumo = document.getElementById("vf-pos-salvar-relatorio-resumo");
+  const saveTitulo = document.getElementById("vf-pos-salvar-relatorio-titulo");
+  if (saveBox && saveResumo) {
+    if (saveTitulo) saveTitulo.textContent = "Relatório pronto para uso";
+    saveResumo.innerHTML = buildResumoRelatorioPronto(ULTIMO_RELATORIO_PRONTO_META);
+    saveBox.style.display = "block";
+  }
 }
 
 function mostrarPainelPosSalvar({ relatorioId, clienteSlug, baseSlug, itensSalvos, margemAlvo } = {}) {
@@ -877,7 +947,7 @@ async function salvarRelatorioAtual() {
       itensSalvos: linhas.length,
       margemAlvo,
     };
-    mostrarPainelPosSalvar(ULTIMO_RELATORIO_SALVO_META);
+    mostrarRelatorioPronto(ULTIMO_RELATORIO_SALVO_META);
     if (typeof carregarRelatoriosCliente === "function") {
       carregarRelatoriosCliente(clienteSlug);
     }
@@ -1131,6 +1201,7 @@ function resetDiagnosticoCompletoUI() {
   pararPollingDiagnostico();
   DIAG_RELATORIO_ID = null;
   DIAG_ULTIMO_RELATORIO = null;
+  esconderPainelRelatorioPronto();
 
   const badge = document.getElementById("vf-diagnostico-status-badge");
   const statusText = document.getElementById("vf-diagnostico-status-text");
@@ -1187,6 +1258,16 @@ async function carregarDiagnosticoCompleto(relatorioId) {
     pararPollingDiagnostico();
     if (anteriorStatus !== "concluido") {
       setStatus(`Diagnóstico completo concluído (relatório #${atual.id}).`, "var(--vf-success)");
+      mostrarRelatorioPronto({
+        relatorioId: atual.id,
+        total: atual.total_itens,
+        comBase: atual.itens_com_base,
+        semBase: atual.itens_sem_base,
+        criticos: atual.itens_criticos,
+        atencao: atual.itens_atencao,
+        saudaveis: atual.itens_saudaveis,
+        mcMedia: atual.mc_media,
+      });
       const slug = document.getElementById("automacoes-cliente")?.value || "";
       if (slug) carregarRelatoriosCliente(slug);
     }
@@ -1586,6 +1667,18 @@ document.getElementById("vf-pos-salvar-abrir-relatorios")?.addEventListener("cli
 });
 document.getElementById("vf-pos-salvar-nova-analise")?.addEventListener("click", () => {
   esconderPainelPosSalvar();
+});
+
+document.getElementById("vf-relatorio-pronto-baixar-xlsx")?.addEventListener("click", () => {
+  if (!ULTIMO_RELATORIO_PRONTO_ID) return;
+  baixarRelatorioArquivo(ULTIMO_RELATORIO_PRONTO_ID, "xlsx");
+});
+document.getElementById("vf-relatorio-pronto-ver-detalhes")?.addEventListener("click", () => {
+  if (!ULTIMO_RELATORIO_PRONTO_ID) return;
+  if (typeof abrirRelatorioDetalhe === "function") abrirRelatorioDetalhe(ULTIMO_RELATORIO_PRONTO_ID);
+});
+document.getElementById("vf-relatorio-pronto-abrir-relatorios")?.addEventListener("click", () => {
+  window.location.href = "relatorios.html";
 });
 document.getElementById("btn-precificacao-ml-prev")?.addEventListener("click", () => {
   PREVIEW_ML_PAGE = Math.max(1, PREVIEW_ML_PAGE - 1);

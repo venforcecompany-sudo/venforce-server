@@ -707,6 +707,10 @@ body {
   }
 }
 
+.vf-page-automacoes .vf-relatorio-pronto-card {
+  margin-top: 12px;
+}
+
 /* Relatórios: mais largura útil, mantendo centralizado */
 .vf-page-relatorios .vf-content {
   max-width: 1680px;
