@@ -656,6 +656,57 @@ body {
   transform: translateY(-1px);
 }
 
+/* =========================================================
+   Automações — Painel pós-salvar relatório (UI)
+   ========================================================= */
+.vf-page-automacoes .vf-pos-salvar-card {
+  border: 1px solid rgba(var(--vf-primary-rgb), 0.18);
+  background: linear-gradient(180deg, rgba(var(--vf-primary-rgb), 0.06) 0%, var(--vf-surface) 100%);
+  border-radius: 16px;
+  padding: 14px 14px;
+  margin: 10px 0 12px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+}
+.vf-page-automacoes .vf-pos-salvar-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.vf-page-automacoes .vf-pos-salvar-title {
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px;
+}
+.vf-page-automacoes .vf-pos-salvar-sub {
+  color: var(--vf-text-m);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.vf-page-automacoes .vf-pos-salvar-sub strong {
+  color: var(--vf-text);
+  font-weight: 800;
+}
+.vf-page-automacoes .vf-pos-salvar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+.vf-page-automacoes #vf-pos-salvar-baixar-xlsx {
+  box-shadow: 0 12px 26px rgba(var(--vf-primary-rgb), 0.18);
+}
+.vf-page-automacoes #vf-pos-salvar-baixar-xlsx:hover {
+  transform: translateY(-1px);
+}
+@media (max-width: 720px) {
+  .vf-page-automacoes .vf-pos-salvar-actions {
+    justify-content: flex-start;
+  }
+}
+
 /* Relatórios: mais largura útil, mantendo centralizado */
 .vf-page-relatorios .vf-content {
   max-width: 1680px;

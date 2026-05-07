@@ -26,6 +26,8 @@ let DIAG_POLL_TIMER = null;
 let DIAG_RELATORIO_ID = null;
 let DIAG_ULTIMO_RELATORIO = null;
 let RELATORIO_DETALHE_ATUAL_ID = null;
+let ULTIMO_RELATORIO_SALVO_ID = null;
+let ULTIMO_RELATORIO_SALVO_META = null;
 const PREVIEW_ML_FILTERS = [
   { key: "todos", label: "Todos" },
   { key: "critico", label: "Críticos" },
@@ -104,6 +106,39 @@ function setClientesOptions(select, clientes) {
     const opt = new Option(`${nome} (${slug})`, slug);
     select.appendChild(opt);
   });
+}
+
+function esconderPainelPosSalvar() {
+  const box = document.getElementById("vf-pos-salvar-relatorio");
+  if (box) box.style.display = "none";
+}
+
+function mostrarPainelPosSalvar({ relatorioId, clienteSlug, baseSlug, itensSalvos, margemAlvo } = {}) {
+  const box = document.getElementById("vf-pos-salvar-relatorio");
+  const titulo = document.getElementById("vf-pos-salvar-relatorio-titulo");
+  const resumo = document.getElementById("vf-pos-salvar-relatorio-resumo");
+  if (!box || !resumo) return;
+
+  const idTxt = relatorioId ? `#${relatorioId}` : "—";
+  const clienteTxt = clienteSlug || "—";
+  const baseTxt = baseSlug || "—";
+  const itensTxt = Number.isFinite(Number(itensSalvos)) ? String(Number(itensSalvos)) : "—";
+  const margemTxt = typeof formatarMargemAlvo === "function" ? formatarMargemAlvo(margemAlvo) : "—";
+
+  if (titulo) titulo.textContent = "Relatório pronto para uso";
+  resumo.innerHTML = `
+    <span style="font-family:var(--vf-mono);">${escapeHTML(idTxt)}</span>
+    <span class="vf-meta-sep">·</span>
+    Cliente <strong>${escapeHTML(clienteTxt)}</strong>
+    <span class="vf-meta-sep">·</span>
+    Base <strong>${escapeHTML(baseTxt)}</strong>
+    <span class="vf-meta-sep">·</span>
+    ${escapeHTML(itensTxt)} itens salvos
+    <span class="vf-meta-sep">·</span>
+    Margem alvo <strong>${escapeHTML(margemTxt)}</strong>
+  `;
+
+  box.style.display = "block";
 }
 
 function applyClienteSearchFilter({ keepValueIfPossible = true } = {}) {
@@ -834,6 +869,15 @@ async function salvarRelatorioAtual() {
     }
 
     setStatus(`Relatório #${json.relatorio_id} salvo com sucesso (${linhas.length} itens).`, "var(--vf-success)");
+    ULTIMO_RELATORIO_SALVO_ID = json.relatorio_id;
+    ULTIMO_RELATORIO_SALVO_META = {
+      relatorioId: json.relatorio_id,
+      clienteSlug,
+      baseSlug,
+      itensSalvos: linhas.length,
+      margemAlvo,
+    };
+    mostrarPainelPosSalvar(ULTIMO_RELATORIO_SALVO_META);
     if (typeof carregarRelatoriosCliente === "function") {
       carregarRelatoriosCliente(clienteSlug);
     }
@@ -1528,6 +1572,21 @@ document.getElementById("btn-relatorios-refresh")?.addEventListener("click", () 
 });
 document.getElementById("btn-diagnostico-completo-start")?.addEventListener("click", iniciarDiagnosticoCompleto);
 document.getElementById("btn-precificacao-ml-salvar")?.addEventListener("click", salvarRelatorioAtual);
+
+document.getElementById("vf-pos-salvar-baixar-xlsx")?.addEventListener("click", () => {
+  if (!ULTIMO_RELATORIO_SALVO_ID) return;
+  baixarRelatorioArquivo(ULTIMO_RELATORIO_SALVO_ID, "xlsx");
+});
+document.getElementById("vf-pos-salvar-ver-detalhes")?.addEventListener("click", () => {
+  if (!ULTIMO_RELATORIO_SALVO_ID) return;
+  if (typeof abrirRelatorioDetalhe === "function") abrirRelatorioDetalhe(ULTIMO_RELATORIO_SALVO_ID);
+});
+document.getElementById("vf-pos-salvar-abrir-relatorios")?.addEventListener("click", () => {
+  window.location.href = "relatorios.html";
+});
+document.getElementById("vf-pos-salvar-nova-analise")?.addEventListener("click", () => {
+  esconderPainelPosSalvar();
+});
 document.getElementById("btn-precificacao-ml-prev")?.addEventListener("click", () => {
   PREVIEW_ML_PAGE = Math.max(1, PREVIEW_ML_PAGE - 1);
   previewPrecificacaoMl();
