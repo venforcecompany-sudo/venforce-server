@@ -562,7 +562,7 @@ async function gerarExportRelatorioXlsx({ idRaw }) {
     [
       "ID", "SKU/Base", "Título", "Marketplace",
       "",
-      "Preço Custo", "Imposto %", "Frete R$", "Comissão R$", "Preço Original", "Lucro Original", "MC Original",
+      "Preço Custo", "Imposto %", "Frete R$", "Comissão %", "Preço Original", "Lucro Original", "MC Original",
       "",
       "Preço Promocional", "Lucro Promocional", "MC Promocional", "Preço Efetivo",
       "",
@@ -585,7 +585,7 @@ async function gerarExportRelatorioXlsx({ idRaw }) {
       numeroOuNulo(it.custo),
       impostoPct,
       freteNum,
-      numeroOuNulo(it.comissao),
+      paraDecimalPct(it.comissao_percentual),
       numeroOuNulo(it.preco_original),
       "",
       "",
