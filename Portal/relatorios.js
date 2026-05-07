@@ -474,13 +474,13 @@ function renderPastas() {
   const htmlItens = [];
   htmlItens.push(`<div class="vf-pastas-section-label">Fixas</div>`);
   htmlItens.push(`
-    <button type="button" class="vf-relatorio-pasta-item ${PASTA_SELECIONADA === "todos" ? "is-active" : ""}" data-pasta-filter="todos">
+    <button type="button" class="vf-relatorio-pasta-item vf-drive-folder ${PASTA_SELECIONADA === "todos" ? "is-active" : ""}" data-pasta-filter="todos">
       <span>Todos</span>
       <span class="vf-relatorio-pasta-count">${total}</span>
     </button>
   `);
   htmlItens.push(`
-    <button type="button" class="vf-relatorio-pasta-item ${PASTA_SELECIONADA === "sem_pasta" ? "is-active" : ""}" data-pasta-filter="sem_pasta">
+    <button type="button" class="vf-relatorio-pasta-item vf-drive-folder ${PASTA_SELECIONADA === "sem_pasta" ? "is-active" : ""}" data-pasta-filter="sem_pasta">
       <span>Sem pasta</span>
       <span class="vf-relatorio-pasta-count">${semPasta}</span>
     </button>
@@ -497,12 +497,12 @@ function renderPastas() {
       const active = PASTA_SELECIONADA === id ? "is-active" : "";
       const count = mapa.get(id) || 0;
       htmlItens.push(`
-        <div class="vf-relatorio-pasta-row ${active}">
-          <button type="button" class="vf-relatorio-pasta-item" data-pasta-filter="${id}">
+        <div class="vf-relatorio-pasta-row vf-drive-folder-row ${active}">
+          <button type="button" class="vf-relatorio-pasta-item vf-drive-folder" data-pasta-filter="${id}">
             <span>${escapeHTML(pasta.nome || "Pasta")}</span>
             <span class="vf-relatorio-pasta-count">${count}</span>
           </button>
-          <div class="vf-relatorio-pasta-actions">
+          <div class="vf-relatorio-pasta-actions vf-drive-folder-actions">
             <button type="button" class="vf-relatorio-pasta-action" data-pasta-rename="${id}" title="Renomear">Editar</button>
             <button type="button" class="vf-relatorio-pasta-action" data-pasta-delete="${id}" title="Excluir">Excluir</button>
           </div>
@@ -905,7 +905,7 @@ function renderRelatorios() {
     const mcTxt = Number.isFinite(mcNum) ? `${(mcNum * 100).toFixed(2)}%` : "—";
 
     const card = document.createElement("div");
-    card.className = "vf-relatorio-card";
+    card.className = "vf-relatorio-card vf-report-card";
     card.innerHTML = `
       <div class="vf-relatorio-card-header">
         <div class="vf-relatorio-card-title">
@@ -939,12 +939,16 @@ function renderRelatorios() {
         </div>
       </div>
 
-      <div class="vf-relatorio-card-actions">
-        <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-main btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}">Detalhes</button>
-        <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="xlsx" data-id="${escapeHTML(String(r.id || ""))}">XLSX</button>
-        <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="csv" data-id="${escapeHTML(String(r.id || ""))}">CSV</button>
-        <button type="button" class="vf-btn-secondary vf-btn-xs btn-mover" data-id="${escapeHTML(String(r.id || ""))}" data-pasta="${escapeHTML(String(pastaAtual || ""))}" data-pasta-nome="${escapeHTML(String(pastaNome))}">Mover</button>
-        <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-danger btn-excluir" data-id="${escapeHTML(String(r.id || ""))}">Excluir</button>
+      <div class="vf-relatorio-card-actions vf-report-actions">
+        <div class="vf-report-actions-main">
+          <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-main btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}">Detalhes</button>
+          <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="xlsx" data-id="${escapeHTML(String(r.id || ""))}">XLSX</button>
+          <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="csv" data-id="${escapeHTML(String(r.id || ""))}">CSV</button>
+          <button type="button" class="vf-btn-secondary vf-btn-xs btn-mover" data-id="${escapeHTML(String(r.id || ""))}" data-pasta="${escapeHTML(String(pastaAtual || ""))}" data-pasta-nome="${escapeHTML(String(pastaNome))}">Mover</button>
+        </div>
+        <div class="vf-report-actions-danger">
+          <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-danger btn-excluir" data-id="${escapeHTML(String(r.id || ""))}">Excluir</button>
+        </div>
       </div>
     `;
     list.appendChild(card);
