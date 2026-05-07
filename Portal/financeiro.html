@@ -14,231 +14,363 @@
     <main class="vf-content fc-page">
 
       <style>
-        /* ── Tokens ─────────────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           TOKENS
+        ───────────────────────────────────────────────────── */
         .fc-wrap {
-          --fc-text:          #f4f4f5;
-          --fc-text-2:        #a1a1aa;
-          --fc-accent:        #7c3aed;
-          --fc-accent-2:      #8b5cf6;
-          --fc-accent-label:  #c4b5fd;
-          --fc-panel-bg:      rgba(18,12,34,0.94);
-          --fc-panel-br:      rgba(255,255,255,0.1);
-          --fc-panel-r:       28px;
-          --fc-glass:         rgba(255,255,255,0.08);
-          --fc-shadow:        0 18px 60px rgba(0,0,0,0.45);
-          --fc-shadow-soft:   0 10px 28px rgba(0,0,0,0.32);
+          --fc-text:         #f4f4f5;
+          --fc-text-2:       #a1a1aa;
+          --fc-text-3:       #71717a;
+          --fc-accent:       #7c3aed;
+          --fc-accent-2:     #8b5cf6;
+          --fc-accent-3:     #a78bfa;
+          --fc-accent-label: #c4b5fd;
+          --fc-panel-bg:     rgba(12,8,24,0.96);
+          --fc-panel-br:     rgba(255,255,255,0.08);
+          --fc-glass:        rgba(124,58,237,0.07);
+          --fc-shadow:       0 24px 64px rgba(0,0,0,0.5);
+          --fc-shadow-soft:  0 8px 32px rgba(0,0,0,0.35);
+          --fc-shadow-glow:  0 0 40px rgba(124,58,237,0.14);
+          --fc-radius-lg:    22px;
+          --fc-radius-md:    14px;
+          --fc-radius-sm:    10px;
+          --fc-ease:         0.18s cubic-bezier(0.4,0,0.2,1);
         }
 
-        /* ── Wrap principal ──────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           WRAP PRINCIPAL
+        ───────────────────────────────────────────────────── */
         .fc-wrap {
           width: 100%;
           max-width: 100%;
-          padding: 28px 32px 56px;
+          padding: 24px 28px 60px;
           box-sizing: border-box;
           overflow-x: hidden;
           border-radius: 28px;
-          background: radial-gradient(circle at top, #4c1d95 0%, #1f103d 35%, #09090b 100%);
+          background:
+            radial-gradient(ellipse 80% 50% at 50% -10%, rgba(109,40,217,0.28) 0%, transparent 60%),
+            radial-gradient(circle at 0% 100%, rgba(76,29,149,0.18) 0%, transparent 50%),
+            linear-gradient(180deg, #0f0720 0%, #08040f 60%, #050308 100%);
           color: var(--fc-text);
         }
 
-        /* ── Hero ────────────────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           HERO
+        ───────────────────────────────────────────────────── */
         .fc-hero {
-          border-radius: 22px;
-          background: var(--fc-glass);
-          border: 1px solid rgba(255,255,255,0.10);
-          -webkit-backdrop-filter: blur(10px);
-          backdrop-filter: blur(10px);
-          box-shadow: var(--fc-shadow);
-          padding: 28px 32px;
-          margin-bottom: 20px;
+          position: relative;
+          overflow: hidden;
+          border-radius: var(--fc-radius-lg);
+          background: linear-gradient(135deg, rgba(76,29,149,0.22) 0%, rgba(124,58,237,0.06) 60%, rgba(0,0,0,0) 100%);
+          border: 1px solid rgba(196,181,253,0.14);
+          padding: 30px 32px 28px;
+          margin-bottom: 14px;
+        }
+
+        /* Glow decorativo no canto superior direito */
+        .fc-hero::before {
+          content: '';
+          position: absolute;
+          top: -60px; right: -60px;
+          width: 260px; height: 260px;
+          background: radial-gradient(circle, rgba(139,92,246,0.22) 0%, transparent 65%);
+          pointer-events: none;
+        }
+
+        /* Linha inferior sutil */
+        .fc-hero::after {
+          content: '';
+          position: absolute;
+          bottom: 0; left: 32px; right: 32px;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(196,181,253,0.2), transparent);
         }
 
         .fc-badge {
           display: inline-flex;
           align-items: center;
-          gap: 10px;
-          padding: 6px 12px;
+          gap: 7px;
+          padding: 5px 11px;
           border-radius: 999px;
-          font-size: 11px;
-          letter-spacing: 0.14em;
-          font-weight: 700;
+          font-size: 10.5px;
+          letter-spacing: 0.15em;
+          font-weight: 800;
           color: var(--fc-accent-label);
-          background: rgba(124,58,237,0.14);
-          border: 1px solid rgba(196,181,253,0.18);
+          background: rgba(124,58,237,0.12);
+          border: 1px solid rgba(196,181,253,0.2);
           text-transform: uppercase;
+        }
+
+        /* Dot no badge */
+        .fc-badge::before {
+          content: '';
+          display: inline-block;
+          width: 6px; height: 6px;
+          border-radius: 50%;
+          background: var(--fc-accent-label);
+          opacity: 0.8;
+          flex-shrink: 0;
         }
 
         .fc-title {
           margin: 14px 0 8px;
-          font-size: 32px;
+          font-size: 34px;
           line-height: 1.1;
           font-weight: 800;
-          letter-spacing: -0.02em;
+          letter-spacing: -0.03em;
+          background: linear-gradient(135deg, #ffffff 30%, #ddd6fe 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
 
         .fc-subtitle {
           margin: 0;
           color: var(--fc-text-2);
-          font-size: 14px;
-          line-height: 1.6;
-          max-width: 76ch;
+          font-size: 13.5px;
+          line-height: 1.65;
+          max-width: 72ch;
         }
 
-        /* ── Painel de operação ──────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           PAINEL DE OPERAÇÃO
+        ───────────────────────────────────────────────────── */
         .fc-operation-panel {
-          margin-top: 0;
-          padding: 24px 26px;
-          border-radius: 22px;
+          position: relative;
+          padding: 26px 28px;
+          border-radius: var(--fc-radius-lg);
           background: var(--fc-panel-bg);
           border: 1px solid var(--fc-panel-br);
-          box-shadow: var(--fc-shadow-soft);
+          box-shadow: var(--fc-shadow-soft), var(--fc-shadow-glow);
+          overflow: hidden;
+        }
+
+        /* Linha superior de cor */
+        .fc-operation-panel::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 1px;
+          background: linear-gradient(90deg, transparent 0%, rgba(124,58,237,0.6) 40%, rgba(139,92,246,0.3) 100%);
         }
 
         .fc-operation-header {
-          margin-bottom: 24px;
+          margin-bottom: 22px;
+          padding-bottom: 18px;
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
         }
 
         .fc-operation-header h2 {
-          margin: 0 0 4px;
-          font-size: 16px;
-          font-weight: 780;
+          margin: 0 0 3px;
+          font-size: 15px;
+          font-weight: 800;
           letter-spacing: -0.01em;
           color: var(--fc-text);
         }
 
         .fc-operation-header p {
           margin: 0;
-          color: var(--fc-text-2);
-          font-size: 13px;
+          color: var(--fc-text-3);
+          font-size: 12.5px;
+          line-height: 1.5;
         }
 
-        /* ── Blocos do formulário ──────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           BLOCOS DO FORMULÁRIO
+        ───────────────────────────────────────────────────── */
         .fc-form-block {
-          margin-bottom: 20px;
+          margin-bottom: 18px;
         }
 
+        /* Label com barra lateral colorida */
         .fc-form-block-label {
-          font-size: 10.5px;
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          font-size: 10px;
           font-weight: 800;
-          letter-spacing: 0.14em;
+          letter-spacing: 0.18em;
           text-transform: uppercase;
           color: var(--fc-accent-label);
-          margin-bottom: 10px;
-          padding-bottom: 8px;
-          border-bottom: 1px solid rgba(255,255,255,0.07);
+          margin-bottom: 12px;
+        }
+
+        .fc-form-block-label::before {
+          content: '';
+          display: inline-block;
+          width: 3px; height: 13px;
+          background: linear-gradient(180deg, var(--fc-accent-2), var(--fc-accent));
+          border-radius: 2px;
+          flex-shrink: 0;
         }
 
         .fc-form-divider {
           height: 1px;
-          background: rgba(255,255,255,0.07);
-          margin: 20px 0;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.09) 30%, rgba(255,255,255,0.09) 70%, transparent);
+          margin: 22px 0;
         }
 
-        /* ── Marketplace ─────────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           MARKETPLACE
+        ───────────────────────────────────────────────────── */
         .fc-marketplace-row {
           display: grid;
-          grid-template-columns: minmax(0, 360px);
+          grid-template-columns: minmax(0, 340px);
         }
 
-        /* ── Item de operação (select/number) ───────────── */
+        /* ─────────────────────────────────────────────────────
+           ITEM DE OPERAÇÃO (select / number)
+        ───────────────────────────────────────────────────── */
         .fc-operation-item {
-          border-radius: 12px;
-          background: rgba(255,255,255,0.035);
-          border: 1px solid rgba(255,255,255,0.08);
-          padding: 10px 12px;
+          border-radius: var(--fc-radius-md);
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.07);
+          padding: 11px 13px;
+          transition: border-color var(--fc-ease);
+        }
+
+        .fc-operation-item:focus-within {
+          border-color: rgba(139,92,246,0.40);
+          background: rgba(124,58,237,0.04);
         }
 
         .fc-operation-item label {
           display: block;
-          font-size: 11px;
+          font-size: 10.5px;
           color: var(--fc-accent-label);
-          font-weight: 650;
-          margin-bottom: 6px;
-          letter-spacing: 0.02em;
+          font-weight: 700;
+          margin-bottom: 7px;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
         }
 
         .fc-operation-item input,
         .fc-operation-item select {
           width: 100%;
           color: var(--fc-text);
-          background: rgba(9,9,11,0.55);
-          border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 10px;
-          padding: 8px 10px;
+          background: rgba(9,9,11,0.5);
+          border: 1px solid rgba(255,255,255,0.10);
+          border-radius: var(--fc-radius-sm);
+          padding: 8px 11px;
           outline: none;
-          min-height: 36px;
+          min-height: 38px;
           font-size: 13.5px;
           font-family: inherit;
-          transition: border-color 0.15s;
+          transition: border-color var(--fc-ease), background var(--fc-ease);
         }
 
         .fc-operation-item input:focus,
         .fc-operation-item select:focus {
-          border-color: rgba(139,92,246,0.55);
+          border-color: rgba(139,92,246,0.6);
+          background: rgba(9,9,11,0.7);
+          box-shadow: 0 0 0 3px rgba(124,58,237,0.10);
         }
 
-        .fc-operation-item select option {
-          background: #1f103d;
+        .fc-operation-item select option { background: #130928; }
+
+        /* Seta customizada no select */
+        .fc-operation-item select {
+          -webkit-appearance: none;
+          appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23a78bfa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 12px center;
+          padding-right: 32px;
         }
 
-        /* ── Upload grid ─────────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           UPLOAD GRID
+        ───────────────────────────────────────────────────── */
         .fc-upload-grid-main {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 12px;
-          margin-bottom: 12px;
+          gap: 10px;
+          margin-bottom: 10px;
         }
 
-        /* ── Upload card ─────────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           UPLOAD CARD
+        ───────────────────────────────────────────────────── */
         .fc-upload-card {
           position: relative;
-          border-radius: 16px;
-          background: rgba(255,255,255,0.035);
-          border: 1.5px dashed rgba(139,92,246,0.35);
+          border-radius: var(--fc-radius-md);
+          background: rgba(124,58,237,0.04);
+          border: 1.5px dashed rgba(139,92,246,0.28);
           padding: 16px;
-          transition: border-color 0.2s, background 0.2s;
+          transition: border-color var(--fc-ease), background var(--fc-ease), transform var(--fc-ease), box-shadow var(--fc-ease);
           cursor: pointer;
+          overflow: hidden;
+        }
+
+        /* Glow radial ao hover */
+        .fc-upload-card::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: var(--fc-radius-md);
+          background: radial-gradient(circle at 50% 0%, rgba(139,92,246,0.14) 0%, transparent 65%);
+          opacity: 0;
+          transition: opacity var(--fc-ease);
+          pointer-events: none;
         }
 
         .fc-upload-card:hover {
-          border-color: rgba(139,92,246,0.6);
-          background: rgba(139,92,246,0.06);
+          border-color: rgba(139,92,246,0.5);
+          background: rgba(124,58,237,0.07);
+          transform: translateY(-2px);
+          box-shadow: 0 10px 28px rgba(0,0,0,0.25), 0 0 0 1px rgba(139,92,246,0.12);
         }
 
+        .fc-upload-card:hover::after { opacity: 1; }
+
         .fc-upload-card-optional {
-          border-color: rgba(255,255,255,0.14);
-          margin-top: 4px;
+          border-color: rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.02);
+          margin-top: 6px;
+        }
+
+        .fc-upload-card-optional::after {
+          background: radial-gradient(circle at 50% 0%, rgba(251,191,36,0.07) 0%, transparent 65%);
         }
 
         .fc-upload-card-optional:hover {
-          border-color: rgba(255,255,255,0.25);
-          background: rgba(255,255,255,0.04);
+          border-color: rgba(251,191,36,0.3);
+          background: rgba(251,191,36,0.04);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.2);
         }
 
+        /* Badges */
         .fc-upload-badge {
-          display: inline-block;
-          font-size: 9.5px;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 9px;
           font-weight: 800;
-          letter-spacing: 0.12em;
+          letter-spacing: 0.14em;
           text-transform: uppercase;
           color: #86efac;
-          background: rgba(134,239,172,0.1);
-          border: 1px solid rgba(134,239,172,0.22);
-          border-radius: 6px;
+          background: rgba(134,239,172,0.08);
+          border: 1px solid rgba(134,239,172,0.2);
+          border-radius: 5px;
           padding: 2px 7px;
-          margin-bottom: 10px;
+          margin-bottom: 11px;
         }
 
         .fc-upload-badge-optional {
           color: #fbbf24;
-          background: rgba(251,191,36,0.10);
-          border-color: rgba(251,191,36,0.22);
+          background: rgba(251,191,36,0.08);
+          border-color: rgba(251,191,36,0.2);
         }
 
         .fc-upload-trigger {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 13px;
           cursor: pointer;
           width: 100%;
           text-decoration: none;
@@ -246,48 +378,48 @@
 
         .fc-upload-icon {
           flex-shrink: 0;
-          color: var(--fc-accent-label);
-          opacity: 0.85;
+          color: var(--fc-accent-3);
+          opacity: 0.9;
         }
 
         .fc-upload-text-block {
           display: flex;
           flex-direction: column;
-          gap: 2px;
+          gap: 3px;
+          min-width: 0;
         }
 
         .fc-upload-text {
-          font-size: 14px;
+          font-size: 13.5px;
           font-weight: 700;
           color: var(--fc-text);
           line-height: 1.2;
         }
 
         .fc-upload-hint {
-          font-size: 11.5px;
-          color: var(--fc-text-2);
+          font-size: 11px;
+          color: var(--fc-text-3);
+          line-height: 1.4;
         }
 
-        /* Input nativo escondido */
+        /* Input nativo escondido — mantém id/name/accept intocados */
         .fc-upload-input {
           position: absolute;
           opacity: 0;
-          width: 0;
-          height: 0;
+          width: 1px; height: 1px;
+          top: 0; left: 0;
           pointer-events: none;
-          top: 0;
-          left: 0;
         }
 
-        /* Nome do arquivo exibido pelo JS */
+        /* Nome do arquivo (injetado pelo JS via ensureFileLabelSpan) */
         .fc-file-name {
           margin-top: 10px !important;
-          padding: 6px 10px;
-          border-radius: 8px;
-          background: rgba(139,92,246,0.12);
-          border: 1px solid rgba(139,92,246,0.22);
+          padding: 5px 10px;
+          border-radius: 7px;
+          background: rgba(124,58,237,0.14);
+          border: 1px solid rgba(139,92,246,0.25);
           color: #ddd6fe !important;
-          font-size: 12px !important;
+          font-size: 11.5px !important;
           font-weight: 600;
           white-space: nowrap;
           overflow: hidden;
@@ -295,14 +427,18 @@
           display: block;
         }
 
-        /* ── Ajustes financeiros ─────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           AJUSTES FINANCEIROS
+        ───────────────────────────────────────────────────── */
         .fc-adjusts-grid {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
+          gap: 10px;
         }
 
-        /* ── Botões de ação ─────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           BOTÕES DE AÇÃO
+        ───────────────────────────────────────────────────── */
         .fc-operation-actions {
           display: flex;
           gap: 10px;
@@ -312,15 +448,16 @@
 
         .fc-operation-actions-final {
           justify-content: flex-end;
-          padding-top: 4px;
+          padding-top: 6px;
+          margin-top: 6px;
+          border-top: 1px solid rgba(255,255,255,0.05);
         }
 
         .fc-btn {
           appearance: none;
-          border: 1px solid rgba(255,255,255,0.14);
-          border-radius: 14px;
+          border-radius: var(--fc-radius-md);
           padding: 10px 18px;
-          font-size: 14px;
+          font-size: 13.5px;
           font-weight: 700;
           font-family: inherit;
           letter-spacing: -0.01em;
@@ -328,85 +465,130 @@
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+          border: 1px solid transparent;
+          transition: transform var(--fc-ease), box-shadow var(--fc-ease), background var(--fc-ease), border-color var(--fc-ease), opacity var(--fc-ease);
+          white-space: nowrap;
         }
 
         .fc-btn:disabled {
-          opacity: 0.55;
+          opacity: 0.45;
           cursor: not-allowed;
           transform: none !important;
+          box-shadow: none !important;
         }
 
+        /* Botão principal */
         .fc-btn-primary {
           color: #fff;
-          background: linear-gradient(135deg, var(--fc-accent) 0%, var(--fc-accent-2) 100%);
-          border-color: rgba(124,58,237,0.35);
-          box-shadow: 0 8px 22px rgba(124,58,237,0.28);
+          background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 50%, #8b5cf6 100%);
+          border-color: rgba(139,92,246,0.4);
+          box-shadow: 0 6px 20px rgba(109,40,217,0.35), 0 1px 0 rgba(255,255,255,0.08) inset;
         }
 
         .fc-btn-primary:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 12px 30px rgba(124,58,237,0.36);
+          transform: translateY(-2px);
+          box-shadow: 0 10px 30px rgba(109,40,217,0.45), 0 0 0 1px rgba(196,181,253,0.2);
+          background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 50%, #a78bfa 100%);
+        }
+
+        .fc-btn-primary:active:not(:disabled) {
+          transform: translateY(0);
+          box-shadow: 0 4px 12px rgba(109,40,217,0.3);
         }
 
         .fc-btn-lg {
-          padding: 11px 24px;
-          font-size: 14.5px;
+          padding: 12px 26px;
+          font-size: 14px;
           border-radius: 16px;
+          letter-spacing: 0;
         }
 
+        /* Botão secundário */
         .fc-btn-secondary {
-          color: var(--fc-text);
+          color: var(--fc-text-2);
           background: rgba(255,255,255,0.04);
-          border-color: rgba(255,255,255,0.12);
+          border-color: rgba(255,255,255,0.10);
         }
 
         .fc-btn-secondary:hover:not(:disabled) {
           transform: translateY(-1px);
-          border-color: rgba(255,255,255,0.2);
+          border-color: rgba(255,255,255,0.18);
           background: rgba(255,255,255,0.07);
+          color: var(--fc-text);
         }
 
-        /* ── Status / mensagem ───────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           STATUS / FEEDBACK
+        ───────────────────────────────────────────────────── */
         .fc-status {
           margin-top: 14px;
           font-size: 13px;
           padding: 10px 14px;
-          border-radius: 10px;
+          border-radius: var(--fc-radius-sm);
           background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.07);
           color: var(--fc-text-2);
+          line-height: 1.5;
         }
 
-        /* ── Entrega cliente ─────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           ENTREGA PARA CLIENTE
+        ───────────────────────────────────────────────────── */
         .fc-link-cliente-panel {
-          border-radius: 18px;
-          background: rgba(255,255,255,0.035);
-          border: 1px solid rgba(196,181,253,0.16);
-          padding: 16px 18px;
+          position: relative;
+          overflow: hidden;
+          border-radius: var(--fc-radius-md);
+          background: linear-gradient(135deg, rgba(5,150,105,0.07) 0%, rgba(124,58,237,0.07) 100%);
+          border: 1px solid rgba(16,185,129,0.18);
+          padding: 18px 20px;
+        }
+
+        /* Linha de cor no topo — verde → roxo */
+        .fc-link-cliente-panel::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 2px;
+          background: linear-gradient(90deg, #10b981 0%, #7c3aed 100%);
+          border-radius: var(--fc-radius-md) var(--fc-radius-md) 0 0;
         }
 
         .fc-link-cliente-header {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: space-between;
-          gap: 12px;
-          margin-bottom: 12px;
+          gap: 14px;
+          margin-bottom: 14px;
           flex-wrap: wrap;
         }
 
         .fc-link-cliente-title {
-          font-size: 12px;
-          font-weight: 850;
-          letter-spacing: 0.10em;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.12em;
           text-transform: uppercase;
-          color: #ddd6fe;
-          margin-bottom: 3px;
+          color: #6ee7b7;
+          margin-bottom: 4px;
+          display: flex;
+          align-items: center;
+          gap: 7px;
+        }
+
+        /* Ícone de entrega no título */
+        .fc-link-cliente-title::before {
+          content: '';
+          display: inline-block;
+          width: 7px; height: 7px;
+          border-radius: 50%;
+          background: #10b981;
+          box-shadow: 0 0 6px rgba(16,185,129,0.7);
+          flex-shrink: 0;
         }
 
         .fc-link-cliente-subtitle {
           font-size: 12.5px;
-          color: var(--fc-text-2);
-          line-height: 1.45;
+          color: var(--fc-text-3);
+          line-height: 1.5;
         }
 
         .fc-link-cliente-row {
@@ -420,13 +602,18 @@
           width: 100%;
           color: #e4e4e7;
           background: rgba(9,9,11,0.55);
-          border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 14px;
-          padding: 10px 12px;
+          border: 1px solid rgba(255,255,255,0.10);
+          border-radius: var(--fc-radius-sm);
+          padding: 9px 13px;
           outline: none;
           min-height: 40px;
-          font-size: 13px;
+          font-size: 12.5px;
           font-family: inherit;
+          transition: border-color var(--fc-ease);
+        }
+
+        .fc-link-cliente-input:focus {
+          border-color: rgba(16,185,129,0.4);
         }
 
         .fc-link-cliente-actions {
@@ -438,101 +625,131 @@
 
         .fc-link-cliente-status {
           margin-top: 10px;
-          font-size: 12.5px;
-          color: var(--fc-text-2);
+          font-size: 12px;
+          color: var(--fc-text-3);
+          line-height: 1.5;
         }
 
-        /* ── Dashboard painel ────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           DASHBOARD PAINEL
+        ───────────────────────────────────────────────────── */
         .fc-dashboard-panel {
-          margin-top: 16px;
-          padding: 24px 26px;
-          border-radius: 22px;
+          position: relative;
+          overflow: hidden;
+          margin-top: 14px;
+          padding: 26px 28px;
+          border-radius: var(--fc-radius-lg);
           background: var(--fc-panel-bg);
           border: 1px solid var(--fc-panel-br);
           box-shadow: var(--fc-shadow-soft);
         }
 
+        /* Linha de cor sutil no topo */
+        .fc-dashboard-panel::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(139,92,246,0.45) 30%, rgba(139,92,246,0.45) 70%, transparent);
+        }
+
         .fc-dashboard-header {
           display: flex;
-          align-items: baseline;
+          align-items: flex-start;
           justify-content: space-between;
           gap: 12px;
-          margin-bottom: 18px;
+          margin-bottom: 20px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid rgba(255,255,255,0.06);
           flex-wrap: wrap;
         }
 
         .fc-dashboard-title {
-          margin: 0;
-          font-size: 18px;
+          margin: 0 0 3px;
+          font-size: 17px;
           font-weight: 800;
           letter-spacing: -0.01em;
+          color: var(--fc-text);
         }
 
         .fc-dashboard-subtitle {
           margin: 0;
-          color: var(--fc-text-2);
-          font-size: 13px;
+          color: var(--fc-text-3);
+          font-size: 12.5px;
         }
 
-        /* Estado vazio do dashboard */
+        /* ─────────────────────────────────────────────────────
+           ESTADO VAZIO DO DASHBOARD
+        ───────────────────────────────────────────────────── */
         .fc-dashboard-empty-state {
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 12px;
-          padding: 52px 24px;
+          gap: 14px;
+          padding: 56px 32px;
           text-align: center;
-          border-radius: 16px;
-          background: rgba(255,255,255,0.025);
-          border: 1px dashed rgba(255,255,255,0.10);
+          border-radius: var(--fc-radius-md);
+          background: rgba(255,255,255,0.018);
+          border: 1px dashed rgba(255,255,255,0.08);
         }
 
         .fc-dashboard-empty-state svg {
-          opacity: 0.3;
+          opacity: 0.22;
+          color: var(--fc-accent-label);
         }
 
         .fc-dashboard-empty-title {
-          font-size: 15px;
+          font-size: 14px;
           font-weight: 700;
-          color: #a1a1aa;
+          color: #71717a;
           margin: 0;
+          letter-spacing: -0.01em;
         }
 
         .fc-dashboard-empty-sub {
-          font-size: 13px;
-          color: #71717a;
+          font-size: 12.5px;
+          color: #52525b;
           margin: 0;
-          max-width: 40ch;
-          line-height: 1.5;
+          max-width: 38ch;
+          line-height: 1.55;
         }
 
-        /* Oculta o conteúdo do dashboard até processar */
+        /* Visibilidade controlada por data-processed no #fc-wrap */
         .fc-wrap:not([data-processed]) .fc-dashboard-data { display: none; }
         .fc-wrap[data-processed] .fc-dashboard-empty-state { display: none; }
 
-        /* ── Grid executivo ──────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           GRID EXECUTIVO (resumo 4 colunas)
+        ───────────────────────────────────────────────────── */
         .fc-executive-grid {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 10px;
-          margin-bottom: 16px;
+          margin-bottom: 20px;
         }
 
         .fc-exec-card {
-          border-radius: 14px;
-          background: rgba(255,255,255,0.035);
-          border: 1px solid rgba(255,255,255,0.09);
-          padding: 14px;
+          border-radius: var(--fc-radius-md);
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.07);
+          padding: 14px 15px;
+          transition: border-color var(--fc-ease), background var(--fc-ease);
+        }
+
+        .fc-exec-card:hover {
+          border-color: rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.05);
         }
 
         .fc-exec-card-title {
           margin: 0 0 10px;
-          font-size: 10.5px;
+          font-size: 9.5px;
           font-weight: 800;
-          letter-spacing: 0.12em;
+          letter-spacing: 0.15em;
           text-transform: uppercase;
-          color: #c4b5fd;
+          color: var(--fc-accent-label);
+          opacity: 0.75;
         }
 
         .fc-exec-row {
@@ -541,7 +758,7 @@
           justify-content: space-between;
           gap: 10px;
           padding: 7px 0;
-          border-top: 1px solid rgba(255,255,255,0.07);
+          border-top: 1px solid rgba(255,255,255,0.06);
         }
 
         .fc-exec-row:first-of-type {
@@ -550,79 +767,121 @@
         }
 
         .fc-exec-label {
-          font-size: 12px;
-          color: #a1a1aa;
+          font-size: 11.5px;
+          color: var(--fc-text-3);
           font-weight: 500;
         }
 
         .fc-exec-value {
           text-align: right;
           font-size: 12.5px;
-          font-weight: 760;
-          color: #f4f4f5;
-          letter-spacing: -0.01em;
+          font-weight: 800;
+          color: var(--fc-text);
+          letter-spacing: -0.015em;
           white-space: nowrap;
         }
 
         .fc-exec-value-positive { color: #86efac; }
         .fc-exec-value-negative { color: #f87171; }
-        .fc-exec-muted { color: #a1a1aa; }
+        .fc-exec-muted { color: var(--fc-text-3); font-weight: 600; }
 
-        /* ── Stats cards ─────────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           SEPARADOR ENTRE EXEC GRID E STAT CARDS
+        ───────────────────────────────────────────────────── */
+        .fc-dashboard-data-divider {
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.07) 30%, rgba(255,255,255,0.07) 70%, transparent);
+          margin-bottom: 20px;
+        }
+
+        /* ─────────────────────────────────────────────────────
+           STAT CARDS (grid 4 colunas)
+        ───────────────────────────────────────────────────── */
         .fc-stats-grid-dashboard {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 12px;
+          gap: 10px;
         }
 
         .fc-stat-card {
-          border-radius: 16px;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
-          padding: 18px 16px;
-          min-height: 100px;
+          position: relative;
+          border-radius: var(--fc-radius-md);
+          background: rgba(255,255,255,0.035);
+          border: 1px solid rgba(255,255,255,0.07);
+          padding: 16px 15px 14px;
+          min-height: 96px;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
+          overflow: hidden;
+          transition: border-color var(--fc-ease), background var(--fc-ease), transform var(--fc-ease), box-shadow var(--fc-ease);
+        }
+
+        .fc-stat-card:hover {
+          border-color: rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.05);
+          transform: translateY(-1px);
+          box-shadow: 0 6px 16px rgba(0,0,0,0.18);
         }
 
         .fc-stat-title {
-          font-size: 11px;
-          color: #71717a;
-          font-weight: 600;
+          font-size: 10px;
+          color: var(--fc-text-3);
+          font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.06em;
-          margin-bottom: 10px;
+          letter-spacing: 0.08em;
+          margin: 0 0 8px;
         }
 
         .fc-stat-value {
           margin: 0;
-          font-size: 26px;
+          font-size: 24px;
           font-weight: 900;
           line-height: 1.1;
           color: #ffffff;
-          letter-spacing: -0.02em;
+          letter-spacing: -0.025em;
         }
 
-        /* Destaque para os 5 principais */
+        /* ── Resultado Final — card destaque ── */
         .fc-stat-featured {
-          background: linear-gradient(145deg, rgba(124,58,237,0.22), rgba(76,29,149,0.16));
-          border-color: rgba(196,181,253,0.30);
-          box-shadow: 0 8px 24px rgba(124,58,237,0.16);
+          background: linear-gradient(145deg, rgba(109,40,217,0.28) 0%, rgba(76,29,149,0.18) 100%);
+          border-color: rgba(196,181,253,0.32);
+          box-shadow: 0 12px 36px rgba(109,40,217,0.22), 0 0 0 1px rgba(196,181,253,0.08) inset;
+          min-height: 110px;
+        }
+
+        /* Linha de cor no topo do card destaque */
+        .fc-stat-featured::before {
+          content: '';
+          position: absolute;
+          top: 0; left: 0; right: 0;
+          height: 2px;
+          background: linear-gradient(90deg, #7c3aed, #a78bfa);
+          border-radius: var(--fc-radius-md) var(--fc-radius-md) 0 0;
         }
 
         .fc-stat-featured .fc-stat-title {
-          color: #c4b5fd;
-          font-weight: 700;
+          color: var(--fc-accent-label);
+          font-weight: 800;
+          font-size: 10.5px;
         }
 
         .fc-stat-featured .fc-stat-value {
           font-size: 30px;
+          background: linear-gradient(135deg, #ffffff 0%, #ddd6fe 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
 
+        .fc-stat-featured:hover {
+          box-shadow: 0 16px 44px rgba(109,40,217,0.3), 0 0 0 1px rgba(196,181,253,0.15) inset;
+        }
+
+        /* ── Cards dos 4 indicadores-chave ── */
         .fc-stat-highlight {
-          background: rgba(255,255,255,0.055);
-          border-color: rgba(255,255,255,0.13);
+          background: rgba(255,255,255,0.05);
+          border-color: rgba(255,255,255,0.10);
         }
 
         .fc-stat-highlight .fc-stat-title {
@@ -630,122 +889,91 @@
           font-weight: 700;
         }
 
-        /* ── Tabs / Tabela ───────────────────────────────── */
-        .fc-tabs-panel {
-          margin-top: 20px;
-          background: var(--fc-panel-bg);
-          border: 1px solid var(--fc-panel-br);
-          border-radius: 22px;
-          box-shadow: var(--fc-shadow-soft);
-          padding: 20px 22px;
+        .fc-stat-highlight .fc-stat-value {
+          font-size: 22px;
         }
 
-        .fc-tabs-label {
-          font-size: 12px;
-          letter-spacing: 0.14em;
-          font-weight: 800;
-          color: var(--fc-accent-label);
-          margin: 2px 0 10px;
-        }
-
-        .fc-tabs {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          margin-top: 12px;
-        }
-
-        .fc-tab {
-          border-radius: 14px;
-          padding: 10px 16px;
-          font-size: 13px;
-          font-weight: 700;
-          white-space: nowrap;
-          cursor: pointer;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.06);
-          color: #e4e4e7;
-          transition: all 0.2s;
-          font-family: inherit;
-        }
-
-        .fc-tab:hover { background: rgba(255,255,255,0.12); }
-
-        .fc-tab.fc-tab-active {
-          background: #7c3aed;
-          color: white;
-          border-color: transparent;
-          box-shadow: 0 0 24px rgba(124,58,237,0.4);
-        }
-
+        /* ─────────────────────────────────────────────────────
+           TABELA — acabamento visual
+        ───────────────────────────────────────────────────── */
         .fc-result { margin-top: 14px; }
 
         .fc-content-panel {
           width: 100%;
           max-width: 100%;
           overflow-x: auto;
-          margin-top: 20px;
-          padding: 24px;
-          border-radius: 22px;
-          background: rgba(18,12,34,0.94);
-          border: 1px solid rgba(255,255,255,0.1);
+          margin-top: 14px;
+          padding: 22px;
+          border-radius: var(--fc-radius-lg);
+          background: var(--fc-panel-bg);
+          border: 1px solid var(--fc-panel-br);
+          box-shadow: var(--fc-shadow-soft);
         }
 
         .fc-section-title {
-          font-size: 18px;
+          font-size: 16px;
           font-weight: 800;
-          color: #f4f4f5;
+          color: var(--fc-text);
           margin: 0 0 16px;
+          letter-spacing: -0.01em;
         }
 
-        /* ── Tabela ──────────────────────────────────────── */
         .fc-table {
-          min-width: 1100px;
+          min-width: 1000px;
           width: 100%;
           border-collapse: collapse;
         }
 
+        .fc-table thead {
+          background: rgba(255,255,255,0.03);
+        }
+
         .fc-table th {
-          padding: 11px 13px;
-          font-size: 11.5px;
-          color: #a1a1aa;
-          border-bottom: 1px solid rgba(255,255,255,0.1);
+          padding: 10px 13px;
+          font-size: 10.5px;
+          color: var(--fc-text-3);
+          border-bottom: 1px solid rgba(255,255,255,0.08);
           white-space: nowrap;
-          font-weight: 700;
-          letter-spacing: 0.04em;
+          font-weight: 800;
+          letter-spacing: 0.08em;
           text-transform: uppercase;
+          text-align: left;
         }
 
         .fc-table td {
-          padding: 12px 13px;
-          font-size: 13px;
-          color: #f4f4f5;
-          border-bottom: 1px solid rgba(255,255,255,0.06);
+          padding: 11px 13px;
+          font-size: 12.5px;
+          color: var(--fc-text);
+          border-bottom: 1px solid rgba(255,255,255,0.05);
           vertical-align: middle;
         }
 
+        .fc-table tbody tr { transition: background var(--fc-ease); }
+        .fc-table tbody tr:last-child td { border-bottom: none; }
         .fc-table tbody tr:hover { background: rgba(124,58,237,0.07); }
 
-        .fc-td-num { text-align: right; white-space: nowrap; }
+        .fc-td-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
         .fc-td-center { text-align: center; white-space: nowrap; }
         .fc-td-produto {
           text-align: left;
-          max-width: 240px;
+          max-width: 220px;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
 
         .fc-empty {
-          padding: 24px;
-          border-radius: 14px;
-          background: rgba(255,255,255,0.04);
-          color: #a1a1aa;
-          font-size: 14px;
+          padding: 28px;
+          border-radius: var(--fc-radius-md);
+          background: rgba(255,255,255,0.03);
+          color: var(--fc-text-3);
+          font-size: 13.5px;
           text-align: center;
         }
 
-        /* ── Responsividade ──────────────────────────────── */
+        /* ─────────────────────────────────────────────────────
+           RESPONSIVIDADE
+        ───────────────────────────────────────────────────── */
         @media (max-width: 1100px) {
           .fc-executive-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .fc-stats-grid-dashboard { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -755,13 +983,15 @@
           .fc-upload-grid-main { grid-template-columns: 1fr; }
           .fc-adjusts-grid { grid-template-columns: 1fr 1fr; }
           .fc-stats-grid-dashboard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .fc-executive-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
 
         @media (max-width: 640px) {
-          .fc-wrap { padding: 16px 14px 40px; }
-          .fc-hero { padding: 20px 18px; }
+          .fc-wrap { padding: 14px 12px 44px; }
+          .fc-hero { padding: 20px 18px 18px; }
+          .fc-title { font-size: 27px; }
           .fc-operation-panel { padding: 18px 16px; }
-          .fc-title { font-size: 26px; }
+          .fc-dashboard-panel { padding: 18px 16px; }
           .fc-marketplace-row { grid-template-columns: 1fr; }
           .fc-adjusts-grid { grid-template-columns: 1fr; }
           .fc-executive-grid { grid-template-columns: 1fr; }
@@ -780,7 +1010,7 @@
 
       <div id="fc-wrap" class="fc-wrap">
 
-        <!-- ── Hero ─────────────────────────────────────── -->
+        <!-- ────────────────── HERO ────────────────────── -->
         <section class="fc-hero">
           <div class="fc-badge">VENFORCE ANALYTICS</div>
           <h1 class="fc-title">Fechamento Financeiro</h1>
@@ -789,14 +1019,16 @@
           </p>
         </section>
 
-        <!-- ── Painel de processamento ───────────────────── -->
+        <!-- ────────────────── FORMULÁRIO ─────────────── -->
         <section class="fc-operation-panel">
           <div class="fc-operation-header">
-            <h2>Processar fechamento</h2>
-            <p>Preencha os campos abaixo e clique em "Processar fechamento" para gerar o dashboard.</p>
+            <div>
+              <h2>Processar fechamento</h2>
+              <p>Preencha os campos abaixo e clique em "Processar" para gerar o dashboard.</p>
+            </div>
           </div>
 
-          <!-- Bloco 1: Marketplace -->
+          <!-- Bloco 1 · Marketplace -->
           <div class="fc-form-block">
             <div class="fc-form-block-label">Marketplace</div>
             <div class="fc-marketplace-row">
@@ -813,21 +1045,21 @@
 
           <div class="fc-form-divider"></div>
 
-          <!-- Bloco 2: Planilhas -->
+          <!-- Bloco 2 · Planilhas -->
           <div class="fc-form-block">
             <div class="fc-form-block-label">Planilhas de dados</div>
 
             <div class="fc-upload-grid-main">
+
               <!-- Vendas -->
               <div class="fc-upload-card">
                 <span class="fc-upload-badge">Obrigatório</span>
                 <label class="fc-upload-trigger" for="fin-sales">
-                  <svg class="fc-upload-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <svg class="fc-upload-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                    <polyline points="10 9 9 9 8 9"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <line x1="9" y1="15" x2="15" y2="15"/>
                   </svg>
                   <span class="fc-upload-text-block">
                     <span class="fc-upload-text">Planilha de vendas</span>
@@ -841,11 +1073,12 @@
               <div class="fc-upload-card">
                 <span class="fc-upload-badge">Obrigatório</span>
                 <label class="fc-upload-trigger" for="fin-costs">
-                  <svg class="fc-upload-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <svg class="fc-upload-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
-                    <line x1="12" y1="18" x2="12" y2="12"/>
-                    <line x1="9" y1="15" x2="15" y2="15"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
                   </svg>
                   <span class="fc-upload-text-block">
                     <span class="fc-upload-text">Planilha de custos</span>
@@ -856,19 +1089,19 @@
               </div>
             </div>
 
-            <!-- Order.all Shopee (opcional, toggled via JS) -->
+            <!-- Order.all Shopee (opcional — JS controla display) -->
             <div class="fc-upload-card fc-upload-card-optional" id="fin-orders-all-wrapper" style="display:none;">
               <span class="fc-upload-badge fc-upload-badge-optional">Opcional · Shopee</span>
               <label class="fc-upload-trigger" for="fin-orders-all">
-                <svg class="fc-upload-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <svg class="fc-upload-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color:#fbbf24;opacity:0.85;">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/>
-                  <circle cx="11" cy="14" r="3"/>
-                  <path d="m21 21-1.9-1.9"/>
+                  <path d="M10 17l-2-2 2-2"/>
+                  <path d="M14 17l2-2-2-2"/>
                 </svg>
                 <span class="fc-upload-text-block">
                   <span class="fc-upload-text">Order.all Shopee</span>
-                  <span class="fc-upload-hint">.xlsx · Cancelamentos e não pagos · opcional</span>
+                  <span class="fc-upload-hint">.xlsx · Cancelamentos e não pagos</span>
                 </span>
               </label>
               <input type="file" id="fin-orders-all" accept=".xlsx" class="fc-upload-input">
@@ -877,7 +1110,7 @@
 
           <div class="fc-form-divider"></div>
 
-          <!-- Bloco 3: Ajustes financeiros -->
+          <!-- Bloco 3 · Ajustes financeiros -->
           <div class="fc-form-block">
             <div class="fc-form-block-label">Ajustes financeiros</div>
             <div class="fc-adjusts-grid">
@@ -896,11 +1129,11 @@
             </div>
           </div>
 
-          <!-- Ação final -->
+          <!-- Ações finais -->
           <div class="fc-operation-actions fc-operation-actions-final">
             <button id="btn-fin-limpar" class="fc-btn fc-btn-secondary" type="button">Limpar</button>
             <button id="btn-fin-processar" class="fc-btn fc-btn-primary fc-btn-lg" type="button">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;">
                 <polygon points="5 3 19 12 5 21 5 3"/>
               </svg>
               Processar fechamento
@@ -909,22 +1142,22 @@
 
           <div id="fin-status" class="fc-status" style="display:none;"></div>
 
-          <!-- Entrega para cliente (inicialmente escondido) -->
-          <div id="fin-link-cliente-actions" style="display:none;margin-top:18px;">
+          <!-- Entrega para cliente (JS mostra após processar) -->
+          <div id="fin-link-cliente-actions" style="display:none;margin-top:20px;">
             <div class="fc-link-cliente-panel">
               <div class="fc-link-cliente-header">
                 <div>
                   <div class="fc-link-cliente-title">Entrega para cliente</div>
                   <div class="fc-link-cliente-subtitle">Gere um link público com uma apresentação limpa deste fechamento.</div>
                 </div>
-                <button id="btn-fin-gerar-link-cliente" class="fc-btn fc-btn-primary" type="button">Gerar link para cliente</button>
+                <button id="btn-fin-gerar-link-cliente" class="fc-btn fc-btn-primary" type="button">Gerar link</button>
               </div>
 
               <div class="fc-link-cliente-row">
-                <input id="fin-link-cliente-output" class="fc-link-cliente-input" type="text" readonly value="" placeholder="Clique em &quot;Gerar link para cliente&quot; para criar um link público." />
+                <input id="fin-link-cliente-output" class="fc-link-cliente-input" type="text" readonly value="" placeholder="Clique em &quot;Gerar link&quot; para criar o link público." />
                 <div class="fc-link-cliente-actions">
-                  <button id="btn-fin-copiar-link-cliente" class="fc-btn fc-btn-secondary" type="button" disabled>Copiar link</button>
-                  <button id="btn-fin-abrir-link-cliente" class="fc-btn fc-btn-secondary" type="button" disabled>Abrir link</button>
+                  <button id="btn-fin-copiar-link-cliente" class="fc-btn fc-btn-secondary" type="button" disabled>Copiar</button>
+                  <button id="btn-fin-abrir-link-cliente" class="fc-btn fc-btn-secondary" type="button" disabled>Abrir</button>
                 </div>
               </div>
 
@@ -933,7 +1166,7 @@
           </div>
         </section>
 
-        <!-- ── Dashboard financeiro ───────────────────────── -->
+        <!-- ────────────────── DASHBOARD ──────────────── -->
         <section class="fc-dashboard-panel">
           <div class="fc-dashboard-header">
             <div>
@@ -942,23 +1175,25 @@
             </div>
           </div>
 
-          <!-- Estado vazio (antes de processar) -->
+          <!-- Estado vazio — exibido antes de processar -->
           <div class="fc-dashboard-empty-state">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">
               <rect x="3" y="3" width="18" height="18" rx="3"/>
-              <path d="M3 9h18M9 21V9"/>
+              <path d="M3 9h18"/>
+              <path d="M9 21V9"/>
+              <path d="M15 13h-2m0 0h-2m2 0v2m0-2v-2"/>
             </svg>
-            <p class="fc-dashboard-empty-title">Nenhum dado processado</p>
-            <p class="fc-dashboard-empty-sub">Processe uma planilha para visualizar o resumo financeiro.</p>
+            <p class="fc-dashboard-empty-title">Nenhum dado processado ainda</p>
+            <p class="fc-dashboard-empty-sub">Processe uma planilha para visualizar o resumo financeiro completo.</p>
           </div>
 
-          <!-- Conteúdo real do dashboard (visível após processar) -->
+          <!-- Conteúdo real — exibido após processar (data-processed) -->
           <div class="fc-dashboard-data">
 
             <!-- Grid executivo -->
             <div class="fc-executive-grid">
               <div class="fc-exec-card" id="fin-exec-receitas">
-                <p class="fc-exec-card-title">Resumo executivo · Receitas</p>
+                <p class="fc-exec-card-title">Receitas</p>
                 <div class="fc-exec-row">
                   <span class="fc-exec-label">Receita Bruta</span>
                   <span class="fc-exec-value" id="fin-exec-receita-bruta">—</span>
@@ -970,7 +1205,7 @@
               </div>
 
               <div class="fc-exec-card" id="fin-exec-deducoes">
-                <p class="fc-exec-card-title">Resumo executivo · Deduções</p>
+                <p class="fc-exec-card-title">Deduções</p>
                 <div class="fc-exec-row">
                   <span class="fc-exec-label">Cancelamentos</span>
                   <span class="fc-exec-value" id="fin-exec-cancelamentos">—</span>
@@ -982,7 +1217,7 @@
               </div>
 
               <div class="fc-exec-card" id="fin-exec-custos">
-                <p class="fc-exec-card-title">Resumo executivo · Custos / Investimentos</p>
+                <p class="fc-exec-card-title">Custos / Investimentos</p>
                 <div class="fc-exec-row">
                   <span class="fc-exec-label">ADS</span>
                   <span class="fc-exec-value" id="fin-exec-ads">—</span>
@@ -998,7 +1233,7 @@
               </div>
 
               <div class="fc-exec-card" id="fin-exec-resultado">
-                <p class="fc-exec-card-title">Resumo executivo · Resultado</p>
+                <p class="fc-exec-card-title">Resultado</p>
                 <div class="fc-exec-row">
                   <span class="fc-exec-label">Resultado Final</span>
                   <span class="fc-exec-value" id="fin-exec-resultado-final">—</span>
@@ -1018,7 +1253,10 @@
               </div>
             </div>
 
-            <!-- Stats cards -->
+            <!-- Divisor entre exec e stat cards -->
+            <div class="fc-dashboard-data-divider"></div>
+
+            <!-- Stat cards -->
             <div class="fc-stats-grid-dashboard">
               <div class="fc-stat fc-stat-card fc-stat-featured" id="fin-resultado">
                 <p class="fc-stat-title">Resultado Final</p>
@@ -1070,11 +1308,14 @@
                 <p class="fc-stat-value">—</p>
               </div>
             </div>
+
           </div><!-- /.fc-dashboard-data -->
         </section>
 
+        <!-- Tabela de resultados (JS injeta aqui) -->
         <div id="fin-tabela" class="fc-result"></div>
-      </div>
+
+      </div><!-- /#fc-wrap -->
 
     </main>
   </div>
