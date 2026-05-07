@@ -1298,6 +1298,160 @@ body {
 }
 
 /* =========================================================
+   Card de relatório — zonas hierárquicas (header / body / footer)
+   ========================================================= */
+
+/* Header: cliente + base empilhados */
+.vf-relatorio-card-clientebase {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.vf-relatorio-card-base {
+  font-family: var(--vf-mono);
+  font-size: 0.76rem;
+  color: var(--vf-text-m);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Body: separador sutil + escopo/data + métricas */
+.vf-relatorio-card-body {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+.vf-relatorio-card-scope {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 0.82rem;
+  color: var(--vf-text-m);
+}
+.vf-relatorio-card-metrics {
+  margin-top: 0;
+}
+
+/* Footer: separador + botões com hierarquia clara */
+.vf-relatorio-card-footer {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.vf-rc-actions-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Botão primário: Detalhes (roxo sólido) */
+.vf-rc-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.38rem 0.85rem;
+  font-family: var(--vf-font);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--vf-primary);
+  border: 1px solid var(--vf-primary);
+  border-radius: 8px;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: background var(--vf-ease), box-shadow var(--vf-ease), transform var(--vf-ease);
+  box-shadow: 0 1px 4px rgba(var(--vf-primary-rgb), 0.22);
+}
+.vf-rc-btn-primary:hover {
+  background: var(--vf-primary-hover);
+  border-color: var(--vf-primary-hover);
+  box-shadow: 0 3px 10px rgba(var(--vf-primary-rgb), 0.30);
+  transform: translateY(-1px);
+}
+.vf-rc-btn-primary:active { transform: translateY(0); }
+
+/* Botões de exportação: XLSX / CSV (mono, discretos) */
+.vf-rc-btn-export {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.38rem 0.65rem;
+  font-family: var(--vf-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--vf-text-m);
+  background: var(--vf-bg);
+  border: 1px solid var(--vf-border);
+  border-radius: 8px;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: all var(--vf-ease);
+}
+.vf-rc-btn-export:hover {
+  background: var(--vf-surface);
+  color: var(--vf-text);
+  border-color: #c8cdd5;
+}
+
+/* Botão neutro: Mover (ghost, sem destaque) */
+.vf-rc-btn-neutral {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.38rem 0.65rem;
+  font-family: var(--vf-font);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--vf-text-m);
+  background: transparent;
+  border: 1px solid var(--vf-border);
+  border-radius: 8px;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: all var(--vf-ease);
+}
+.vf-rc-btn-neutral:hover {
+  background: var(--vf-bg);
+  color: var(--vf-text);
+  border-color: #c8cdd5;
+}
+
+/* Botão perigo: Excluir (elegante, separado à direita) */
+.vf-rc-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.38rem 0.65rem;
+  font-family: var(--vf-font);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #b91c1c;
+  background: transparent;
+  border: 1px solid rgba(185, 28, 28, 0.18);
+  border-radius: 8px;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: all var(--vf-ease);
+}
+.vf-rc-btn-danger:hover {
+  background: rgba(220, 38, 38, 0.07);
+  border-color: rgba(220, 38, 38, 0.35);
+  color: #991b1b;
+}
+
+@media (max-width: 560px) {
+  .vf-relatorio-card-footer { flex-wrap: wrap; }
+  .vf-rc-btn-danger { margin-left: auto; }
+}
+
+/* =========================================================
    Detalhe do relatório — lista de cards (sem tabela larga)
    ========================================================= */
 .vf-detalhe-resumo-wrap {

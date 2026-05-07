@@ -909,46 +909,44 @@ function renderRelatorios() {
     card.innerHTML = `
       <div class="vf-relatorio-card-header">
         <div class="vf-relatorio-card-title">
-          <div class="vf-relatorio-card-id">#${escapeHTML(String(r.id || "—"))}</div>
-          <div class="vf-relatorio-card-cliente">${escapeHTML(cliente)}</div>
+          <span class="vf-relatorio-card-id">#${escapeHTML(String(r.id || "—"))}</span>
+          <div class="vf-relatorio-card-clientebase">
+            <span class="vf-relatorio-card-cliente">${escapeHTML(cliente)}</span>
+            <span class="vf-relatorio-card-base">${escapeHTML(base)}</span>
+          </div>
         </div>
-        <div class="vf-relatorio-card-status">
-          <span class="vf-ml-badge ${classeStatus(status)}">${escapeHTML(status)}</span>
+        <span class="vf-ml-badge ${classeStatus(status)}">${escapeHTML(status)}</span>
+      </div>
+
+      <div class="vf-relatorio-card-body">
+        <div class="vf-relatorio-card-scope">
+          <span>${escapeHTML(escopo)}</span>
+          <span class="vf-relatorio-card-meta-sep">·</span>
+          <span>${escapeHTML(data)}</span>
+        </div>
+        <div class="vf-relatorio-card-metrics">
+          <div class="vf-pill-row vf-pill-row-metrics">
+            <span class="vf-pill">${escapeHTML(String(r.total_itens ?? 0))} itens</span>
+            <span class="vf-pill">${escapeHTML(String(r.itens_com_base ?? 0))} com base</span>
+            <span class="vf-pill">${escapeHTML(String(r.itens_sem_base ?? 0))} sem base</span>
+          </div>
+          <div class="vf-pill-row vf-pill-row-metrics">
+            <span class="vf-pill vf-pill-danger">Críticos ${escapeHTML(String(r.itens_criticos ?? 0))}</span>
+            <span class="vf-pill vf-pill-warning">Atenção ${escapeHTML(String(r.itens_atencao ?? 0))}</span>
+            <span class="vf-pill vf-pill-success">Saudáveis ${escapeHTML(String(r.itens_saudaveis ?? 0))}</span>
+            <span class="vf-pill vf-pill-mc"><span class="vf-pill-prefix">MC</span><span class="vf-num ${mcClass}">${escapeHTML(mcTxt)}</span></span>
+          </div>
         </div>
       </div>
 
-      <div class="vf-relatorio-card-meta">
-        <span class="vf-relatorio-card-meta-item">Base: <strong>${escapeHTML(base)}</strong></span>
-        <span class="vf-relatorio-card-meta-sep">·</span>
-        <span class="vf-relatorio-card-meta-item">${escapeHTML(escopo)}</span>
-        <span class="vf-relatorio-card-meta-sep">·</span>
-        <span class="vf-relatorio-card-meta-item">${escapeHTML(data)}</span>
-      </div>
-
-      <div class="vf-relatorio-card-metrics">
-        <div class="vf-pill-row vf-pill-row-metrics">
-          <span class="vf-pill">${escapeHTML(String(r.total_itens ?? 0))} itens</span>
-          <span class="vf-pill">${escapeHTML(String(r.itens_com_base ?? 0))} com base</span>
-          <span class="vf-pill">${escapeHTML(String(r.itens_sem_base ?? 0))} sem base</span>
+      <div class="vf-relatorio-card-footer">
+        <div class="vf-rc-actions-left">
+          <button type="button" class="vf-rc-btn-primary btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}">Detalhes</button>
+          <button type="button" class="vf-rc-btn-export btn-exportar" data-formato="xlsx" data-id="${escapeHTML(String(r.id || ""))}">XLSX</button>
+          <button type="button" class="vf-rc-btn-export btn-exportar" data-formato="csv" data-id="${escapeHTML(String(r.id || ""))}">CSV</button>
+          <button type="button" class="vf-rc-btn-neutral btn-mover" data-id="${escapeHTML(String(r.id || ""))}" data-pasta="${escapeHTML(String(pastaAtual || ""))}" data-pasta-nome="${escapeHTML(String(pastaNome))}">Mover</button>
         </div>
-        <div class="vf-pill-row vf-pill-row-metrics">
-          <span class="vf-pill vf-pill-danger">Críticos ${escapeHTML(String(r.itens_criticos ?? 0))}</span>
-          <span class="vf-pill vf-pill-warning">Atenção ${escapeHTML(String(r.itens_atencao ?? 0))}</span>
-          <span class="vf-pill vf-pill-success">Saudáveis ${escapeHTML(String(r.itens_saudaveis ?? 0))}</span>
-          <span class="vf-pill vf-pill-mc"><span class="vf-pill-prefix">MC</span><span class="vf-num ${mcClass}">${escapeHTML(mcTxt)}</span></span>
-        </div>
-      </div>
-
-      <div class="vf-relatorio-card-actions vf-report-actions">
-        <div class="vf-report-actions-main">
-          <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-main btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}">Detalhes</button>
-          <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="xlsx" data-id="${escapeHTML(String(r.id || ""))}">XLSX</button>
-          <button type="button" class="vf-btn-secondary vf-btn-xs btn-exportar" data-formato="csv" data-id="${escapeHTML(String(r.id || ""))}">CSV</button>
-          <button type="button" class="vf-btn-secondary vf-btn-xs btn-mover" data-id="${escapeHTML(String(r.id || ""))}" data-pasta="${escapeHTML(String(pastaAtual || ""))}" data-pasta-nome="${escapeHTML(String(pastaNome))}">Mover</button>
-        </div>
-        <div class="vf-report-actions-danger">
-          <button type="button" class="vf-btn-secondary vf-btn-xs vf-btn-action-danger btn-excluir" data-id="${escapeHTML(String(r.id || ""))}">Excluir</button>
-        </div>
+        <button type="button" class="vf-rc-btn-danger btn-excluir" data-id="${escapeHTML(String(r.id || ""))}">Excluir</button>
       </div>
     `;
     list.appendChild(card);
