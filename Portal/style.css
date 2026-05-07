@@ -2609,3 +2609,33 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ── Fechamento Financeiro — escopo .vf-page-financeiro ── */
+.vf-page-financeiro {
+  overflow-x: hidden;
+}
+
+.vf-page-financeiro .vf-content {
+  max-width: 1380px;
+  margin-inline: auto;
+  padding-left: clamp(1rem, 2.5vw, 2rem);
+  padding-right: clamp(1rem, 2.5vw, 2rem);
+  padding-top: clamp(1.25rem, 3vw, 2rem);
+  padding-bottom: clamp(2rem, 5vw, 3.5rem);
+  overflow-x: hidden;
+}
+
+/* Garante que nenhum filho do fc-wrap estoure lateralmente */
+.vf-page-financeiro #fc-wrap,
+.vf-page-financeiro #fc-wrap * {
+  max-width: 100%;
+}
+
+/* A tabela pode ter scroll próprio, não da página */
+.vf-page-financeiro .fc-content-panel {
+  overflow-x: auto;
+}
+
+.vf-page-financeiro .fc-table {
+  min-width: 1000px;
+}

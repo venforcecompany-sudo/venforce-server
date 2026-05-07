@@ -723,6 +723,7 @@ async function processarFechamentoFinanceiro() {
     renderFinResumo(json);
     renderFinResumoExecutivo(json);
     renderFinTabela(json);
+    document.getElementById("fc-wrap")?.setAttribute("data-processed", "");
     setStatus("✓ Processado com sucesso.", "success");
 
     if (json.excelBase64) {
@@ -790,6 +791,7 @@ if (btnFinLimpar) {
 
     limparFinStats();
     limparFinResumoExecutivo();
+    document.getElementById("fc-wrap")?.removeAttribute("data-processed");
 
     const tabela = document.getElementById("fin-tabela");
     if (tabela) tabela.innerHTML = "";
