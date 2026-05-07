@@ -587,6 +587,75 @@ body {
   padding-left: clamp(1.25rem, 3vw, 2.25rem);
   padding-right: clamp(1.25rem, 3vw, 2.25rem);
 }
+
+/* Config card body */
+.vf-page-automacoes .vf-auto-config-body {
+  padding: 1.5rem 1.75rem;
+}
+.vf-page-automacoes .vf-auto-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  max-width: 1000px;
+}
+@media (max-width: 860px) {
+  .vf-page-automacoes .vf-auto-config-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Action row inside config */
+.vf-page-automacoes .vf-auto-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--vf-border);
+  flex-wrap: wrap;
+}
+.vf-page-automacoes .vf-auto-btn-main {
+  width: auto;
+  min-width: 160px;
+  padding: 0.7rem 1.5rem;
+  font-size: 0.9375rem;
+}
+
+/* Section tag (somente leitura) */
+.vf-auto-section-tag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--vf-text-l);
+  background: var(--vf-bg);
+  border: 1px solid var(--vf-border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  letter-spacing: 0.02em;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* Card header icon alignment */
+.vf-page-automacoes .vf-card-header h5 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Promote diagnostico button when enabled */
+.vf-page-automacoes #btn-diagnostico-completo-start:not(:disabled) {
+  background: var(--vf-primary);
+  background-image: linear-gradient(180deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 50%);
+  color: #fff;
+  border: none;
+  box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 2px 8px rgba(var(--vf-primary-rgb),.18);
+}
+.vf-page-automacoes #btn-diagnostico-completo-start:not(:disabled):hover {
+  background-color: var(--vf-primary-hover);
+  box-shadow: 0 4px 16px rgba(var(--vf-hover-rgb),.22);
+  transform: translateY(-1px);
+}
+
 /* Relatórios: mais largura útil, mantendo centralizado */
 .vf-page-relatorios .vf-content {
   max-width: 1680px;

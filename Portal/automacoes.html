@@ -15,22 +15,29 @@
 
       <div class="vf-page-header">
         <h2>Automações</h2>
-        <p>Central de ações por cliente. Nesta primeira versão, as automações ainda estão em preparação.</p>
+        <p>Analise preços, margens e diagnósticos por cliente e base de custo.</p>
       </div>
 
-      <div class="vf-card" style="margin-bottom:24px;">
+      <!-- Seção 1: Configuração da análise -->
+      <div class="vf-card vf-auto-section" style="margin-bottom:24px;">
         <div class="vf-card-header">
           <h5>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
+              <line x1="4" y1="21" x2="4" y2="14"></line>
+              <line x1="4" y1="10" x2="4" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12" y2="3"></line>
+              <line x1="20" y1="21" x2="20" y2="16"></line>
+              <line x1="20" y1="12" x2="20" y2="3"></line>
+              <line x1="1" y1="14" x2="7" y2="14"></line>
+              <line x1="9" y1="8" x2="15" y2="8"></line>
+              <line x1="17" y1="16" x2="23" y2="16"></line>
             </svg>
-            Contexto
+            Configuração da análise
           </h5>
         </div>
-        <div style="padding:1.5rem 1.75rem;">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;max-width:980px;">
+        <div class="vf-auto-config-body">
+          <div class="vf-auto-config-grid">
             <div class="vf-form-group" style="margin:0;">
               <label for="automacoes-cliente-search">Buscar cliente</label>
               <input id="automacoes-cliente-search" class="vf-input" type="search" placeholder="Digite nome ou slug" autocomplete="off" />
@@ -56,11 +63,59 @@
               <input id="automacoes-margem" class="vf-input" type="number" min="1" max="99" step="0.5" placeholder="Ex: 30" />
             </div>
           </div>
-          <div id="automacoes-status" style="margin-top:12px;font-size:.875rem;display:none;"></div>
+          <div id="automacoes-status" style="margin-top:8px;font-size:.875rem;display:none;"></div>
+          <div class="vf-auto-actions">
+            <button type="button" id="btn-precificacao-preview" class="vf-btn-primary vf-auto-btn-main" style="margin:0;">
+              Analisar base
+            </button>
+            <button type="button" id="btn-precificacao-preview-ml" class="vf-btn-secondary" style="margin:0;">
+              Prévia com dados ML
+            </button>
+          </div>
         </div>
       </div>
 
-      <div class="vf-card">
+      <!-- Seção 2: Preview da base de custo -->
+      <div class="vf-card" style="margin-bottom:24px;">
+        <div class="vf-card-header">
+          <h5>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="3" y1="9" x2="21" y2="9"></line>
+              <line x1="3" y1="15" x2="21" y2="15"></line>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+            Preview da base de custo
+            <span class="vf-auto-section-tag">somente leitura</span>
+          </h5>
+          <span class="vf-badge" id="precificacao-total" style="display:none;">0</span>
+        </div>
+        <div style="padding:1.25rem 1.75rem;">
+          <div id="precificacao-preview-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
+            <p>Selecione um cliente e uma base, e clique em "Analisar base".</p>
+          </div>
+          <div id="precificacao-preview-box" class="vf-table-wrapper" style="display:none;">
+            <div style="margin-bottom:10px;color:var(--vf-text-m);font-size:.875rem;">
+              <div><strong>Cliente:</strong> <span id="precificacao-cliente">—</span></div>
+              <div><strong>Base:</strong> <span id="precificacao-base">—</span></div>
+            </div>
+            <table class="vf-table">
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th style="text-align:right;">Custo</th>
+                  <th style="text-align:right;">Imposto (%)</th>
+                  <th style="text-align:right;">Taxa fixa</th>
+                </tr>
+              </thead>
+              <tbody id="precificacao-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Seção 3: Preview Mercado Livre -->
+      <div class="vf-card vf-ml-preview" style="margin-bottom:24px;">
         <div class="vf-card-header">
           <h5>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -68,46 +123,97 @@
               <line x1="18" y1="20" x2="18" y2="4"></line>
               <line x1="6" y1="20" x2="6" y2="16"></line>
             </svg>
-            Automações
+            Preview Mercado Livre
+            <span class="vf-auto-section-tag">somente leitura</span>
           </h5>
+          <span class="vf-badge" id="precificacao-ml-total" style="display:none;">0</span>
         </div>
-
-        <div style="padding:1.5rem 1.75rem;">
-          <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:14px;">
-            <div style="border:1px solid var(--vf-border);border-radius:14px;padding:16px;background:var(--vf-surface);box-shadow:var(--vf-shadow-card);">
-              <div style="font-weight:800;letter-spacing:-0.01em;margin-bottom:6px;">Gerar planilha de precificação</div>
-              <div style="color:var(--vf-text-m);font-size:.9rem;line-height:1.45;margin-bottom:12px;">
-                Gera uma planilha padronizada para o cliente selecionado.
-              </div>
-              <button type="button" id="btn-precificacao-preview" class="vf-btn-secondary" style="width:100%;margin:0;">
-                Pré-visualizar
-              </button>
-            </div>
-
-            <div style="border:1px solid var(--vf-border);border-radius:14px;padding:16px;background:var(--vf-surface);box-shadow:var(--vf-shadow-card);">
-              <div style="font-weight:800;letter-spacing:-0.01em;margin-bottom:6px;">Consultar dados do cliente</div>
-              <div style="color:var(--vf-text-m);font-size:.9rem;line-height:1.45;margin-bottom:12px;">
-                Consulta informações e status do cliente na plataforma.
-              </div>
-              <button type="button" class="vf-btn-secondary" disabled style="width:100%;margin:0;">Em breve</button>
-            </div>
-
-            <div style="border:1px solid var(--vf-border);border-radius:14px;padding:16px;background:var(--vf-surface);box-shadow:var(--vf-shadow-card);">
-              <div style="font-weight:800;letter-spacing:-0.01em;margin-bottom:6px;">Exportar dados</div>
-              <div style="color:var(--vf-text-m);font-size:.9rem;line-height:1.45;margin-bottom:12px;">
-                Exporta dados do cliente selecionado (formato a definir).
-              </div>
-              <button type="button" class="vf-btn-secondary" disabled style="width:100%;margin:0;">Em breve</button>
+        <div style="padding:1.25rem 1.75rem;">
+          <div style="margin-bottom:12px;color:var(--vf-text-m);font-size:.875rem;">
+            Esta prévia não altera anúncios, preços, estoque, campanhas ou integrações do cliente.
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+            <button type="button" id="btn-precificacao-ml-salvar" class="vf-btn-secondary" style="margin:0;" disabled>
+              Salvar relatório
+            </button>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button type="button" id="btn-precificacao-ml-prev" class="vf-btn-secondary" style="margin:0;padding:.4rem .7rem;" disabled>Anterior</button>
+              <button type="button" id="btn-precificacao-ml-next" class="vf-btn-secondary" style="margin:0;padding:.4rem .7rem;" disabled>Próxima</button>
+              <span id="precificacao-ml-page" style="color:var(--vf-text-m);font-size:.875rem;">Página 1</span>
             </div>
           </div>
-
-          <div style="margin-top:14px;color:var(--vf-text-l);font-size:.8125rem;">
-            Dica: selecione um cliente para preparar o contexto das automações (as ações serão habilitadas em uma próxima etapa).
+          <div id="precificacao-ml-insights" class="vf-ml-insights" style="display:none;"></div>
+          <div id="precificacao-ml-controls" class="vf-ml-controls" style="display:none;">
+            <div class="vf-form-group" style="margin:0;max-width:360px;">
+              <label for="precificacao-ml-search">Buscar na página atual</label>
+              <input id="precificacao-ml-search" class="vf-input" type="search" placeholder="Digite título ou MLB..." autocomplete="off" />
+            </div>
+            <div id="precificacao-ml-filter-buttons" class="vf-ml-filter-buttons"></div>
+          </div>
+          <div id="precificacao-ml-preview-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
+            <p>Selecione um cliente e uma base, e clique em "Prévia com dados ML".</p>
+          </div>
+          <div id="precificacao-ml-preview-box" class="vf-table-wrapper" style="display:none;">
+            <table class="vf-table vf-table-ml">
+              <thead>
+                <tr>
+                  <th>Item (MLB)</th>
+                  <th>Título</th>
+                  <th>Status</th>
+                  <th style="text-align:right;">Preço original</th>
+                  <th style="text-align:right;">Promocional</th>
+                  <th>Tipo anúncio</th>
+                  <th style="text-align:right;">Custo</th>
+                  <th style="text-align:right;">Imposto (%)</th>
+                  <th style="text-align:right;">Frete (R$)</th>
+                  <th>Tem base</th>
+                  <th>Diagnóstico</th>
+                  <th style="text-align:right;">Comissão (%)</th>
+                  <th style="text-align:right;">LC (R$)</th>
+                  <th style="text-align:right;">MC (%)</th>
+                  <th style="text-align:right;">Preço Alvo (R$)</th>
+                  <th style="text-align:right;">Ajuste sugerido</th>
+                </tr>
+              </thead>
+              <tbody id="precificacao-ml-tbody"></tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      <div class="vf-card" id="vf-relatorios-card" style="margin-top:24px;display:none;">
+      <!-- Seção 4: Diagnóstico completo -->
+      <div class="vf-card" id="vf-diagnostico-card" style="margin-bottom:24px;">
+        <div class="vf-card-header">
+          <h5>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+            Diagnóstico completo da loja
+          </h5>
+          <span id="vf-diagnostico-status-badge" class="vf-ml-badge vf-ml-badge-neutral">Aguardando</span>
+        </div>
+        <div style="padding:1.25rem 1.75rem;">
+          <div style="color:var(--vf-text-m);font-size:.875rem;line-height:1.5;margin-bottom:12px;">
+            Percorre todos os anúncios ativos da loja e gera um relatório consolidado com diagnóstico, contadores e MC média.
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+            <button type="button" id="btn-diagnostico-completo-start" class="vf-btn-secondary" style="margin:0;" disabled>
+              Gerar diagnóstico completo
+            </button>
+            <span id="vf-diagnostico-status-text" style="color:var(--vf-text-m);font-size:.875rem;">Selecione cliente e base para habilitar.</span>
+          </div>
+          <div id="vf-diagnostico-progress" style="display:none;margin-bottom:12px;">
+            <div style="height:8px;background:var(--vf-border);border-radius:999px;overflow:hidden;">
+              <div id="vf-diagnostico-progress-bar" style="height:100%;width:0%;background:var(--vf-primary);transition:width .25s ease;"></div>
+            </div>
+          </div>
+          <div id="vf-diagnostico-resumo" class="vf-ml-insights" style="display:none;"></div>
+          <div id="vf-diagnostico-final" class="vf-empty-state" style="display:none;padding:1rem 1rem;margin-top:10px;"></div>
+        </div>
+      </div>
+
+      <!-- Seção 5: Relatórios salvos do cliente -->
+      <div class="vf-card" id="vf-relatorios-card" style="margin-bottom:24px;display:none;">
         <div class="vf-card-header">
           <h5>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -149,145 +255,6 @@
                 </tr>
               </thead>
               <tbody id="vf-relatorios-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div class="vf-card" id="vf-diagnostico-card" style="margin-top:24px;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-            </svg>
-            Diagnóstico completo da loja
-          </h5>
-          <span id="vf-diagnostico-status-badge" class="vf-ml-badge vf-ml-badge-neutral">Aguardando</span>
-        </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div style="color:var(--vf-text-m);font-size:.875rem;line-height:1.5;margin-bottom:12px;">
-            Percorre todos os anúncios ativos da loja e gera um relatório consolidado com diagnóstico, contadores e MC média.
-          </div>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
-            <button type="button" id="btn-diagnostico-completo-start" class="vf-btn-secondary" style="margin:0;" disabled>
-              Gerar diagnóstico completo
-            </button>
-            <span id="vf-diagnostico-status-text" style="color:var(--vf-text-m);font-size:.875rem;">Selecione cliente e base para habilitar.</span>
-          </div>
-          <div id="vf-diagnostico-progress" style="display:none;margin-bottom:12px;">
-            <div style="height:8px;background:var(--vf-border);border-radius:999px;overflow:hidden;">
-              <div id="vf-diagnostico-progress-bar" style="height:100%;width:0%;background:var(--vf-primary);transition:width .25s ease;"></div>
-            </div>
-          </div>
-          <div id="vf-diagnostico-resumo" class="vf-ml-insights" style="display:none;"></div>
-          <div id="vf-diagnostico-final" class="vf-empty-state" style="display:none;padding:1rem 1rem;margin-top:10px;"></div>
-        </div>
-      </div>
-
-      <div class="vf-card vf-ml-preview" style="margin-top:24px;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            Preview — Precificação + Mercado Livre (somente leitura)
-          </h5>
-          <span class="vf-badge" id="precificacao-ml-total" style="display:none;">0</span>
-        </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div style="margin-bottom:10px;color:var(--vf-text-m);font-size:.875rem;">
-            <div><strong>Somente leitura:</strong> esta prévia não altera anúncios, preços, estoque, campanhas ou integrações do cliente.</div>
-          </div>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
-            <button type="button" id="btn-precificacao-preview-ml" class="vf-btn-secondary" style="margin:0;">
-              Prévia com dados ML
-            </button>
-            <button type="button" id="btn-precificacao-ml-salvar" class="vf-btn-secondary" style="margin:0;" disabled>
-              Salvar relatório
-            </button>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <button type="button" id="btn-precificacao-ml-prev" class="vf-btn-secondary" style="margin:0;padding:.4rem .7rem;" disabled>Anterior</button>
-              <button type="button" id="btn-precificacao-ml-next" class="vf-btn-secondary" style="margin:0;padding:.4rem .7rem;" disabled>Próxima</button>
-              <span id="precificacao-ml-page" style="color:var(--vf-text-m);font-size:.875rem;">Página 1</span>
-            </div>
-          </div>
-          <div id="precificacao-ml-insights" class="vf-ml-insights" style="display:none;"></div>
-          <div id="precificacao-ml-controls" class="vf-ml-controls" style="display:none;">
-            <div class="vf-form-group" style="margin:0;max-width:360px;">
-              <label for="precificacao-ml-search">Buscar na página atual</label>
-              <input id="precificacao-ml-search" class="vf-input" type="search" placeholder="Digite título ou MLB..." autocomplete="off" />
-            </div>
-            <div id="precificacao-ml-filter-buttons" class="vf-ml-filter-buttons"></div>
-          </div>
-
-          <div id="precificacao-ml-preview-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
-            <p>Selecione um cliente e uma base, e clique em “Prévia com dados ML”.</p>
-          </div>
-          <div id="precificacao-ml-preview-box" class="vf-table-wrapper" style="display:none;">
-            <table class="vf-table vf-table-ml">
-              <thead>
-                <tr>
-                  <th>Item (MLB)</th>
-                  <th>Título</th>
-                  <th>Status</th>
-                  <th style="text-align:right;">Preço original</th>
-                  <th style="text-align:right;">Promocional</th>
-                  <th>Tipo anúncio</th>
-                  <th style="text-align:right;">Custo</th>
-                  <th style="text-align:right;">Imposto (%)</th>
-                  <th style="text-align:right;">Frete (R$)</th>
-                  <th>Tem base</th>
-                  <th>Diagnóstico</th>
-                  <th style="text-align:right;">Comissão (%)</th>
-                  <th style="text-align:right;">LC (R$)</th>
-                  <th style="text-align:right;">MC (%)</th>
-                  <th style="text-align:right;">Preço Alvo (R$)</th>
-                  <th style="text-align:right;">Ajuste sugerido</th>
-                </tr>
-              </thead>
-              <tbody id="precificacao-ml-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div class="vf-card" style="margin-top:24px;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-            </svg>
-            Preview — Precificação (somente leitura)
-          </h5>
-          <span class="vf-badge" id="precificacao-total" style="display:none;">0</span>
-        </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div id="precificacao-preview-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
-            <p>Selecione um cliente e uma base, e clique em “Pré-visualizar”.</p>
-          </div>
-          <div id="precificacao-preview-box" class="vf-table-wrapper" style="display:none;">
-            <div style="margin-bottom:10px;color:var(--vf-text-m);font-size:.875rem;">
-              <div><strong>Cliente:</strong> <span id="precificacao-cliente">—</span></div>
-              <div><strong>Base:</strong> <span id="precificacao-base">—</span></div>
-            </div>
-            <table class="vf-table">
-              <thead>
-                <tr>
-                  <th>Produto</th>
-                  <th style="text-align:right;">Custo</th>
-                  <th style="text-align:right;">Imposto (%)</th>
-                  <th style="text-align:right;">Taxa fixa</th>
-                </tr>
-              </thead>
-              <tbody id="precificacao-tbody"></tbody>
             </table>
           </div>
         </div>
@@ -359,4 +326,3 @@
   <script src="automacoes.js"></script>
 </body>
 </html>
-
