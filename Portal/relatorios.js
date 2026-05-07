@@ -34,6 +34,9 @@ let BASE_EDITOR_BASE_SLUG_ATUAL = null;
 let BASE_EDITOR_PADRAO_CACHE = new Map(); // baseSlug -> { imposto_percentual, taxa_fixa }
 let BASE_EDITOR_TAXA_FIXA_ATUAL = 0;
 let MOVER_RELATORIO_ID_ATUAL = null;
+let PASTA_MODAL_MODO = null;
+let PASTA_MODAL_ID = null;
+let PASTA_DELETE_ID = null;
 
 function setMoverRelatorioFeedback(msg, color = "var(--vf-text-m)") {
   const el = document.getElementById("vf-mover-relatorio-feedback");
@@ -643,31 +646,103 @@ async function carregarPastas() {
   }
 }
 
-async function criarPasta() {
-  if (!TOKEN) return;
-  const nome = window.prompt("Nome da nova pasta:");
-  if (nome == null) return;
-  const nomeTrim = String(nome).trim();
+function setPastaModalFeedback(msg, color = "var(--vf-text-m)") {
+  const el = document.getElementById("vf-pasta-modal-feedback");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.style.color = color;
+  el.style.display = msg ? "block" : "none";
+}
+
+function abrirModalPasta(modo, id = null) {
+  const modal = document.getElementById("vf-pasta-modal");
+  const titulo = document.getElementById("vf-pasta-modal-titulo");
+  const sub = document.getElementById("vf-pasta-modal-sub");
+  const inputNome = document.getElementById("vf-pasta-modal-nome");
+  const inputDesc = document.getElementById("vf-pasta-modal-descricao");
+  const descWrap = document.getElementById("vf-pasta-modal-desc-wrap");
+  const btnSave = document.getElementById("vf-pasta-modal-save");
+  if (!modal || !inputNome) return;
+
+  PASTA_MODAL_MODO = modo === "renomear" ? "renomear" : "criar";
+  PASTA_MODAL_ID = PASTA_MODAL_MODO === "renomear" ? Number(id) : null;
+  setPastaModalFeedback("");
+
+  if (PASTA_MODAL_MODO === "renomear") {
+    const pasta = (Array.isArray(PASTAS) ? PASTAS : []).find((p) => Number(p.id) === PASTA_MODAL_ID);
+    if (!pasta) return;
+    if (titulo) titulo.textContent = "Renomear pasta";
+    if (sub) sub.textContent = "Atualize o nome da pasta.";
+    if (btnSave) btnSave.textContent = "Salvar alterações";
+    if (descWrap) descWrap.style.display = "none";
+    inputNome.value = pasta.nome || "";
+    if (inputDesc) inputDesc.value = "";
+  } else {
+    if (titulo) titulo.textContent = "Nova pasta";
+    if (sub) sub.textContent = "Organize seus relatórios em pastas.";
+    if (btnSave) btnSave.textContent = "Criar pasta";
+    if (descWrap) descWrap.style.display = "";
+    inputNome.value = "";
+    if (inputDesc) inputDesc.value = "";
+  }
+
+  modal.style.display = "flex";
+  setTimeout(() => inputNome.focus(), 30);
+}
+
+function fecharModalPasta() {
+  const modal = document.getElementById("vf-pasta-modal");
+  if (modal) modal.style.display = "none";
+  setPastaModalFeedback("");
+  PASTA_MODAL_MODO = null;
+  PASTA_MODAL_ID = null;
+}
+
+async function salvarPastaModal() {
+  if (!TOKEN || !PASTA_MODAL_MODO) return;
+  const inputNome = document.getElementById("vf-pasta-modal-nome");
+  const inputDesc = document.getElementById("vf-pasta-modal-descricao");
+  const btnSave = document.getElementById("vf-pasta-modal-save");
+  const nomeTrim = String(inputNome?.value || "").trim();
   if (!nomeTrim) {
-    setFeedback("O nome da pasta é obrigatório.", "var(--vf-danger)");
+    setPastaModalFeedback("O nome da pasta é obrigatório.", "var(--vf-danger)");
+    inputNome?.focus();
     return;
   }
-  const descricaoInput = window.prompt("Descrição da pasta (opcional):", "");
-  if (descricaoInput == null) return;
-  const descricaoTrim = String(descricaoInput).trim();
+
+  const modo = PASTA_MODAL_MODO;
+  const id = PASTA_MODAL_ID;
+  const labelOriginal = btnSave?.textContent;
+  if (btnSave) {
+    btnSave.disabled = true;
+    btnSave.textContent = modo === "renomear" ? "Salvando..." : "Criando...";
+  }
 
   try {
-    const res = await fetch(`${API_BASE}/relatorios/pastas`, {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + TOKEN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        nome: nomeTrim,
-        descricao: descricaoTrim || null,
-      }),
-    });
+    let res;
+    if (modo === "renomear") {
+      res = await fetch(`${API_BASE}/relatorios/pastas/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: "Bearer " + TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ nome: nomeTrim }),
+      });
+    } else {
+      const descricaoTrim = String(inputDesc?.value || "").trim();
+      res = await fetch(`${API_BASE}/relatorios/pastas`, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          nome: nomeTrim,
+          descricao: descricaoTrim || null,
+        }),
+      });
+    }
     if (res.status === 401) {
       clearSession();
       return;
@@ -680,62 +755,73 @@ async function criarPasta() {
     if (!res.ok || !json?.ok) {
       throw new Error(json?.erro || `HTTP ${res.status}`);
     }
-    setFeedback(`Pasta "${nomeTrim}" criada com sucesso.`, "var(--vf-success)");
+    fecharModalPasta();
+    if (modo === "renomear") {
+      setFeedback("Pasta renomeada com sucesso.", "var(--vf-success)");
+    } else {
+      setFeedback(`Pasta "${nomeTrim}" criada com sucesso.`, "var(--vf-success)");
+    }
     await carregarPastas();
   } catch (err) {
-    setFeedback(`Erro ao criar pasta: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
+    const acao = modo === "renomear" ? "renomear" : "criar";
+    setPastaModalFeedback(`Erro ao ${acao} pasta: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
+  } finally {
+    if (btnSave) {
+      btnSave.disabled = false;
+      if (labelOriginal) btnSave.textContent = labelOriginal;
+    }
   }
+}
+
+async function criarPasta() {
+  if (!TOKEN) return;
+  abrirModalPasta("criar");
 }
 
 async function renomearPasta(id) {
   if (!TOKEN) return;
   const pasta = (Array.isArray(PASTAS) ? PASTAS : []).find((p) => Number(p.id) === Number(id));
   if (!pasta) return;
-
-  const novoNome = window.prompt("Novo nome da pasta:", pasta.nome || "");
-  if (novoNome == null) return;
-  const nomeTrim = String(novoNome).trim();
-  if (!nomeTrim) {
-    setFeedback("O nome da pasta é obrigatório.", "var(--vf-danger)");
-    return;
-  }
-
-  try {
-    const res = await fetch(`${API_BASE}/relatorios/pastas/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: "Bearer " + TOKEN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ nome: nomeTrim }),
-    });
-    if (res.status === 401) {
-      clearSession();
-      return;
-    }
-    if (res.status === 403) {
-      window.location.replace("dashboard.html");
-      return;
-    }
-
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json?.ok) {
-      throw new Error(json?.erro || `HTTP ${res.status}`);
-    }
-    setFeedback("Pasta renomeada com sucesso.", "var(--vf-success)");
-    await carregarPastas();
-  } catch (err) {
-    setFeedback(`Erro ao renomear pasta: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
-  }
+  abrirModalPasta("renomear", id);
 }
 
-async function excluirPasta(id) {
-  if (!TOKEN) return;
-  const pasta = (Array.isArray(PASTAS) ? PASTAS : []).find((p) => Number(p.id) === Number(id));
-  const nome = pasta?.nome || `#${id}`;
+function setPastaDeleteFeedback(msg, color = "var(--vf-text-m)") {
+  const el = document.getElementById("vf-pasta-delete-feedback");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.style.color = color;
+  el.style.display = msg ? "block" : "none";
+}
 
-  const confirmar = window.confirm(`Excluir a pasta "${nome}"?`);
-  if (!confirmar) return;
+function abrirModalExcluirPasta(id) {
+  const modal = document.getElementById("vf-pasta-delete-modal");
+  const sub = document.getElementById("vf-pasta-delete-sub");
+  if (!modal) return;
+  const pasta = (Array.isArray(PASTAS) ? PASTAS : []).find((p) => Number(p.id) === Number(id));
+  if (!pasta) return;
+
+  PASTA_DELETE_ID = Number(id);
+  setPastaDeleteFeedback("");
+  if (sub) sub.textContent = pasta.nome || `#${id}`;
+  modal.style.display = "flex";
+}
+
+function fecharModalExcluirPasta() {
+  const modal = document.getElementById("vf-pasta-delete-modal");
+  if (modal) modal.style.display = "none";
+  setPastaDeleteFeedback("");
+  PASTA_DELETE_ID = null;
+}
+
+async function confirmarExcluirPasta() {
+  if (!TOKEN || !PASTA_DELETE_ID) return;
+  const id = PASTA_DELETE_ID;
+  const btn = document.getElementById("vf-pasta-delete-confirm");
+  const labelOriginal = btn?.textContent;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Excluindo...";
+  }
 
   try {
     const res = await fetch(`${API_BASE}/relatorios/pastas/${encodeURIComponent(id)}`, {
@@ -762,12 +848,23 @@ async function excluirPasta(id) {
     if (PASTA_SELECIONADA === Number(id)) {
       PASTA_SELECIONADA = "todos";
     }
+    fecharModalExcluirPasta();
     setFeedback("Pasta excluída com sucesso.", "var(--vf-success)");
     await carregarPastas();
     filtrarRelatorios();
   } catch (err) {
-    setFeedback(`Erro ao excluir pasta: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
+    setPastaDeleteFeedback(`Erro ao excluir pasta: ${err?.message || "desconhecido"}`, "var(--vf-danger)");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      if (labelOriginal) btn.textContent = labelOriginal;
+    }
   }
+}
+
+async function excluirPasta(id) {
+  if (!TOKEN) return;
+  abrirModalExcluirPasta(id);
 }
 
 async function carregarRelatorios() {
@@ -1405,6 +1502,34 @@ document.getElementById("vf-mover-relatorio-modal")?.addEventListener("click", (
   if (e.target?.id === "vf-mover-relatorio-modal") fecharModalMoverRelatorio();
 });
 document.getElementById("vf-mover-relatorio-save")?.addEventListener("click", confirmarMoverRelatorio);
+
+document.getElementById("vf-pasta-modal-close")?.addEventListener("click", fecharModalPasta);
+document.getElementById("vf-pasta-modal-cancel")?.addEventListener("click", fecharModalPasta);
+document.getElementById("vf-pasta-modal")?.addEventListener("click", (e) => {
+  if (e.target?.id === "vf-pasta-modal") fecharModalPasta();
+});
+document.getElementById("vf-pasta-modal-save")?.addEventListener("click", salvarPastaModal);
+document.getElementById("vf-pasta-modal-nome")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    salvarPastaModal();
+  }
+});
+
+document.getElementById("vf-pasta-delete-close")?.addEventListener("click", fecharModalExcluirPasta);
+document.getElementById("vf-pasta-delete-cancel")?.addEventListener("click", fecharModalExcluirPasta);
+document.getElementById("vf-pasta-delete-modal")?.addEventListener("click", (e) => {
+  if (e.target?.id === "vf-pasta-delete-modal") fecharModalExcluirPasta();
+});
+document.getElementById("vf-pasta-delete-confirm")?.addEventListener("click", confirmarExcluirPasta);
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const m1 = document.getElementById("vf-pasta-modal");
+  if (m1 && m1.style.display !== "none") fecharModalPasta();
+  const m2 = document.getElementById("vf-pasta-delete-modal");
+  if (m2 && m2.style.display !== "none") fecharModalExcluirPasta();
+});
 
 if (TOKEN) {
   carregarClientesParaFiltro();

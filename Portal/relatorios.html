@@ -196,6 +196,55 @@
     </div>
   </div>
 
+  <div id="vf-pasta-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--vf-surface);border-radius:14px;max-width:520px;width:100%;box-shadow:var(--vf-shadow-card);overflow:hidden;border:1px solid var(--vf-border);">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid var(--vf-border);">
+        <div>
+          <div id="vf-pasta-modal-titulo" style="font-weight:800;">Nova pasta</div>
+          <div id="vf-pasta-modal-sub" style="font-size:.8rem;color:var(--vf-text-m);margin-top:2px;">Organize seus relatórios em pastas.</div>
+        </div>
+        <button id="vf-pasta-modal-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;color:var(--vf-text-m);" aria-label="Fechar">×</button>
+      </div>
+      <div style="padding:1rem 1.25rem;">
+        <div id="vf-pasta-modal-feedback" style="display:none;margin-bottom:10px;font-size:.875rem;"></div>
+        <div class="vf-form-group" style="margin-bottom:12px;">
+          <label for="vf-pasta-modal-nome">Nome da pasta</label>
+          <input id="vf-pasta-modal-nome" class="vf-input" type="text" placeholder="Ex: Lojas em alta" autocomplete="off" maxlength="120">
+        </div>
+        <div class="vf-form-group" id="vf-pasta-modal-desc-wrap" style="margin-bottom:4px;">
+          <label for="vf-pasta-modal-descricao">Descrição (opcional)</label>
+          <textarea id="vf-pasta-modal-descricao" class="vf-input" rows="3" placeholder="Para que serve esta pasta?" maxlength="500" style="resize:vertical;min-height:72px;"></textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding:1rem 1.25rem;border-top:1px solid var(--vf-border);background:linear-gradient(180deg,var(--vf-surface) 0%, #fafbfc 100%);">
+        <button type="button" id="vf-pasta-modal-cancel" class="vf-btn-secondary" style="margin:0;">Cancelar</button>
+        <button type="button" id="vf-pasta-modal-save" class="vf-btn-primary" style="margin:0;min-width:170px;">Criar pasta</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="vf-pasta-delete-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--vf-surface);border-radius:14px;max-width:480px;width:100%;box-shadow:var(--vf-shadow-card);overflow:hidden;border:1px solid var(--vf-border);">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid var(--vf-border);">
+        <div>
+          <div style="font-weight:800;">Excluir pasta</div>
+          <div id="vf-pasta-delete-sub" style="font-size:.8rem;color:var(--vf-text-m);margin-top:2px;font-family:var(--vf-mono);"></div>
+        </div>
+        <button id="vf-pasta-delete-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;color:var(--vf-text-m);" aria-label="Fechar">×</button>
+      </div>
+      <div style="padding:1rem 1.25rem;">
+        <div id="vf-pasta-delete-feedback" style="display:none;margin-bottom:10px;font-size:.875rem;"></div>
+        <p style="margin:0;color:var(--vf-text-m);font-size:.9rem;line-height:1.5;">
+          A pasta só pode ser excluída se não tiver relatórios dentro. Mova ou remova os relatórios antes de excluir.
+        </p>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding:1rem 1.25rem;border-top:1px solid var(--vf-border);background:linear-gradient(180deg,var(--vf-surface) 0%, #fafbfc 100%);">
+        <button type="button" id="vf-pasta-delete-cancel" class="vf-btn-secondary" style="margin:0;">Cancelar</button>
+        <button type="button" id="vf-pasta-delete-confirm" class="vf-btn-danger" style="margin:0;min-width:170px;">Excluir pasta</button>
+      </div>
+    </div>
+  </div>
+
   <script src="layout.js"></script>
   <script src="relatorios.js"></script>
 </body>

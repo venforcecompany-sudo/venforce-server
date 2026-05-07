@@ -822,7 +822,56 @@ body {
 }
 .vf-page-relatorios .vf-drive-folder-actions .vf-relatorio-pasta-action {
   border-radius: 999px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--vf-text-l);
+  opacity: 0.75;
+  transition: opacity var(--vf-ease), color var(--vf-ease), background var(--vf-ease), border-color var(--vf-ease);
 }
+.vf-page-relatorios .vf-relatorio-pasta-row:hover .vf-drive-folder-actions .vf-relatorio-pasta-action,
+.vf-page-relatorios .vf-relatorio-pasta-row.is-active .vf-drive-folder-actions .vf-relatorio-pasta-action {
+  opacity: 1;
+  background: var(--vf-surface);
+  border-color: var(--vf-border);
+  color: var(--vf-text-m);
+}
+.vf-page-relatorios .vf-drive-folder-actions .vf-relatorio-pasta-action:hover {
+  background: var(--vf-bg);
+  border-color: rgba(var(--vf-primary-rgb), 0.35);
+  color: var(--vf-text);
+  opacity: 1;
+}
+.vf-page-relatorios .vf-drive-folder-actions .vf-relatorio-pasta-action[data-pasta-delete]:hover {
+  border-color: rgba(229, 72, 77, 0.45);
+  color: #c0392b;
+  background: #fff5f5;
+}
+
+.vf-btn-danger {
+  padding: 0.8125rem 1.25rem;
+  font-family: var(--vf-font);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #fff;
+  background-color: #e5484d;
+  background-image: linear-gradient(180deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 50%);
+  border: none;
+  border-radius: var(--vf-radius-sm);
+  cursor: pointer;
+  transition: background-color var(--vf-ease), box-shadow var(--vf-ease), transform var(--vf-ease);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 2px 8px rgba(229,72,77,.22);
+}
+.vf-btn-danger:hover:not(:disabled) {
+  background-color: #d2393e;
+  box-shadow: 0 4px 16px rgba(229,72,77,.28);
+  transform: translateY(-1px);
+}
+.vf-btn-danger:active:not(:disabled) { transform: translateY(0); }
+.vf-btn-danger:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
 
 /* Cards de relatório: mais hierarquia e "premium" */
 .vf-page-relatorios .vf-report-card {
