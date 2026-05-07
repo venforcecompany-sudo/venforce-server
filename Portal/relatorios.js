@@ -118,6 +118,13 @@ function renderPercentFromFraction(v, extraClass = "") {
   const pct = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `<span class="vf-num vf-percent ${extraClass}">${escapeHTML(`${pct.format(n * 100)}%`)}</span>`;
 }
+
+function renderPercentFromNumber(v, extraClass = "") {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return renderDash();
+  const pct = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `<span class="vf-num vf-percent ${extraClass}">${escapeHTML(`${pct.format(n)}%`)}</span>`;
+}
 const DETALHE_FILTROS_RAPIDOS = [
   { key: "todos", label: "Todos" },
   { key: "critico", label: "Críticos" },
@@ -1134,7 +1141,7 @@ function renderDetalheItens() {
         ${renderDetalheMetric("Cheio", cheioBloco)}
         ${renderDetalheMetric("Promo", promoBloco)}
         ${renderDetalheMetric("Frete", fmtMoneyHtml(it.frete))}
-        ${renderDetalheMetric("Comissão", fmtMoneyHtml(it.comissao))}
+        ${renderDetalheMetric("Comissão", renderPercentFromNumber(it.comissao_percentual))}
         ${renderDetalheMetric("LC", fmtMoneyHtml(it.lc, Number(it.lc) > 0 ? "vf-good" : (Number(it.lc) < 0 ? "vf-bad" : "")))}
         ${renderDetalheMetric("MC", fmtPctHtml(it.mc, Number(it.mc) > 0 ? "vf-good" : (Number(it.mc) < 0 ? "vf-bad" : "")))}
         ${renderDetalheMetric("Sugerido", fmtMoneyHtml(it.preco_sugerido ?? it.preco_alvo))}

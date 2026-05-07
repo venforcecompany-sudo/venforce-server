@@ -41,7 +41,8 @@ function abrirModalCalculo(r) {
   const body = document.getElementById("vf-calc-modal-body");
   if (!modal || !body) return;
   const brl = (n) => Number.isFinite(Number(n)) ? new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(Number(n)) : "—";
-  const pct = (n) => Number.isFinite(Number(n)) ? `${(Number(n)*100).toFixed(2)}%` : "—";
+  const pct = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtPct = (n) => Number.isFinite(Number(n)) ? `${(Number(n) * 100).toFixed(2)}%` : "—";
   const preco = Number(r.precoEfetivo);
   const imp = Number(r.impostoPercentual);
   const impAliq = Number.isFinite(imp) ? (imp > 1 ? imp/100 : imp) : 0;
@@ -51,14 +52,14 @@ function abrirModalCalculo(r) {
       <div><strong>Item:</strong> ${escapeHTML(r.item_id || "—")}</div>
       <hr style="margin:.75rem 0;opacity:.3;">
       <div>Preço efetivo: <strong>${brl(r.precoEfetivo)}</strong></div>
-      <div>(−) Imposto (${pct(impAliq)}): ${brl(valorImposto)}</div>
-      <div>(−) Comissão ML: ${brl(r.comissaoMarketplace)}</div>
+      <div>(−) Imposto (${fmtPct(impAliq)}): ${brl(valorImposto)}</div>
+      <div>(−) Comissão ML: ${Number.isFinite(Number(r.comissaoPercentual)) ? pct.format(Number(r.comissaoPercentual)) + "%" : "—"}</div>
       <div>(−) Frete: ${brl(r.frete)}</div>
       <div>(−) Taxa fixa: ${brl(r.taxaFixa)}</div>
       <div>(−) Custo produto: ${brl(r.custoProduto)}</div>
       <hr style="margin:.75rem 0;opacity:.3;">
       <div><strong>= Lucro de Contribuição: ${brl(r.lucroContribuicao)}</strong></div>
-      <div><strong>Margem de Contribuição: ${pct(r.margemContribuicao)}</strong></div>
+      <div><strong>Margem de Contribuição: ${fmtPct(r.margemContribuicao)}</strong></div>
       ${r.precoAlvo != null ? `<hr style="margin:.75rem 0;opacity:.3;"><div><strong>Preço Alvo (margem desejada): ${brl(r.precoAlvo)}</strong></div>` : ""}
     </div>
   `;
@@ -1387,6 +1388,10 @@ function renderRelatorioDetalheItens(itens) {
     const n = Number(v);
     return Number.isFinite(n) ? `${pct.format(n * 100)}%` : "—";
   };
+  const fmtComissaoPct = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? `${pct.format(n)}%` : "—";
+  };
 
   lista.forEach((it) => {
     const diag = diagnosticoLabelDoSalvo(it.diagnostico);
@@ -1414,7 +1419,7 @@ function renderRelatorioDetalheItens(itens) {
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.custo))}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtPctNum(it.imposto_percentual))}</td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.frete))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtPctNum(it.comissao_percentual))}</td>
+      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtComissaoPct(it.comissao_percentual))}</td>
       <td>${it.tem_base ? "Sim" : "Não"}</td>
       <td><span class="vf-ml-badge vf-ml-badge-${diag.tone}">${escapeHTML(diag.label)}</span></td>
       <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(fmtMoney(it.lc))}</td>
