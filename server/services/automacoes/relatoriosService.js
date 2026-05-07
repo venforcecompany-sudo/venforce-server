@@ -643,8 +643,8 @@ async function gerarExportRelatorioXlsx({ idRaw }) {
     setFormula(matrizSheet, `Y${row}`, `IFERROR(X${row}-Q${row},"")`, "R$ #,##0.00");
     setFormula(matrizSheet, `Z${row}`, `IFERROR(Y${row}/Q${row},"")`, "0.00%");
 
-    ["F", "H", "I", "J", "K", "N", "O", "Q", "T", "U", "X", "Y"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "R$ #,##0.00"));
-    ["G", "L", "P", "S", "Z"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "0.00%"));
+    ["F", "H", "J", "K", "N", "O", "Q", "T", "U", "X", "Y"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "R$ #,##0.00"));
+    ["G", "I", "L", "P", "S", "Z"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "0.00%"));
   }
 
   setFormat(resumoSheet, "B5", "0.00%");
