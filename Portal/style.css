@@ -2648,6 +2648,30 @@ body {
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   Painel análise de conversão (.vf-page-fechamento)
+   ══════════════════════════════════════════════════════════════════ */
+.vf-page-fechamento .vf-content.fc-page {
+  max-width: 1620px;
+  margin-inline: auto;
+  padding-left: clamp(1rem, 2.5vw, 2rem);
+  padding-right: clamp(1rem, 2.5vw, 2rem);
+  overflow-x: hidden;
+}
+
+.vf-page-fechamento #fc-wrap,
+.vf-page-fechamento #fc-wrap * {
+  max-width: 100%;
+}
+
+.vf-page-fechamento .fc-content-panel {
+  overflow-x: hidden;
+}
+
+.vf-page-fechamento .fc-table-scroll {
+  max-width: 100%;
+}
+
+/* ══════════════════════════════════════════════════════════════════
    Tokens ML — integrações Mercado Livre (.vf-page-ml-tokens)
    ══════════════════════════════════════════════════════════════════ */
 .vf-page-ml-tokens .vf-content {

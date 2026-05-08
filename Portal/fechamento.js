@@ -23,6 +23,9 @@ let abaAtiva = "abc";
 
 let marketplaceAtivo = "shopee"; // "shopee" | "meli"
 
+/** Paginação / busca — só afeta exibição */
+let tablePage = 1;
+
 // Tabs que NÃO têm dados na planilha Meli (ficam desabilitadas)
 const TABS_SEM_DADOS_MELI = new Set(["impressoes", "cliques", "ctr", "conversao"]);
 
@@ -36,7 +39,6 @@ function atualizarTabsParaMarketplace() {
     btn.style.cursor = indisponivel ? "not-allowed" : "";
   });
 
-  // Se a aba ativa ficou indisponível, volta para "abc"
   if (marketplaceAtivo === "meli" && TABS_SEM_DADOS_MELI.has(abaAtiva)) {
     abaAtiva = "abc";
     document.querySelectorAll(".fc-tab").forEach((b) => {
@@ -53,16 +55,7 @@ function escapeHTML(s) {
 }
 
 function ensureTabContentEl() {
-  let el = document.getElementById("fc-tab-content");
-  if (el) return el;
-
-  const host = document.getElementById("fechamento-resultado");
-  if (!host) return null;
-
-  el = document.createElement("div");
-  el.id = "fc-tab-content";
-  host.appendChild(el);
-  return el;
+  return document.getElementById("fc-tab-content");
 }
 
 function ensureFileLabelSpan(inputEl) {
@@ -74,13 +67,144 @@ function ensureFileLabelSpan(inputEl) {
   if (!span) {
     span = document.createElement("div");
     span.className = "fc-file-name";
-    span.style.margin = "8px 0 0";
+    span.style.margin = "10px 0 0";
     span.style.color = "#a1a1aa";
     span.style.fontSize = "12.5px";
-    span.textContent = "Escolher arquivo…";
+    span.textContent = "Nenhum arquivo selecionado";
     inputEl.insertAdjacentElement("afterend", span);
   }
   return span;
+}
+
+function initFechamentoDragDrop(inputId, acceptExt = ".xlsx") {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const card = input.closest(".fc-upload-card");
+  if (!card) return;
+
+  card.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    card.classList.add("drag-over");
+  });
+
+  card.addEventListener("dragleave", (e) => {
+    if (!card.contains(e.relatedTarget)) card.classList.remove("drag-over");
+  });
+
+  card.addEventListener("drop", (e) => {
+    e.preventDefault();
+    card.classList.remove("drag-over");
+    const files = e.dataTransfer?.files;
+    if (!files?.length) return;
+
+    const valid = Array.from(files).every((f) => f.name.toLowerCase().endsWith(acceptExt));
+    if (!valid) {
+      let msg = card.querySelector(".fc-upload-reject-msg");
+      if (!msg) {
+        msg = document.createElement("div");
+        msg.className = "fc-upload-reject-msg";
+        card.appendChild(msg);
+      }
+      msg.textContent = `Apenas arquivos ${acceptExt} são aceitos.`;
+      setTimeout(() => msg.remove(), 3500);
+      card.classList.add("invalid-file");
+      setTimeout(() => card.classList.remove("invalid-file"), 600);
+      return;
+    }
+    card.querySelector(".fc-upload-reject-msg")?.remove();
+    try {
+      const dt = new DataTransfer();
+      if (input.multiple) Array.from(files).forEach((f) => dt.items.add(f));
+      else dt.items.add(files[0]);
+      input.files = dt.files;
+    } catch (_) {}
+    input.dispatchEvent(new Event("change"));
+  });
+
+  input.addEventListener("change", () => {
+    card.classList.toggle("has-file", !!(input.files?.length));
+  });
+}
+
+function rowSearchHaystack(r) {
+  const parts = [
+    r.id, r.productId, r.produtoId,
+    r.produto, r.nome, r.titulo,
+    r.motivo, r.reason,
+  ];
+  return parts.filter((x) => x != null && x !== "").map((x) => String(x)).join(" ").toLowerCase();
+}
+
+function getTabRows() {
+  if (!dadosAtuais) return [];
+  const d = dadosAtuais;
+  switch (abaAtiva) {
+    case "abc": return Array.isArray(d.curvaAbcCompleta) ? d.curvaAbcCompleta : [];
+    case "impressoes": return Array.isArray(d.produtosMaisImpressoes) ? d.produtosMaisImpressoes : [];
+    case "cliques": return Array.isArray(d.produtosMaisCliques) ? d.produtosMaisCliques : [];
+    case "ctr": return Array.isArray(d.produtosMaiorCtr) ? d.produtosMaiorCtr : [];
+    case "conversao": return Array.isArray(d.produtosMaiorConversao) ? d.produtosMaiorConversao : [];
+    case "kits": return Array.isArray(d.sugestaoKits) ? d.sugestaoKits : [];
+    case "adsObrigatorios": return Array.isArray(d.adsObrigatorios) ? d.adsObrigatorios : [];
+    case "ads34": return Array.isArray(d.adsPrioridade34) ? d.adsPrioridade34 : [];
+    case "ads24": return Array.isArray(d.adsPrioridade24) ? d.adsPrioridade24 : [];
+    default: return [];
+  }
+}
+
+function filterRows(rows, q) {
+  const ql = (q || "").trim().toLowerCase();
+  if (!ql) return rows.slice();
+  return rows.filter((r) => rowSearchHaystack(r).includes(ql));
+}
+
+function paginateSlice(rows, page, pageSize) {
+  const total = rows.length;
+  if (total === 0) return { slice: [], total: 0, totalPages: 1, page: 1 };
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  let p = Math.min(Math.max(1, page), totalPages);
+  const start = (p - 1) * pageSize;
+  return {
+    slice: rows.slice(start, start + pageSize),
+    total,
+    totalPages,
+    page: p,
+  };
+}
+
+function getPageSize() {
+  const n = Number(document.getElementById("fc-page-size")?.value);
+  return Number.isFinite(n) && n > 0 ? n : 25;
+}
+
+function hideTableChrome() {
+  document.getElementById("fc-table-toolbar")?.classList.remove("is-visible");
+  document.getElementById("fc-pagination-wrap")?.classList.remove("is-visible");
+}
+
+function showTableChrome() {
+  document.getElementById("fc-table-toolbar")?.classList.add("is-visible");
+  document.getElementById("fc-pagination-wrap")?.classList.add("is-visible");
+}
+
+function updateTableChrome(filteredLen, page, totalPages, sliceLen, pageSize) {
+  const counter = document.getElementById("fc-table-counter");
+  const info = document.getElementById("fc-pagination-info");
+  const prev = document.getElementById("fc-page-prev");
+  const next = document.getElementById("fc-page-next");
+  const start = (page - 1) * pageSize;
+  if (counter) {
+    counter.textContent =
+      filteredLen === 0
+        ? "0 produtos"
+        : sliceLen > 0
+          ? `Mostrando ${start + 1}–${start + sliceLen} de ${filteredLen} produtos`
+          : `Mostrando 0 de ${filteredLen} produtos`;
+  }
+  if (info) info.textContent = `Página ${page} de ${totalPages}`;
+  if (prev) prev.disabled = page <= 1;
+  if (next) next.disabled = page >= totalPages;
 }
 
 function curvaBadge(valor) {
@@ -135,13 +259,12 @@ function renderResumo() {
 }
 
 function renderTable(columns, rowsHtml) {
-  // columns pode vir como array de strings ou de objetos { html } para permitir <th> com estilos
   const th = (Array.isArray(columns) ? columns : []).map((c) => {
     if (c && typeof c === "object" && "html" in c) return String(c.html || "");
     return `<th>${escapeHTML(String(c ?? ""))}</th>`;
   }).join("");
   return `
-    <div class="fc-table-wrap">
+    <div class="fc-table-scroll">
       <table class="fc-table">
         <thead>
           <tr>${th}</tr>
@@ -158,48 +281,75 @@ function renderTabContent() {
   const el = ensureTabContentEl();
   if (!el) return;
 
+  const q = (document.getElementById("fc-table-search")?.value || "").trim();
+
   if (!dadosAtuais) {
-    el.innerHTML = '<div class="fc-empty">Envie a planilha para gerar a análise.</div>';
+    hideTableChrome();
+    el.innerHTML = `
+      <div class="fc-empty fc-empty-hero">
+        <p class="fc-empty-hero-title">Envie uma planilha para gerar a análise.</p>
+        <p class="fc-empty" style="margin-top:10px;padding:0;background:none;border:none;">Importe uma planilha de performance ou compile várias para visualizar curvas, rankings e recomendações.</p>
+      </div>`;
     return;
   }
+
+  const allRows = getTabRows();
+  if (!allRows.length) {
+    hideTableChrome();
+    el.innerHTML = '<div class="fc-empty">Nenhum dado para exibir nesta aba.</div>';
+    return;
+  }
+
+  showTableChrome();
+
+  const pageSize = getPageSize();
+  const filtered = filterRows(allRows, q);
+  let { slice, totalPages, page } = paginateSlice(filtered, tablePage, pageSize);
+  tablePage = page;
+  const sliceLen = slice.length;
+
+  if (filtered.length === 0 && allRows.length > 0) {
+    el.innerHTML = '<div class="fc-empty">Nenhum produto corresponde à busca.</div>';
+    updateTableChrome(0, 1, 1, 0, pageSize);
+    return;
+  }
+
+  updateTableChrome(filtered.length, page, totalPages, sliceLen, pageSize);
 
   const d = dadosAtuais;
 
   switch (abaAtiva) {
     case "abc": {
-      const arr = Array.isArray(d.curvaAbcCompleta) ? d.curvaAbcCompleta : [];
-      if (!arr.length) { el.innerHTML = '<div class="fc-empty">Nenhum dado para exibir.</div>'; return; }
-
       const cols = [
-        { html: '<th style="width:130px;">ID</th>' },
-        { html: '<th style="width:260px;text-align:left;">Produto</th>' },
-        { html: '<th style="width:110px;text-align:right;">Fat.</th>' },
-        { html: '<th style="width:80px;text-align:right;">% Fat.</th>' },
-        { html: '<th style="width:90px;text-align:right;">Acum. Fat.</th>' },
-        { html: '<th style="width:70px;text-align:right;">Unid.</th>' },
-        { html: '<th style="width:80px;text-align:right;">% Unid.</th>' },
-        { html: '<th style="width:90px;text-align:right;">Acum. Unid.</th>' },
-        { html: '<th style="width:80px;text-align:center;">Curva Fat</th>' },
-        { html: '<th style="width:80px;text-align:center;">Curva Uni</th>' },
-        { html: '<th style="width:70px;text-align:center;">Final</th>' },
+        { html: '<th>ID</th>' },
+        { html: '<th style="text-align:left;">Produto</th>' },
+        { html: '<th style="text-align:right;">Fat.</th>' },
+        { html: '<th style="text-align:right;">% Fat.</th>' },
+        { html: '<th style="text-align:right;">Acum. Fat.</th>' },
+        { html: '<th style="text-align:right;">Unid.</th>' },
+        { html: '<th style="text-align:right;">% Unid.</th>' },
+        { html: '<th style="text-align:right;">Acum. Unid.</th>' },
+        { html: '<th style="text-align:center;">Curva Fat</th>' },
+        { html: '<th style="text-align:center;">Curva Uni</th>' },
+        { html: '<th style="text-align:center;">Final</th>' },
       ];
-      const rows = arr.map((r) => {
+      const rows = slice.map((r) => {
         const curvaFat = curvaBadge(r.curvaFat || r.curva_fat || r.curvaFaturamento);
         const curvaUni = curvaBadge(r.curvaUni || r.curva_uni || r.curvaUnidades);
         const final = escapeHTML(r.curvaFinal || r.curva_final || r.curva || "—");
         return `
           <tr>
-            <td style="width:130px;white-space:nowrap;">${escapeHTML(r.id ?? r.productId ?? r.produtoId ?? "—")}</td>
-            <td class="fc-td-produto" style="width:260px;">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-            <td class="fc-td-num" style="width:110px;">${escapeHTML(brl(r.faturamento ?? r.fat ?? r.faturamentoTotalItem ?? 0))}</td>
-            <td class="fc-td-num" style="width:80px;">${escapeHTML(pct(r.percentualFaturamento ?? r.percFat ?? r.pctFat ?? r.percentualFat ?? 0))}</td>
-            <td class="fc-td-num" style="width:90px;">${escapeHTML(pct(r.acumuladoFaturamento ?? r.acumFat ?? r.acumuladoFat ?? 0))}</td>
-            <td class="fc-td-num" style="width:70px;">${escapeHTML(num(r.unidadesTotais ?? r.unidades ?? r.unid ?? r.unidadesPagas ?? 0))}</td>
-            <td class="fc-td-num" style="width:80px;">${escapeHTML(pct(r.percentualUnidades ?? r.percUnid ?? r.pctUnid ?? r.percentualUnid ?? 0))}</td>
-            <td class="fc-td-num" style="width:90px;">${escapeHTML(pct(r.acumuladoUnidades ?? r.acumUnid ?? r.acumuladoUnid ?? 0))}</td>
-            <td class="fc-td-center" style="width:80px;">${curvaFat}</td>
-            <td class="fc-td-center" style="width:80px;">${curvaUni}</td>
-            <td class="fc-td-center" style="width:70px;"><span style="color:#c4b5fd;font-weight:800">${final}</span></td>
+            <td class="fc-td-id">${escapeHTML(r.id ?? r.productId ?? r.produtoId ?? "—")}</td>
+            <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+            <td class="fc-td-num">${escapeHTML(brl(r.faturamento ?? r.fat ?? r.faturamentoTotalItem ?? 0))}</td>
+            <td class="fc-td-num">${escapeHTML(pct(r.percentualFaturamento ?? r.percFat ?? r.pctFat ?? r.percentualFat ?? 0))}</td>
+            <td class="fc-td-num">${escapeHTML(pct(r.acumuladoFaturamento ?? r.acumFat ?? r.acumuladoFat ?? 0))}</td>
+            <td class="fc-td-num">${escapeHTML(num(r.unidadesTotais ?? r.unidades ?? r.unid ?? r.unidadesPagas ?? 0))}</td>
+            <td class="fc-td-num">${escapeHTML(pct(r.percentualUnidades ?? r.percUnid ?? r.pctUnid ?? r.percentualUnid ?? 0))}</td>
+            <td class="fc-td-num">${escapeHTML(pct(r.acumuladoUnidades ?? r.acumUnid ?? r.acumuladoUnid ?? 0))}</td>
+            <td class="fc-td-center">${curvaFat}</td>
+            <td class="fc-td-center">${curvaUni}</td>
+            <td class="fc-td-center"><span style="color:#c4b5fd;font-weight:800">${final}</span></td>
           </tr>
         `;
       }).join("");
@@ -212,14 +362,12 @@ function renderTabContent() {
     }
 
     case "impressoes": {
-      const arr = Array.isArray(d.produtosMaisImpressoes) ? d.produtosMaisImpressoes : [];
-      if (!arr.length) { el.innerHTML = '<div class="fc-empty">Nenhum dado para exibir.</div>'; return; }
       const cols = ["ID", "Produto", "Impressões"];
-      const rows = arr.map((r) => `
+      const rows = slice.map((r) => `
         <tr>
-          <td>${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td>${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td><span style="color:#c4b5fd;font-weight:800">${escapeHTML(num(r.valor ?? 0))}</span></td>
+          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+          <td class="fc-td-num"><span style="color:#c4b5fd;font-weight:800">${escapeHTML(num(r.valor ?? 0))}</span></td>
         </tr>
       `).join("");
       el.innerHTML = `
@@ -230,14 +378,12 @@ function renderTabContent() {
     }
 
     case "cliques": {
-      const arr = Array.isArray(d.produtosMaisCliques) ? d.produtosMaisCliques : [];
-      if (!arr.length) { el.innerHTML = '<div class="fc-empty">Nenhum dado para exibir.</div>'; return; }
       const cols = ["ID", "Produto", "Cliques"];
-      const rows = arr.map((r) => `
+      const rows = slice.map((r) => `
         <tr>
-          <td>${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td>${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td><span style="color:#c4b5fd;font-weight:800">${escapeHTML(num(r.valor ?? 0))}</span></td>
+          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+          <td class="fc-td-num"><span style="color:#c4b5fd;font-weight:800">${escapeHTML(num(r.valor ?? 0))}</span></td>
         </tr>
       `).join("");
       el.innerHTML = `
@@ -248,14 +394,12 @@ function renderTabContent() {
     }
 
     case "ctr": {
-      const arr = Array.isArray(d.produtosMaiorCtr) ? d.produtosMaiorCtr : [];
-      if (!arr.length) { el.innerHTML = '<div class="fc-empty">Nenhum dado para exibir.</div>'; return; }
       const cols = ["ID", "Produto", "CTR"];
-      const rows = arr.map((r) => `
+      const rows = slice.map((r) => `
         <tr>
-          <td>${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td>${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td><span style="color:#c4b5fd;font-weight:800">${escapeHTML(pct(r.valor ?? 0))}</span></td>
+          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+          <td class="fc-td-num"><span style="color:#c4b5fd;font-weight:800">${escapeHTML(pct(r.valor ?? 0))}</span></td>
         </tr>
       `).join("");
       el.innerHTML = `
@@ -266,14 +410,12 @@ function renderTabContent() {
     }
 
     case "conversao": {
-      const arr = Array.isArray(d.produtosMaiorConversao) ? d.produtosMaiorConversao : [];
-      if (!arr.length) { el.innerHTML = '<div class="fc-empty">Nenhum dado para exibir.</div>'; return; }
       const cols = ["ID", "Produto", "Conversão"];
-      const rows = arr.map((r) => `
+      const rows = slice.map((r) => `
         <tr>
-          <td>${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td>${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td><span style="color:#c4b5fd;font-weight:800">${escapeHTML(pct(r.valor ?? 0))}</span></td>
+          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+          <td class="fc-td-num"><span style="color:#c4b5fd;font-weight:800">${escapeHTML(pct(r.valor ?? 0))}</span></td>
         </tr>
       `).join("");
       el.innerHTML = `
@@ -284,16 +426,14 @@ function renderTabContent() {
     }
 
     case "kits": {
-      const arr = Array.isArray(d.sugestaoKits) ? d.sugestaoKits : [];
-      if (!arr.length) { el.innerHTML = '<div class="fc-empty">Nenhum dado para exibir.</div>'; return; }
       const cols = ["ID", "Produto", "Pedidos pagos", "Unidades pagas", "Unid./Pedido", "Recomendação"];
-      const rows = arr.map((r) => `
+      const rows = slice.map((r) => `
         <tr>
-          <td>${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td>${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td>${escapeHTML(num(r.pedidosPagos ?? r.pedidos ?? 0))}</td>
-          <td>${escapeHTML(num(r.unidadesPagas ?? r.unidades ?? 0))}</td>
-          <td><span style="color:#c4b5fd;font-weight:800">${escapeHTML((r.unidadesPorPedido ?? r.unidPorPedido ?? r.unid_pedido ?? 0).toFixed ? (r.unidadesPorPedido).toFixed(2) : String(r.unidadesPorPedido ?? r.unidPorPedido ?? r.unid_pedido ?? 0))}</span></td>
+          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+          <td class="fc-td-num">${escapeHTML(num(r.pedidosPagos ?? r.pedidos ?? 0))}</td>
+          <td class="fc-td-num">${escapeHTML(num(r.unidadesPagas ?? r.unidades ?? 0))}</td>
+          <td class="fc-td-num"><span style="color:#c4b5fd;font-weight:800">${escapeHTML((r.unidadesPorPedido ?? r.unidPorPedido ?? r.unid_pedido ?? 0).toFixed ? (r.unidadesPorPedido).toFixed(2) : String(r.unidadesPorPedido ?? r.unidPorPedido ?? r.unid_pedido ?? 0))}</span></td>
           <td><span style="color:#86efac;font-weight:700">Criar kit / combo</span></td>
         </tr>
       `).join("");
@@ -317,17 +457,14 @@ function renderTabContent() {
           : abaAtiva === "ads34" ? d.adsPrioridade34
             : d.adsPrioridade24;
 
-      const arr = Array.isArray(src) ? src : [];
-      if (!arr.length) { el.innerHTML = '<div class="fc-empty">Nenhum dado para exibir.</div>'; return; }
-
       const cols = ["ID", "Produto", "Cliques", "CTR", "Conversão", "Motivo"];
-      const rows = arr.map((r) => `
+      const rows = slice.map((r) => `
         <tr>
-          <td>${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td>${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td>${escapeHTML(num(r.cliques ?? r.clicks ?? 0))}</td>
-          <td>${escapeHTML(pct(r.ctr ?? 0))}</td>
-          <td>${escapeHTML(pct(r.conversao ?? r.conversion ?? 0))}</td>
+          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+          <td class="fc-td-num">${escapeHTML(num(r.cliques ?? r.clicks ?? 0))}</td>
+          <td class="fc-td-num">${escapeHTML(pct(r.ctr ?? 0))}</td>
+          <td class="fc-td-num">${escapeHTML(pct(r.conversao ?? r.conversion ?? 0))}</td>
           <td>${escapeHTML(r.motivo ?? r.reason ?? "—")}</td>
         </tr>
       `).join("");
@@ -340,6 +477,7 @@ function renderTabContent() {
     }
 
     default:
+      hideTableChrome();
       el.innerHTML = '<div class="fc-empty">Nenhum dado para exibir.</div>';
   }
 }
@@ -373,6 +511,7 @@ async function processarArquivo() {
     if (!res.ok) throw new Error(json.erro || json.message || "HTTP " + res.status);
 
     dadosAtuais = json.data;
+    tablePage = 1;
     renderResumo();
     renderTabContent();
     setStatus("✓ Processado com sucesso.", "success");
@@ -418,6 +557,7 @@ async function compilarArquivos() {
     if (!res.ok) throw new Error(json.erro || json.message || "HTTP " + res.status);
 
     dadosAtuais = json.data;
+    tablePage = 1;
     renderResumo();
     renderTabContent();
     setStatus("✓ Compilado com sucesso.", "success");
@@ -438,9 +578,23 @@ const fileLabelSpan = ensureFileLabelSpan(inputArquivo);
 if (inputArquivo) {
   inputArquivo.addEventListener("change", () => {
     const f = inputArquivo.files?.[0];
-    if (fileLabelSpan) fileLabelSpan.textContent = f ? f.name : "Escolher arquivo…";
+    if (fileLabelSpan) fileLabelSpan.textContent = f ? f.name : "Nenhum arquivo selecionado";
   });
 }
+
+const inputArquivosMulti = document.getElementById("fechamento-arquivos");
+const filesMultiLabel = ensureFileLabelSpan(inputArquivosMulti);
+if (inputArquivosMulti) {
+  inputArquivosMulti.addEventListener("change", () => {
+    const n = inputArquivosMulti.files?.length || 0;
+    if (filesMultiLabel) {
+      filesMultiLabel.textContent = n === 0 ? "Nenhum arquivo selecionado" : `${n} arquivo(s) selecionado(s)`;
+    }
+  });
+}
+
+initFechamentoDragDrop("fechamento-arquivo", ".xlsx");
+initFechamentoDragDrop("fechamento-arquivos", ".xlsx");
 
 const btnProcessar = document.getElementById("btn-processar");
 if (btnProcessar) btnProcessar.addEventListener("click", processarArquivo);
@@ -452,15 +606,29 @@ const btnLimpar = document.getElementById("btn-limpar");
 if (btnLimpar) {
   btnLimpar.addEventListener("click", () => {
     if (inputArquivo) inputArquivo.value = "";
-    if (fileLabelSpan) fileLabelSpan.textContent = "Escolher arquivo…";
+    if (fileLabelSpan) fileLabelSpan.textContent = "Nenhum arquivo selecionado";
+    if (inputArquivosMulti) inputArquivosMulti.value = "";
+    if (filesMultiLabel) filesMultiLabel.textContent = "Nenhum arquivo selecionado";
+
+    document.querySelectorAll(".fc-upload-card").forEach((c) => {
+      c.classList.remove("has-file", "drag-over");
+    });
+
+    const searchEl = document.getElementById("fc-table-search");
+    if (searchEl) searchEl.value = "";
+    const ps = document.getElementById("fc-page-size");
+    if (ps) ps.value = "25";
+    tablePage = 1;
 
     dadosAtuais = null;
     limparStats();
 
     const el = ensureTabContentEl();
     if (el) el.innerHTML = "";
+    hideTableChrome();
 
     setStatus("", "");
+    renderTabContent();
   });
 }
 
@@ -468,6 +636,9 @@ document.querySelectorAll(".fc-tab").forEach((btn) => {
   btn.addEventListener("click", () => {
     const tab = btn.dataset.tab || "abc";
     abaAtiva = tab;
+    tablePage = 1;
+    const searchEl = document.getElementById("fc-table-search");
+    if (searchEl) searchEl.value = "";
 
     document.querySelectorAll(".fc-tab").forEach((b) => {
       b.classList.remove("fc-tab-active");
@@ -480,7 +651,31 @@ document.querySelectorAll(".fc-tab").forEach((btn) => {
   });
 });
 
-// Seletor de marketplace
+let searchDebounce;
+document.getElementById("fc-table-search")?.addEventListener("input", () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    tablePage = 1;
+    renderTabContent();
+  }, 160);
+});
+
+document.getElementById("fc-page-size")?.addEventListener("change", () => {
+  tablePage = 1;
+  renderTabContent();
+});
+
+document.getElementById("fc-page-prev")?.addEventListener("click", () => {
+  if (tablePage <= 1) return;
+  tablePage -= 1;
+  renderTabContent();
+});
+
+document.getElementById("fc-page-next")?.addEventListener("click", () => {
+  tablePage += 1;
+  renderTabContent();
+});
+
 document.querySelectorAll(".fc-mp-pill").forEach((pill) => {
   pill.addEventListener("click", () => {
     const mp = pill.dataset.mp || "shopee";
@@ -490,7 +685,6 @@ document.querySelectorAll(".fc-mp-pill").forEach((pill) => {
       p.classList.toggle("fc-mp-active", p.dataset.mp === mp);
     });
 
-    // Atualiza label do upload único
     const label = document.getElementById("fc-upload-label-single");
     if (label) {
       label.textContent = mp === "meli"
@@ -498,18 +692,23 @@ document.querySelectorAll(".fc-mp-pill").forEach((pill) => {
         : "Planilha de performance Shopee";
     }
 
-    // Reset de estado ao trocar de marketplace
     dadosAtuais = null;
     limparStats();
+    tablePage = 1;
+    const searchEl = document.getElementById("fc-table-search");
+    if (searchEl) searchEl.value = "";
+
     const el = ensureTabContentEl();
     if (el) el.innerHTML = "";
+    hideTableChrome();
+
     setStatus("", "");
 
     atualizarTabsParaMarketplace();
+    renderTabContent();
   });
 });
 
-// Estado inicial
 limparStats();
 renderTabContent();
 atualizarTabsParaMarketplace();

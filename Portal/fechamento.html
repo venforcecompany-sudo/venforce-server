@@ -8,9 +8,9 @@
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
 </head>
-<body class="vf-page">
+<body class="vf-page vf-page-fechamento">
 
-  <div class="vf-main-with-sidebar" style="width:100%;max-width:100%;">
+  <div class="vf-main-with-sidebar">
     <main class="vf-content fc-page">
 
       <style scoped>
@@ -34,6 +34,7 @@
           max-width: 100%;
           padding: 28px 32px 48px;
           box-sizing: border-box;
+          overflow-x: hidden;
         }
 
         .fc-wrap {
@@ -44,6 +45,26 @@
 
         .fc-wrap .vf-main-with-sidebar {
           max-width: 100%;
+        }
+
+        .fc-upload-trigger .fc-upload-label {
+          display: block;
+          font-size: 14px;
+          font-weight: 700;
+          color: #f4f4f5;
+        }
+        .fc-file-name {
+          font-size: 12px;
+          color: #a1a1aa;
+          margin-top: 10px;
+        }
+        .fc-upload-card.invalid-file {
+          animation: fcShake 0.35s ease;
+        }
+        @keyframes fcShake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-4px); }
+          75% { transform: translateX(4px); }
         }
 
         .fc-hero {
@@ -222,7 +243,10 @@
           background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.08);
           padding: 20px;
-          min-height: 110px;
+          min-height: 118px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
         }
 
         .fc-stat-title {
@@ -238,9 +262,10 @@
           font-weight: 900;
           line-height: 1.1;
           color: #ffffff;
+          font-variant-numeric: tabular-nums;
+          text-align: right;
         }
 
-        .fc-tabs-panel {
           margin-top: 20px;
           background: var(--fc-panel-bg);
           border: 1px solid var(--fc-panel-br);
@@ -257,11 +282,19 @@
           margin: 2px 0 10px;
         }
 
+        .fc-tabs-scroll {
+          overflow-x: auto;
+          overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
+          margin-top: 12px;
+          padding-bottom: 6px;
+          margin-bottom: -4px;
+        }
         .fc-tabs {
           display: flex;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
           gap: 10px;
-          margin-top: 12px;
+          min-width: min-content;
         }
 
         .fc-tab {
@@ -295,7 +328,7 @@
         .fc-content-panel {
           width: 100%;
           max-width: 100%;
-          overflow-x: auto;
+          overflow-x: hidden;
           margin-top: 20px;
           padding: 24px;
           border-radius: 24px;
@@ -311,7 +344,6 @@
         }
 
         .fc-table {
-          min-width: 1200px;
           width: 100%;
           border-collapse: collapse;
         }
@@ -342,6 +374,7 @@
         .fc-td-num {
           text-align: right;
           white-space: nowrap;
+          font-variant-numeric: tabular-nums;
         }
 
         .fc-td-center {
@@ -351,10 +384,13 @@
 
         .fc-td-produto {
           text-align: left;
-          max-width: 240px;
+          max-width: 320px;
+          line-height: 1.35;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
           overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
+          word-break: break-word;
         }
 
         .fc-empty {
@@ -365,11 +401,235 @@
           font-size: 14px;
           text-align: center;
         }
+        .fc-empty-hero {
+          padding: 48px 24px;
+          border-radius: 18px;
+          border: 1px dashed rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.03);
+        }
+        .fc-empty-hero-title {
+          margin: 0 0 8px;
+          font-size: 16px;
+          font-weight: 800;
+          color: #e4e4e7;
+        }
 
         @media (max-width: 640px) {
           .fc-wrap { padding: 16px 14px 36px; }
           .fc-stats-grid { grid-template-columns: 1fr 1fr; }
           .fc-tab { padding: 9px 12px; font-size: 12px; }
+        }
+
+        .fc-tab:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .fc-btn-main {
+          padding: 12px 22px;
+          font-size: 14px;
+          border-radius: 16px;
+          box-shadow: 0 12px 32px rgba(124,58,237,0.35);
+        }
+        .fc-btn-compile {
+          background: linear-gradient(135deg, rgba(124,58,237,0.45) 0%, rgba(139,92,246,0.75) 100%);
+          border-color: rgba(196,181,253,0.5);
+          color: #fff;
+        }
+        .fc-btn-compile:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 10px 28px rgba(124,58,237,0.4);
+        }
+        .fc-btn-ghost {
+          background: transparent;
+          border-color: rgba(255,255,255,0.14);
+          color: #a1a1aa;
+          font-weight: 600;
+        }
+        .fc-btn-ghost:hover:not(:disabled) {
+          background: rgba(255,255,255,0.06);
+          color: #e4e4e7;
+        }
+
+        .badge-soft {
+          display: inline-block;
+          font-size: 9px;
+          font-weight: 800;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: #86efac;
+          background: rgba(134,239,172,0.1);
+          border: 1px solid rgba(134,239,172,0.25);
+          padding: 3px 8px;
+          border-radius: 6px;
+          margin-bottom: 10px;
+        }
+        .badge-soft--amber {
+          color: #fbbf24;
+          background: rgba(251,191,36,0.08);
+          border-color: rgba(251,191,36,0.28);
+        }
+
+        .fc-form-block-label {
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          color: var(--fc-accent-label);
+          margin: 0 0 10px;
+        }
+        .fc-upload-grid-premium {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+        @media (max-width: 720px) {
+          .fc-upload-grid-premium { grid-template-columns: 1fr; }
+        }
+        .fc-upload-grid-premium .fc-upload-card {
+          position: relative;
+          border-radius: 22px;
+          border: 1.5px dashed rgba(139,92,246,0.35);
+          background: rgba(124,58,237,0.06);
+          padding: 16px;
+          transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
+        }
+        .fc-upload-grid-premium .fc-upload-card:hover {
+          border-color: rgba(139,92,246,0.55);
+          background: rgba(124,58,237,0.1);
+        }
+        .fc-upload-input {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          opacity: 0;
+          pointer-events: none;
+        }
+        .fc-upload-trigger {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          cursor: pointer;
+          width: 100%;
+        }
+        .fc-upload-hint {
+          font-size: 11px;
+          color: #71717a;
+          margin-top: 4px;
+          display: block;
+        }
+        .fc-upload-card.drag-over {
+          border-color: rgba(139,92,246,0.95) !important;
+          background: rgba(124,58,237,0.18) !important;
+          box-shadow: 0 0 0 3px rgba(124,58,237,0.25);
+        }
+        .fc-upload-card.has-file {
+          border-style: solid !important;
+          border-color: rgba(134,239,172,0.45) !important;
+          background: rgba(16,185,129,0.06) !important;
+        }
+        .fc-upload-reject-msg {
+          margin-top: 8px;
+          font-size: 11.5px;
+          color: #f87171;
+          font-weight: 600;
+        }
+
+        .fc-table-toolbar {
+          display: none;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-bottom: 14px;
+        }
+        .fc-table-toolbar.is-visible {
+          display: flex;
+        }
+        .fc-table-search {
+          flex: 1;
+          min-width: 180px;
+          max-width: 380px;
+          color: var(--fc-text);
+          background: rgba(9,9,11,0.55);
+          border: 1px solid rgba(255,255,255,0.10);
+          border-radius: 12px;
+          padding: 8px 12px;
+          outline: none;
+          font-size: 13px;
+        }
+        .fc-table-search:focus {
+          border-color: rgba(139,92,246,0.55);
+          box-shadow: 0 0 0 3px rgba(124,58,237,0.12);
+        }
+        .fc-table-page-select {
+          color: var(--fc-text);
+          background: rgba(9,9,11,0.55);
+          border: 1px solid rgba(255,255,255,0.10);
+          border-radius: 12px;
+          padding: 8px 32px 8px 12px;
+          font-size: 13px;
+          -webkit-appearance: none;
+          appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23a78bfa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 10px center;
+        }
+        .fc-table-counter {
+          font-size: 12px;
+          color: #a1a1aa;
+          margin-left: auto;
+          white-space: nowrap;
+        }
+        .fc-table-scroll {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          width: 100%;
+          min-width: 0;
+        }
+        .fc-table-scroll .fc-table {
+          min-width: 1080px;
+        }
+        .fc-pagination-wrap {
+          display: none;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 14px;
+        }
+        .fc-pagination-wrap.is-visible {
+          display: flex;
+        }
+        .fc-pagination-info {
+          font-size: 12px;
+          color: #a1a1aa;
+          margin-right: auto;
+        }
+        .fc-pagination-btn {
+          appearance: none;
+          border-radius: 10px;
+          padding: 7px 14px;
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+          color: #e4e4e7;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.12);
+        }
+        .fc-pagination-btn:disabled {
+          opacity: 0.35;
+          cursor: not-allowed;
+        }
+
+        .fc-td-id {
+          font-family: ui-monospace, monospace;
+          font-size: 12px;
+          max-width: 130px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .fc-mp-selector {
@@ -424,7 +684,7 @@
           <div class="fc-panel">
             <h2>Envio de arquivo</h2>
 
-            <!-- Seletor de marketplace -->
+            <p class="fc-form-block-label">Marketplace</p>
             <div class="fc-mp-selector" id="fc-mp-selector">
               <button class="fc-mp-pill fc-mp-active" type="button" data-mp="shopee" id="mp-shopee">
                 🛒 Shopee
@@ -434,26 +694,32 @@
               </button>
             </div>
 
-            <div class="fc-upload-grid">
+            <p class="fc-form-block-label" style="margin-top:18px;">Planilhas</p>
+            <div class="fc-upload-grid-premium">
               <div class="fc-upload-card">
-                <span class="fc-upload-label" id="fc-upload-label-single">Planilha de performance Shopee</span>
-                <label class="fc-file">
-                  <input type="file" id="fechamento-arquivo" accept=".xlsx">
+                <span class="badge-soft">Principal</span>
+                <label class="fc-upload-trigger" for="fechamento-arquivo">
+                  <span class="fc-upload-label" id="fc-upload-label-single">Planilha de performance Shopee</span>
+                  <span class="fc-upload-hint">.xlsx · arraste ou clique</span>
                 </label>
+                <input type="file" id="fechamento-arquivo" class="fc-upload-input" accept=".xlsx">
               </div>
 
               <div class="fc-upload-card">
-                <span class="fc-upload-label">Compilar várias planilhas</span>
-                <label class="fc-file">
-                  <input type="file" id="fechamento-arquivos" multiple accept=".xlsx">
+                <span class="badge-soft badge-soft--amber">Múltiplas</span>
+                <label class="fc-upload-trigger" for="fechamento-arquivos">
+                  <span class="fc-upload-label">Compilar várias planilhas</span>
+                  <span class="fc-upload-hint">Selecione uma ou mais .xlsx</span>
                 </label>
+                <input type="file" id="fechamento-arquivos" class="fc-upload-input" multiple accept=".xlsx">
               </div>
             </div>
 
+            <p class="fc-form-block-label" style="margin-top:8px;">Ações</p>
             <div class="fc-actions">
-              <button id="btn-processar" class="fc-btn fc-btn-primary" type="button">Analisar planilha única</button>
-              <button id="btn-compilar" class="fc-btn fc-btn-primary" type="button">Compilar várias planilhas</button>
-              <button id="btn-limpar" class="fc-btn fc-btn-secondary" type="button">Limpar</button>
+              <button id="btn-processar" class="fc-btn fc-btn-primary fc-btn-main" type="button">Analisar planilha única</button>
+              <button id="btn-compilar" class="fc-btn fc-btn-primary fc-btn-compile" type="button">Compilar várias planilhas</button>
+              <button id="btn-limpar" class="fc-btn fc-btn-ghost" type="button">Limpar</button>
             </div>
 
             <div id="fechamento-status" class="fc-status" style="display:none;"></div>
@@ -483,6 +749,7 @@
 
         <section class="fc-tabs-panel">
           <div class="fc-tabs-label">ANÁLISES</div>
+          <div class="fc-tabs-scroll">
           <div class="fc-tabs" role="tablist" aria-label="Análises">
             <button class="fc-tab fc-tab-active" type="button" data-tab="abc" aria-selected="true">Curva ABC completa</button>
             <button class="fc-tab" type="button" data-tab="impressoes" aria-selected="false">Mais impressões</button>
@@ -494,11 +761,26 @@
             <button class="fc-tab" type="button" data-tab="ads34" aria-selected="false">ADS Prioridade 3/4</button>
             <button class="fc-tab" type="button" data-tab="ads24" aria-selected="false">ADS Prioridade 2/4</button>
           </div>
+          </div>
         </section>
 
         <div id="fechamento-resultado" class="fc-result">
           <div class="fc-content-panel">
+            <div id="fc-table-toolbar" class="fc-table-toolbar">
+              <input type="search" id="fc-table-search" class="fc-table-search" placeholder="Buscar por ID ou produto…" autocomplete="off">
+              <select id="fc-page-size" class="fc-table-page-select" aria-label="Itens por página">
+                <option value="25">25 por página</option>
+                <option value="50">50 por página</option>
+                <option value="100">100 por página</option>
+              </select>
+              <span id="fc-table-counter" class="fc-table-counter"></span>
+            </div>
             <div id="fc-tab-content"></div>
+            <div id="fc-pagination-wrap" class="fc-pagination-wrap">
+              <span id="fc-pagination-info" class="fc-pagination-info"></span>
+              <button type="button" id="fc-page-prev" class="fc-pagination-btn">← Anterior</button>
+              <button type="button" id="fc-page-next" class="fc-pagination-btn">Próxima →</button>
+            </div>
           </div>
         </div>
       </div>
