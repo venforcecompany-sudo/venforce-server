@@ -714,7 +714,16 @@ function renderAdvancedTable(payload) {
                 "Atenção";
               return `
                 <tr>
-                  <td>${escapeHTML(it.label || "—")}</td>
+                  <td>
+                    <div style="font-weight:600;line-height:1.3;">${escapeHTML(it.label || "—")}</div>
+                    ${(() => {
+                      const id = pickValue(it.row, ["# de anúncio", "# DE ANÚNCIO", "id", "ID", "sku", "SKU"]);
+                      const idStr = String(id || "").trim();
+                      return idStr && idStr !== it.label
+                        ? `<div style="font-size:11.5px;color:#6b7280;margin-top:2px;">${escapeHTML(idStr)}</div>`
+                        : "";
+                    })()}
+                  </td>
                   <td>${it.receita ? escapeHTML(brl(it.receita)) : "—"}</td>
                   <td>${it.lc ? escapeHTML(brl(it.lc)) : "—"}</td>
                   <td>${it.mc == null ? "—" : escapeHTML(formatPercentSmart(it.mc))}</td>
@@ -997,6 +1006,11 @@ function renderEntrega(entrega) {
     return base || "Item";
   }
 
+  function produtoMlb(row) {
+    const v = pickValue(row, ["# de anúncio", "# DE ANÚNCIO", "anuncio", "id"]);
+    return String(v || "").trim();
+  }
+
   function asNum(row, key) {
     if (!key) return null;
     const n = Number(row?.[key]);
@@ -1075,10 +1089,11 @@ function renderEntrega(entrega) {
           <table class="rp-table">
             <thead>
               <tr>
-                <th>Item</th>
-                <th>MC</th>
-                <th>LC</th>
-                <th>Status</th>
+                <th style="min-width:260px;">Item</th>
+                <th style="width:100px;">MLB</th>
+                <th style="width:90px;text-align:right;">MC</th>
+                <th style="width:110px;text-align:right;">LC</th>
+                <th style="width:90px;">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -1093,9 +1108,10 @@ function renderEntrega(entrega) {
                   "rp-pill rp-pill-attn";
                 return `
                   <tr>
-                    <td>${escapeHTML(produtoLabel(x.r))}</td>
-                    <td>${x.mc == null ? "—" : escapeHTML(formatPercentSmart(x.mc))}</td>
-                    <td>${x.lc == null ? "—" : escapeHTML(brl(x.lc))}</td>
+                    <td style="min-width:260px;">${escapeHTML(produtoLabel(x.r))}</td>
+                    <td style="width:100px;color:#6b7280;font-size:12px;">${escapeHTML(produtoMlb(x.r) || "—")}</td>
+                    <td style="width:90px;text-align:right;">${x.mc == null ? "—" : escapeHTML(formatPercentSmart(x.mc))}</td>
+                    <td style="width:110px;text-align:right;">${x.lc == null ? "—" : escapeHTML(brl(x.lc))}</td>
                     <td><span class="${pillClass}">${escapeHTML(tag)}</span></td>
                   </tr>
                 `;
@@ -1118,18 +1134,20 @@ function renderEntrega(entrega) {
           <table class="rp-table">
             <thead>
               <tr>
-                <th>Item</th>
-                <th>MC</th>
-                <th>LC</th>
-                <th>Status</th>
+                <th style="min-width:260px;">Item</th>
+                <th style="width:100px;">MLB</th>
+                <th style="width:90px;text-align:right;">MC</th>
+                <th style="width:110px;text-align:right;">LC</th>
+                <th style="width:90px;">Status</th>
               </tr>
             </thead>
             <tbody>
               ${saudaveisMenorMargem.map((x) => `
                 <tr>
-                  <td>${escapeHTML(produtoLabel(x.r))}</td>
-                  <td>${x.mc == null ? "—" : escapeHTML(formatPercentSmart(x.mc))}</td>
-                  <td>${x.lc == null ? "—" : escapeHTML(brl(x.lc))}</td>
+                  <td style="min-width:260px;">${escapeHTML(produtoLabel(x.r))}</td>
+                  <td style="width:100px;color:#6b7280;font-size:12px;">${escapeHTML(produtoMlb(x.r) || "—")}</td>
+                  <td style="width:90px;text-align:right;">${x.mc == null ? "—" : escapeHTML(formatPercentSmart(x.mc))}</td>
+                  <td style="width:110px;text-align:right;">${x.lc == null ? "—" : escapeHTML(brl(x.lc))}</td>
                   <td><span class="rp-pill rp-pill-muted">Saudável</span></td>
                 </tr>
               `).join("")}
