@@ -12,16 +12,7 @@ const {
 } = require("../../utils/textUtils");
 
 function parseMeliRows(rows) {
-  const EXCLUIR_ESTADOS = /cancelad|devolu|reembolso|mediacao|mediação|reemb/i;
-
-  return rows
-    .filter((row) => {
-      const estado = String(
-        findField(row, ["estado", "descrição do status", "descricao do status"]) ?? ""
-      ).trim();
-      return !EXCLUIR_ESTADOS.test(estado);
-    })
-    .map((row, index) => {
+  return rows.map((row, index) => {
     const saleNumber = String(
       findField(row, [
         "n.º de venda",
@@ -445,10 +436,18 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     });
   }
 
+  const EXCLUIR_ESTADOS = /cancelad|devolu|reembolso|mediacao|mediação|reemb/i;
+
   for (let i = 0; i < salesRows.length; i++) {
     if (consumedIndexes.has(i)) continue;
 
     const current = salesRows[i];
+
+    // Exclui do cálculo de LC/MC mas não dos totais de reembolso
+    const estadoAtual = String(
+      findField(salesRowsRaw[i] || {}, ["estado", "descrição do status", "descricao do status"]) ?? ""
+    ).trim();
+    if (EXCLUIR_ESTADOS.test(estadoAtual) && !isMainRow(current)) continue;
 
     if (isMainRow(current)) {
       const children = [];
