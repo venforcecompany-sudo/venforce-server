@@ -571,6 +571,20 @@ function renderFinResumo(data) {
   }
 }
 
+function finColumnCellClassAttr(col, numericCols) {
+  const parts = [];
+  if (numericCols.has(col)) parts.push("fc-td-num");
+  const l = String(col).toLowerCase();
+  if (
+    /(^id$|item_id|produto_id|id_produto|marketplace|canal|mlb|sku)/.test(l)
+  ) {
+    parts.push("fc-col-compact");
+  } else if (/titulo|title|nome|produto|descri|item_title/.test(l)) {
+    parts.push("fc-col-produto");
+  }
+  return parts.length ? ` class="${parts.join(" ")}"` : "";
+}
+
 function renderFinTabela(data) {
   const host = document.getElementById("fin-tabela");
   if (!host) return;
@@ -644,14 +658,12 @@ function renderFinTabela(data) {
       const pageRows = filtered.slice(start, start + pageSize);
 
       const thHtml = columns.map((c) => {
-        const cls = numericCols.has(c) ? ' class="fc-td-num"' : '';
-        return `<th${cls}>${escapeHTML(String(c))}</th>`;
+        return `<th${finColumnCellClassAttr(c, numericCols)}>${escapeHTML(String(c))}</th>`;
       }).join("");
 
       const tbodyHtml = pageRows.map((r) => {
         const tds = columns.map((c) => {
-          const cls = numericCols.has(c) ? ' class="fc-td-num"' : '';
-          return `<td${cls}>${escapeHTML(String(r?.[c] ?? ""))}</td>`;
+          return `<td${finColumnCellClassAttr(c, numericCols)}>${escapeHTML(String(r?.[c] ?? ""))}</td>`;
         }).join("");
         return `<tr>${tds}</tr>`;
       }).join("");

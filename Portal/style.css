@@ -2616,7 +2616,7 @@ body {
 }
 
 .vf-page-financeiro .vf-content {
-  max-width: 1380px;
+  max-width: 1620px;
   margin-inline: auto;
   padding-left: clamp(1rem, 2.5vw, 2rem);
   padding-right: clamp(1rem, 2.5vw, 2rem);
@@ -2636,6 +2636,13 @@ body {
   overflow-x: auto;
 }
 
-.vf-page-financeiro .fc-table {
-  min-width: 1000px;
+/* Detalhamento: scroll só no .fc-table-scroll (regra complementar em financeiro.html) */
+.vf-page-financeiro .fc-content-panel:has(.fc-table-scroll) {
+  overflow-x: hidden;
+}
+
+.vf-page-financeiro .fc-table-scroll .fc-table {
+  width: 100%;
+  min-width: 100%;
+  table-layout: fixed;
 }

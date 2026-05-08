@@ -910,6 +910,11 @@
           box-shadow: var(--fc-shadow-soft);
         }
 
+        /* Painel do detalhamento: barra horizontal só no bloco da tabela */
+        .fc-content-panel:has(.fc-table-scroll) {
+          overflow-x: hidden;
+        }
+
         .fc-section-title {
           font-size: 16px;
           font-weight: 800;
@@ -919,13 +924,21 @@
         }
 
         .fc-table {
-          min-width: 1000px;
           width: 100%;
           border-collapse: collapse;
         }
 
+        .fc-table-scroll .fc-table {
+          table-layout: fixed;
+          min-width: 100%;
+        }
+
         .fc-table thead {
           background: rgba(255,255,255,0.03);
+        }
+
+        .fc-table th.fc-td-num {
+          text-align: right;
         }
 
         .fc-table th {
@@ -954,12 +967,39 @@
 
         .fc-td-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
         .fc-td-center { text-align: center; white-space: nowrap; }
-        .fc-td-produto {
-          text-align: left;
-          max-width: 220px;
+
+        /* Larguras semânticas — classes definidas em financeiro.js */
+        .fc-table-scroll th.fc-col-compact,
+        .fc-table-scroll td.fc-col-compact {
+          width: 8%;
+          max-width: 118px;
+          padding-left: 9px;
+          padding-right: 9px;
+          white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          white-space: nowrap;
+          font-variant-numeric: tabular-nums;
+          font-size: 11.5px;
+          vertical-align: middle;
+        }
+
+        .fc-table-scroll th.fc-col-produto {
+          white-space: normal;
+          line-height: 1.35;
+          width: 30%;
+          min-width: 200px;
+          max-width: 520px;
+        }
+
+        .fc-table-scroll td.fc-col-produto {
+          white-space: normal;
+          line-height: 1.42;
+          vertical-align: top;
+          overflow: hidden;
+          max-height: calc(1.42em * 2 + 2px);
+          word-break: break-word;
+          overflow-wrap: anywhere;
+          hyphens: auto;
         }
 
         .fc-empty {
@@ -1101,6 +1141,8 @@
         .fc-table-scroll {
           overflow-x: auto;
           -webkit-overflow-scrolling: touch;
+          width: 100%;
+          min-width: 0;
         }
 
         /* ─────────────────────────────────────────────────────
