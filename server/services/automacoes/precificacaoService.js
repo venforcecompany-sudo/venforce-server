@@ -202,9 +202,6 @@ async function gerarPreviewPrecificacaoMl({
     const listingTypeId = body?.listing_type_id || null;
     const categoryId = body?.category_id || null;
     const sellerId = body?.seller_id || null;
-    const condition = body?.condition || "new";
-    const logisticType = body?.shipping?.logistic_type || "xd_drop_off";
-    const freeShipping = body?.shipping?.free_shipping ?? true;
 
     const precoOriginal =
       body?.price != null && Number.isFinite(Number(body.price)) && Number(body.price) > 0
@@ -245,7 +242,7 @@ async function gerarPreviewPrecificacaoMl({
       })(),
       (async () => {
         if (precoEfetivo === null || !sellerId || !listingTypeId || !itemId) return null;
-        const query = `/users/${encodeURIComponent(sellerId)}/shipping_options/free?item_id=${encodeURIComponent(itemId)}&verbose=true&item_price=${encodeURIComponent(precoEfetivo)}&listing_type_id=${encodeURIComponent(listingTypeId)}&mode=me2&condition=${encodeURIComponent(condition)}&logistic_type=${encodeURIComponent(logisticType)}&free_shipping=${encodeURIComponent(freeShipping)}`;
+        const query = `/users/${encodeURIComponent(sellerId)}/shipping_options/free?item_id=${encodeURIComponent(itemId)}&verbose=true&item_price=${encodeURIComponent(precoEfetivo)}&listing_type_id=${encodeURIComponent(listingTypeId)}&mode=me2`;
         try {
           return await mlFetch(cliente.id, query);
         } catch (_) {
