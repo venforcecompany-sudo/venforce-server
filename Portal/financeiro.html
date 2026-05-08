@@ -10,7 +10,7 @@
 </head>
 <body class="vf-page vf-page-financeiro">
 
-  <div class="vf-main-with-sidebar" style="width:100%;max-width:100%;">
+  <div class="vf-main-with-sidebar">
     <main class="vf-content fc-page">
 
       <style>
@@ -1005,6 +1005,141 @@
 
         @media (max-width: 420px) {
           .fc-stats-grid-dashboard { grid-template-columns: 1fr; }
+        }
+
+        /* ─────────────────────────────────────────────────────
+           DRAG AND DROP
+        ───────────────────────────────────────────────────── */
+        .fc-upload-card.drag-over {
+          border-color: rgba(139,92,246,0.85) !important;
+          background: rgba(124,58,237,0.15) !important;
+          box-shadow: 0 0 0 3px rgba(124,58,237,0.22), 0 10px 28px rgba(0,0,0,0.28) !important;
+          cursor: copy;
+        }
+        .fc-upload-card.drag-over::after { opacity: 1 !important; }
+
+        .fc-upload-card.has-file {
+          border-color: rgba(134,239,172,0.45);
+          border-style: solid;
+          background: rgba(16,185,129,0.04);
+        }
+
+        .fc-upload-reject-msg {
+          margin-top: 8px;
+          font-size: 11.5px;
+          color: #f87171;
+          font-weight: 600;
+        }
+
+        /* ─────────────────────────────────────────────────────
+           ALINHAMENTO NUMÉRICO — stat cards e exec grid
+        ───────────────────────────────────────────────────── */
+        .fc-stat-value { font-variant-numeric: tabular-nums; }
+        .fc-exec-value { font-variant-numeric: tabular-nums; }
+
+        /* ─────────────────────────────────────────────────────
+           TOOLBAR DA TABELA (busca + paginação)
+        ───────────────────────────────────────────────────── */
+        .fc-table-toolbar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+
+        .fc-table-search {
+          flex: 1;
+          min-width: 160px;
+          max-width: 340px;
+          color: var(--fc-text);
+          background: rgba(9,9,11,0.5);
+          border: 1px solid rgba(255,255,255,0.10);
+          border-radius: var(--fc-radius-sm);
+          padding: 7px 11px;
+          outline: none;
+          font-size: 13px;
+          font-family: inherit;
+          transition: border-color var(--fc-ease), background var(--fc-ease);
+        }
+        .fc-table-search:focus {
+          border-color: rgba(139,92,246,0.6);
+          background: rgba(9,9,11,0.7);
+          box-shadow: 0 0 0 3px rgba(124,58,237,0.10);
+        }
+        .fc-table-search::placeholder { color: var(--fc-text-3); }
+
+        .fc-table-page-select {
+          color: var(--fc-text);
+          background: rgba(9,9,11,0.5);
+          border: 1px solid rgba(255,255,255,0.10);
+          border-radius: var(--fc-radius-sm);
+          padding: 7px 28px 7px 11px;
+          outline: none;
+          font-size: 13px;
+          font-family: inherit;
+          transition: border-color var(--fc-ease);
+          -webkit-appearance: none;
+          appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23a78bfa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 10px center;
+        }
+        .fc-table-page-select:focus { border-color: rgba(139,92,246,0.6); }
+        .fc-table-page-select option { background: #130928; }
+
+        .fc-table-counter {
+          font-size: 12px;
+          color: var(--fc-text-3);
+          white-space: nowrap;
+          margin-left: auto;
+        }
+
+        /* ─────────────────────────────────────────────────────
+           SCROLL INTERNO DA TABELA (não afeta o painel)
+        ───────────────────────────────────────────────────── */
+        .fc-table-scroll {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        /* ─────────────────────────────────────────────────────
+           PAGINAÇÃO
+        ───────────────────────────────────────────────────── */
+        .fc-pagination {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 14px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+        .fc-pagination-info {
+          font-size: 12px;
+          color: var(--fc-text-3);
+          margin-right: auto;
+        }
+        .fc-pagination-btn {
+          appearance: none;
+          border-radius: 9px;
+          padding: 6px 14px;
+          font-size: 12.5px;
+          font-weight: 700;
+          font-family: inherit;
+          cursor: pointer;
+          color: var(--fc-text-2);
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.10);
+          transition: background var(--fc-ease), border-color var(--fc-ease), color var(--fc-ease);
+        }
+        .fc-pagination-btn:hover:not(:disabled) {
+          background: rgba(255,255,255,0.08);
+          border-color: rgba(139,92,246,0.4);
+          color: var(--fc-text);
+        }
+        .fc-pagination-btn:disabled {
+          opacity: 0.3;
+          cursor: not-allowed;
         }
       </style>
 

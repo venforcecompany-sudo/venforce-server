@@ -576,27 +576,110 @@ function renderFinTabela(data) {
   if (!host) return;
 
   const rows = Array.isArray(data?.detailedRows) ? data.detailedRows : [];
+  host.innerHTML = "";
+
   if (!rows.length) {
-    host.innerHTML = `<div class="fc-content-panel"><div class="fc-empty">Nenhum dado para exibir.</div></div>`;
-    return;
+    const emptyPanel = document.createElement("div");
+    emptyPanel.className = "fc-content-panel";
+    emptyPanel.innerHTML = `<div class="fc-empty">Nenhum dado para exibir.</div>`;
+    host.appendChild(emptyPanel);
+  } else {
+    const columns = Object.keys(rows[0] || {});
+
+    // Detecta colunas numéricas pelo tipo do valor na primeira linha
+    const numericCols = new Set();
+    const firstRow = rows[0] || {};
+    columns.forEach((c) => {
+      const v = firstRow[c];
+      if (typeof v === "number" || (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)))) {
+        numericCols.add(c);
+      }
+    });
+
+    let currentPage = 1;
+    let pageSize = 25;
+    let searchQuery = "";
+
+    function getFiltered() {
+      if (!searchQuery) return rows;
+      const q = searchQuery.toLowerCase();
+      return rows.filter((r) => columns.some((c) => String(r?.[c] ?? "").toLowerCase().includes(q)));
+    }
+
+    const panelEl = document.createElement("div");
+    panelEl.className = "fc-content-panel";
+    panelEl.innerHTML = `
+      <h2 class="fc-section-title" style="margin-bottom:14px;">Detalhamento por produto</h2>
+      <div class="fc-table-toolbar">
+        <input type="text" class="fc-table-search" placeholder="Buscar por ID ou título…" autocomplete="off">
+        <select class="fc-table-page-select">
+          <option value="25">25 por página</option>
+          <option value="50">50 por página</option>
+          <option value="100">100 por página</option>
+        </select>
+        <span class="fc-table-counter"></span>
+      </div>
+      <div class="fc-table-scroll"></div>
+      <div class="fc-pagination">
+        <span class="fc-pagination-info"></span>
+        <button class="fc-pagination-btn fc-pagination-prev" type="button">← Anterior</button>
+        <button class="fc-pagination-btn fc-pagination-next" type="button">Próxima →</button>
+      </div>
+    `;
+
+    const searchInputEl  = panelEl.querySelector(".fc-table-search");
+    const pageSelectEl   = panelEl.querySelector(".fc-table-page-select");
+    const counterEl      = panelEl.querySelector(".fc-table-counter");
+    const tableScrollEl  = panelEl.querySelector(".fc-table-scroll");
+    const prevBtn        = panelEl.querySelector(".fc-pagination-prev");
+    const nextBtn        = panelEl.querySelector(".fc-pagination-next");
+    const pageInfoEl     = panelEl.querySelector(".fc-pagination-info");
+
+    function renderPage() {
+      const filtered   = getFiltered();
+      const total      = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+      const start    = (currentPage - 1) * pageSize;
+      const pageRows = filtered.slice(start, start + pageSize);
+
+      const thHtml = columns.map((c) => {
+        const cls = numericCols.has(c) ? ' class="fc-td-num"' : '';
+        return `<th${cls}>${escapeHTML(String(c))}</th>`;
+      }).join("");
+
+      const tbodyHtml = pageRows.map((r) => {
+        const tds = columns.map((c) => {
+          const cls = numericCols.has(c) ? ' class="fc-td-num"' : '';
+          return `<td${cls}>${escapeHTML(String(r?.[c] ?? ""))}</td>`;
+        }).join("");
+        return `<tr>${tds}</tr>`;
+      }).join("");
+
+      tableScrollEl.innerHTML = `<table class="fc-table"><thead><tr>${thHtml}</tr></thead><tbody>${tbodyHtml}</tbody></table>`;
+
+      const showing = pageRows.length;
+      counterEl.textContent = showing > 0
+        ? `Mostrando ${start + 1}–${start + showing} de ${total} produto${total !== 1 ? "s" : ""}`
+        : `0 de ${total} produtos`;
+      prevBtn.disabled  = currentPage <= 1;
+      nextBtn.disabled  = currentPage >= totalPages;
+      pageInfoEl.textContent = `Página ${currentPage} de ${totalPages}`;
+    }
+
+    searchInputEl.addEventListener("input", () => { searchQuery = searchInputEl.value.trim(); currentPage = 1; renderPage(); });
+    pageSelectEl.addEventListener("change", () => { pageSize = Number(pageSelectEl.value) || 25; currentPage = 1; renderPage(); });
+    prevBtn.addEventListener("click", () => { if (currentPage > 1) { currentPage--; renderPage(); } });
+    nextBtn.addEventListener("click", () => {
+      const totalPages = Math.max(1, Math.ceil(getFiltered().length / pageSize));
+      if (currentPage < totalPages) { currentPage++; renderPage(); }
+    });
+
+    host.appendChild(panelEl);
+    renderPage();
   }
 
-  const columns = Object.keys(rows[0] || {});
-  const th = columns.map((c) => `<th>${escapeHTML(c)}</th>`).join("");
-  const tbody = rows.map((r) => {
-    const tds = columns.map((c) => `<td>${escapeHTML(r?.[c] ?? "")}</td>`).join("");
-    return `<tr>${tds}</tr>`;
-  }).join("");
-
-  host.innerHTML = `
-    <div class="fc-content-panel">
-      <table class="fc-table">
-        <thead><tr>${th}</tr></thead>
-        <tbody>${tbody}</tbody>
-      </table>
-    </div>
-  `;
-
+  // --- IDs sem custo ---
   const unmatched = Array.isArray(data?.unmatchedIds) ? data.unmatchedIds : [];
   if (unmatched.length > 0) {
     const panel = document.createElement("div");
@@ -616,13 +699,11 @@ function renderFinTabela(data) {
       <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:#f4f4f5;line-height:1.45;">${idsHtml}</div>
       <div style="color:#a1a1aa;margin:12px 0 0;font-size:12px;">Cadastre esses IDs na planilha de custos e processe novamente.</div>
     `;
-
     host.appendChild(panel);
   }
 
-  const unmatchedCancelled = Array.isArray(data?.unmatchedCancelled)
-    ? data.unmatchedCancelled
-    : [];
+  // --- Cancelados sem custo ---
+  const unmatchedCancelled = Array.isArray(data?.unmatchedCancelled) ? data.unmatchedCancelled : [];
   if (unmatchedCancelled.length > 0) {
     const panel = document.createElement("div");
     panel.className = "fc-content-panel";
@@ -640,7 +721,6 @@ function renderFinTabela(data) {
       <div style="color:#e5e7eb;margin:0 0 10px;">Esses pedidos cancelados não foram encontrados na sua base de custos via SKU. Cadastre o produto na base e processe novamente para incluir nos cálculos.</div>
       <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:#f4f4f5;line-height:1.45;">${itemsHtml}</div>
     `;
-
     host.appendChild(panel);
   }
 }
@@ -765,6 +845,53 @@ function ensureFileLabelSpan(inputEl) {
   return span;
 }
 
+function initUploadDragDrop(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const card = input.closest(".fc-upload-card");
+  if (!card) return;
+
+  card.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    card.classList.add("drag-over");
+  });
+
+  card.addEventListener("dragleave", (e) => {
+    if (!card.contains(e.relatedTarget)) card.classList.remove("drag-over");
+  });
+
+  card.addEventListener("drop", (e) => {
+    e.preventDefault();
+    card.classList.remove("drag-over");
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      let msg = card.querySelector(".fc-upload-reject-msg");
+      if (!msg) {
+        msg = document.createElement("div");
+        msg.className = "fc-upload-reject-msg";
+        card.appendChild(msg);
+      }
+      msg.textContent = "Apenas arquivos .xlsx são aceitos.";
+      setTimeout(() => msg?.remove(), 3000);
+      return;
+    }
+    card.querySelector(".fc-upload-reject-msg")?.remove();
+    try {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+    } catch (_) {}
+    input.dispatchEvent(new Event("change"));
+  });
+
+  // Atualiza classe has-file também ao usar o clique nativo
+  input.addEventListener("change", () => {
+    card.classList.toggle("has-file", !!(input.files?.length));
+  });
+}
+
 // Eventos
 const btnFinProcessar = document.getElementById("btn-fin-processar");
 if (btnFinProcessar) btnFinProcessar.addEventListener("click", processarFechamentoFinanceiro);
@@ -778,6 +905,9 @@ if (btnFinLimpar) {
     if (sales) sales.value = "";
     if (costs) costs.value = "";
     if (ordersAll) ordersAll.value = "";
+    [sales, costs, ordersAll].forEach((inp) =>
+      inp?.closest(".fc-upload-card")?.classList.remove("has-file", "drag-over")
+    );
 
     const finAds = document.getElementById("fin-ads");
     const finVenforce = document.getElementById("fin-venforce");
@@ -875,6 +1005,10 @@ if (marketplaceSelect && ordersAllWrapper) {
   marketplaceSelect.addEventListener("change", updateOrdersAllVisibility);
   updateOrdersAllVisibility();
 }
+
+initUploadDragDrop("fin-sales");
+initUploadDragDrop("fin-costs");
+initUploadDragDrop("fin-orders-all");
 
 limparFinStats();
 limparFinResumoExecutivo();
