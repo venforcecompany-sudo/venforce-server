@@ -12,7 +12,16 @@ const {
 } = require("../../utils/textUtils");
 
 function parseMeliRows(rows) {
-  return rows.map((row, index) => {
+  const EXCLUIR_ESTADOS = /cancelad|devolu|reembolso|mediacao|mediação|reemb/i;
+
+  return rows
+    .filter((row) => {
+      const estado = String(
+        findField(row, ["estado", "descrição do status", "descricao do status"]) ?? ""
+      ).trim();
+      return !EXCLUIR_ESTADOS.test(estado);
+    })
+    .map((row, index) => {
     const saleNumber = String(
       findField(row, [
         "n.º de venda",
