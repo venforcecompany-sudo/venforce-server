@@ -35,7 +35,19 @@ function formatDateTimeBR(value) {
   return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
 }
 
-function parseDetalhes(raw) {
+/** Texto único para busca / pré-visualização */
+function detalhesPlainText(raw) {
+  if (raw == null || raw === "") return "";
+  if (typeof raw === "object") return JSON.stringify(raw);
+  try {
+    return JSON.stringify(JSON.parse(String(raw)));
+  } catch {
+    return String(raw);
+  }
+}
+
+/** JSON formatado para bloco expansível */
+function detalhesPrettyJson(raw) {
   if (raw == null || raw === "") return "—";
   if (typeof raw === "object") return JSON.stringify(raw, null, 2);
   try {
@@ -45,7 +57,14 @@ function parseDetalhes(raw) {
   }
 }
 
+function truncatePreview(text, maxLen) {
+  const t = text || "";
+  if (t.length <= maxLen) return t;
+  return t.slice(0, maxLen).trim() + "…";
+}
+
 let currentPage = 1;
+let lastLogsLength = 0;
 
 const stateLoading = document.getElementById("state-loading");
 const stateTable = document.getElementById("state-table");
@@ -57,77 +76,133 @@ const btnPrev = document.getElementById("btn-prev");
 const btnNext = document.getElementById("btn-next");
 const retryBtn = document.getElementById("btn-retry");
 const countBadge = document.getElementById("callbacks-count");
+const actRefinar = document.getElementById("act-refinar");
+const actRefineEmpty = document.getElementById("act-refine-empty");
 
-function ajustarFiltrosEColunas() {
-  const baseWrap = document.getElementById("filter-base")?.closest(".vf-form-group");
-  if (baseWrap) {
-    baseWrap.innerHTML = `
-      <label for="filter-acao">Ação</label>
-      <input type="text" id="filter-acao" class="vf-input" placeholder="Ex.: admin.usuario">
-    `;
-  }
+const elSumTotal = document.getElementById("act-sum-total");
+const elSumOk = document.getElementById("act-sum-ok");
+const elSumErr = document.getElementById("act-sum-err");
+const elSumUsers = document.getElementById("act-sum-users");
 
-  const statusSelect = document.getElementById("filter-status");
-  if (statusSelect) {
-    statusSelect.innerHTML = `
-      <option value="">Todos</option>
-      <option value="sucesso">Sucesso</option>
-      <option value="falha">Falha</option>
-    `;
-  }
+function setSummaryLoading() {
+  if (elSumTotal) elSumTotal.textContent = "…";
+  if (elSumOk) elSumOk.textContent = "…";
+  if (elSumErr) elSumErr.textContent = "…";
+  if (elSumUsers) elSumUsers.textContent = "…";
+}
 
-  const tableHeadRow = document.querySelector(".vf-table thead tr");
-  if (tableHeadRow) {
-    tableHeadRow.innerHTML = `
-      <th style="width:190px;">Data</th>
-      <th style="width:220px;">Usuário</th>
-      <th style="width:180px;">Ação</th>
-      <th style="width:120px;text-align:center;">Status</th>
-      <th style="width:150px;">IP</th>
-      <th>Detalhes</th>
-    `;
-  }
+function updateSummaryFromLogs(logs, totalFromApi) {
+  let ok = 0;
+  let err = 0;
+  const users = new Set();
+  (logs || []).forEach((l) => {
+    const s = String(l.status || "").toLowerCase();
+    if (s === "sucesso") ok++;
+    else if (s === "falha") err++;
+    const id = (l.user_email || l.user_nome || "").trim();
+    if (id) users.add(id);
+  });
+
+  const total = Number.isFinite(Number(totalFromApi)) ? Number(totalFromApi) : (logs || []).length;
+
+  if (elSumTotal) elSumTotal.textContent = String(total);
+  if (elSumOk) elSumOk.textContent = String(ok);
+  if (elSumErr) elSumErr.textContent = String(err);
+  if (elSumUsers) elSumUsers.textContent = String(users.size);
+}
+
+function resetSummaryDash() {
+  if (elSumTotal) elSumTotal.textContent = "—";
+  if (elSumOk) elSumOk.textContent = "—";
+  if (elSumErr) elSumErr.textContent = "—";
+  if (elSumUsers) elSumUsers.textContent = "—";
 }
 
 function showLoading() {
+  setSummaryLoading();
   stateLoading.style.display = "flex";
   stateTable.style.display = stateEmpty.style.display = stateError.style.display = "none";
+  if (actRefineEmpty) actRefineEmpty.style.display = "none";
 }
 function showTable() {
   stateTable.style.display = "block";
   stateLoading.style.display = stateEmpty.style.display = stateError.style.display = "none";
 }
 function showEmpty() {
-  stateEmpty.style.display = "block";
+  stateEmpty.style.display = "flex";
   stateLoading.style.display = stateTable.style.display = stateError.style.display = "none";
   countBadge.style.display = "none";
+  if (actRefineEmpty) actRefineEmpty.style.display = "none";
 }
 function showError(msg) {
-  stateError.style.display = "block";
+  stateError.style.display = "flex";
   stateLoading.style.display = stateTable.style.display = stateEmpty.style.display = "none";
   document.getElementById("error-message").textContent = msg;
   countBadge.style.display = "none";
+  resetSummaryDash();
+  if (actRefineEmpty) actRefineEmpty.style.display = "none";
+}
+
+function statusBadgeHtml(statusRaw) {
+  const s = String(statusRaw || "").toLowerCase();
+  if (s === "sucesso") {
+    return `<span class="vf-act-badge vf-act-badge--ok">Sucesso</span>`;
+  }
+  if (s === "falha") {
+    return `<span class="vf-act-badge vf-act-badge--err">Erro</span>`;
+  }
+  return `<span class="vf-act-badge vf-act-badge--neutral">${escapeHTML(statusRaw || "—")}</span>`;
 }
 
 function getFilters() {
-  const acaoPrefix = document.getElementById("filter-acao")?.value || "";
-  const status = document.getElementById("filter-status").value || "";
-  const de = document.getElementById("filter-de").value || "";
-  const ate = document.getElementById("filter-ate").value || "";
-  return { acaoPrefix, status, de, ate };
+  const acaoPrefix = document.getElementById("filter-acao-prefix")?.value?.trim() || "";
+  const acaoExata = document.getElementById("filter-acao-exata")?.value?.trim() || "";
+  const status = document.getElementById("filter-status")?.value || "";
+  const de = document.getElementById("filter-de")?.value || "";
+  const ate = document.getElementById("filter-ate")?.value || "";
+  const limit = document.getElementById("filter-limit")?.value || "50";
+  return { acaoPrefix, acaoExata, status, de, ate, limit };
+}
+
+function applyRefineFilter() {
+  const q = (actRefinar?.value || "").trim().toLowerCase();
+  const rows = tbody.querySelectorAll("tr[data-act-search]");
+  let visible = 0;
+  rows.forEach((tr) => {
+    if (!q) {
+      tr.classList.remove("vf-act-row-hidden");
+      visible++;
+      return;
+    }
+    const hay = (tr.getAttribute("data-act-search") || "").toLowerCase();
+    const match = hay.includes(q);
+    tr.classList.toggle("vf-act-row-hidden", !match);
+    if (match) visible++;
+  });
+  if (actRefineEmpty) {
+    actRefineEmpty.style.display = lastLogsLength > 0 && visible === 0 ? "block" : "none";
+  }
+}
+
+let refineTimer;
+function scheduleRefine() {
+  clearTimeout(refineTimer);
+  refineTimer = setTimeout(applyRefineFilter, 120);
 }
 
 async function loadAtividade(page) {
   if (!TOKEN) return;
   showLoading();
 
-  const { acaoPrefix, status, de, ate } = getFilters();
+  const { acaoPrefix, acaoExata, status, de, ate, limit } = getFilters();
   const qs = new URLSearchParams();
-  if (acaoPrefix) qs.set("acao_prefix", acaoPrefix);
+  if (acaoExata) qs.set("acao", acaoExata);
+  else if (acaoPrefix) qs.set("acao_prefix", acaoPrefix);
   if (status) qs.set("status", status);
   if (de) qs.set("de", de);
   if (ate) qs.set("ate", ate);
   qs.set("page", String(page || 1));
+  qs.set("limit", String(limit || "50"));
 
   try {
     const res = await fetch(`${API_BASE}/admin/logs?${qs.toString()}`, {
@@ -149,6 +224,10 @@ async function loadAtividade(page) {
 
 function renderAtividade(logs, page, meta) {
   tbody.innerHTML = "";
+  lastLogsLength = logs.length;
+
+  updateSummaryFromLogs(logs, meta?.total);
+
   if (!logs.length) {
     showEmpty();
     pageText.textContent = `Página ${page}`;
@@ -162,32 +241,47 @@ function renderAtividade(logs, page, meta) {
 
   logs.forEach((l, i) => {
     const when = formatDateTimeBR(l.created_at);
-    const usuario = l.user_nome || l.user_email || "—";
+    const nome = l.user_nome || "—";
+    const email = l.user_email || "";
     const acao = l.acao || "—";
-    const statusRaw = (l.status || "").toLowerCase();
+    const detPlain = detalhesPlainText(l.detalhes);
+    const detPretty = detalhesPrettyJson(l.detalhes);
+    const preview = truncatePreview(detPlain, 140);
+    const hasDetail = detPlain.length > 0;
     const ip = l.ip || "—";
-    const detalhes = parseDetalhes(l.detalhes);
 
-    const statusHtml = statusRaw === "sucesso"
-      ? `<span class="base-status--active">sucesso</span>`
-      : `<span style="display:inline-flex;align-items:center;gap:.4rem;font-size:.8125rem;font-weight:500;color:var(--vf-danger);">
-           <span style="width:6px;height:6px;border-radius:50%;background:var(--vf-danger);flex-shrink:0;"></span>
-           falha
-         </span>`;
+    const searchBlob = [nome, email, acao, detPlain].join(" ").toLowerCase();
+
+    const userCell = email
+      ? `<div class="vf-act-user"><strong>${escapeHTML(nome)}</strong><span class="vf-act-user-email">${escapeHTML(email)}</span></div>`
+      : `<div class="vf-act-user"><strong>${escapeHTML(nome)}</strong></div>`;
+
+    const detailCell = hasDetail
+      ? `<div class="vf-act-detail">
+          <p class="vf-act-detail-preview">${escapeHTML(preview)}</p>
+          <details class="vf-act-json">
+            <summary class="vf-act-json-sum">Ver detalhes</summary>
+            <pre class="vf-act-json-pre" tabindex="0">${escapeHTML(detPretty)}</pre>
+          </details>
+        </div>`
+      : `<span class="vf-act-muted">—</span>`;
 
     const tr = document.createElement("tr");
     tr.classList.add("animate-fade-up");
     tr.style.animationDelay = `${i * 0.03}s`;
+    tr.setAttribute("data-act-search", searchBlob);
     tr.innerHTML = `
-      <td style="color:var(--vf-text-m);font-size:.875rem;">${escapeHTML(when)}</td>
-      <td><strong>${escapeHTML(usuario)}</strong></td>
-      <td style="color:var(--vf-text-m);font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(acao)}</td>
-      <td style="text-align:center;">${statusHtml}</td>
-      <td style="color:var(--vf-text-m);font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(ip)}</td>
-      <td><pre style="margin:0;white-space:pre-wrap;word-break:break-word;font-family:var(--vf-mono);font-size:.75rem;color:var(--vf-text-m);">${escapeHTML(detalhes)}</pre></td>
+      <td class="vf-act-td-time">${escapeHTML(when)}</td>
+      <td>${userCell}</td>
+      <td class="vf-act-mono vf-act-td-action">${escapeHTML(acao)}</td>
+      <td class="vf-act-td-status">${statusBadgeHtml(l.status)}</td>
+      <td class="vf-act-mono vf-act-td-ip">${escapeHTML(ip)}</td>
+      <td class="vf-act-td-detail">${detailCell}</td>
     `;
     tbody.appendChild(tr);
   });
+
+  applyRefineFilter();
 
   pageText.textContent = `Página ${page} de ${meta?.totalPages || 1}`;
   btnPrev.disabled = page <= 1 || meta?.hasPrev === false;
@@ -196,6 +290,11 @@ function renderAtividade(logs, page, meta) {
 }
 
 document.getElementById("btn-filtrar").addEventListener("click", () => {
+  currentPage = 1;
+  loadAtividade(1);
+});
+
+document.getElementById("filter-limit")?.addEventListener("change", () => {
   currentPage = 1;
   loadAtividade(1);
 });
@@ -213,7 +312,10 @@ btnNext.addEventListener("click", () => {
 
 retryBtn.addEventListener("click", () => loadAtividade(currentPage));
 
+if (actRefinar) {
+  actRefinar.addEventListener("input", scheduleRefine);
+}
+
 if (TOKEN) {
-  ajustarFiltrosEColunas();
   loadAtividade(currentPage);
 }

@@ -8,115 +8,167 @@
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
 </head>
-<body class="vf-page">
+<body class="vf-page vf-page-atividade">
 
   <div class="vf-main-with-sidebar">
     <main class="vf-content">
 
-      <div class="vf-page-header">
-        <h2>Atividade</h2>
-        <p>Histórico de requisições recebidas pela API.</p>
-      </div>
+      <header class="vf-act-head">
+        <p class="vf-act-eyebrow">Auditoria interna</p>
+        <h2 class="vf-act-title">Atividade</h2>
+        <p class="vf-act-lead">
+          Acompanhe ações realizadas no portal, importações, relatórios, usuários e eventos administrativos.
+        </p>
+      </header>
 
-      <!-- ── FILTROS ── -->
-      <div class="vf-card" style="margin-bottom:24px;">
+      <!-- Resumo -->
+      <section class="vf-act-summary" aria-label="Resumo do período">
+        <article class="vf-act-stat">
+          <span class="vf-act-stat-label">Total de eventos</span>
+          <strong class="vf-act-stat-value" id="act-sum-total">—</strong>
+          <span class="vf-act-stat-hint">No período filtrado (servidor)</span>
+        </article>
+        <article class="vf-act-stat">
+          <span class="vf-act-stat-label">Sucesso</span>
+          <strong class="vf-act-stat-value vf-act-stat-value--ok" id="act-sum-ok">—</strong>
+          <span class="vf-act-stat-hint">Nesta página</span>
+        </article>
+        <article class="vf-act-stat">
+          <span class="vf-act-stat-label">Erro / falha</span>
+          <strong class="vf-act-stat-value vf-act-stat-value--err" id="act-sum-err">—</strong>
+          <span class="vf-act-stat-hint">Nesta página</span>
+        </article>
+        <article class="vf-act-stat">
+          <span class="vf-act-stat-label">Usuários distintos</span>
+          <strong class="vf-act-stat-value" id="act-sum-users">—</strong>
+          <span class="vf-act-stat-hint">Nesta página</span>
+        </article>
+      </section>
+
+      <!-- Filtros -->
+      <section class="vf-card vf-act-card">
         <div class="vf-card-header">
           <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M22 3H2l8 9v7l4 2v-9l8-9z"/>
             </svg>
             Filtros
           </h5>
         </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:1rem;align-items:end;">
-            <div class="vf-form-group" style="margin:0;">
-              <label for="filter-base">Base</label>
-              <select id="filter-base" class="vf-input">
-                <option value="">Todas as bases</option>
-              </select>
+        <div class="vf-act-filters-body">
+          <p class="vf-act-field-note">
+            Use os campos abaixo para consultar o servidor. O campo <strong>Refinar</strong> restringe apenas os eventos já carregados na página atual.
+          </p>
+          <div class="vf-act-filters-grid">
+            <div class="vf-form-group vf-act-span-2">
+              <label for="act-refinar">Refinar nesta página</label>
+              <input type="search" id="act-refinar" class="vf-input" placeholder="Nome, e-mail, ação ou trecho em detalhes…" autocomplete="off">
             </div>
-            <div class="vf-form-group" style="margin:0;">
+            <div class="vf-form-group">
+              <label for="filter-acao-prefix">Prefixo da ação</label>
+              <input type="text" id="filter-acao-prefix" class="vf-input" placeholder="Ex.: admin.">
+            </div>
+            <div class="vf-form-group">
+              <label for="filter-acao-exata">Ação exata</label>
+              <input type="text" id="filter-acao-exata" class="vf-input" placeholder="Opcional — sobrepõe prefixo">
+            </div>
+            <div class="vf-form-group">
               <label for="filter-status">Status</label>
               <select id="filter-status" class="vf-input">
                 <option value="">Todos</option>
-                <option value="success">Sucesso (2xx)</option>
-                <option value="error">Erro (4xx/5xx)</option>
+                <option value="sucesso">Sucesso</option>
+                <option value="falha">Falha</option>
               </select>
             </div>
-            <div class="vf-form-group" style="margin:0;">
+            <div class="vf-form-group">
               <label for="filter-de">De</label>
               <input type="date" id="filter-de" class="vf-input">
             </div>
-            <div class="vf-form-group" style="margin:0;">
+            <div class="vf-form-group">
               <label for="filter-ate">Até</label>
               <input type="date" id="filter-ate" class="vf-input">
             </div>
+            <div class="vf-form-group">
+              <label for="filter-limit">Por página</label>
+              <select id="filter-limit" class="vf-input">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
           </div>
-          <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-            <button id="btn-filtrar" class="vf-btn-primary" style="width:auto;margin:0;min-width:140px;">Filtrar</button>
+          <div class="vf-act-filters-actions">
+            <button id="btn-filtrar" type="button" class="vf-btn-primary">Aplicar filtros</button>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- ── LOGS ── -->
-      <div class="vf-card">
+      <!-- Tabela -->
+      <section class="vf-card vf-act-card vf-act-card-table">
         <div class="vf-card-header">
           <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
               <line x1="16" y1="13" x2="8" y2="13"/>
               <line x1="16" y1="17" x2="8" y2="17"/>
-              <polyline points="10 9 9 9 8 9"/>
             </svg>
-            Logs
+            Registro de atividades
           </h5>
           <span class="vf-badge" id="callbacks-count" style="display:none;">0</span>
         </div>
 
-        <div id="atividade-content" style="min-height:200px;">
-          <div id="state-loading" class="vf-loading">
-            <div class="loading-dots"><span></span><span></span><span></span></div>
-            <p>Carregando logs…</p>
+        <div id="atividade-content" class="vf-act-content">
+          <div id="state-loading" class="vf-act-loading" role="status" aria-live="polite">
+            <div class="vf-act-loading-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+            <p>Carregando eventos…</p>
           </div>
-          <div id="state-table" class="vf-table-wrapper" style="display:none;">
-            <table class="vf-table">
+
+          <div id="state-table" class="vf-table-wrapper vf-act-table-wrap" style="display:none;">
+            <table class="vf-table vf-act-table">
               <thead>
                 <tr>
-                  <th style="width:50px;">#</th>
-                  <th style="width:190px;">Data/Hora</th>
-                  <th>Base</th>
-                  <th>Endpoint</th>
-                  <th style="width:120px;text-align:center;">Status</th>
-                  <th style="width:150px;">IP</th>
-                  <th style="width:120px;text-align:right;">Duração</th>
+                  <th class="vf-act-col-time">Data / hora</th>
+                  <th class="vf-act-col-user">Usuário</th>
+                  <th class="vf-act-col-action">Ação</th>
+                  <th class="vf-act-col-status">Status</th>
+                  <th class="vf-act-col-ip">IP</th>
+                  <th class="vf-act-col-detail">Detalhes</th>
                 </tr>
               </thead>
               <tbody id="callbacks-tbody"></tbody>
             </table>
           </div>
-          <div id="state-empty" class="vf-empty-state" style="display:none;">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-            </svg>
-            <p>Nenhum log encontrado para os filtros selecionados.</p>
+
+          <p id="act-refine-empty" class="vf-act-refine-empty" style="display:none;">
+            Nenhum evento nesta página corresponde ao refinamento. Limpe o campo &quot;Refinar nesta página&quot; ou mude o texto.
+          </p>
+
+          <div id="state-empty" class="vf-act-empty" style="display:none;">
+            <div class="vf-act-empty-icon" aria-hidden="true">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 8v4l3 3"/>
+              </svg>
+            </div>
+            <h3 class="vf-act-empty-title">Nenhuma atividade encontrada</h3>
+            <p class="vf-act-empty-text">Nenhuma atividade encontrada para os filtros selecionados.</p>
           </div>
-          <div id="state-error" class="vf-error-state" style="display:none;">
-            <p id="error-message">Erro ao carregar dados.</p>
-            <button id="btn-retry" class="vf-btn-retry">Tentar novamente</button>
+
+          <div id="state-error" class="vf-act-error" style="display:none;">
+            <p class="vf-act-error-msg" id="error-message">Erro ao carregar dados.</p>
+            <button id="btn-retry" type="button" class="vf-btn-primary vf-act-retry">Tentar novamente</button>
           </div>
         </div>
 
-        <div style="padding:1rem 1.75rem;border-top:1px solid var(--vf-border);display:flex;align-items:center;justify-content:space-between;gap:1rem;">
-          <button id="btn-prev" class="vf-btn-secondary" style="padding:0.6rem 0.9rem;">← Anterior</button>
-          <div id="page-text" style="font-size:.875rem;color:var(--vf-text-m);font-weight:500;">Página 1</div>
-          <button id="btn-next" class="vf-btn-secondary" style="padding:0.6rem 0.9rem;">Próximo →</button>
+        <div class="vf-act-footer">
+          <button id="btn-prev" type="button" class="vf-btn-secondary vf-act-page-btn">← Anterior</button>
+          <div class="vf-act-footer-meta">
+            <span id="page-text" class="vf-act-page-text">Página 1</span>
+          </div>
+          <button id="btn-next" type="button" class="vf-btn-secondary vf-act-page-btn">Próximo →</button>
         </div>
-      </div>
+      </section>
 
     </main>
   </div>
