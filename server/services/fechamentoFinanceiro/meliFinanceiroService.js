@@ -387,7 +387,8 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
 
     const units = round2(item.units);
     const price = round2(item.unitSalePrice);
-    const vendaTotal = round2(units * price);
+    const vendaTotal =
+      price > 0 ? round2(units * price) : round2(Math.abs(totalRateado));
 
     const impostoPercent = round2(cost.taxPercent || 0);
     const impostoDec = impostoPercent > 1 ? impostoPercent / 100 : impostoPercent;
@@ -402,7 +403,8 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     
     if (totalFormatado < 0) {
       lc = round2(totalFormatado);
-      mc = vendaTotal > 0 ? round2((lc / vendaTotal) * 100) : 0;
+      const baseCalcMcNeg = vendaTotal > 0 ? vendaTotal : round2(Math.abs(totalRateado));
+      mc = baseCalcMcNeg > 0 ? round2((lc / baseCalcMcNeg) * 100) : 0;
     } else if (totalFormatado > 0) {
       lc = round2(
         vendaTotal -
@@ -411,7 +413,8 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
           precoCustoTotal
       );
     
-      mc = vendaTotal > 0 ? round2((lc / vendaTotal) * 100) : 0;
+      const baseCalcMc = vendaTotal > 0 ? vendaTotal : round2(Math.abs(totalRateado));
+      mc = baseCalcMc > 0 ? round2((lc / baseCalcMc) * 100) : 0;
     } else {
       lc = 0;
       mc = 0;
@@ -479,6 +482,26 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
     }
   }
 
+  const groupedMap = new Map();
+  for (const row of finalRows) {
+    const id = row["# de anúncio"];
+    if (!groupedMap.has(id)) {
+      groupedMap.set(id, { ...row });
+    } else {
+      const acc = groupedMap.get(id);
+      acc.Unidades += row.Unidades;
+      acc["Venda Total"] += row["Venda Total"];
+      acc["Total (BRL)"] += row["Total (BRL)"];
+      acc["Preço de custo total"] += row["Preço de custo total"];
+      acc["Ajuste plataforma (BRL)"] += row["Ajuste plataforma (BRL)"];
+      acc.LC += row.LC;
+    }
+  }
+  const aggregatedRows = Array.from(groupedMap.values()).map((row) => ({
+    ...row,
+    MC: row["Venda Total"] > 0 ? round2((row.LC / row["Venda Total"]) * 100) : 0,
+  }));
+
   const grossRevenueTotal = round2(
     finalRows.reduce((sum, row) => sum + Number(row["Venda Total"] || 0), 0)
   );
@@ -525,8 +548,8 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       platformAdjustmentTotal,
       platformAdjustmentRowsCount,
     },
-    preparedRows: finalRows,
-    detailedRows: finalRows,
+    preparedRows: aggregatedRows,
+    detailedRows: aggregatedRows,
     auditRows: [],
     excelFileName: "fechamento-meli.xlsx",
     unmatchedIds: Array.from(unmatchedIds),
