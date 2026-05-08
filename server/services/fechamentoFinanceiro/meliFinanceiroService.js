@@ -498,12 +498,12 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
       groupedMap.set(id, { ...row });
     } else {
       const acc = groupedMap.get(id);
-      acc.Unidades += row.Unidades;
-      acc["Venda Total"] += row["Venda Total"];
-      acc["Total (BRL)"] += row["Total (BRL)"];
-      acc["Preço de custo total"] += row["Preço de custo total"];
-      acc["Ajuste plataforma (BRL)"] += row["Ajuste plataforma (BRL)"];
-      acc.LC += row.LC;
+      acc.Unidades              = round2(acc.Unidades + row.Unidades);
+      acc["Venda Total"]        = round2(acc["Venda Total"] + row["Venda Total"]);
+      acc["Total (BRL)"]        = round2(acc["Total (BRL)"] + row["Total (BRL)"]);
+      acc["Preço de custo total"] = round2(acc["Preço de custo total"] + row["Preço de custo total"]);
+      acc["Ajuste plataforma (BRL)"] = round2(acc["Ajuste plataforma (BRL)"] + row["Ajuste plataforma (BRL)"]);
+      acc.LC                    = round2(acc.LC + row.LC);
     }
   }
   const aggregatedRows = Array.from(groupedMap.values()).map((row) => ({
