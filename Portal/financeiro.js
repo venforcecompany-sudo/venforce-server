@@ -657,8 +657,30 @@ function renderFinTabela(data) {
       const start    = (currentPage - 1) * pageSize;
       const pageRows = filtered.slice(start, start + pageSize);
 
+      const COL_WIDTHS = {
+        "# de anúncio": "130px",
+        "Título do anúncio": "220px",
+        "Unidades": "70px",
+        "Preço unitário de venda do anúncio (BRL)": "90px",
+        "Venda Total": "100px",
+        "Total (BRL)": "100px",
+        "Imposto": "70px",
+        "Preço de custo": "90px",
+        "Preço de custo total": "100px",
+        "Ajuste plataforma (BRL)": "90px",
+        "LC": "90px",
+        "MC": "70px",
+      };
+      const COL_ABBREV = {
+        "Preço unitário de venda do anúncio (BRL)": "Preço Unit.",
+        "Preço de custo total": "Custo Total",
+        "Ajuste plataforma (BRL)": "Aj. Plataforma",
+        "Título do anúncio": "Título",
+      };
       const thHtml = columns.map((c) => {
-        return `<th${finColumnCellClassAttr(c, numericCols)}>${escapeHTML(String(c))}</th>`;
+        const w = COL_WIDTHS[c] ? ` style="min-width:${COL_WIDTHS[c]};white-space:nowrap;"` : ' style="white-space:nowrap;"';
+        const label = COL_ABBREV[c] || c;
+        return `<th${finColumnCellClassAttr(c, numericCols)}${w}>${escapeHTML(String(label))}</th>`;
       }).join("");
 
       const tbodyHtml = pageRows.map((r) => {
