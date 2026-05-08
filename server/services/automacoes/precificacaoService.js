@@ -241,6 +241,9 @@ async function gerarPreviewPrecificacaoMl({
         }
       })(),
       (async () => {
+        const logisticType = body?.shipping?.logistic_type || "";
+        const isCombinable = ["not_specified", "custom", ""].includes(logisticType);
+        if (isCombinable) return null;
         if (precoEfetivo === null || !sellerId || !listingTypeId || !itemId) return null;
         const query = `/users/${encodeURIComponent(sellerId)}/shipping_options/free?item_id=${encodeURIComponent(itemId)}&verbose=true&item_price=${encodeURIComponent(precoEfetivo)}&listing_type_id=${encodeURIComponent(listingTypeId)}&mode=me2`;
         try {

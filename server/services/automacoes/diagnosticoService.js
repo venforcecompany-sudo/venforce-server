@@ -141,6 +141,9 @@ async function diagEnriquecerItem({ clienteId, body, baseRow, margemAlvo }) {
       } catch (_) { return null; }
     })(),
     (async () => {
+      const logisticType = body?.shipping?.logistic_type || "";
+      const isCombinable = ["not_specified", "custom", ""].includes(logisticType);
+      if (isCombinable) return null;
       if (precoEfetivo === null || !sellerId || !listingTypeId || !itemId) return null;
       try {
         return await mlFetch(
