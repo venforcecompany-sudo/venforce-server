@@ -585,6 +585,158 @@ function finColumnCellClassAttr(col, numericCols) {
   return parts.length ? ` class="${parts.join(" ")}"` : "";
 }
 
+function limparShopeeReconciliacao() {
+  const el = document.getElementById("fin-shopee-reconciliacao");
+  if (!el) return;
+  el.style.display = "none";
+  el.innerHTML = "";
+}
+
+function renderShopeeReconciliacao(data) {
+  const el = document.getElementById("fin-shopee-reconciliacao");
+  if (!el) return;
+
+  const s = data?.summary || {};
+  const totalCount = Number(s.orderAllTotalCount || 0);
+
+  if (!totalCount) {
+    limparShopeeReconciliacao();
+    return;
+  }
+
+  const perfRevenue = Number(s.grossRevenueTotal || s.paidRevenueTotal || 0);
+  const reconcRevenue = Number(s.orderAllTotalRevenue || 0);
+
+  // Definição de cards por status — labels e textos de apoio sem "Order.all"
+  const statusItems = [
+    {
+      label: "Concluídos",
+      support: "Dinheiro consolidado",
+      count: Number(s.orderAllCompletedCount || 0),
+      revenue: Number(s.orderAllCompletedRevenue || 0),
+      tone: "positive",
+    },
+    {
+      label: "Entregues",
+      support: "Dinheiro próximo de consolidar",
+      count: Number(s.orderAllDeliveredCount || 0),
+      revenue: Number(s.orderAllDeliveredRevenue || 0),
+      tone: "positive",
+    },
+    {
+      label: "Enviados",
+      support: "Em trânsito",
+      count: Number(s.orderAllShippedCount || 0),
+      revenue: Number(s.orderAllShippedRevenue || 0),
+      tone: "warning",
+    },
+    {
+      label: "Em atenção",
+      support: "Aguardando devolução, a enviar ou status intermediário",
+      count: Number(s.orderAllIntermediateCount || 0),
+      revenue: Number(s.orderAllIntermediateRevenue || 0),
+      tone: "warning",
+    },
+    {
+      label: "Cancelados confirmados",
+      support: "Perda confirmada",
+      count: Number(s.orderAllCancelledConfirmedCount || 0),
+      revenue: Number(s.orderAllCancelledConfirmedRevenue || 0),
+      tone: "danger",
+    },
+    {
+      label: "Não pagos",
+      support: "Pedidos que não viraram venda",
+      count: Number(s.orderAllUnpaidCount || 0),
+      revenue: Number(s.orderAllUnpaidRevenue || 0),
+      tone: "warning",
+    },
+    {
+      label: "Devoluções / Reembolsos",
+      support: "Impacto separado dos cancelados",
+      count: Number(s.orderAllReturnRefundCount || 0),
+      revenue: Number(s.orderAllReturnRefundRevenue || 0),
+      tone: "danger",
+    },
+  ].filter((item) => item.count > 0);
+
+  const toneStyle = {
+    positive: { bg: "rgba(134,239,172,0.07)", border: "rgba(134,239,172,0.2)", color: "#86efac" },
+    warning:  { bg: "rgba(251,191,36,0.07)",  border: "rgba(251,191,36,0.2)",  color: "#fbbf24" },
+    danger:   { bg: "rgba(248,113,113,0.07)", border: "rgba(248,113,113,0.18)", color: "#f87171" },
+  };
+
+  const cardsHtml = statusItems.map((item) => {
+    const c = toneStyle[item.tone];
+    return `<div class="fc-recon-card" style="background:${c.bg};border-color:${c.border};">
+      <div class="fc-recon-card-label">${escapeHTML(item.label)}</div>
+      <div class="fc-recon-card-support">${escapeHTML(item.support)}</div>
+      <div class="fc-recon-card-value" style="color:${c.color};">${brl(item.revenue)}</div>
+      <div class="fc-recon-card-count">${num(item.count)} pedido${item.count !== 1 ? "s" : ""}</div>
+    </div>`;
+  }).join("");
+
+  // Texto narrativo dinâmico
+  const reconcParts = [];
+  if (Number(s.orderAllCompletedRevenue || 0) > 0)
+    reconcParts.push(`${brl(s.orderAllCompletedRevenue)} concluídos`);
+  if (Number(s.orderAllDeliveredRevenue || 0) > 0)
+    reconcParts.push(`${brl(s.orderAllDeliveredRevenue)} entregues`);
+  if (Number(s.orderAllShippedRevenue || 0) > 0)
+    reconcParts.push(`${brl(s.orderAllShippedRevenue)} enviados`);
+  if (Number(s.orderAllIntermediateRevenue || 0) > 0)
+    reconcParts.push(`${brl(s.orderAllIntermediateRevenue)} em status intermediário`);
+  if (Number(s.orderAllCancelledConfirmedRevenue || 0) > 0)
+    reconcParts.push(`${brl(s.orderAllCancelledConfirmedRevenue)} cancelados confirmados`);
+  if (Number(s.orderAllUnpaidRevenue || 0) > 0)
+    reconcParts.push(`${brl(s.orderAllUnpaidRevenue)} não pagos`);
+  if (Number(s.orderAllReturnRefundRevenue || 0) > 0)
+    reconcParts.push(`${brl(s.orderAllReturnRefundRevenue)} em devolução/reembolso`);
+
+  const mainText = `Os ${brl(perfRevenue)} são as vendas pagas no mês segundo a Performance Shopee.` +
+    (reconcParts.length
+      ? ` A Reconciliação Shopee mostra o cenário operacional completo: ${reconcParts.join(", ")}. O total da Reconciliação foi de ${brl(reconcRevenue)}.`
+      : "");
+
+  const diffHtml = reconcRevenue > perfRevenue
+    ? `<p class="fc-recon-text-note">A diferença entre Performance e Reconciliação acontece porque a Performance considera apenas pedidos pagos usados no cálculo financeiro. A Reconciliação inclui também cancelados, não pagos, devoluções e status operacionais.</p>`
+    : "";
+
+  const topCancelled = Array.isArray(s.orderAllTopCancelledItems) ? s.orderAllTopCancelledItems : [];
+  const topNames = topCancelled.map((i) => i.productName).filter(Boolean);
+  const topHtml = topNames.length
+    ? `<p class="fc-recon-text-top">Os maiores impactos de cancelamento confirmado estão concentrados em: ${escapeHTML(topNames.join(", "))}.</p>`
+    : "";
+
+  el.innerHTML = `<div class="fc-recon-panel">
+    <div class="fc-recon-header">
+      <div>
+        <div class="fc-recon-badge">Reconciliação Shopee</div>
+        <p class="fc-recon-subtitle">Visão operacional dos pedidos do período, baseada no arquivo completo de pedidos da Shopee.</p>
+        <p class="fc-recon-source">Fonte: arquivo completo de pedidos da Shopee.</p>
+      </div>
+      <div class="fc-recon-compare">
+        <div class="fc-recon-compare-item">
+          <span class="fc-recon-compare-label">Performance (pedidos pagos)</span>
+          <span class="fc-recon-compare-value fc-recon-value-positive">${brl(perfRevenue)}</span>
+        </div>
+        <div class="fc-recon-compare-sep">→</div>
+        <div class="fc-recon-compare-item">
+          <span class="fc-recon-compare-label">Reconciliação (visão completa)</span>
+          <span class="fc-recon-compare-value">${brl(reconcRevenue)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="fc-recon-cards">${cardsHtml}</div>
+    <div class="fc-recon-text">
+      <p>${mainText}</p>
+      ${diffHtml}
+      ${topHtml}
+    </div>
+  </div>`;
+  el.style.display = "block";
+}
+
 function renderFinTabela(data) {
   const host = document.getElementById("fin-tabela");
   if (!host) return;
@@ -836,6 +988,7 @@ async function processarFechamentoFinanceiro() {
 
     renderFinResumo(json);
     renderFinResumoExecutivo(json);
+    renderShopeeReconciliacao(json);
     renderFinTabela(json);
     document.getElementById("fc-wrap")?.setAttribute("data-processed", "");
     setStatus("✓ Processado com sucesso.", "success");
@@ -955,6 +1108,7 @@ if (btnFinLimpar) {
 
     limparFinStats();
     limparFinResumoExecutivo();
+    limparShopeeReconciliacao();
     document.getElementById("fc-wrap")?.removeAttribute("data-processed");
 
     const tabela = document.getElementById("fin-tabela");
@@ -1046,4 +1200,5 @@ initUploadDragDrop("fin-orders-all");
 
 limparFinStats();
 limparFinResumoExecutivo();
+limparShopeeReconciliacao();
 

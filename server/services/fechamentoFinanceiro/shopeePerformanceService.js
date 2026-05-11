@@ -398,6 +398,24 @@ function buildShopeePerfSkuBridge(rows) {
 
 
 
+function buildOrderAllTopCancelledItems(orderAllItems) {
+  const map = new Map();
+  for (const item of orderAllItems) {
+    if (item.kind !== "cancelledConfirmed") continue;
+    const name = String(item.productName || "").trim() || "Produto sem identificação";
+    const entry = map.get(name) || { productName: name, revenue: 0, count: 0 };
+    entry.count += 1;
+    entry.revenue += Number(item.subtotal || 0);
+    map.set(name, entry);
+  }
+  return Array.from(map.values())
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5)
+    .map((e) => ({ productName: e.productName, revenue: round2(e.revenue), count: e.count }));
+}
+
+
+
 function buildShopeeStatusSummary(orderAllItems, perfBridge, costMap) {
   const result = {
     // Campos legados — mantidos para compatibilidade com frontend e relatório público.
@@ -407,6 +425,7 @@ function buildShopeeStatusSummary(orderAllItems, perfBridge, costMap) {
     unpaidCount: 0,
     unpaidLostRevenue: 0,
     unmatchedCancelled: [],
+    orderAllTopCancelledItems: [],
 
     // Visão operacional detalhada do Order.all
     orderAllTotalCount: 0,
@@ -507,6 +526,9 @@ function buildShopeeStatusSummary(orderAllItems, perfBridge, costMap) {
   result.cancelledLostRevenue = result.orderAllCancelledConfirmedRevenue;
   result.unpaidCount = result.orderAllUnpaidCount;
   result.unpaidLostRevenue = result.orderAllUnpaidRevenue;
+
+  // Top 5 produtos com maior faturamento perdido por cancelamento confirmado
+  result.orderAllTopCancelledItems = buildOrderAllTopCancelledItems(orderAllItems);
 
   return result;
 }
@@ -918,6 +940,7 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ord
       orderAllReturnRefundRevenue: shopeeStatusSummary.orderAllReturnRefundRevenue,
       orderAllUnpaidCount: shopeeStatusSummary.orderAllUnpaidCount,
       orderAllUnpaidRevenue: shopeeStatusSummary.orderAllUnpaidRevenue,
+      orderAllTopCancelledItems: shopeeStatusSummary.orderAllTopCancelledItems,
     },
     detailedRows,
     excelFileName: "fechamento-shopee.xlsx",
