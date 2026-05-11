@@ -212,6 +212,72 @@ function isShopeePerformanceSheet(rows) {
 
   return requiredSignals.every((group) => hasAnyColumn(cols, group));
 }
+function _classifyOrderAllRow(statusNorm, motivoNorm, devolucaoNorm) {
+  // Verifica se campo de devolução/reembolso tem conteúdo real
+  const devEmpty =
+    !devolucaoNorm ||
+    devolucaoNorm === "-" || devolucaoNorm === "–" || devolucaoNorm === "" ||
+    devolucaoNorm === "65" || devolucaoNorm === "n/a" || devolucaoNorm === "na";
+
+  const devReturnTerms = [
+    "devolucao", "reembolso", "refund", "return", "solicitacao aprovada",
+  ];
+  const devActive =
+    !devEmpty && devReturnTerms.some((t) => devolucaoNorm.includes(t));
+  const devPending =
+    !devEmpty && !devActive &&
+    (devolucaoNorm.includes("aguardando") ||
+      devolucaoNorm.includes("aberta") ||
+      devolucaoNorm.includes("pendente"));
+
+  // 1. Devolução/reembolso ativo — verificar antes de "entregue" para pegar
+  //    casos de entrega com devolução posterior
+  if (devActive) return "returnOrRefund";
+
+  // 2. Concluído
+  if (statusNorm.includes("concluido") || statusNorm.includes("concluído")) {
+    return "completed";
+  }
+
+  // 3. Entregue (sem devolução ativa)
+  if (statusNorm.includes("entregue")) return "delivered";
+
+  // 4. Enviado / em trânsito
+  const shippedTerms = [
+    "enviado", "em transito", "em trânsito", "a caminho",
+    "coletado", "saiu para entrega",
+  ];
+  if (shippedTerms.some((t) => statusNorm.includes(t))) return "shipped";
+
+  // 5. Não pago — verificar antes de cancelledConfirmed porque "cancelado"
+  //    com motivo "pedido não pago" deve cair aqui
+  const isNaoPago =
+    statusNorm.includes("nao pago") || statusNorm.includes("não pago");
+  const isCancelled = statusNorm === "cancelado";
+  const motivoIsUnpaid =
+    motivoNorm.includes("nao pago") ||
+    motivoNorm.includes("pedido nao pago") ||
+    motivoNorm.includes("nao houve pagamento");
+  if (isNaoPago || (isCancelled && motivoIsUnpaid)) return "unpaid";
+
+  // 6. Cancelado confirmado (não é não-pago, não é devolução)
+  if (isCancelled) return "cancelledConfirmed";
+
+  // 7. Intermediário / aguardando
+  const intermediateTerms = [
+    "a enviar", "aguardando", "comprador pode pedir", "comprador pode solicitar",
+  ];
+  if (
+    intermediateTerms.some((t) => statusNorm.includes(t)) ||
+    devPending
+  ) {
+    return "intermediate";
+  }
+
+  // 8. Outros
+  return "other";
+}
+
 function parseShopeeOrderAllForStatus(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
 
@@ -225,10 +291,31 @@ function parseShopeeOrderAllForStatus(rows) {
     ).trim();
     if (!status) continue;
 
-    const statusLower = normalizeText(status);
-    const isCancelled = statusLower === "cancelado";
-    const isUnpaid = statusLower === "nao pago" || statusLower === "não pago";
-    if (!isCancelled && !isUnpaid) continue;
+    const statusNorm = normalizeText(status);
+
+    const cancelarMotivo = String(
+      findField(row, [
+        "cancelar motivo", "motivo cancelamento", "motivo do cancelamento",
+        "motivo cancelar", "cancel reason",
+      ]) || ""
+    ).trim();
+    const motivoNorm = normalizeText(cancelarMotivo);
+
+    const statusDevolucao = String(
+      findField(row, [
+        "status da devolucao / reembolso",
+        "status da devolução / reembolso",
+        "status devolucao reembolso",
+        "status devolução reembolso",
+        "status da devolucao",
+        "status devolucao",
+        "devolucao reembolso",
+        "return refund status",
+      ]) || ""
+    ).trim();
+    const devolucaoNorm = normalizeText(statusDevolucao);
+
+    const kind = _classifyOrderAllRow(statusNorm, motivoNorm, devolucaoNorm);
 
     const skuPrincipal = String(
       findField(row, [
@@ -249,11 +336,7 @@ function parseShopeeOrderAllForStatus(rows) {
     ).trim();
 
     const subtotal = toNumber(
-      findField(row, [
-        "subtotal do produto",
-        "subtotal produto",
-        "subtotal",
-      ])
+      findField(row, ["subtotal do produto", "subtotal produto", "subtotal"])
     );
 
     const productName = String(
@@ -267,7 +350,9 @@ function parseShopeeOrderAllForStatus(rows) {
     parsed.push({
       orderId,
       status,
-      kind: isCancelled ? "cancelled" : "unpaid",
+      cancelarMotivo,
+      statusDevolucao,
+      kind,
       skuPrincipal: normalizeShopeeId(skuPrincipal),
       skuRef: normalizeShopeeId(skuRef),
       productName,
@@ -315,54 +400,114 @@ function buildShopeePerfSkuBridge(rows) {
 
 function buildShopeeStatusSummary(orderAllItems, perfBridge, costMap) {
   const result = {
+    // Campos legados — mantidos para compatibilidade com frontend e relatório público.
+    // Agora mapeados a partir das subcategorias corretas (ver ao final da função).
     cancelledCount: 0,
     cancelledLostRevenue: 0,
     unpaidCount: 0,
     unpaidLostRevenue: 0,
     unmatchedCancelled: [],
+
+    // Visão operacional detalhada do Order.all
+    orderAllTotalCount: 0,
+    orderAllTotalRevenue: 0,
+    orderAllCompletedCount: 0,
+    orderAllCompletedRevenue: 0,
+    orderAllDeliveredCount: 0,
+    orderAllDeliveredRevenue: 0,
+    orderAllShippedCount: 0,
+    orderAllShippedRevenue: 0,
+    orderAllIntermediateCount: 0,
+    orderAllIntermediateRevenue: 0,
+    orderAllCancelledConfirmedCount: 0,
+    orderAllCancelledConfirmedRevenue: 0,
+    orderAllReturnRefundCount: 0,
+    orderAllReturnRefundRevenue: 0,
+    orderAllUnpaidCount: 0,
+    orderAllUnpaidRevenue: 0,
   };
   if (!Array.isArray(orderAllItems)) return result;
 
   for (const item of orderAllItems) {
     const subtotal = Number(item.subtotal || 0);
+    result.orderAllTotalCount += 1;
+    result.orderAllTotalRevenue += subtotal;
 
-    if (item.kind === "cancelled") {
-      result.cancelledCount += 1;
-      result.cancelledLostRevenue += subtotal;
-    } else if (item.kind === "unpaid") {
-      result.unpaidCount += 1;
-      result.unpaidLostRevenue += subtotal;
+    switch (item.kind) {
+      case "completed":
+        result.orderAllCompletedCount += 1;
+        result.orderAllCompletedRevenue += subtotal;
+        break;
+      case "delivered":
+        result.orderAllDeliveredCount += 1;
+        result.orderAllDeliveredRevenue += subtotal;
+        break;
+      case "shipped":
+        result.orderAllShippedCount += 1;
+        result.orderAllShippedRevenue += subtotal;
+        break;
+      case "intermediate":
+        result.orderAllIntermediateCount += 1;
+        result.orderAllIntermediateRevenue += subtotal;
+        break;
+      case "returnOrRefund":
+        result.orderAllReturnRefundCount += 1;
+        result.orderAllReturnRefundRevenue += subtotal;
+        break;
+      case "unpaid":
+        result.orderAllUnpaidCount += 1;
+        result.orderAllUnpaidRevenue += subtotal;
+        break;
+      case "cancelledConfirmed":
+        result.orderAllCancelledConfirmedCount += 1;
+        result.orderAllCancelledConfirmedRevenue += subtotal;
+        break;
+      // "other" contabilizado no total mas sem subcategoria própria
     }
 
-    // Tentar match (só relevante para o painel de unmatched)
-    let matched = false;
-    const tryKeys = [item.skuPrincipal, item.skuRef].filter(Boolean);
-    for (const sku of tryKeys) {
-      const ids = perfBridge.get(sku);
-      if (ids) {
-        // tenta achar custo via idItem ou idVariacao
-        if (
-          (ids.idItem && costMap.has(ids.idItem)) ||
-          (ids.idVariacao && costMap.has(ids.idVariacao))
-        ) {
-          matched = true;
-          break;
+    // Unmatched: apenas cancelados confirmados (exclui não-pagos e devoluções)
+    if (item.kind === "cancelledConfirmed") {
+      let matched = false;
+      const tryKeys = [item.skuPrincipal, item.skuRef].filter(Boolean);
+      for (const sku of tryKeys) {
+        const ids = perfBridge.get(sku);
+        if (ids) {
+          if (
+            (ids.idItem && costMap.has(ids.idItem)) ||
+            (ids.idVariacao && costMap.has(ids.idVariacao))
+          ) {
+            matched = true;
+            break;
+          }
         }
       }
-    }
-
-    if (!matched && item.kind === "cancelled") {
-      result.unmatchedCancelled.push({
-        orderId: item.orderId,
-        productName: item.productName,
-        skuPrincipal: item.skuPrincipal,
-        subtotal,
-      });
+      if (!matched) {
+        result.unmatchedCancelled.push({
+          orderId: item.orderId,
+          productName: item.productName,
+          skuPrincipal: item.skuPrincipal,
+          subtotal,
+        });
+      }
     }
   }
 
-  result.cancelledLostRevenue = round2(result.cancelledLostRevenue);
-  result.unpaidLostRevenue = round2(result.unpaidLostRevenue);
+  // Arredondar receitas
+  result.orderAllTotalRevenue = round2(result.orderAllTotalRevenue);
+  result.orderAllCompletedRevenue = round2(result.orderAllCompletedRevenue);
+  result.orderAllDeliveredRevenue = round2(result.orderAllDeliveredRevenue);
+  result.orderAllShippedRevenue = round2(result.orderAllShippedRevenue);
+  result.orderAllIntermediateRevenue = round2(result.orderAllIntermediateRevenue);
+  result.orderAllCancelledConfirmedRevenue = round2(result.orderAllCancelledConfirmedRevenue);
+  result.orderAllReturnRefundRevenue = round2(result.orderAllReturnRefundRevenue);
+  result.orderAllUnpaidRevenue = round2(result.orderAllUnpaidRevenue);
+
+  // Mapeamento de compatibilidade: legados recebem os valores corretos
+  result.cancelledCount = result.orderAllCancelledConfirmedCount;
+  result.cancelledLostRevenue = result.orderAllCancelledConfirmedRevenue;
+  result.unpaidCount = result.orderAllUnpaidCount;
+  result.unpaidLostRevenue = result.orderAllUnpaidRevenue;
+
   return result;
 }
 
@@ -683,17 +828,33 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ord
   );
   const cmvTotal = round2(cmvBase > 0 ? -Math.abs(cmvBase) : cmvBase);
 
-  // Feature opcional: cruza Order.all (cancelados/não pagos) com a base
-  // de custos via ponte da própria planilha de performance.
-  // Só executa se o usuário subiu Order.all.
+  // Feature opcional: cruza Order.all com a base de custos para reconciliação
+  // operacional. O cálculo principal (LC/MC/Resultado) NÃO usa Order.all.
   let shopeeStatusSummary = {
     cancelledCount: 0,
     cancelledLostRevenue: 0,
     unpaidCount: 0,
     unpaidLostRevenue: 0,
     unmatchedCancelled: [],
+    orderAllTotalCount: 0,
+    orderAllTotalRevenue: 0,
+    orderAllCompletedCount: 0,
+    orderAllCompletedRevenue: 0,
+    orderAllDeliveredCount: 0,
+    orderAllDeliveredRevenue: 0,
+    orderAllShippedCount: 0,
+    orderAllShippedRevenue: 0,
+    orderAllIntermediateCount: 0,
+    orderAllIntermediateRevenue: 0,
+    orderAllCancelledConfirmedCount: 0,
+    orderAllCancelledConfirmedRevenue: 0,
+    orderAllReturnRefundCount: 0,
+    orderAllReturnRefundRevenue: 0,
+    orderAllUnpaidCount: 0,
+    orderAllUnpaidRevenue: 0,
   };
-  if (Array.isArray(ordersAllRowsRaw) && ordersAllRowsRaw.length > 0) {
+  const hasOrderAll = Array.isArray(ordersAllRowsRaw) && ordersAllRowsRaw.length > 0;
+  if (hasOrderAll) {
     const orderAllItems = parseShopeeOrderAllForStatus(ordersAllRowsRaw);
     if (orderAllItems.length > 0) {
       const perfBridge = buildShopeePerfSkuBridge(salesRowsRaw);
@@ -703,6 +864,10 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ord
         costMap
       );
     }
+    executiveNotes.push(
+      "Performance Shopee representa pedidos pagos e é a base do cálculo financeiro. " +
+      "Order.all representa visão operacional completa e é usada apenas para reconciliação de status."
+    );
   }
 
   return {
@@ -736,6 +901,23 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ord
       cancelledLostRevenue: shopeeStatusSummary.cancelledLostRevenue,
       unpaidCount: shopeeStatusSummary.unpaidCount,
       unpaidLostRevenue: shopeeStatusSummary.unpaidLostRevenue,
+      // Visão operacional detalhada — apenas quando Order.all foi enviado
+      orderAllTotalCount: shopeeStatusSummary.orderAllTotalCount,
+      orderAllTotalRevenue: shopeeStatusSummary.orderAllTotalRevenue,
+      orderAllCompletedCount: shopeeStatusSummary.orderAllCompletedCount,
+      orderAllCompletedRevenue: shopeeStatusSummary.orderAllCompletedRevenue,
+      orderAllDeliveredCount: shopeeStatusSummary.orderAllDeliveredCount,
+      orderAllDeliveredRevenue: shopeeStatusSummary.orderAllDeliveredRevenue,
+      orderAllShippedCount: shopeeStatusSummary.orderAllShippedCount,
+      orderAllShippedRevenue: shopeeStatusSummary.orderAllShippedRevenue,
+      orderAllIntermediateCount: shopeeStatusSummary.orderAllIntermediateCount,
+      orderAllIntermediateRevenue: shopeeStatusSummary.orderAllIntermediateRevenue,
+      orderAllCancelledConfirmedCount: shopeeStatusSummary.orderAllCancelledConfirmedCount,
+      orderAllCancelledConfirmedRevenue: shopeeStatusSummary.orderAllCancelledConfirmedRevenue,
+      orderAllReturnRefundCount: shopeeStatusSummary.orderAllReturnRefundCount,
+      orderAllReturnRefundRevenue: shopeeStatusSummary.orderAllReturnRefundRevenue,
+      orderAllUnpaidCount: shopeeStatusSummary.orderAllUnpaidCount,
+      orderAllUnpaidRevenue: shopeeStatusSummary.orderAllUnpaidRevenue,
     },
     detailedRows,
     excelFileName: "fechamento-shopee.xlsx",
