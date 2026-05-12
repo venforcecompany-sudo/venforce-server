@@ -506,3 +506,226 @@ document.addEventListener("keydown", (e) => {
 
 // ─── Init ───
 if (TOKEN) loadBases();
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── ASSISTENTE DE BASE ───────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+function asstSetStatus(msg, tipo) {
+  const el = document.getElementById("asst-status");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "asst-status-msg" + (tipo ? ` asst-status-${tipo}` : "");
+  el.style.display = msg ? "block" : "none";
+}
+
+function asstSetLoading(on) {
+  const btn = document.getElementById("asst-btn-preview");
+  const txt = document.getElementById("asst-btn-text");
+  const spn = document.getElementById("asst-btn-spinner");
+  if (btn) btn.disabled = on;
+  if (txt) txt.textContent = on ? "Analisando…" : "Analisar planilha";
+  if (spn) spn.style.display = on ? "inline-block" : "none";
+}
+
+function asstReset() {
+  asstSetStatus("", "");
+  const el = document.getElementById("asst-preview");
+  if (el) { el.innerHTML = ""; el.style.display = "none"; }
+}
+
+function asstConfiancaClass(score) {
+  if (score === null || score === undefined) return "asst-conf-none";
+  if (score >= 80) return "asst-conf-high";
+  if (score >= 60) return "asst-conf-med";
+  return "asst-conf-low";
+}
+
+function asstRenderColunas(colunas) {
+  const tipos  = ["id", "custo", "imposto"];
+  const labels = { id: "ID", custo: "Custo", imposto: "Imposto" };
+  return tipos.map((t) => {
+    const c = colunas && colunas[t];
+    if (!c) {
+      return `<div class="asst-col-item asst-col-missing">
+        <span class="asst-col-label">${labels[t]}</span>
+        <span class="asst-col-not-found">Não detectado — selecione manualmente</span>
+      </div>`;
+    }
+    const cls = asstConfiancaClass(c.confianca);
+    return `<div class="asst-col-item">
+      <span class="asst-col-label">${labels[t]}</span>
+      <span class="asst-col-value"><strong>${escapeHTML(String(c.coluna || "—"))}</strong>&nbsp;—&nbsp;${escapeHTML(String(c.cabecalho || "—"))}</span>
+      <span class="asst-conf-badge ${cls}">${c.confianca != null ? c.confianca + "%" : "—"}</span>
+    </div>`;
+  }).join("");
+}
+
+function asstRenderAlertas(alertas) {
+  if (!Array.isArray(alertas) || !alertas.length) return "";
+  return alertas.map((a) => {
+    const cls = a.nivel === "erro"    ? "asst-alerta-erro"
+              : a.nivel === "warning" ? "asst-alerta-warning"
+              : a.nivel === "aviso"   ? "asst-alerta-aviso"
+              : "asst-alerta-info";
+    return `<div class="asst-alerta-item ${cls}">${escapeHTML(String(a.mensagem || ""))}</div>`;
+  }).join("");
+}
+
+function asstRenderPreview(data) {
+  const el = document.getElementById("asst-preview");
+  if (!el) return;
+
+  const resumo  = data.resumo  || {};
+  const alertas = data.alertas || [];
+  const rows    = Array.isArray(data.preview) ? data.preview : [];
+
+  // ── Resumo ──
+  const summaryCards = [
+    { label: "Linhas lidas",   value: resumo.linhas_lidas    != null ? resumo.linhas_lidas    : "—" },
+    { label: "Linhas válidas", value: resumo.linhas_validas  != null ? resumo.linhas_validas  : "—" },
+    { label: "Ignoradas",      value: resumo.linhas_ignoradas != null ? resumo.linhas_ignoradas : "—" },
+    { label: "Duplicados",     value: resumo.duplicados      != null ? resumo.duplicados      : "—" },
+  ].map((c) => `
+    <div class="asst-summary-card">
+      <div class="asst-summary-label">${escapeHTML(String(c.label))}</div>
+      <div class="asst-summary-value">${escapeHTML(String(c.value))}</div>
+    </div>`).join("");
+
+  // ── Detecção ──
+  const linhaExibida = data.linha_cabecalho != null ? data.linha_cabecalho + 1 : "—";
+  const confianca    = data.confianca_geral != null ? data.confianca_geral + "%" : "—";
+  const detecHtml = `
+    <div class="asst-detec-info">
+      <span><strong>Aba:</strong> ${escapeHTML(String(data.aba_detectada || "—"))}</span>
+      <span><strong>Cabeçalho na linha:</strong> ${linhaExibida}</span>
+      <span><strong>Confiança geral:</strong> ${confianca}</span>
+    </div>`;
+
+  // ── Colunas ──
+  const colunasHtml = `<div class="asst-colunas-grid">${asstRenderColunas(data.colunas_detectadas)}</div>`;
+
+  // ── Alertas ──
+  const alertasRendered = asstRenderAlertas(alertas);
+  const alertasHtml = alertasRendered
+    ? `<div class="asst-result-section"><div class="asst-section-title">Alertas</div><div class="asst-alertas-wrap">${alertasRendered}</div></div>`
+    : "";
+
+  // ── Tabela de preview ──
+  let tableHtml = "";
+  if (rows.length) {
+    const tbody = rows.map((r, i) => {
+      const custo   = r.custo   != null ? Number(r.custo).toFixed(2)              : "—";
+      const imposto = r.imposto != null ? (Number(r.imposto) * 100).toFixed(2) + "%" : "—";
+      return `<tr>
+        <td style="color:var(--vf-text-l);font-family:var(--vf-mono);font-size:.8rem;">${i + 1}</td>
+        <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.id ?? "—"))}</td>
+        <td style="text-align:right;">${escapeHTML(custo)}</td>
+        <td style="text-align:right;">${escapeHTML(imposto)}</td>
+      </tr>`;
+    }).join("");
+
+    tableHtml = `
+      <div class="asst-preview-table-wrap">
+        <div class="asst-preview-table-title">Prévia — ${rows.length} linha${rows.length !== 1 ? "s" : ""}</div>
+        <table class="vf-table">
+          <thead>
+            <tr>
+              <th style="width:40px;">#</th>
+              <th>ID</th>
+              <th style="text-align:right;width:120px;">Custo (R$)</th>
+              <th style="text-align:right;width:120px;">Imposto</th>
+            </tr>
+          </thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>`;
+  } else {
+    tableHtml = `<div class="asst-empty-preview">Nenhuma linha válida encontrada na prévia.</div>`;
+  }
+
+  el.innerHTML = `
+    <div class="vf-assistente-base-result">
+      <div class="asst-result-section">
+        <div class="asst-section-title">Resumo da análise</div>
+        <div class="asst-summary-grid">${summaryCards}</div>
+        ${detecHtml}
+      </div>
+      <div class="asst-result-section">
+        <div class="asst-section-title">Colunas detectadas</div>
+        ${colunasHtml}
+      </div>
+      ${alertasHtml}
+      ${tableHtml}
+    </div>`;
+
+  el.style.display = "block";
+}
+
+// ─── File input label ───
+(function () {
+  const asstInput = document.getElementById("asst-arquivo");
+  const asstLabel = document.getElementById("asst-file-label");
+  if (!asstInput) return;
+  asstInput.addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    const labelText = document.getElementById("asst-file-label-text");
+    if (labelText) labelText.textContent = f ? f.name : "Escolher arquivo…";
+    if (asstLabel) asstLabel.classList.toggle("has-file", !!f);
+    asstReset();
+  });
+})();
+
+// ─── Botão analisar ───
+async function asstEnviarPreview() {
+  const fileInput = document.getElementById("asst-arquivo");
+  const arquivo   = fileInput && fileInput.files && fileInput.files[0];
+
+  asstSetStatus("", "");
+
+  if (!arquivo) {
+    asstSetStatus("Selecione um arquivo .xlsx, .xls ou .csv.", "erro");
+    return;
+  }
+  const nomeArq = String(arquivo.name || "").toLowerCase();
+  if (!nomeArq.endsWith(".xlsx") && !nomeArq.endsWith(".xls") && !nomeArq.endsWith(".csv")) {
+    asstSetStatus("Formato inválido. Envie .xlsx, .xls ou .csv.", "erro");
+    return;
+  }
+
+  asstSetLoading(true);
+  const el = document.getElementById("asst-preview");
+  if (el) { el.innerHTML = ""; el.style.display = "none"; }
+
+  try {
+    const fd = new FormData();
+    fd.append("arquivo", arquivo);
+
+    const res = await fetch(`${API_BASE}/bases/assistente/preview`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TOKEN}` },
+      body: fd,
+    });
+
+    if (res.status === 401) { clearSession(); return; }
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.ok) {
+      asstSetStatus(data.erro || `Erro ${res.status} ao analisar a planilha.`, "erro");
+      return;
+    }
+
+    asstRenderPreview(data);
+
+  } catch (err) {
+    asstSetStatus("Erro de conexão: " + (err.message || "tente novamente."), "erro");
+  } finally {
+    asstSetLoading(false);
+  }
+}
+
+(function () {
+  const btn = document.getElementById("asst-btn-preview");
+  if (btn) btn.addEventListener("click", asstEnviarPreview);
+})();
