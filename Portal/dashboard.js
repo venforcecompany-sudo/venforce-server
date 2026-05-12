@@ -268,13 +268,21 @@ function renderBases(bases) {
       </td>
       <td style="text-align:center;">
         <div class="vf-table-actions">
+          <button class="vf-action-btn vf-action-btn-neutral asst-btn-baixar-base" data-slug="${escapeHTML(base.slug)}" data-nome="${escapeHTML(base.nome || base.slug)}">Baixar</button>
           <button class="vf-action-btn vf-action-btn-danger" data-slug="${escapeHTML(base.slug)}" data-nome="${escapeHTML(base.nome || base.slug)}">Excluir</button>
         </div>
       </td>`;
     basesTbody.appendChild(tr);
   });
 
-  basesTbody.querySelectorAll("button[data-slug]").forEach(btn => {
+  basesTbody.querySelectorAll(".asst-btn-baixar-base").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const { slug, nome } = btn.dataset;
+      asstBaixarBase(slug, nome, btn);
+    });
+  });
+
+  basesTbody.querySelectorAll("button[data-slug]:not(.asst-btn-baixar-base)").forEach(btn => {
     btn.addEventListener("click", () => {
       const { slug, nome } = btn.dataset;
       abrirModalExcluirBase({ slug, nome, btn });
@@ -741,10 +749,11 @@ function asstRenderPreview(data) {
 
   // ── Resumo cards ──
   const summaryCards = [
-    { label: "Linhas lidas",   value: resumo.linhas_lidas     != null ? resumo.linhas_lidas     : "—" },
-    { label: "Linhas válidas", value: resumo.linhas_validas   != null ? resumo.linhas_validas   : "—" },
-    { label: "Ignoradas",      value: resumo.linhas_ignoradas != null ? resumo.linhas_ignoradas : "—" },
-    { label: "Duplicados",     value: resumo.duplicados       != null ? resumo.duplicados       : "—" },
+    { label: "Linhas lidas",       value: resumo.linhas_lidas        != null ? resumo.linhas_lidas        : "—" },
+    { label: "Linhas válidas",     value: resumo.linhas_validas      != null ? resumo.linhas_validas      : "—" },
+    { label: "Importáveis",        value: resumo.linhas_importaveis  != null ? resumo.linhas_importaveis  : "—" },
+    { label: "Ignoradas",          value: resumo.linhas_ignoradas    != null ? resumo.linhas_ignoradas    : "—" },
+    { label: "Duplicados",         value: resumo.duplicados          != null ? resumo.duplicados          : "—" },
   ].map((c) => `
     <div class="asst-summary-card">
       <div class="asst-summary-label">${escapeHTML(String(c.label))}</div>
@@ -785,7 +794,7 @@ function asstRenderPreview(data) {
     }).join("");
     tableHtml = `
       <div class="asst-preview-table-wrap">
-        <div class="asst-preview-table-title">Prévia — ${rows.length} linha${rows.length !== 1 ? "s" : ""}</div>
+        <div class="asst-preview-table-title">Prévia — até 50 linhas (${rows.length} exibida${rows.length !== 1 ? "s" : ""})</div>
         <table class="vf-table">
           <thead>
             <tr>
@@ -907,6 +916,55 @@ async function asstEnviarPreview(configOverride) {
   }
 }
 
+// ── Baixar base existente ─────────────────────────────────────────────────────
+async function asstBaixarBase(slug, nome, btn) {
+  const textoOriginal = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Aguarde…"; }
+
+  try {
+    const res = await fetch(`${API_BASE}/bases/${encodeURIComponent(slug)}`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    if (res.status === 401) { clearSession(); return; }
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.ok) {
+      alert("Erro ao buscar base: " + (data.erro || `HTTP ${res.status}`));
+      return;
+    }
+
+    const dados = data.dados || {};
+    const entradas = Object.entries(dados);
+    if (!entradas.length) {
+      alert(`A base "${nome}" não possui itens cadastrados para baixar.`);
+      return;
+    }
+
+    const linhas = entradas.map(([produtoId, v]) => {
+      const id      = String(produtoId).replace(/"/g, '""');
+      const custo   = v.custo_produto   != null ? Number(v.custo_produto).toFixed(2)  : "";
+      const imposto = v.imposto_percentual != null ? Number(v.imposto_percentual).toFixed(6) : "";
+      return `"${id}",${custo},${imposto}`;
+    });
+    const csv = "ID,Custo,Imposto\n" + linhas.join("\n");
+
+    const nomeArquivo = "base-" + String(slug || nome).replace(/[^a-z0-9_\-]/gi, "_") + ".csv";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = nomeArquivo;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert("Erro ao baixar base: " + (err.message || "tente novamente."));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = textoOriginal; }
+  }
+}
+
 // ── Importação final ──────────────────────────────────────────────────────────
 function asstSetImportStatus(msg, tipo) {
   const el = document.getElementById("asst-import-status");
@@ -930,10 +988,8 @@ function asstAtualizarBotaoImportar() {
   if (!btn) return;
   const nome = (document.getElementById("asst-nome-base") || {}).value || "";
   const temDados = asstUltimosDados &&
-    asstUltimosDados.colunas_detectadas &&
-    asstUltimosDados.colunas_detectadas.id &&
-    Array.isArray(asstUltimosDados.preview) &&
-    asstUltimosDados.preview.some(r => r.id != null && String(r.id).trim() !== "");
+    Array.isArray(asstUltimosDados.dados_importacao) &&
+    asstUltimosDados.dados_importacao.length > 0;
   btn.disabled = !(temDados && nome.trim().length > 0);
 }
 
@@ -949,7 +1005,7 @@ function asstGerarCsv(linhas) {
 }
 
 async function asstImportarBaseLimpa() {
-  if (!asstUltimosDados || !Array.isArray(asstUltimosDados.preview)) return;
+  if (!asstUltimosDados) return;
 
   const nome = ((document.getElementById("asst-nome-base") || {}).value || "").trim();
   if (!nome) {
@@ -957,16 +1013,15 @@ async function asstImportarBaseLimpa() {
     return;
   }
 
-  const linhasValidas = asstUltimosDados.preview.filter(
-    r => r.id != null && String(r.id).trim() !== ""
-  );
-  if (!linhasValidas.length) {
-    asstSetImportStatus("Nenhuma linha válida para importar.", "erro");
+  if (!Array.isArray(asstUltimosDados.dados_importacao) || !asstUltimosDados.dados_importacao.length) {
+    asstSetImportStatus("Não foi possível carregar todas as linhas normalizadas. Reanalise a planilha.", "erro");
     return;
   }
 
+  const linhasImportaveis = asstUltimosDados.dados_importacao;
+
   const confirmou = confirm(
-    `Importar "${nome}" com ${linhasValidas.length} linha(s) normalizada(s)?\n\nEsta ação substituirá a base existente com este nome.`
+    `Importar "${nome}" com ${linhasImportaveis.length} linha(s) normalizada(s)?\n\nEsta ação substituirá a base existente com este nome.`
   );
   if (!confirmou) return;
 
@@ -974,7 +1029,7 @@ async function asstImportarBaseLimpa() {
   asstSetImportStatus("", "");
 
   try {
-    const csv      = asstGerarCsv(asstUltimosDados.preview);
+    const csv      = asstGerarCsv(linhasImportaveis);
     const blob     = new Blob([csv], { type: "text/csv" });
     const arquivo  = new File([blob], `${nome.replace(/[^a-z0-9_\-]/gi, "_")}.csv`, { type: "text/csv" });
 

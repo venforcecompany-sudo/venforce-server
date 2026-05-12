@@ -333,6 +333,15 @@ body {
   background: rgba(220, 38, 38, 0.10);
   border-color: rgba(220, 38, 38, 0.32);
 }
+.vf-action-btn-neutral {
+  background: rgba(99, 102, 241, 0.06);
+  border-color: rgba(99, 102, 241, 0.20);
+  color: var(--vf-accent, #6366f1);
+}
+.vf-action-btn-neutral:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.32);
+}
 
 .vf-status-pill {
   display: inline-flex;

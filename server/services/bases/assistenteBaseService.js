@@ -234,6 +234,7 @@ function processarLinhas(rowsAsArrays, linhaHeader, mapeamento) {
 function calcularResumo(linhas) {
   const total    = linhas.length;
   const validas  = linhas.filter((l) => l.id && l.custo !== null).length;
+  const importaveis = linhas.filter((l) => l.id && l.custo !== null).length;
   const ignoradas = total - validas;
 
   const idCounts   = {};
@@ -255,7 +256,7 @@ function calcularResumo(linhas) {
     if (cnt > 1) duplicados++;
   }
 
-  return { linhas_lidas: total, linhas_validas: validas, linhas_ignoradas: ignoradas, duplicados, conflitos };
+  return { linhas_lidas: total, linhas_validas: validas, linhas_ignoradas: ignoradas, duplicados, conflitos, linhas_importaveis: importaveis };
 }
 
 // ─── Alertas ──────────────────────────────────────────────────────────────────
@@ -366,9 +367,12 @@ async function analisarPlanilhaBase(buffer, originalname, config) {
     imposto: colunasFinais.imposto ? colunasFinais.imposto.coluna : null,
   };
 
-  const todasLinhas = processarLinhas(rowsAsArrays, linhaHeader, mapeamento);
-  const resumo      = calcularResumo(todasLinhas);
-  const alertas     = gerarAlertas(todasLinhas, mapeamento, resumo);
+  const todasLinhas     = processarLinhas(rowsAsArrays, linhaHeader, mapeamento);
+  const resumo          = calcularResumo(todasLinhas);
+  const alertas         = gerarAlertas(todasLinhas, mapeamento, resumo);
+  const dadosImportacao = todasLinhas
+    .filter((l) => l.id && l.custo !== null)
+    .map((l) => ({ id: l.id, custo: l.custo, imposto: l.imposto }));
 
   // Confiança geral = média das colunas detectadas
   const scoresParciais = ["id", "custo", "imposto"]
@@ -397,7 +401,8 @@ async function analisarPlanilhaBase(buffer, originalname, config) {
     confianca_geral:    confiancaGeral,
     resumo,
     alertas,
-    preview:            todasLinhas.slice(0, 50),
+    preview:           todasLinhas.slice(0, 50),
+    dados_importacao:  dadosImportacao,
   };
 }
 
