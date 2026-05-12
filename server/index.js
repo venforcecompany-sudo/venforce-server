@@ -61,6 +61,7 @@ const automacoesRoutes = require("./routes/automacoesRoutes");
 const entregasClienteRoutes = require("./routes/entregasClienteRoutes");
 const basesRoutes = require("./routes/basesRoutes");
 const assistenteBaseRoutes = require("./routes/assistenteBaseRoutes");
+const adsRoutes = require("./routes/adsRoutes");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
 
 const app = express();
@@ -413,6 +414,7 @@ app.use("/", automacoesRoutes);
 app.use("/", entregasClienteRoutes);
 app.use("/", basesRoutes);
 app.use("/bases/assistente", assistenteBaseRoutes);
+app.use("/ads", adsRoutes);
 
 app.post("/scans", authMiddleware, async (req, res) => {
   try {
