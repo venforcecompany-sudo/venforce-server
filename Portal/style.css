@@ -4486,3 +4486,254 @@ body {
   border-radius: 999px;
   animation: fadeUp .2s ease-out both;
 }
+
+/* ===================================================================
+   Ads — Refinamento visual v2
+   Escopo: .vf-page-ads  (especificidade maior que regras v1)
+   =================================================================== */
+
+/* ── 1. Largura útil ─────────────────────────────────────────────── */
+.vf-page-ads .vf-content {
+  max-width: 1440px;
+  padding-left:  clamp(1.25rem, 3vw, 2rem);
+  padding-right: clamp(1.25rem, 3vw, 2rem);
+}
+
+/* ── 2. Hero header ──────────────────────────────────────────────── */
+.ads-hero-header {
+  background: linear-gradient(135deg,
+    rgba(90, 42, 143, .045) 0%,
+    rgba(234, 88, 12, .035) 100%);
+  border: 1px solid rgba(90, 42, 143, .10);
+  border-radius: 18px;
+  padding: 22px 28px !important;
+  margin-bottom: 22px;
+  overflow: hidden;
+  position: relative;
+}
+.ads-hero-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 80% at 0% 50%, rgba(90,42,143,.04) 0%, transparent 70%);
+  pointer-events: none;
+}
+.ads-hero-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  position: relative;
+}
+.ads-hero-left { min-width: 0; }
+.ads-hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ads-orange, #ea580c);
+  background: rgba(234,88,12,.08);
+  border: 1px solid rgba(234,88,12,.15);
+  border-radius: 999px;
+  padding: 3px 10px;
+  margin-bottom: 10px;
+}
+.ads-hero-title {
+  font-size: clamp(1.45rem, 2.4vw, 1.875rem) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em;
+  color: var(--vf-text) !important;
+  margin: 0 0 6px !important;
+  line-height: 1.2;
+}
+.ads-hero-sub {
+  font-size: 0.9rem;
+  color: var(--vf-text-m);
+  margin: 0 !important;
+  line-height: 1.5;
+  max-width: 52rem;
+}
+.ads-hero-graphic {
+  flex-shrink: 0;
+  opacity: .75;
+}
+@media (max-width: 640px) {
+  .ads-hero-graphic { display: none; }
+}
+
+/* ── 3. Filtros compactos ────────────────────────────────────────── */
+.vf-page-ads .ads-filters-card .vf-card-header {
+  padding: .8rem 1.5rem;
+}
+.vf-page-ads .ads-filters-body {
+  padding: .7rem 1.5rem .85rem;
+  gap: 10px;
+}
+.vf-page-ads .ads-filters-body .vf-input {
+  padding-top:    .42rem;
+  padding-bottom: .42rem;
+  font-size: .875rem;
+}
+.vf-page-ads .ads-filters-body label {
+  font-size: .72rem;
+  margin-bottom: 4px;
+}
+
+/* ── 4. Summary cards — sem corte de texto ──────────────────────── */
+.vf-page-ads .ads-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+@media (min-width: 1280px) {
+  .vf-page-ads .ads-summary-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+@media (max-width: 860px) {
+  .vf-page-ads .ads-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .vf-page-ads .ads-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.vf-page-ads .ads-summary-card {
+  padding: 14px 16px 16px;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 3px solid transparent;
+  transition: box-shadow var(--vf-ease), transform var(--vf-ease), border-color var(--vf-ease);
+}
+.vf-page-ads .ads-summary-card--ads    { border-left-color: var(--ads-orange, #ea580c); }
+.vf-page-ads .ads-summary-card--purple { border-left-color: var(--vf-primary); }
+.vf-page-ads .ads-summary-card--success { border-left-color: #059669; }
+.vf-page-ads .ads-summary-card--warning { border-left-color: #d97706; }
+.vf-page-ads .ads-summary-card--danger  { border-left-color: #dc2626; }
+.vf-page-ads .ads-summary-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+.vf-page-ads .ads-summary-value {
+  font-size: 1.15rem;
+  font-weight: 900;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.15;
+}
+.vf-page-ads .ads-summary-label {
+  font-size: 0.67rem;
+  white-space: normal;
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
+/* ── 5. Tabela — sem scroll desnecessário ───────────────────────── */
+.vf-page-ads .ads-table-wrap {
+  overflow-x: auto;
+}
+.vf-page-ads .ads-table {
+  font-size: 0.815rem;
+  min-width: 760px;
+}
+.vf-page-ads .ads-table thead th {
+  padding: .5rem .75rem;
+  font-size: .66rem;
+  letter-spacing: .06em;
+}
+.vf-page-ads .ads-table tbody td {
+  padding: .6rem .75rem;
+}
+.vf-page-ads .ads-table tbody td.num {
+  font-size: .78rem;
+}
+/* Largura mínima de colunas para evitar colapso */
+.vf-page-ads .ads-table th:first-child,
+.vf-page-ads .ads-table td:first-child { min-width: 90px; }
+.vf-page-ads .ads-table th.num:nth-child(2),
+.vf-page-ads .ads-table td.num:nth-child(2) { min-width: 108px; } /* Investimento */
+.vf-page-ads .ads-table th.num:nth-child(3),
+.vf-page-ads .ads-table td.num:nth-child(3) { min-width: 100px; } /* GMV */
+.vf-page-ads .ads-table th.num:nth-child(4),
+.vf-page-ads .ads-table td.num:nth-child(4) { min-width: 60px;  } /* ROAS */
+.vf-page-ads .ads-table th.num:nth-child(5),
+.vf-page-ads .ads-table td.num:nth-child(5) { min-width: 120px; } /* Faturamento */
+.vf-page-ads .ads-table th.num:nth-child(6),
+.vf-page-ads .ads-table td.num:nth-child(6) { min-width: 90px;  } /* Cancelados */
+.vf-page-ads .ads-table th.num:nth-child(7),
+.vf-page-ads .ads-table td.num:nth-child(7) { min-width: 80px;  } /* Devolvidos */
+.vf-page-ads .ads-table th.num:nth-child(8),
+.vf-page-ads .ads-table td.num:nth-child(8) { min-width: 60px;  } /* TACOS */
+.vf-page-ads .ads-table th.center,
+.vf-page-ads .ads-table td.center { min-width: 80px; }
+/* Linha de total / acumulado */
+.vf-page-ads .ads-table tfoot td {
+  padding: .55rem .75rem;
+  font-size: .78rem;
+  background: rgba(15,23,42,.018);
+  border-top: 2px solid var(--vf-border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 6. Checklist — cards de altura consistente ──────────────────── */
+.vf-page-ads .ads-checklist-grid {
+  align-items: stretch;
+  padding: 16px 20px;
+  gap: 14px;
+}
+.vf-page-ads .ads-week-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.vf-page-ads .ads-week-checks {
+  flex: 1;
+  margin-top: 4px;
+}
+.vf-page-ads .ads-week-progress {
+  height: 5px;
+  flex: 1;
+}
+.vf-page-ads .ads-week-header {
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(15,23,42,.06);
+  margin-bottom: 10px;
+}
+.vf-page-ads .ads-week-card.is-complete .ads-week-header {
+  border-bottom-color: rgba(4,120,87,.12);
+}
+.vf-page-ads .ads-check-item {
+  padding: 5px 6px;
+  border-radius: 7px;
+}
+.vf-page-ads .ads-check-box {
+  width: 17px;
+  height: 17px;
+  border-radius: 5px;
+}
+
+/* ── 7. Feedback — mais limpo ────────────────────────────────────── */
+.vf-page-ads .ads-feedback-body {
+  padding: 16px 20px 20px;
+  gap: 10px;
+}
+.vf-page-ads .ads-feedback-textarea {
+  min-height: 160px;
+  font-size: .84rem;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fafbfc 0%, var(--vf-surface) 100%);
+  line-height: 1.65;
+  color: var(--vf-text);
+}
+.vf-page-ads .ads-feedback-actions {
+  gap: 10px;
+  padding-top: 2px;
+}
