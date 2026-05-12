@@ -511,6 +511,11 @@ if (TOKEN) loadBases();
 // ─── ASSISTENTE DE BASE ───────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
+// ── Estado ────────────────────────────────────────────────────────────────────
+let asstUltimoArquivo = null;
+let asstUltimosDados  = null;
+
+// ── Helpers de status e loading ───────────────────────────────────────────────
 function asstSetStatus(msg, tipo) {
   const el = document.getElementById("asst-status");
   if (!el) return;
@@ -528,12 +533,107 @@ function asstSetLoading(on) {
   if (spn) spn.style.display = on ? "inline-block" : "none";
 }
 
+function asstSetReanaliseLoading(on) {
+  const btn = document.getElementById("asst-btn-reanalisar");
+  const txt = document.getElementById("asst-btn-reanalisar-text");
+  const spn = document.getElementById("asst-btn-reanalisar-spinner");
+  if (btn) btn.disabled = on;
+  if (txt) txt.textContent = on ? "Analisando…" : "Reanalisar com colunas selecionadas";
+  if (spn) spn.style.display = on ? "inline-block" : "none";
+}
+
 function asstReset() {
   asstSetStatus("", "");
+  asstUltimosDados = null;
   const el = document.getElementById("asst-preview");
   if (el) { el.innerHTML = ""; el.style.display = "none"; }
 }
 
+// ── Dropzone ──────────────────────────────────────────────────────────────────
+function asstValidarExtensao(file) {
+  const n = String(file && file.name || "").toLowerCase();
+  return n.endsWith(".xlsx") || n.endsWith(".xls") || n.endsWith(".csv");
+}
+
+function asstMostrarArquivoDropzone(file) {
+  const idle     = document.getElementById("asst-dz-idle");
+  const fileEl   = document.getElementById("asst-dz-file");
+  const filename = document.getElementById("asst-dz-filename");
+  const dz       = document.getElementById("asst-dropzone");
+  if (idle)     idle.style.display   = "none";
+  if (fileEl)   fileEl.style.display = "flex";
+  if (filename) filename.textContent = file ? file.name : "—";
+  if (dz)       dz.classList.add("asst-dz-has-file");
+}
+
+function asstLimparDropzone() {
+  const input = document.getElementById("asst-arquivo");
+  const idle  = document.getElementById("asst-dz-idle");
+  const fileEl = document.getElementById("asst-dz-file");
+  const dz    = document.getElementById("asst-dropzone");
+  if (input) { try { input.value = ""; } catch (_) {} }
+  if (idle)   idle.style.display   = "";
+  if (fileEl) fileEl.style.display = "none";
+  if (dz)     dz.classList.remove("asst-dz-has-file", "asst-dz-active");
+  asstUltimoArquivo = null;
+  asstReset();
+}
+
+function asstDefinirArquivo(file) {
+  if (!file) return;
+  try {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    const input = document.getElementById("asst-arquivo");
+    if (input) input.files = dt.files;
+  } catch (_) {}
+  asstUltimoArquivo = file;
+  asstMostrarArquivoDropzone(file);
+  asstReset();
+}
+
+(function asstInitDropzone() {
+  const dz       = document.getElementById("asst-dropzone");
+  const input    = document.getElementById("asst-arquivo");
+  const clearBtn = document.getElementById("asst-dz-clear");
+  if (!dz || !input) return;
+
+  dz.addEventListener("click", (e) => {
+    if (e.target.closest("#asst-dz-clear")) return;
+    input.click();
+  });
+  dz.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+  });
+  input.addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    if (!asstValidarExtensao(f)) { asstSetStatus("Formato inválido. Envie .xlsx, .xls ou .csv.", "erro"); return; }
+    asstUltimoArquivo = f;
+    asstMostrarArquivoDropzone(f);
+    asstReset();
+  });
+  ["dragenter", "dragover"].forEach((evt) => {
+    dz.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.add("asst-dz-active"); });
+  });
+  ["dragleave", "dragend"].forEach((evt) => {
+    dz.addEventListener(evt, (e) => { if (!dz.contains(e.relatedTarget)) dz.classList.remove("asst-dz-active"); });
+  });
+  dz.addEventListener("drop", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dz.classList.remove("asst-dz-active");
+    const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []);
+    if (!files.length) return;
+    const file = files[0];
+    if (!asstValidarExtensao(file)) { asstSetStatus("Formato inválido. Envie .xlsx, .xls ou .csv.", "erro"); return; }
+    asstDefinirArquivo(file);
+  });
+  if (clearBtn) {
+    clearBtn.addEventListener("click", (e) => { e.stopPropagation(); asstLimparDropzone(); });
+  }
+})();
+
+// ── Confiança ─────────────────────────────────────────────────────────────────
 function asstConfiancaClass(score) {
   if (score === null || score === undefined) return "asst-conf-none";
   if (score >= 80) return "asst-conf-high";
@@ -541,6 +641,61 @@ function asstConfiancaClass(score) {
   return "asst-conf-low";
 }
 
+// ── Selects de colunas manuais ────────────────────────────────────────────────
+function asstBuildSelectOptions(disponiveis, valorAtual) {
+  const opts = ['<option value="">— Selecionar manualmente —</option>'];
+  (Array.isArray(disponiveis) ? disponiveis : []).forEach((c) => {
+    const v   = escapeHTML(String(c.coluna || ""));
+    const lbl = escapeHTML(c.coluna + " — " + c.cabecalho);
+    const sel = c.coluna === valorAtual ? " selected" : "";
+    opts.push(`<option value="${v}"${sel}>${lbl}</option>`);
+  });
+  return opts.join("");
+}
+
+function asstRenderSelects(disponiveis, detectadas) {
+  const valId      = (detectadas && detectadas.id      && detectadas.id.coluna)      || "";
+  const valCusto   = (detectadas && detectadas.custo   && detectadas.custo.coluna)   || "";
+  const valImposto = (detectadas && detectadas.imposto && detectadas.imposto.coluna) || "";
+
+  const alertaId = !valId
+    ? `<div class="asst-select-alerta">Não foi possível detectar a coluna de ID — selecione manualmente e reanalise.</div>`
+    : "";
+
+  return `
+    <div class="asst-result-section asst-manual-section">
+      <div class="asst-section-title">Ajuste de colunas</div>
+      <div class="asst-selects-grid">
+        <div class="asst-select-item${!valId ? " asst-select-item-needed" : ""}">
+          <label class="asst-select-label" for="asst-sel-id">Coluna de ID</label>
+          ${alertaId}
+          <select id="asst-sel-id" class="vf-input asst-select">
+            ${asstBuildSelectOptions(disponiveis, valId)}
+          </select>
+        </div>
+        <div class="asst-select-item">
+          <label class="asst-select-label" for="asst-sel-custo">Coluna de Custo</label>
+          <select id="asst-sel-custo" class="vf-input asst-select">
+            ${asstBuildSelectOptions(disponiveis, valCusto)}
+          </select>
+        </div>
+        <div class="asst-select-item">
+          <label class="asst-select-label" for="asst-sel-imposto">Coluna de Imposto</label>
+          <select id="asst-sel-imposto" class="vf-input asst-select">
+            ${asstBuildSelectOptions(disponiveis, valImposto)}
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:flex;justify-content:flex-end;">
+        <button id="asst-btn-reanalisar" onclick="asstReanalisar()" class="vf-btn-secondary" style="width:auto;margin:0;">
+          <span id="asst-btn-reanalisar-text">Reanalisar com colunas selecionadas</span>
+          <span id="asst-btn-reanalisar-spinner" class="btn-spinner" style="display:none;"></span>
+        </button>
+      </div>
+    </div>`;
+}
+
+// ── Render principal ──────────────────────────────────────────────────────────
 function asstRenderColunas(colunas) {
   const tipos  = ["id", "custo", "imposto"];
   const labels = { id: "ID", custo: "Custo", imposto: "Imposto" };
@@ -549,7 +704,7 @@ function asstRenderColunas(colunas) {
     if (!c) {
       return `<div class="asst-col-item asst-col-missing">
         <span class="asst-col-label">${labels[t]}</span>
-        <span class="asst-col-not-found">Não detectado — selecione manualmente</span>
+        <span class="asst-col-not-found">Não detectado</span>
       </div>`;
     }
     const cls = asstConfiancaClass(c.confianca);
@@ -576,23 +731,24 @@ function asstRenderPreview(data) {
   const el = document.getElementById("asst-preview");
   if (!el) return;
 
-  const resumo  = data.resumo  || {};
-  const alertas = data.alertas || [];
-  const rows    = Array.isArray(data.preview) ? data.preview : [];
+  const resumo      = data.resumo   || {};
+  const alertas     = data.alertas  || [];
+  const rows        = Array.isArray(data.preview) ? data.preview : [];
+  const disponiveis = Array.isArray(data.colunas_disponiveis) ? data.colunas_disponiveis : [];
 
-  // ── Resumo ──
+  // ── Resumo cards ──
   const summaryCards = [
-    { label: "Linhas lidas",   value: resumo.linhas_lidas    != null ? resumo.linhas_lidas    : "—" },
-    { label: "Linhas válidas", value: resumo.linhas_validas  != null ? resumo.linhas_validas  : "—" },
+    { label: "Linhas lidas",   value: resumo.linhas_lidas     != null ? resumo.linhas_lidas     : "—" },
+    { label: "Linhas válidas", value: resumo.linhas_validas   != null ? resumo.linhas_validas   : "—" },
     { label: "Ignoradas",      value: resumo.linhas_ignoradas != null ? resumo.linhas_ignoradas : "—" },
-    { label: "Duplicados",     value: resumo.duplicados      != null ? resumo.duplicados      : "—" },
+    { label: "Duplicados",     value: resumo.duplicados       != null ? resumo.duplicados       : "—" },
   ].map((c) => `
     <div class="asst-summary-card">
       <div class="asst-summary-label">${escapeHTML(String(c.label))}</div>
       <div class="asst-summary-value">${escapeHTML(String(c.value))}</div>
     </div>`).join("");
 
-  // ── Detecção ──
+  // ── Detecção strip ──
   const linhaExibida = data.linha_cabecalho != null ? data.linha_cabecalho + 1 : "—";
   const confianca    = data.confianca_geral != null ? data.confianca_geral + "%" : "—";
   const detecHtml = `
@@ -602,13 +758,13 @@ function asstRenderPreview(data) {
       <span><strong>Confiança geral:</strong> ${confianca}</span>
     </div>`;
 
-  // ── Colunas ──
-  const colunasHtml = `<div class="asst-colunas-grid">${asstRenderColunas(data.colunas_detectadas)}</div>`;
-
   // ── Alertas ──
   const alertasRendered = asstRenderAlertas(alertas);
   const alertasHtml = alertasRendered
-    ? `<div class="asst-result-section"><div class="asst-section-title">Alertas</div><div class="asst-alertas-wrap">${alertasRendered}</div></div>`
+    ? `<div class="asst-result-section">
+        <div class="asst-section-title">Alertas</div>
+        <div class="asst-alertas-wrap">${alertasRendered}</div>
+       </div>`
     : "";
 
   // ── Tabela de preview ──
@@ -624,7 +780,6 @@ function asstRenderPreview(data) {
         <td style="text-align:right;">${escapeHTML(imposto)}</td>
       </tr>`;
     }).join("");
-
     tableHtml = `
       <div class="asst-preview-table-wrap">
         <div class="asst-preview-table-title">Prévia — ${rows.length} linha${rows.length !== 1 ? "s" : ""}</div>
@@ -653,8 +808,9 @@ function asstRenderPreview(data) {
       </div>
       <div class="asst-result-section">
         <div class="asst-section-title">Colunas detectadas</div>
-        ${colunasHtml}
+        <div class="asst-colunas-grid">${asstRenderColunas(data.colunas_detectadas)}</div>
       </div>
+      ${asstRenderSelects(disponiveis, data.colunas_detectadas)}
       ${alertasHtml}
       ${tableHtml}
     </div>`;
@@ -662,24 +818,30 @@ function asstRenderPreview(data) {
   el.style.display = "block";
 }
 
-// ─── File input label ───
-(function () {
-  const asstInput = document.getElementById("asst-arquivo");
-  const asstLabel = document.getElementById("asst-file-label");
-  if (!asstInput) return;
-  asstInput.addEventListener("change", (e) => {
-    const f = e.target.files && e.target.files[0];
-    const labelText = document.getElementById("asst-file-label-text");
-    if (labelText) labelText.textContent = f ? f.name : "Escolher arquivo…";
-    if (asstLabel) asstLabel.classList.toggle("has-file", !!f);
-    asstReset();
-  });
-})();
+// ── Reanálise ─────────────────────────────────────────────────────────────────
+async function asstReanalisar() {
+  const selId      = ((document.getElementById("asst-sel-id")      || {}).value || "").trim();
+  const selCusto   = ((document.getElementById("asst-sel-custo")   || {}).value || "").trim();
+  const selImposto = ((document.getElementById("asst-sel-imposto") || {}).value || "").trim();
 
-// ─── Botão analisar ───
-async function asstEnviarPreview() {
+  const config = { colunas: {} };
+  if (selId)      config.colunas.id      = selId;
+  if (selCusto)   config.colunas.custo   = selCusto;
+  if (selImposto) config.colunas.imposto = selImposto;
+
+  // Preservar aba e linha detectadas na análise anterior
+  if (asstUltimosDados) {
+    if (asstUltimosDados.aba_detectada)       config.aba             = asstUltimosDados.aba_detectada;
+    if (asstUltimosDados.linha_cabecalho != null) config.linhaCabecalho = asstUltimosDados.linha_cabecalho;
+  }
+
+  await asstEnviarPreview(config);
+}
+
+// ── Envio principal ───────────────────────────────────────────────────────────
+async function asstEnviarPreview(configOverride) {
   const fileInput = document.getElementById("asst-arquivo");
-  const arquivo   = fileInput && fileInput.files && fileInput.files[0];
+  const arquivo   = asstUltimoArquivo || (fileInput && fileInput.files && fileInput.files[0]);
 
   asstSetStatus("", "");
 
@@ -687,19 +849,26 @@ async function asstEnviarPreview() {
     asstSetStatus("Selecione um arquivo .xlsx, .xls ou .csv.", "erro");
     return;
   }
-  const nomeArq = String(arquivo.name || "").toLowerCase();
-  if (!nomeArq.endsWith(".xlsx") && !nomeArq.endsWith(".xls") && !nomeArq.endsWith(".csv")) {
+  if (!asstValidarExtensao(arquivo)) {
     asstSetStatus("Formato inválido. Envie .xlsx, .xls ou .csv.", "erro");
     return;
   }
 
-  asstSetLoading(true);
-  const el = document.getElementById("asst-preview");
-  if (el) { el.innerHTML = ""; el.style.display = "none"; }
+  const isReanalisar = !!configOverride;
+  if (isReanalisar) {
+    asstSetReanaliseLoading(true);
+  } else {
+    asstSetLoading(true);
+    const el = document.getElementById("asst-preview");
+    if (el) { el.innerHTML = ""; el.style.display = "none"; }
+  }
 
   try {
     const fd = new FormData();
     fd.append("arquivo", arquivo);
+    if (configOverride && Object.keys(configOverride).length) {
+      fd.append("config", JSON.stringify(configOverride));
+    }
 
     const res = await fetch(`${API_BASE}/bases/assistente/preview`, {
       method: "POST",
@@ -716,16 +885,20 @@ async function asstEnviarPreview() {
       return;
     }
 
+    asstUltimoArquivo = arquivo;
+    asstUltimosDados  = data;
     asstRenderPreview(data);
 
   } catch (err) {
     asstSetStatus("Erro de conexão: " + (err.message || "tente novamente."), "erro");
   } finally {
     asstSetLoading(false);
+    asstSetReanaliseLoading(false);
   }
 }
 
+// ── Botão analisar ────────────────────────────────────────────────────────────
 (function () {
   const btn = document.getElementById("asst-btn-preview");
-  if (btn) btn.addEventListener("click", asstEnviarPreview);
+  if (btn) btn.addEventListener("click", () => asstEnviarPreview());
 })();

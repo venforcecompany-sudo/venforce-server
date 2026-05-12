@@ -3384,22 +3384,111 @@ body {
    Prefixos: .vf-assistente-base-* / .asst-*
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Upload row ─────────────────────────────────────────────────────────── */
-.asst-upload-row {
-  display: flex;
-  gap: 12px;
-  align-items: flex-end;
+/* ── Dropzone ───────────────────────────────────────────────────────────── */
+.asst-dropzone {
+  border: 2px dashed var(--vf-border);
+  border-radius: 10px;
+  background: var(--vf-bg);
+  cursor: pointer;
+  transition: border-color .18s, background .18s, box-shadow .18s;
+  outline: none;
+  user-select: none;
+  position: relative;
+  overflow: hidden;
 }
-.asst-upload-btn-wrap {
+.asst-dropzone:hover,
+.asst-dropzone:focus-visible {
+  border-color: var(--vf-primary);
+  background: rgba(90,42,143,.03);
+  box-shadow: 0 0 0 3px rgba(90,42,143,.08);
+}
+.asst-dropzone.asst-dz-active {
+  border-color: var(--vf-primary);
+  background: rgba(90,42,143,.06);
+  box-shadow: 0 0 0 4px rgba(90,42,143,.12);
+}
+.asst-dropzone.asst-dz-has-file {
+  border-style: solid;
+  border-color: var(--vf-border);
+  background: var(--vf-surface);
+}
+.asst-dz-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.25rem 1.5rem;
+  gap: 4px;
+  text-align: center;
+}
+.asst-dz-icon {
+  color: var(--vf-text-l);
+  opacity: .55;
+  margin-bottom: 6px;
+  transition: color .15s, opacity .15s;
+}
+.asst-dropzone:hover .asst-dz-icon,
+.asst-dropzone:focus-visible .asst-dz-icon,
+.asst-dropzone.asst-dz-active .asst-dz-icon {
+  color: var(--vf-primary);
+  opacity: .9;
+}
+.asst-dz-main {
+  margin: 0;
+  font-size: .9375rem;
+  font-weight: 600;
+  color: var(--vf-text);
+}
+.asst-dz-sub {
+  margin: 0;
+  font-size: .8125rem;
+  color: var(--vf-text-m);
+}
+.asst-dz-link {
+  color: var(--vf-primary);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.asst-dz-formats {
+  margin: 4px 0 0;
+  font-size: .72rem;
+  color: var(--vf-text-l);
+  letter-spacing: .03em;
+}
+.asst-dz-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  color: var(--vf-text);
+}
+.asst-dz-file svg { flex-shrink: 0; color: var(--vf-primary); opacity: .85; }
+.asst-dz-filename {
+  flex: 1;
+  font-size: .875rem;
+  font-weight: 500;
+  font-family: var(--vf-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asst-dz-clear {
   flex-shrink: 0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--vf-text-l);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  padding: 0;
 }
-@media (max-width: 560px) {
-  .asst-upload-row { flex-direction: column; align-items: stretch; }
-  .asst-upload-btn-wrap { width: 100%; }
-  .asst-upload-btn-wrap .vf-btn-primary { width: 100%; }
-}
+.asst-dz-clear:hover { background: rgba(248,113,113,.12); color: var(--vf-danger); }
 
 /* ── Status ─────────────────────────────────────────────────────────────── */
 .asst-status-msg {
@@ -3609,4 +3698,51 @@ body {
   text-align: center;
   color: var(--vf-text-l);
   font-size: .9rem;
+}
+
+/* ── Ajuste manual de colunas ───────────────────────────────────────────── */
+.asst-manual-section {
+  background: var(--vf-bg);
+}
+.asst-selects-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+@media (max-width: 700px) {
+  .asst-selects-grid { grid-template-columns: 1fr; }
+}
+.asst-select-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.asst-select-item-needed .asst-select-label {
+  color: var(--vf-danger);
+}
+.asst-select-item-needed .vf-input {
+  border-color: rgba(248,113,113,.5);
+}
+.asst-select-label {
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--vf-text-l);
+}
+.asst-select-alerta {
+  font-size: .75rem;
+  color: var(--vf-danger);
+  background: rgba(248,113,113,.07);
+  border: 1px solid rgba(248,113,113,.2);
+  border-radius: 5px;
+  padding: 4px 8px;
+  line-height: 1.4;
+}
+.asst-select {
+  font-size: .8125rem;
+  padding-top: .4rem;
+  padding-bottom: .4rem;
+  height: auto;
+  cursor: pointer;
 }
