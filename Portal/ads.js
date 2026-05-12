@@ -1,5 +1,6 @@
-// Portal/ads.js — Página de Mercado Ads (dados mockados, sem backend)
+// Portal/ads.js — Página de Mercado Ads
 
+const API_BASE    = "https://venforce-server.onrender.com";
 const STORAGE_KEY = "vf-token";
 
 function getToken() {
@@ -10,70 +11,20 @@ function getToken() {
 getToken();
 initLayout();
 
-// ─── Dados mockados ───────────────────────────────────────────────────────────
+// ─── Dados mockados de performance ───────────────────────────────────────────
+// Performance mensal continua mockada até integração com API Mercado Livre
 
 const ADS_DADOS_MENSAIS = [
-  {
-    mes: 1, label: "Janeiro",
-    investimentoAds: 6100,
-    gmvAds: 140900,
-    roas: 23.10,
-    faturamentoTotal: 179519.29,
-    canceladosValor: 449.72,
-    canceladosPct: 0.40,
-    devolvidosValor: 294.72,
-    tacos: 3.40,
-  },
-  {
-    mes: 2, label: "Fevereiro",
-    investimentoAds: 4700,
-    gmvAds: 108800,
-    roas: 23.15,
-    faturamentoTotal: 122597.28,
-    canceladosValor: 2157.11,
-    canceladosPct: 1.80,
-    devolvidosValor: 188.59,
-    tacos: 3.83,
-  },
-  {
-    mes: 3, label: "Março",
-    investimentoAds: 7700,
-    gmvAds: 117900,
-    roas: 15.31,
-    faturamentoTotal: 143752.64,
-    canceladosValor: 2518.07,
-    canceladosPct: 1.80,
-    devolvidosValor: 169.74,
-    tacos: 5.36,
-  },
-  {
-    mes: 4, label: "Abril",
-    investimentoAds: 7700,
-    gmvAds: 146300,
-    roas: 19.00,
-    faturamentoTotal: 181729.05,
-    canceladosValor: 121.47,
-    canceladosPct: 0.20,
-    devolvidosValor: 0,
-    tacos: 4.24,
-  },
-  {
-    mes: 5, label: "Maio",
-    investimentoAds: 2300,
-    gmvAds: 43600,
-    roas: 18.96,
-    faturamentoTotal: 51290.75,
-    canceladosValor: 0,
-    canceladosPct: 0,
-    devolvidosValor: 0,
-    tacos: 4.48,
-  },
+  { mes:1, label:"Janeiro",   investimentoAds:6100,  gmvAds:140900, roas:23.10, faturamentoTotal:179519.29, canceladosValor:449.72,  canceladosPct:0.40, devolvidosValor:294.72, tacos:3.40 },
+  { mes:2, label:"Fevereiro", investimentoAds:4700,  gmvAds:108800, roas:23.15, faturamentoTotal:122597.28, canceladosValor:2157.11, canceladosPct:1.80, devolvidosValor:188.59, tacos:3.83 },
+  { mes:3, label:"Março",     investimentoAds:7700,  gmvAds:117900, roas:15.31, faturamentoTotal:143752.64, canceladosValor:2518.07, canceladosPct:1.80, devolvidosValor:169.74, tacos:5.36 },
+  { mes:4, label:"Abril",     investimentoAds:7700,  gmvAds:146300, roas:19.00, faturamentoTotal:181729.05, canceladosValor:121.47,  canceladosPct:0.20, devolvidosValor:0,      tacos:4.24 },
+  { mes:5, label:"Maio",      investimentoAds:2300,  gmvAds:43600,  roas:18.96, faturamentoTotal:51290.75,  canceladosValor:0,       canceladosPct:0,    devolvidosValor:0,      tacos:4.48 },
 ];
 
-const ADS_CLIENTES = ["Todos", "Cliente A", "Cliente B"];
+// Campanhas mockadas (sem vínculo com API ainda)
 const ADS_CAMPANHAS = ["Todas", "Campanha Geral", "Produtos Premium", "Liquidação"];
 
-// Checklist local state — key: "semana-N-check-I"
 const ADS_CHECKLIST_ITEMS = [
   "Dados de Ads conferidos",
   "ROAS analisado",
@@ -83,20 +34,36 @@ const ADS_CHECKLIST_ITEMS = [
   "Cliente respondeu",
 ];
 
+// Chaves correspondentes no backend (JSONB)
+const ADS_CHECKLIST_KEYS = [
+  "dadosConferidos",
+  "roasAnalisado",
+  "tacosAnalisado",
+  "canceladosRevisados",
+  "feedbackEnviado",
+  "clienteRespondeu",
+];
+
+// ─── Estado ───────────────────────────────────────────────────────────────────
+
+let ADS_CLIENTES_LISTA       = [];
+let ADS_ACOMPANHAMENTO_ATUAL = null;
+let ADS_CHECKLIST_ATUAL      = { semana1: {}, semana2: {}, semana3: {}, semana4: {} };
+let ADS_FEEDBACK_ATUAL       = "";
+let ADS_HAS_UNSAVED_CHANGES  = false;
+let ADS_SAVING               = false;
+
 // ─── Helpers de formatação ────────────────────────────────────────────────────
 
 function adsFmtBRL(n) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(n) || 0);
 }
-
 function adsFmtNum(n, decimals = 2) {
   return Number(n).toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
-
 function adsFmtPct(n, decimals = 2) {
   return adsFmtNum(n, decimals) + "%";
 }
-
 function adsEscape(s) {
   const d = document.createElement("div");
   d.textContent = String(s ?? "");
@@ -111,17 +78,224 @@ function adsStatusTacos(tacos) {
   return             { label: "Crítico",   cls: "ads-badge-danger"  };
 }
 
-// ─── Filtro ───────────────────────────────────────────────────────────────────
+// ─── Filtros ──────────────────────────────────────────────────────────────────
 
 function adsGetFiltroMes() {
   const sel = document.getElementById("ads-filtro-mes");
   return sel ? Number(sel.value) || 0 : 0;
 }
 
+function adsGetFiltroMesRef() {
+  const mesNum = adsGetFiltroMes();
+  if (!mesNum) return null;
+  const ano = new Date().getFullYear();
+  return `${ano}-${String(mesNum).padStart(2, "0")}`;
+}
+
+function adsGetClienteSlug() {
+  const sel = document.getElementById("ads-filtro-cliente");
+  return sel ? (sel.value || "").trim() : "";
+}
+
+function adsGetLojaCampanha() {
+  const sel = document.getElementById("ads-filtro-campanha");
+  return (sel && sel.value) ? sel.value.trim() : "todas";
+}
+
 function adsGetDadosFiltrados() {
   const mes = adsGetFiltroMes();
   if (!mes) return ADS_DADOS_MENSAIS;
   return ADS_DADOS_MENSAIS.filter((d) => d.mes === mes);
+}
+
+// ─── API fetch ────────────────────────────────────────────────────────────────
+
+async function adsFetch(path, options = {}) {
+  const token = localStorage.getItem(STORAGE_KEY);
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${token}`,
+    ...(options.headers || {}),
+  };
+  return fetch(`${API_BASE}${path}`, { ...options, headers });
+}
+
+// ─── Carregar clientes reais ──────────────────────────────────────────────────
+
+async function adsCarregarClientes() {
+  const sel = document.getElementById("ads-filtro-cliente");
+  if (!sel) return;
+  try {
+    const res = await adsFetch("/ads/clientes");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.ok || !Array.isArray(data.clientes)) throw new Error("Resposta inválida");
+    ADS_CLIENTES_LISTA = data.clientes;
+    sel.innerHTML = `<option value="">Todos</option>` +
+      data.clientes.map((c) =>
+        `<option value="${adsEscape(c.slug)}">${adsEscape(c.nome)}</option>`
+      ).join("");
+  } catch (err) {
+    console.warn("[ads] falha ao carregar clientes:", err.message);
+    sel.innerHTML = `<option value="">Todos</option>`;
+  }
+}
+
+// ─── Carregar acompanhamento do backend ───────────────────────────────────────
+
+async function adsCarregarAcompanhamento() {
+  const clienteSlug = adsGetClienteSlug();
+  const mes         = adsGetFiltroMesRef();
+
+  if (!clienteSlug || !mes) {
+    ADS_CHECKLIST_ATUAL     = { semana1: {}, semana2: {}, semana3: {}, semana4: {} };
+    ADS_FEEDBACK_ATUAL      = "";
+    ADS_ACOMPANHAMENTO_ATUAL = null;
+    ADS_HAS_UNSAVED_CHANGES  = false;
+    adsAtualizarFeedbackTextarea();
+    adsAtualizarUpdatedAt(null);
+    adsRenderChecklist();
+    adsAtualizarBotaoSalvar();
+    return;
+  }
+
+  const loja = adsGetLojaCampanha();
+  adsSetSaveStatus("Carregando...", "ads-save-loading");
+
+  try {
+    const params = new URLSearchParams({ clienteSlug, mes, lojaCampanha: loja });
+    const res  = await adsFetch(`/ads/acompanhamento?${params}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.ok || !data.acompanhamento) throw new Error("Resposta inválida");
+
+    const a = data.acompanhamento;
+    ADS_ACOMPANHAMENTO_ATUAL = a;
+    ADS_CHECKLIST_ATUAL = (a.checklist && typeof a.checklist === "object" && !Array.isArray(a.checklist))
+      ? a.checklist
+      : { semana1: {}, semana2: {}, semana3: {}, semana4: {} };
+    ADS_FEEDBACK_ATUAL      = a.feedbackText || "";
+    ADS_HAS_UNSAVED_CHANGES = false;
+
+    adsAtualizarFeedbackTextarea();
+    adsAtualizarUpdatedAt(a.updatedAt);
+    adsRenderChecklist();
+    adsSetSaveStatus("Carregado", "ads-save-ok");
+    setTimeout(() => adsLimparSaveStatus("ads-save-ok"), 2500);
+
+  } catch (err) {
+    console.warn("[ads] falha ao carregar acompanhamento:", err.message);
+    ADS_CHECKLIST_ATUAL     = { semana1: {}, semana2: {}, semana3: {}, semana4: {} };
+    ADS_FEEDBACK_ATUAL      = "";
+    ADS_HAS_UNSAVED_CHANGES = false;
+    adsAtualizarFeedbackTextarea();
+    adsAtualizarUpdatedAt(null);
+    adsRenderChecklist();
+    adsSetSaveStatus("Erro ao carregar", "ads-save-error");
+    setTimeout(() => adsLimparSaveStatus("ads-save-error"), 3500);
+  }
+
+  adsAtualizarBotaoSalvar();
+}
+
+function adsAtualizarFeedbackTextarea() {
+  const ta = document.getElementById("ads-feedback-textarea");
+  if (ta) ta.value = ADS_FEEDBACK_ATUAL;
+}
+
+function adsAtualizarUpdatedAt(updatedAt) {
+  const el = document.getElementById("ads-updated-at");
+  if (!el) return;
+  if (!updatedAt) { el.style.display = "none"; el.textContent = ""; return; }
+  const data = new Date(updatedAt);
+  const str  = data.toLocaleString("pt-BR", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+  el.textContent  = `Última atualização: ${str}`;
+  el.style.display = "block";
+}
+
+// ─── Status de salvamento ─────────────────────────────────────────────────────
+
+function adsSetSaveStatus(msg, cls) {
+  const el = document.getElementById("ads-save-status");
+  if (!el) return;
+  el.textContent = msg;
+  el.className   = `ads-save-status${cls ? " " + cls : ""}`;
+  el.style.display = "inline";
+}
+
+function adsLimparSaveStatus(onlyCls) {
+  const el = document.getElementById("ads-save-status");
+  if (!el) return;
+  if (onlyCls && !el.classList.contains(onlyCls)) return;
+  el.style.display = "none";
+  el.textContent   = "";
+  el.className     = "ads-save-status";
+}
+
+function adsAtualizarSaveStatus() {
+  if (ADS_HAS_UNSAVED_CHANGES) {
+    adsSetSaveStatus("Alterações não salvas", "ads-unsaved");
+  } else {
+    adsLimparSaveStatus();
+  }
+  adsAtualizarBotaoSalvar();
+}
+
+function adsCanSave() {
+  return !!(adsGetClienteSlug() && adsGetFiltroMesRef() && !ADS_SAVING);
+}
+
+function adsAtualizarBotaoSalvar() {
+  const btn = document.getElementById("ads-btn-salvar");
+  if (!btn) return;
+  btn.disabled = !adsCanSave();
+}
+
+// ─── Salvar acompanhamento ────────────────────────────────────────────────────
+
+async function adsSalvarAcompanhamento() {
+  if (!adsCanSave()) return;
+
+  const clienteSlug  = adsGetClienteSlug();
+  const mes          = adsGetFiltroMesRef();
+  const lojaCampanha = adsGetLojaCampanha();
+
+  ADS_SAVING = true;
+  const btn  = document.getElementById("ads-btn-salvar");
+  if (btn) { btn.disabled = true; btn.textContent = "Salvando..."; }
+  adsSetSaveStatus("Salvando...", "ads-save-loading");
+
+  try {
+    const res = await adsFetch("/ads/acompanhamento", {
+      method: "PUT",
+      body: JSON.stringify({
+        clienteSlug,
+        mes,
+        lojaCampanha,
+        checklist:    ADS_CHECKLIST_ATUAL,
+        feedbackText: ADS_FEEDBACK_ATUAL,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.erro || `HTTP ${res.status}`);
+
+    ADS_HAS_UNSAVED_CHANGES  = false;
+    ADS_ACOMPANHAMENTO_ATUAL = data.acompanhamento;
+    adsAtualizarUpdatedAt(data.acompanhamento?.updatedAt);
+    adsSetSaveStatus("Acompanhamento salvo", "ads-save-ok");
+    setTimeout(() => adsLimparSaveStatus("ads-save-ok"), 2500);
+
+  } catch (err) {
+    console.warn("[ads] falha ao salvar:", err.message);
+    adsSetSaveStatus(`Erro: ${err.message}`, "ads-save-error");
+    setTimeout(() => adsLimparSaveStatus("ads-save-error"), 4000);
+  } finally {
+    ADS_SAVING = false;
+    if (btn) { btn.textContent = "Salvar acompanhamento"; btn.disabled = !adsCanSave(); }
+  }
 }
 
 // ─── Cards de resumo ──────────────────────────────────────────────────────────
@@ -226,25 +400,42 @@ function adsRenderTabela() {
 
 // ─── Checklist semanal ────────────────────────────────────────────────────────
 
-function adsCheckKey(semana, itemIdx) {
-  return `ads-check-${semana}-${itemIdx}`;
+function adsGetCheck(sem, idx) {
+  const semKey  = `semana${sem}`;
+  const itemKey = ADS_CHECKLIST_KEYS[idx];
+  const semObj  = ADS_CHECKLIST_ATUAL[semKey];
+  return !!(semObj && semObj[itemKey]);
 }
 
-function adsGetCheck(semana, itemIdx) {
-  return localStorage.getItem(adsCheckKey(semana, itemIdx)) === "1";
-}
-
-function adsSetCheck(semana, itemIdx, value) {
+function adsSetCheck(sem, idx, value) {
+  const semKey  = `semana${sem}`;
+  const itemKey = ADS_CHECKLIST_KEYS[idx];
+  if (!ADS_CHECKLIST_ATUAL[semKey]) ADS_CHECKLIST_ATUAL[semKey] = {};
   if (value) {
-    localStorage.setItem(adsCheckKey(semana, itemIdx), "1");
+    ADS_CHECKLIST_ATUAL[semKey][itemKey] = true;
   } else {
-    localStorage.removeItem(adsCheckKey(semana, itemIdx));
+    delete ADS_CHECKLIST_ATUAL[semKey][itemKey];
   }
+  ADS_HAS_UNSAVED_CHANGES = true;
+  adsAtualizarSaveStatus();
 }
 
 function adsRenderChecklist() {
   const grid = document.getElementById("ads-checklist-grid");
   if (!grid) return;
+
+  const clienteSlug = adsGetClienteSlug();
+  const mes         = adsGetFiltroMesRef();
+
+  if (!clienteSlug || !mes) {
+    grid.innerHTML = `
+      <div class="ads-checklist-empty">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Selecione um <strong>cliente</strong> e um <strong>mês</strong> para carregar o checklist.
+      </div>`;
+    adsAtualizarBotaoSalvar();
+    return;
+  }
 
   const semanas = [1, 2, 3, 4];
   grid.innerHTML = semanas.map((sem) => {
@@ -260,9 +451,9 @@ function adsRenderChecklist() {
         </label>`;
     }).join("");
 
-    const total = ADS_CHECKLIST_ITEMS.length;
-    const done  = ADS_CHECKLIST_ITEMS.filter((_, idx) => adsGetCheck(sem, idx)).length;
-    const pct   = Math.round((done / total) * 100);
+    const total   = ADS_CHECKLIST_ITEMS.length;
+    const done    = ADS_CHECKLIST_ITEMS.filter((_, idx) => adsGetCheck(sem, idx)).length;
+    const pct     = Math.round((done / total) * 100);
     const allDone = done === total;
 
     return `
@@ -281,7 +472,6 @@ function adsRenderChecklist() {
       </div>`;
   }).join("");
 
-  // bind checkboxes
   grid.querySelectorAll(".ads-check-input").forEach((input) => {
     input.addEventListener("change", () => {
       const sem = Number(input.dataset.semana);
@@ -290,28 +480,33 @@ function adsRenderChecklist() {
       adsRenderChecklist();
     });
   });
+
+  adsAtualizarBotaoSalvar();
 }
 
 // ─── Feedback para o cliente ──────────────────────────────────────────────────
 
 function adsGerarFeedback() {
-  const mesNum = adsGetFiltroMes();
-  const dados  = adsGetDadosFiltrados();
+  const dados = adsGetDadosFiltrados();
 
   if (!dados.length) {
-    document.getElementById("ads-feedback-textarea").value = "Nenhum dado disponível para o período selecionado.";
+    const ta = document.getElementById("ads-feedback-textarea");
+    if (ta) ta.value = "Nenhum dado disponível para o período selecionado.";
+    ADS_FEEDBACK_ATUAL = ta ? ta.value : "";
+    ADS_HAS_UNSAVED_CHANGES = true;
+    adsAtualizarSaveStatus();
     return;
   }
 
-  const d = dados.length === 1 ? dados[0] : null;
+  const d        = dados.length === 1 ? dados[0] : null;
   const mesLabel = d ? d.label : "período selecionado";
 
-  const totalInv  = dados.reduce((a, v) => a + v.investimentoAds, 0);
-  const totalGmv  = dados.reduce((a, v) => a + v.gmvAds, 0);
-  const totalFat  = dados.reduce((a, v) => a + v.faturamentoTotal, 0);
-  const roasMed   = dados.reduce((a, v) => a + v.roas, 0) / dados.length;
-  const tacosMed  = dados.reduce((a, v) => a + v.tacos, 0) / dados.length;
-  const st        = adsStatusTacos(tacosMed);
+  const totalInv = dados.reduce((a, v) => a + v.investimentoAds, 0);
+  const totalGmv = dados.reduce((a, v) => a + v.gmvAds, 0);
+  const totalFat = dados.reduce((a, v) => a + v.faturamentoTotal, 0);
+  const roasMed  = dados.reduce((a, v) => a + v.roas, 0) / dados.length;
+  const tacosMed = dados.reduce((a, v) => a + v.tacos, 0) / dados.length;
+  const st       = adsStatusTacos(tacosMed);
 
   const linhas = [
     `📊 Relatório de Mercado Ads — ${mesLabel}`,
@@ -338,7 +533,11 @@ function adsGerarFeedback() {
   linhas.push(`- Acompanhar evolução dos cancelados e devolvidos`);
   linhas.push(`- Ajustar orçamento conforme sazonalidade`);
 
-  document.getElementById("ads-feedback-textarea").value = linhas.join("\n");
+  const ta = document.getElementById("ads-feedback-textarea");
+  if (ta) ta.value = linhas.join("\n");
+  ADS_FEEDBACK_ATUAL      = ta ? ta.value : "";
+  ADS_HAS_UNSAVED_CHANGES = true;
+  adsAtualizarSaveStatus();
 }
 
 function adsCopiarFeedback() {
@@ -346,26 +545,17 @@ function adsCopiarFeedback() {
   const ok = document.getElementById("ads-copy-ok");
   if (!ta || !ta.value.trim()) return;
   navigator.clipboard.writeText(ta.value).then(() => {
-    if (ok) {
-      ok.style.display = "inline";
-      setTimeout(() => { ok.style.display = "none"; }, 2200);
-    }
+    if (ok) { ok.style.display = "inline"; setTimeout(() => { ok.style.display = "none"; }, 2200); }
   }).catch(() => {
     ta.select();
     document.execCommand("copy");
   });
 }
 
-// ─── Preencher selects de mock ────────────────────────────────────────────────
+// ─── Preencher selects ────────────────────────────────────────────────────────
 
 function adsFillSelects() {
-  const selCliente = document.getElementById("ads-filtro-cliente");
-  if (selCliente) {
-    selCliente.innerHTML = ADS_CLIENTES.map((c, i) =>
-      `<option value="${i === 0 ? "" : c}">${adsEscape(c)}</option>`
-    ).join("");
-  }
-
+  // Campanhas (mockadas)
   const selCamp = document.getElementById("ads-filtro-campanha");
   if (selCamp) {
     selCamp.innerHTML = ADS_CAMPANHAS.map((c, i) =>
@@ -380,9 +570,11 @@ function adsFillSelects() {
     periodEl.textContent = now.toLocaleDateString("pt-BR", { month: "short", year: "numeric" })
       .replace(/^\w/, (c) => c.toUpperCase());
   }
+
+  // Cliente: populado por adsCarregarClientes() via fetch
 }
 
-// ─── Render completo ──────────────────────────────────────────────────────────
+// ─── Render completo (performance mockada) ────────────────────────────────────
 
 function adsRender() {
   adsRenderSummary();
@@ -392,14 +584,31 @@ function adsRender() {
 
 // ─── Event listeners ─────────────────────────────────────────────────────────
 
-document.getElementById("ads-btn-atualizar")?.addEventListener("click", adsRender);
-document.getElementById("ads-filtro-mes")?.addEventListener("change", adsRender);
-document.getElementById("ads-filtro-cliente")?.addEventListener("change", adsRender);
-document.getElementById("ads-filtro-campanha")?.addEventListener("change", adsRender);
+document.getElementById("ads-btn-atualizar")?.addEventListener("click", () => {
+  adsRender();
+  adsCarregarAcompanhamento();
+});
+document.getElementById("ads-filtro-mes")?.addEventListener("change", () => {
+  adsRender();
+  adsCarregarAcompanhamento();
+});
+document.getElementById("ads-filtro-cliente")?.addEventListener("change", () => {
+  adsCarregarAcompanhamento();
+});
+document.getElementById("ads-filtro-campanha")?.addEventListener("change", () => {
+  adsCarregarAcompanhamento();
+});
 document.getElementById("ads-btn-gerar")?.addEventListener("click", adsGerarFeedback);
 document.getElementById("ads-btn-copiar")?.addEventListener("click", adsCopiarFeedback);
+document.getElementById("ads-btn-salvar")?.addEventListener("click", adsSalvarAcompanhamento);
+document.getElementById("ads-feedback-textarea")?.addEventListener("input", (e) => {
+  ADS_FEEDBACK_ATUAL      = e.target.value;
+  ADS_HAS_UNSAVED_CHANGES = true;
+  adsAtualizarSaveStatus();
+});
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 adsFillSelects();
 adsRender();
+adsCarregarClientes();

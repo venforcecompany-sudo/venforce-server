@@ -4737,3 +4737,60 @@ body {
   gap: 10px;
   padding-top: 2px;
 }
+
+/* ── Ads — integração backend ────────────────────────────────────── */
+
+/* Agrupa período + botão salvar + status no header do checklist */
+.ads-checklist-header-right {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  flex-wrap: wrap;
+}
+
+/* Linha "Última atualização" abaixo do card-header */
+.ads-updated-at {
+  font-size: .75rem;
+  color: var(--vf-text-m);
+  padding: 4px 20px 0;
+  margin-bottom: -4px;
+}
+
+/* Mensagem vazia no checklist quando sem cliente/mês */
+.ads-checklist-empty {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: 28px 20px;
+  font-size: .85rem;
+  color: var(--vf-text-m);
+}
+.ads-checklist-empty svg {
+  flex-shrink: 0;
+  color: var(--vf-text-m);
+}
+
+/* Status de salvamento inline */
+.ads-save-status {
+  font-size: .75rem;
+  font-weight: 500;
+  padding: .15rem .55rem;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.ads-save-status.ads-save-ok {
+  background: rgba(22,163,74,.10);
+  color: #15803d;
+}
+.ads-save-status.ads-save-error {
+  background: rgba(220,38,38,.10);
+  color: #b91c1c;
+}
+.ads-save-status.ads-save-loading {
+  background: rgba(99,102,241,.10);
+  color: #4f46e5;
+}
+.ads-save-status.ads-unsaved {
+  background: rgba(234,88,12,.10);
+  color: #c2410c;
+}
