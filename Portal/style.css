@@ -3746,3 +3746,47 @@ body {
   height: auto;
   cursor: pointer;
 }
+
+/* ── Importação final ──────────────────────────────────────────────────────── */
+.asst-import-section {
+  border-top: 1px solid var(--vf-border);
+  padding-top: 18px;
+}
+.asst-import-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .9375rem;
+  font-weight: 600;
+  color: var(--vf-text);
+  margin-bottom: 6px;
+}
+.asst-import-header svg {
+  color: var(--vf-accent);
+  flex-shrink: 0;
+}
+.asst-import-desc {
+  font-size: .8125rem;
+  color: var(--vf-text-m);
+  margin: 0 0 14px 0;
+}
+.asst-import-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.asst-import-btn-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+}
+.asst-import-label {
+  display: block;
+  font-size: .75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--vf-text-l);
+  margin-bottom: 5px;
+}

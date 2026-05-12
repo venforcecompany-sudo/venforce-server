@@ -547,6 +547,9 @@ function asstReset() {
   asstUltimosDados = null;
   const el = document.getElementById("asst-preview");
   if (el) { el.innerHTML = ""; el.style.display = "none"; }
+  const sec = document.getElementById("asst-import-section");
+  if (sec) sec.style.display = "none";
+  asstSetImportStatus("", "");
 }
 
 // ── Dropzone ──────────────────────────────────────────────────────────────────
@@ -816,6 +819,10 @@ function asstRenderPreview(data) {
     </div>`;
 
   el.style.display = "block";
+
+  const importSec = document.getElementById("asst-import-section");
+  if (importSec) importSec.style.display = "block";
+  asstAtualizarBotaoImportar();
 }
 
 // ── Reanálise ─────────────────────────────────────────────────────────────────
@@ -861,6 +868,9 @@ async function asstEnviarPreview(configOverride) {
     asstSetLoading(true);
     const el = document.getElementById("asst-preview");
     if (el) { el.innerHTML = ""; el.style.display = "none"; }
+    const importSec = document.getElementById("asst-import-section");
+    if (importSec) importSec.style.display = "none";
+    asstSetImportStatus("", "");
   }
 
   try {
@@ -896,6 +906,115 @@ async function asstEnviarPreview(configOverride) {
     asstSetReanaliseLoading(false);
   }
 }
+
+// ── Importação final ──────────────────────────────────────────────────────────
+function asstSetImportStatus(msg, tipo) {
+  const el = document.getElementById("asst-import-status");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "asst-status-msg" + (tipo ? ` asst-status-${tipo}` : "");
+  el.style.display = msg ? "block" : "none";
+}
+
+function asstSetImportLoading(on) {
+  const btn = document.getElementById("asst-btn-importar-limpa");
+  const txt = document.getElementById("asst-btn-importar-text");
+  const spn = document.getElementById("asst-btn-importar-spinner");
+  if (btn) btn.disabled = on;
+  if (txt) txt.textContent = on ? "Importando…" : "Importar base limpa";
+  if (spn) spn.style.display = on ? "inline-block" : "none";
+}
+
+function asstAtualizarBotaoImportar() {
+  const btn = document.getElementById("asst-btn-importar-limpa");
+  if (!btn) return;
+  const nome = (document.getElementById("asst-nome-base") || {}).value || "";
+  const temDados = asstUltimosDados &&
+    asstUltimosDados.colunas_detectadas &&
+    asstUltimosDados.colunas_detectadas.id &&
+    Array.isArray(asstUltimosDados.preview) &&
+    asstUltimosDados.preview.some(r => r.id != null && String(r.id).trim() !== "");
+  btn.disabled = !(temDados && nome.trim().length > 0);
+}
+
+function asstGerarCsv(linhas) {
+  const rows = linhas.filter(r => r.id != null && String(r.id).trim() !== "");
+  const lines = rows.map(r => {
+    const id      = String(r.id ?? "").replace(/"/g, '""');
+    const custo   = r.custo   != null ? Number(r.custo).toFixed(2)   : "";
+    const imposto = r.imposto != null ? Number(r.imposto).toFixed(6)  : "";
+    return `"${id}",${custo},${imposto}`;
+  });
+  return "ID,Custo,Imposto\n" + lines.join("\n");
+}
+
+async function asstImportarBaseLimpa() {
+  if (!asstUltimosDados || !Array.isArray(asstUltimosDados.preview)) return;
+
+  const nome = ((document.getElementById("asst-nome-base") || {}).value || "").trim();
+  if (!nome) {
+    asstSetImportStatus("Informe o nome da base antes de importar.", "erro");
+    return;
+  }
+
+  const linhasValidas = asstUltimosDados.preview.filter(
+    r => r.id != null && String(r.id).trim() !== ""
+  );
+  if (!linhasValidas.length) {
+    asstSetImportStatus("Nenhuma linha válida para importar.", "erro");
+    return;
+  }
+
+  const confirmou = confirm(
+    `Importar "${nome}" com ${linhasValidas.length} linha(s) normalizada(s)?\n\nEsta ação substituirá a base existente com este nome.`
+  );
+  if (!confirmou) return;
+
+  asstSetImportLoading(true);
+  asstSetImportStatus("", "");
+
+  try {
+    const csv      = asstGerarCsv(asstUltimosDados.preview);
+    const blob     = new Blob([csv], { type: "text/csv" });
+    const arquivo  = new File([blob], `${nome.replace(/[^a-z0-9_\-]/gi, "_")}.csv`, { type: "text/csv" });
+
+    const fd = new FormData();
+    fd.append("arquivo",   arquivo);
+    fd.append("nomeBase",  nome);
+    fd.append("confirmar", "true");
+
+    const res = await fetch(`${API_BASE}/importar-base`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TOKEN}` },
+      body: fd,
+    });
+
+    if (res.status === 401) { clearSession(); return; }
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      asstSetImportStatus(data.erro || data.message || `Erro ${res.status} ao importar.`, "erro");
+      return;
+    }
+
+    asstSetImportStatus(`Base "${nome}" importada com sucesso!`, "ok");
+    loadBases();
+
+  } catch (err) {
+    asstSetImportStatus("Erro de conexão: " + (err.message || "tente novamente."), "erro");
+  } finally {
+    asstSetImportLoading(false);
+  }
+}
+
+(function asstInitImportacao() {
+  const input = document.getElementById("asst-nome-base");
+  if (input) input.addEventListener("input", asstAtualizarBotaoImportar);
+
+  const btn = document.getElementById("asst-btn-importar-limpa");
+  if (btn) btn.addEventListener("click", asstImportarBaseLimpa);
+})();
 
 // ── Botão analisar ────────────────────────────────────────────────────────────
 (function () {
