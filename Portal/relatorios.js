@@ -474,47 +474,44 @@ function renderPastas() {
   const { mapa, semPasta, total } = getContagemRelatoriosPorPasta();
   const pastas = Array.isArray(PASTAS) ? PASTAS : [];
 
-  const htmlItens = [];
-  htmlItens.push(`<div class="vf-pastas-section-label">Fixas</div>`);
-  htmlItens.push(`
-    <button type="button" class="vf-relatorio-pasta-item vf-drive-folder ${PASTA_SELECIONADA === "todos" ? "is-active" : ""}" data-pasta-filter="todos">
-      <span>Todos</span>
-      <span class="vf-relatorio-pasta-count">${total}</span>
-    </button>
-  `);
-  htmlItens.push(`
-    <button type="button" class="vf-relatorio-pasta-item vf-drive-folder ${PASTA_SELECIONADA === "sem_pasta" ? "is-active" : ""}" data-pasta-filter="sem_pasta">
-      <span>Sem pasta</span>
-      <span class="vf-relatorio-pasta-count">${semPasta}</span>
-    </button>
-  `);
+  const fixaChips = [
+    `<button type="button" class="vf-drive-chip ${PASTA_SELECIONADA === "todos" ? "is-active" : ""}" data-pasta-filter="todos">
+      <span class="vf-drive-chip-label">Todos</span>
+      <span class="vf-drive-chip-count">${total}</span>
+    </button>`,
+    `<button type="button" class="vf-drive-chip ${PASTA_SELECIONADA === "sem_pasta" ? "is-active" : ""}" data-pasta-filter="sem_pasta">
+      <span class="vf-drive-chip-label">Sem pasta</span>
+      <span class="vf-drive-chip-count">${semPasta}</span>
+    </button>`,
+  ];
 
-  htmlItens.push(`<div class="vf-pastas-sep"></div>`);
-  htmlItens.push(`<div class="vf-pastas-section-label">Minhas pastas</div>`);
-
-  if (!pastas.length) {
-    htmlItens.push(`<div class="vf-pastas-vazio">Nenhuma pasta criada</div>`);
-  } else {
-    pastas.forEach((pasta) => {
+  let pastaChips = "";
+  if (pastas.length) {
+    const sep = `<span class="vf-drive-chip-sep" aria-hidden="true"></span>`;
+    const items = pastas.map((pasta) => {
       const id = Number(pasta.id);
       const active = PASTA_SELECIONADA === id ? "is-active" : "";
       const count = mapa.get(id) || 0;
-      htmlItens.push(`
-        <div class="vf-relatorio-pasta-row vf-drive-folder-row ${active}">
-          <button type="button" class="vf-relatorio-pasta-item vf-drive-folder" data-pasta-filter="${id}">
-            <span>${escapeHTML(pasta.nome || "Pasta")}</span>
-            <span class="vf-relatorio-pasta-count">${count}</span>
+      return `
+        <div class="vf-drive-chip-row ${active}">
+          <button type="button" class="vf-drive-chip ${active}" data-pasta-filter="${id}" title="${escapeHTML(pasta.nome || "Pasta")}">
+            <span class="vf-drive-chip-label">${escapeHTML(pasta.nome || "Pasta")}</span>
+            <span class="vf-drive-chip-count">${count}</span>
           </button>
-          <div class="vf-relatorio-pasta-actions vf-drive-folder-actions">
-            <button type="button" class="vf-relatorio-pasta-action" data-pasta-rename="${id}" title="Renomear">Editar</button>
-            <button type="button" class="vf-relatorio-pasta-action" data-pasta-delete="${id}" title="Excluir">Excluir</button>
+          <div class="vf-drive-chip-actions">
+            <button type="button" class="vf-drive-chip-action" data-pasta-rename="${id}" title="Renomear">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5l2 2L5 13H3v-2L11.5 2.5z"/></svg>
+            </button>
+            <button type="button" class="vf-drive-chip-action vf-drive-chip-action-del" data-pasta-delete="${id}" title="Excluir">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
           </div>
-        </div>
-      `);
+        </div>`;
     });
+    pastaChips = sep + items.join("");
   }
 
-  container.innerHTML = htmlItens.join("");
+  container.innerHTML = `<div class="vf-drive-chips-strip">${fixaChips.join("")}${pastaChips}</div>`;
 
   container.querySelectorAll("[data-pasta-filter]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -976,10 +973,11 @@ function renderRelatorios() {
     { label: "Sem base (total)", value: String(semBaseTot) },
     { label: "MC média geral", value: mcFmt },
   ];
+  summary.classList.add("vf-report-hub-summary-grid");
   summary.innerHTML = summaryCards.map((c) => `
-    <div class="vf-relatorios-summary-card">
-      <div class="vf-relatorios-summary-label">${escapeHTML(c.label)}</div>
-      <div class="vf-relatorios-summary-value">${escapeHTML(c.value)}</div>
+    <div class="vf-report-hub-summary-card">
+      <div class="vf-report-hub-summary-value">${escapeHTML(c.value)}</div>
+      <div class="vf-report-hub-summary-label">${escapeHTML(c.label)}</div>
     </div>
   `).join("");
 
@@ -1002,43 +1000,37 @@ function renderRelatorios() {
     const mcTxt = Number.isFinite(mcNum) ? `${(mcNum * 100).toFixed(2)}%` : "—";
 
     const card = document.createElement("div");
-    card.className = "vf-relatorio-card vf-report-card";
+    card.className = "vf-relatorio-card vf-report-card vf-report-card-hub";
     card.innerHTML = `
-      <div class="vf-relatorio-card-header">
-        <div class="vf-relatorio-card-title">
-          <span class="vf-relatorio-card-id">#${escapeHTML(String(r.id || "—"))}</span>
-          <div class="vf-relatorio-card-clientebase">
-            <span class="vf-relatorio-card-cliente">${escapeHTML(cliente)}</span>
-            <span class="vf-relatorio-card-base">${escapeHTML(base)}</span>
+      <div class="vf-rch-top">
+        <div class="vf-rch-identity">
+          <span class="vf-rch-id">#${escapeHTML(String(r.id || "—"))}</span>
+          <div class="vf-rch-names">
+            <strong class="vf-rch-client">${escapeHTML(cliente)}</strong>
+            <span class="vf-rch-base">${escapeHTML(base)}</span>
           </div>
         </div>
         <span class="vf-ml-badge ${classeStatus(status)}">${escapeHTML(status)}</span>
       </div>
 
-      <div class="vf-relatorio-card-body">
-        <div class="vf-relatorio-card-scope">
-          <span>${escapeHTML(escopo)}</span>
-          <span class="vf-relatorio-card-meta-sep">·</span>
-          <span>${escapeHTML(data)}</span>
-        </div>
-        <div class="vf-relatorio-card-metrics">
-          <div class="vf-pill-row vf-pill-row-metrics">
-            <span class="vf-pill">${escapeHTML(String(r.total_itens ?? 0))} itens</span>
-            <span class="vf-pill">${escapeHTML(String(r.itens_com_base ?? 0))} com base</span>
-            <span class="vf-pill">${escapeHTML(String(r.itens_sem_base ?? 0))} sem base</span>
-          </div>
-          <div class="vf-pill-row vf-pill-row-metrics">
-            <span class="vf-pill vf-pill-danger">Críticos ${escapeHTML(String(r.itens_criticos ?? 0))}</span>
-            <span class="vf-pill vf-pill-warning">Atenção ${escapeHTML(String(r.itens_atencao ?? 0))}</span>
-            <span class="vf-pill vf-pill-success">Saudáveis ${escapeHTML(String(r.itens_saudaveis ?? 0))}</span>
-            <span class="vf-pill vf-pill-mc"><span class="vf-pill-prefix">MC</span><span class="vf-num ${mcClass}">${escapeHTML(mcTxt)}</span></span>
-          </div>
-        </div>
+      <div class="vf-rch-meta">
+        <span class="vf-rch-scope">${escapeHTML(escopo)}</span>
+        <span class="vf-rch-sep">·</span>
+        <span class="vf-rch-date">${escapeHTML(data)}</span>
       </div>
 
-      <div class="vf-relatorio-card-footer">
-        <div class="vf-rc-actions-left">
-          <button type="button" class="vf-rc-btn-primary btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}">Detalhes</button>
+      <div class="vf-rch-metrics">
+        <span class="vf-rch-chip">${escapeHTML(String(r.total_itens ?? 0))} itens</span>
+        <span class="vf-rch-chip vf-rch-chip-neutral">${escapeHTML(String(r.itens_sem_base ?? 0))} s/ base</span>
+        <span class="vf-rch-chip vf-rch-chip-danger">Críticos ${escapeHTML(String(r.itens_criticos ?? 0))}</span>
+        <span class="vf-rch-chip vf-rch-chip-warning">Atenção ${escapeHTML(String(r.itens_atencao ?? 0))}</span>
+        <span class="vf-rch-chip vf-rch-chip-success">Saudáveis ${escapeHTML(String(r.itens_saudaveis ?? 0))}</span>
+        <span class="vf-rch-mc ${mcClass}">MC ${escapeHTML(mcTxt)}</span>
+      </div>
+
+      <div class="vf-rch-footer">
+        <div class="vf-rch-actions-left">
+          <button type="button" class="vf-rc-btn-primary btn-detalhe" data-id="${escapeHTML(String(r.id || ""))}">Abrir relatório</button>
           <button type="button" class="vf-rc-btn-export btn-exportar" data-formato="xlsx" data-id="${escapeHTML(String(r.id || ""))}">XLSX</button>
           <button type="button" class="vf-rc-btn-export btn-exportar" data-formato="csv" data-id="${escapeHTML(String(r.id || ""))}">CSV</button>
           <button type="button" class="vf-rc-btn-neutral btn-mover" data-id="${escapeHTML(String(r.id || ""))}" data-pasta="${escapeHTML(String(pastaAtual || ""))}" data-pasta-nome="${escapeHTML(String(pastaNome))}">Mover</button>
