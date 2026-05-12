@@ -4,6 +4,9 @@ const {
   listarClientesAds,
   buscarAcompanhamentoAds,
   salvarAcompanhamentoAds,
+  ensureAdsResumoTables,
+  buscarResumoMensalAds,
+  salvarResumoMensalAds,
 } = require("../services/adsService");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("../services/activityLogService");
 
@@ -108,4 +111,109 @@ async function putAdsAcompanhamento(req, res) {
   }
 }
 
-module.exports = { getAdsClientes, getAdsAcompanhamento, putAdsAcompanhamento };
+// ─── Resumo mensal ────────────────────────────────────────────────────────────
+
+let _resumoTablesReady = false;
+async function garantirTabelasResumo() {
+  if (_resumoTablesReady) return;
+  await ensureAdsResumoTables();
+  _resumoTablesReady = true;
+}
+
+function parseNumField(body, key) {
+  const v = body[key];
+  if (v === undefined || v === null) return { ok: true, value: 0 };
+  const n = Number(v);
+  if (!Number.isFinite(n)) return { ok: false, erro: `${key} deve ser um número válido.` };
+  if (n < 0) return { ok: false, erro: `${key} não pode ser negativo.` };
+  return { ok: true, value: n };
+}
+
+async function getAdsResumoMensal(req, res) {
+  try {
+    await garantirTabelasResumo();
+    const clienteSlug = String(req.query.clienteSlug || "").trim();
+    const mes         = String(req.query.mes || "").trim();
+    const lojaCampanha = String(req.query.lojaCampanha || "todas").trim();
+
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório." });
+    }
+    if (!mes || !MES_REF_REGEX.test(mes)) {
+      return res.status(400).json({ ok: false, erro: "mes é obrigatório no formato YYYY-MM." });
+    }
+
+    const resumo = await buscarResumoMensalAds({ clienteSlug, mes, lojaCampanha });
+    return res.json({ ok: true, resumo });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+}
+
+async function putAdsResumoMensal(req, res) {
+  try {
+    await garantirTabelasResumo();
+    const body        = req.body || {};
+    const clienteSlug = String(body.clienteSlug || "").trim();
+    const mes         = String(body.mes || "").trim();
+    const lojaCampanha = String(body.lojaCampanha || "todas").trim();
+
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório." });
+    }
+    if (!mes || !MES_REF_REGEX.test(mes)) {
+      return res.status(400).json({ ok: false, erro: "mes é obrigatório no formato YYYY-MM." });
+    }
+
+    const CAMPOS_NUMERICOS = [
+      "investimentoAds", "gmvAds", "roas", "faturamentoTotal",
+      "canceladosValor", "canceladosPct", "devolvidosValor", "tacos",
+    ];
+    const dados = {};
+    for (const campo of CAMPOS_NUMERICOS) {
+      const r = parseNumField(body, campo);
+      if (!r.ok) return res.status(400).json({ ok: false, erro: r.erro });
+      dados[campo] = r.value;
+    }
+
+    const clienteResult = await pool.query(
+      "SELECT id FROM clientes WHERE slug = $1 AND ativo = true",
+      [clienteSlug]
+    );
+    if (!clienteResult.rows.length) {
+      return res.status(404).json({ ok: false, erro: `Cliente "${clienteSlug}" não encontrado.` });
+    }
+
+    const resumo = await salvarResumoMensalAds({
+      clienteSlug,
+      mes,
+      lojaCampanha,
+      dados,
+      userId: req.user?.id ?? null,
+    });
+
+    try {
+      registrarLog({
+        ...dadosUsuarioDeReq(req),
+        acao: "ads_resumo_mensal_salvo",
+        detalhes: { cliente_slug: clienteSlug, mes, loja_campanha: lojaCampanha },
+        ip: extrairIp(req),
+        status: "sucesso",
+      });
+    } catch (_) {
+      // falha de log não derruba a rota
+    }
+
+    return res.json({ ok: true, resumo });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+}
+
+module.exports = {
+  getAdsClientes,
+  getAdsAcompanhamento,
+  putAdsAcompanhamento,
+  getAdsResumoMensal,
+  putAdsResumoMensal,
+};
