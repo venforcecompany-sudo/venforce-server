@@ -77,6 +77,14 @@
           <line x1="6" y1="20" x2="6" y2="16"></line>
         </svg>`;
     }
+    if (name === "vf-ads") {
+      return `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M8 12h8"></path>
+          <path d="M12 8l4 4-4 4"></path>
+        </svg>`;
+    }
     if (name === "image") {
       return `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -158,6 +166,7 @@
       { label: "Dashboard", href: "dashboard.html", icon: "vf-dashboard", adminOnly: false },
       { label: "Automações", href: "automacoes.html", icon: "repeat", adminOnly: false, automacoesOnly: true },
       { label: "Relatórios", href: "relatorios.html", icon: "bar-chart", adminOnly: false, automacoesOnly: true },
+      { label: "Ads", href: "ads.html", icon: "vf-ads", adminOnly: false, automacoesOnly: true },
       { label: "Design", href: "design.html", icon: "image", adminOnly: false, designOnly: true },
       { label: "Painel de análise de conversão", href: "fechamento.html", icon: "vf-fechamento", adminOnly: false },
       { label: "Fechamento Financeiro", href: "financeiro.html", icon: "vf-financeiro", adminOnly: false },

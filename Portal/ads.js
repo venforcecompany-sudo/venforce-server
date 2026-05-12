@@ -1,0 +1,405 @@
+// Portal/ads.js — Página de Mercado Ads (dados mockados, sem backend)
+
+const STORAGE_KEY = "vf-token";
+
+function getToken() {
+  const t = localStorage.getItem(STORAGE_KEY);
+  if (!t) { window.location.replace("index.html"); return null; }
+  return t;
+}
+getToken();
+initLayout();
+
+// ─── Dados mockados ───────────────────────────────────────────────────────────
+
+const ADS_DADOS_MENSAIS = [
+  {
+    mes: 1, label: "Janeiro",
+    investimentoAds: 6100,
+    gmvAds: 140900,
+    roas: 23.10,
+    faturamentoTotal: 179519.29,
+    canceladosValor: 449.72,
+    canceladosPct: 0.40,
+    devolvidosValor: 294.72,
+    tacos: 3.40,
+  },
+  {
+    mes: 2, label: "Fevereiro",
+    investimentoAds: 4700,
+    gmvAds: 108800,
+    roas: 23.15,
+    faturamentoTotal: 122597.28,
+    canceladosValor: 2157.11,
+    canceladosPct: 1.80,
+    devolvidosValor: 188.59,
+    tacos: 3.83,
+  },
+  {
+    mes: 3, label: "Março",
+    investimentoAds: 7700,
+    gmvAds: 117900,
+    roas: 15.31,
+    faturamentoTotal: 143752.64,
+    canceladosValor: 2518.07,
+    canceladosPct: 1.80,
+    devolvidosValor: 169.74,
+    tacos: 5.36,
+  },
+  {
+    mes: 4, label: "Abril",
+    investimentoAds: 7700,
+    gmvAds: 146300,
+    roas: 19.00,
+    faturamentoTotal: 181729.05,
+    canceladosValor: 121.47,
+    canceladosPct: 0.20,
+    devolvidosValor: 0,
+    tacos: 4.24,
+  },
+  {
+    mes: 5, label: "Maio",
+    investimentoAds: 2300,
+    gmvAds: 43600,
+    roas: 18.96,
+    faturamentoTotal: 51290.75,
+    canceladosValor: 0,
+    canceladosPct: 0,
+    devolvidosValor: 0,
+    tacos: 4.48,
+  },
+];
+
+const ADS_CLIENTES = ["Todos", "Cliente A", "Cliente B"];
+const ADS_CAMPANHAS = ["Todas", "Campanha Geral", "Produtos Premium", "Liquidação"];
+
+// Checklist local state — key: "semana-N-check-I"
+const ADS_CHECKLIST_ITEMS = [
+  "Dados de Ads conferidos",
+  "ROAS analisado",
+  "TACOS analisado",
+  "Cancelados / devolvidos revisados",
+  "Feedback enviado ao cliente",
+  "Cliente respondeu",
+];
+
+// ─── Helpers de formatação ────────────────────────────────────────────────────
+
+function adsFmtBRL(n) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(n) || 0);
+}
+
+function adsFmtNum(n, decimals = 2) {
+  return Number(n).toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function adsFmtPct(n, decimals = 2) {
+  return adsFmtNum(n, decimals) + "%";
+}
+
+function adsEscape(s) {
+  const d = document.createElement("div");
+  d.textContent = String(s ?? "");
+  return d.innerHTML;
+}
+
+// ─── Status TACOS ─────────────────────────────────────────────────────────────
+
+function adsStatusTacos(tacos) {
+  if (tacos <= 4) return { label: "Saudável", cls: "ads-badge-success" };
+  if (tacos <= 5) return { label: "Atenção",  cls: "ads-badge-warning" };
+  return             { label: "Crítico",   cls: "ads-badge-danger"  };
+}
+
+// ─── Filtro ───────────────────────────────────────────────────────────────────
+
+function adsGetFiltroMes() {
+  const sel = document.getElementById("ads-filtro-mes");
+  return sel ? Number(sel.value) || 0 : 0;
+}
+
+function adsGetDadosFiltrados() {
+  const mes = adsGetFiltroMes();
+  if (!mes) return ADS_DADOS_MENSAIS;
+  return ADS_DADOS_MENSAIS.filter((d) => d.mes === mes);
+}
+
+// ─── Cards de resumo ──────────────────────────────────────────────────────────
+
+function adsRenderSummary() {
+  const grid = document.getElementById("ads-summary-grid");
+  if (!grid) return;
+  const dados = adsGetDadosFiltrados();
+
+  const totalInv  = dados.reduce((a, d) => a + d.investimentoAds, 0);
+  const totalGmv  = dados.reduce((a, d) => a + d.gmvAds, 0);
+  const roasVals  = dados.map((d) => d.roas).filter((v) => v > 0);
+  const roasMed   = roasVals.length ? roasVals.reduce((a, b) => a + b, 0) / roasVals.length : 0;
+  const totalFat  = dados.reduce((a, d) => a + d.faturamentoTotal, 0);
+  const tacosVals = dados.map((d) => d.tacos).filter((v) => v > 0);
+  const tacosMed  = tacosVals.length ? tacosVals.reduce((a, b) => a + b, 0) / tacosVals.length : 0;
+
+  const cards = [
+    {
+      label: "Investimento Ads",
+      value: adsFmtBRL(totalInv),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
+      accent: "ads",
+    },
+    {
+      label: "GMV Ads",
+      value: adsFmtBRL(totalGmv),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`,
+      accent: "ads",
+    },
+    {
+      label: "ROAS médio",
+      value: adsFmtNum(roasMed) + "x",
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+      accent: "purple",
+    },
+    {
+      label: "Faturamento Total",
+      value: adsFmtBRL(totalFat),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+      accent: "purple",
+    },
+    {
+      label: "TACOS médio",
+      value: adsFmtPct(tacosMed),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73L13 2.27a2 2 0 0 0-2 0L4 6.27A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`,
+      accent: tacosMed > 5 ? "danger" : tacosMed > 4 ? "warning" : "success",
+    },
+    {
+      label: "Feedbacks enviados",
+      value: String(dados.length * 4),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+      accent: "neutral",
+    },
+  ];
+
+  grid.innerHTML = cards.map((c) => `
+    <div class="ads-summary-card ads-summary-card--${adsEscape(c.accent)}">
+      <div class="ads-summary-icon">${c.icon}</div>
+      <div class="ads-summary-body">
+        <div class="ads-summary-value">${adsEscape(c.value)}</div>
+        <div class="ads-summary-label">${adsEscape(c.label)}</div>
+      </div>
+    </div>`).join("");
+}
+
+// ─── Tabela mensal ────────────────────────────────────────────────────────────
+
+function adsRenderTabela() {
+  const tbody = document.getElementById("ads-table-body");
+  const badge = document.getElementById("ads-table-total");
+  if (!tbody) return;
+
+  const dados = adsGetDadosFiltrados();
+  if (badge) { badge.textContent = String(dados.length); badge.style.display = "inline-block"; }
+
+  if (!dados.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Nenhum dado para o filtro selecionado.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = dados.map((d) => {
+    const st = adsStatusTacos(d.tacos);
+    const roasClass = d.roas >= 20 ? "ads-num-good" : d.roas >= 15 ? "" : "ads-num-warn";
+    return `
+      <tr>
+        <td class="ads-td-mes"><strong>${adsEscape(d.label)}</strong></td>
+        <td class="num ads-td-inv">${adsEscape(adsFmtBRL(d.investimentoAds))}</td>
+        <td class="num">${adsEscape(adsFmtBRL(d.gmvAds))}</td>
+        <td class="num ${roasClass}">${adsEscape(adsFmtNum(d.roas))}x</td>
+        <td class="num">${adsEscape(adsFmtBRL(d.faturamentoTotal))}</td>
+        <td class="num">
+          <span>${adsEscape(adsFmtBRL(d.canceladosValor))}</span>
+          ${d.canceladosPct > 0 ? `<span class="ads-td-pct">${adsEscape(adsFmtPct(d.canceladosPct))}</span>` : ""}
+        </td>
+        <td class="num">${adsEscape(adsFmtBRL(d.devolvidosValor))}</td>
+        <td class="num"><strong>${adsEscape(adsFmtPct(d.tacos))}</strong></td>
+        <td class="center"><span class="ads-badge ${adsEscape(st.cls)}">${adsEscape(st.label)}</span></td>
+      </tr>`;
+  }).join("");
+}
+
+// ─── Checklist semanal ────────────────────────────────────────────────────────
+
+function adsCheckKey(semana, itemIdx) {
+  return `ads-check-${semana}-${itemIdx}`;
+}
+
+function adsGetCheck(semana, itemIdx) {
+  return localStorage.getItem(adsCheckKey(semana, itemIdx)) === "1";
+}
+
+function adsSetCheck(semana, itemIdx, value) {
+  if (value) {
+    localStorage.setItem(adsCheckKey(semana, itemIdx), "1");
+  } else {
+    localStorage.removeItem(adsCheckKey(semana, itemIdx));
+  }
+}
+
+function adsRenderChecklist() {
+  const grid = document.getElementById("ads-checklist-grid");
+  if (!grid) return;
+
+  const semanas = [1, 2, 3, 4];
+  grid.innerHTML = semanas.map((sem) => {
+    const checks = ADS_CHECKLIST_ITEMS.map((item, idx) => {
+      const checked = adsGetCheck(sem, idx);
+      return `
+        <label class="ads-check-item ${checked ? "is-checked" : ""}">
+          <input type="checkbox" class="ads-check-input" data-semana="${sem}" data-idx="${idx}" ${checked ? "checked" : ""}>
+          <span class="ads-check-box" aria-hidden="true">
+            ${checked ? `<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 6 4.5 9.5 11 2"/></svg>` : ""}
+          </span>
+          <span class="ads-check-label">${adsEscape(item)}</span>
+        </label>`;
+    }).join("");
+
+    const total = ADS_CHECKLIST_ITEMS.length;
+    const done  = ADS_CHECKLIST_ITEMS.filter((_, idx) => adsGetCheck(sem, idx)).length;
+    const pct   = Math.round((done / total) * 100);
+    const allDone = done === total;
+
+    return `
+      <div class="ads-week-card ${allDone ? "is-complete" : ""}">
+        <div class="ads-week-header">
+          <div class="ads-week-title">
+            <span class="ads-week-num">Semana ${sem}</span>
+            ${allDone ? `<svg class="ads-week-done-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>` : ""}
+          </div>
+          <div class="ads-week-progress">
+            <div class="ads-week-progress-bar" style="width:${pct}%"></div>
+          </div>
+          <span class="ads-week-progress-label">${done}/${total}</span>
+        </div>
+        <div class="ads-week-checks">${checks}</div>
+      </div>`;
+  }).join("");
+
+  // bind checkboxes
+  grid.querySelectorAll(".ads-check-input").forEach((input) => {
+    input.addEventListener("change", () => {
+      const sem = Number(input.dataset.semana);
+      const idx = Number(input.dataset.idx);
+      adsSetCheck(sem, idx, input.checked);
+      adsRenderChecklist();
+    });
+  });
+}
+
+// ─── Feedback para o cliente ──────────────────────────────────────────────────
+
+function adsGerarFeedback() {
+  const mesNum = adsGetFiltroMes();
+  const dados  = adsGetDadosFiltrados();
+
+  if (!dados.length) {
+    document.getElementById("ads-feedback-textarea").value = "Nenhum dado disponível para o período selecionado.";
+    return;
+  }
+
+  const d = dados.length === 1 ? dados[0] : null;
+  const mesLabel = d ? d.label : "período selecionado";
+
+  const totalInv  = dados.reduce((a, v) => a + v.investimentoAds, 0);
+  const totalGmv  = dados.reduce((a, v) => a + v.gmvAds, 0);
+  const totalFat  = dados.reduce((a, v) => a + v.faturamentoTotal, 0);
+  const roasMed   = dados.reduce((a, v) => a + v.roas, 0) / dados.length;
+  const tacosMed  = dados.reduce((a, v) => a + v.tacos, 0) / dados.length;
+  const st        = adsStatusTacos(tacosMed);
+
+  const linhas = [
+    `📊 Relatório de Mercado Ads — ${mesLabel}`,
+    ``,
+    `💰 Investimento em Ads: ${adsFmtBRL(totalInv)}`,
+    `📈 GMV gerado pelos Ads: ${adsFmtBRL(totalGmv)}`,
+    `🔁 ROAS médio: ${adsFmtNum(roasMed)}x`,
+    `🏪 Faturamento total da loja: ${adsFmtBRL(totalFat)}`,
+    `📌 TACOS médio: ${adsFmtPct(tacosMed)} (${st.label})`,
+    ``,
+    `✅ Análise:`,
+  ];
+
+  if (tacosMed <= 4) {
+    linhas.push(`Os investimentos em Ads estão bem calibrados. O TACOS de ${adsFmtPct(tacosMed)} está dentro da faixa saudável (até 4%), indicando boa eficiência de custo.`);
+  } else if (tacosMed <= 5) {
+    linhas.push(`O TACOS de ${adsFmtPct(tacosMed)} está em zona de atenção. Recomendamos revisão das campanhas de menor ROAS para otimizar o retorno.`);
+  } else {
+    linhas.push(`O TACOS de ${adsFmtPct(tacosMed)} está acima do ideal. É importante revisar os lances e pausar campanhas com ROAS abaixo de 10x para reduzir o custo proporcional.`);
+  }
+
+  linhas.push(``, `📌 Próximos passos:`);
+  linhas.push(`- Revisar campanhas com ROAS abaixo da média`);
+  linhas.push(`- Acompanhar evolução dos cancelados e devolvidos`);
+  linhas.push(`- Ajustar orçamento conforme sazonalidade`);
+
+  document.getElementById("ads-feedback-textarea").value = linhas.join("\n");
+}
+
+function adsCopiarFeedback() {
+  const ta = document.getElementById("ads-feedback-textarea");
+  const ok = document.getElementById("ads-copy-ok");
+  if (!ta || !ta.value.trim()) return;
+  navigator.clipboard.writeText(ta.value).then(() => {
+    if (ok) {
+      ok.style.display = "inline";
+      setTimeout(() => { ok.style.display = "none"; }, 2200);
+    }
+  }).catch(() => {
+    ta.select();
+    document.execCommand("copy");
+  });
+}
+
+// ─── Preencher selects de mock ────────────────────────────────────────────────
+
+function adsFillSelects() {
+  const selCliente = document.getElementById("ads-filtro-cliente");
+  if (selCliente) {
+    selCliente.innerHTML = ADS_CLIENTES.map((c, i) =>
+      `<option value="${i === 0 ? "" : c}">${adsEscape(c)}</option>`
+    ).join("");
+  }
+
+  const selCamp = document.getElementById("ads-filtro-campanha");
+  if (selCamp) {
+    selCamp.innerHTML = ADS_CAMPANHAS.map((c, i) =>
+      `<option value="${i === 0 ? "" : c}">${adsEscape(c)}</option>`
+    ).join("");
+  }
+
+  // Período do checklist
+  const periodEl = document.getElementById("ads-checklist-period");
+  if (periodEl) {
+    const now = new Date();
+    periodEl.textContent = now.toLocaleDateString("pt-BR", { month: "short", year: "numeric" })
+      .replace(/^\w/, (c) => c.toUpperCase());
+  }
+}
+
+// ─── Render completo ──────────────────────────────────────────────────────────
+
+function adsRender() {
+  adsRenderSummary();
+  adsRenderTabela();
+  adsRenderChecklist();
+}
+
+// ─── Event listeners ─────────────────────────────────────────────────────────
+
+document.getElementById("ads-btn-atualizar")?.addEventListener("click", adsRender);
+document.getElementById("ads-filtro-mes")?.addEventListener("change", adsRender);
+document.getElementById("ads-filtro-cliente")?.addEventListener("change", adsRender);
+document.getElementById("ads-filtro-campanha")?.addEventListener("change", adsRender);
+document.getElementById("ads-btn-gerar")?.addEventListener("click", adsGerarFeedback);
+document.getElementById("ads-btn-copiar")?.addEventListener("click", adsCopiarFeedback);
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+
+adsFillSelects();
+adsRender();
