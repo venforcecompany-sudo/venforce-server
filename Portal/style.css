@@ -4794,3 +4794,137 @@ body {
   background: rgba(234,88,12,.10);
   color: #c2410c;
 }
+
+/* ============================================
+   ADIÇÕES Maio/2026 — Projeto 01 Ads MVP real
+   Mantenha este bloco no FINAL do arquivo.
+   ============================================ */
+
+/* ---------- visually-hidden (acessibilidade) ---------- */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important; height: 1px !important;
+  padding: 0 !important; margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* ---------- Banner de origem dos dados (página Ads) ---------- */
+.ads-source-banner {
+  margin: 0 0 18px 0;
+  padding: .65rem .9rem;
+  border-radius: 10px;
+  font-size: .82rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  line-height: 1.4;
+}
+.ads-source-banner--info {
+  background: var(--vf-primary-l);
+  border-color: rgba(var(--vf-primary-rgb), .18);
+  color: var(--vf-primary);
+}
+.ads-source-banner--warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
+}
+.ads-source-banner--danger {
+  background: var(--vf-danger-bg);
+  border-color: rgba(220, 38, 38, .25);
+  color: var(--vf-danger);
+}
+.ads-source-banner[hidden] { display: none !important; }
+
+/* ---------- Editor de resumo mensal ---------- */
+.ads-resumo-editor {
+  padding: 1rem 1.25rem 1.25rem;
+}
+.ads-editor-empty {
+  padding: 1.25rem;
+  text-align: center;
+  color: var(--vf-text-m);
+  font-size: .9rem;
+  background: #fafbfc;
+  border: 1px dashed var(--vf-border);
+  border-radius: var(--vf-radius-sm);
+}
+.ads-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+@media (max-width: 1080px) {
+  .ads-editor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 540px) {
+  .ads-editor-grid { grid-template-columns: 1fr; }
+}
+.ads-editor-field { margin: 0 !important; }
+.ads-editor-field label {
+  display: block;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--vf-text-m);
+  margin-bottom: 4px;
+  letter-spacing: .01em;
+}
+.ads-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.ads-editor-hint {
+  font-size: .75rem;
+  color: var(--vf-text-m);
+  font-weight: 500;
+}
+.ads-resumo-input:focus {
+  border-color: var(--vf-primary);
+  box-shadow: 0 0 0 2px rgba(var(--vf-primary-rgb), .12);
+}
+
+/* ---------- Empty state cards de resumo ---------- */
+.ads-summary-empty {
+  grid-column: 1 / -1;
+  padding: 1.25rem;
+  text-align: center;
+  color: var(--vf-text-m);
+  font-size: .9rem;
+  background: var(--vf-surface);
+  border: 1px dashed var(--vf-border);
+  border-radius: var(--vf-radius);
+}
+
+/* ---------- Badge neutra (sem dados) ---------- */
+.ads-badge.ads-badge-neutral {
+  background: rgba(15, 23, 42, .06);
+  color: var(--vf-text-m);
+}
+
+/* ---------- Focus-visible global (a11y) ---------- */
+:focus-visible {
+  outline: 2px solid var(--vf-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:focus-visible,
+.vf-btn-primary:focus-visible,
+.vf-btn-secondary:focus-visible,
+.vf-btn-danger:focus-visible,
+.vf-input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--vf-primary);
+  outline-offset: 2px;
+}
+
+/* ---------- prefers-reduced-motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .vf-page { animation: none; }
+  .animate-fade-up { animation: none; }
+}
