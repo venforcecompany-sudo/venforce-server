@@ -228,7 +228,7 @@ async function getAdsPerformance(req, res) {
     const result = await buscarPerformanceML(clienteSlug, mes);
 
     if (result.semDados) {
-      return res.json({ ok: true, semDados: true, motivo: result.motivo });
+      return res.json({ ok: true, semDados: true, codigo: result.codigo, motivo: result.motivo });
     }
 
     return res.json({ ok: true, performance: result });
