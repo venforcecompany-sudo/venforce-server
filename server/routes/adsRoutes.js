@@ -7,11 +7,13 @@ const {
   putAdsAcompanhamento,
   getAdsResumoMensal,
   putAdsResumoMensal,
+  getAdsPerformance,
 } = require("../controllers/adsController");
 
 const router = express.Router();
 
 router.get("/clientes",       authMiddleware, requireAutomacoesAccess, getAdsClientes);
+router.get("/performance",    authMiddleware, requireAutomacoesAccess, getAdsPerformance);
 router.get("/acompanhamento", authMiddleware, requireAutomacoesAccess, getAdsAcompanhamento);
 router.put("/acompanhamento", authMiddleware, requireAutomacoesAccess, putAdsAcompanhamento);
 router.get("/resumo-mensal",  authMiddleware, requireAutomacoesAccess, getAdsResumoMensal);

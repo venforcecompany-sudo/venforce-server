@@ -11,18 +11,28 @@ function getToken() {
 getToken();
 initLayout();
 
-// ─── Dados mockados de performance ───────────────────────────────────────────
-// Performance mensal continua mockada até integração com API Mercado Livre
+// ─── Mock fallback (usado apenas se a API ML falhar) ──────────────────────────
 
-const ADS_DADOS_MENSAIS = [
-  { mes:1, label:"Janeiro",   investimentoAds:6100,  gmvAds:140900, roas:23.10, faturamentoTotal:179519.29, canceladosValor:449.72,  canceladosPct:0.40, devolvidosValor:294.72, tacos:3.40 },
-  { mes:2, label:"Fevereiro", investimentoAds:4700,  gmvAds:108800, roas:23.15, faturamentoTotal:122597.28, canceladosValor:2157.11, canceladosPct:1.80, devolvidosValor:188.59, tacos:3.83 },
-  { mes:3, label:"Março",     investimentoAds:7700,  gmvAds:117900, roas:15.31, faturamentoTotal:143752.64, canceladosValor:2518.07, canceladosPct:1.80, devolvidosValor:169.74, tacos:5.36 },
-  { mes:4, label:"Abril",     investimentoAds:7700,  gmvAds:146300, roas:19.00, faturamentoTotal:181729.05, canceladosValor:121.47,  canceladosPct:0.20, devolvidosValor:0,      tacos:4.24 },
-  { mes:5, label:"Maio",      investimentoAds:2300,  gmvAds:43600,  roas:18.96, faturamentoTotal:51290.75,  canceladosValor:0,       canceladosPct:0,    devolvidosValor:0,      tacos:4.48 },
+const ADS_MOCK_FALLBACK = [
+  { mes: 1,  label: "Janeiro",   investimentoAds: 6100,  gmvAds: 140900, roas: 23.10, cliques: 0, impressoes: 0, vendas: 0 },
+  { mes: 2,  label: "Fevereiro", investimentoAds: 4700,  gmvAds: 108800, roas: 23.15, cliques: 0, impressoes: 0, vendas: 0 },
+  { mes: 3,  label: "Março",     investimentoAds: 7700,  gmvAds: 117900, roas: 15.31, cliques: 0, impressoes: 0, vendas: 0 },
+  { mes: 4,  label: "Abril",     investimentoAds: 7700,  gmvAds: 146300, roas: 19.00, cliques: 0, impressoes: 0, vendas: 0 },
+  { mes: 5,  label: "Maio",      investimentoAds: 2300,  gmvAds:  43600, roas: 18.96, cliques: 0, impressoes: 0, vendas: 0 },
+  { mes: 6,  label: "Junho",     investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
+  { mes: 7,  label: "Julho",     investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
+  { mes: 8,  label: "Agosto",    investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
+  { mes: 9,  label: "Setembro",  investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
+  { mes: 10, label: "Outubro",   investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
+  { mes: 11, label: "Novembro",  investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
+  { mes: 12, label: "Dezembro",  investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
 ];
 
-// Campanhas mockadas (sem vínculo com API ainda)
+const ADS_MESES_LABELS = [
+  "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
 const ADS_CAMPANHAS = ["Todas", "Campanha Geral", "Produtos Premium", "Liquidação"];
 
 const ADS_CHECKLIST_ITEMS = [
@@ -34,7 +44,6 @@ const ADS_CHECKLIST_ITEMS = [
   "Cliente respondeu",
 ];
 
-// Chaves correspondentes no backend (JSONB)
 const ADS_CHECKLIST_KEYS = [
   "dadosConferidos",
   "roasAnalisado",
@@ -53,6 +62,10 @@ let ADS_FEEDBACK_ATUAL       = "";
 let ADS_HAS_UNSAVED_CHANGES  = false;
 let ADS_SAVING               = false;
 
+// "idle" | "loading" | "loaded" | "sem_dados" | "fallback" | "error"
+let ADS_PERFORMANCE_ESTADO = "idle";
+let ADS_PERFORMANCE_ATUAL  = null; // dados reais da API
+
 // ─── Helpers de formatação ────────────────────────────────────────────────────
 
 function adsFmtBRL(n) {
@@ -64,18 +77,22 @@ function adsFmtNum(n, decimals = 2) {
 function adsFmtPct(n, decimals = 2) {
   return adsFmtNum(n, decimals) + "%";
 }
+function adsFmtInt(n) {
+  return Number(n).toLocaleString("pt-BR");
+}
 function adsEscape(s) {
   const d = document.createElement("div");
   d.textContent = String(s ?? "");
   return d.innerHTML;
 }
 
-// ─── Status TACOS ─────────────────────────────────────────────────────────────
+// ─── Status baseado em ROAS ───────────────────────────────────────────────────
 
-function adsStatusTacos(tacos) {
-  if (tacos <= 4) return { label: "Saudável", cls: "ads-badge-success" };
-  if (tacos <= 5) return { label: "Atenção",  cls: "ads-badge-warning" };
-  return             { label: "Crítico",   cls: "ads-badge-danger"  };
+function adsStatusRoas(roas) {
+  if (roas >= 20) return { label: "Saudável", cls: "ads-badge-success" };
+  if (roas >= 15) return { label: "Atenção",  cls: "ads-badge-warning" };
+  if (roas >   0) return { label: "Crítico",  cls: "ads-badge-danger"  };
+  return                  { label: "—",        cls: ""                  };
 }
 
 // ─── Filtros ──────────────────────────────────────────────────────────────────
@@ -102,12 +119,6 @@ function adsGetLojaCampanha() {
   return (sel && sel.value) ? sel.value.trim() : "todas";
 }
 
-function adsGetDadosFiltrados() {
-  const mes = adsGetFiltroMes();
-  if (!mes) return ADS_DADOS_MENSAIS;
-  return ADS_DADOS_MENSAIS.filter((d) => d.mes === mes);
-}
-
 // ─── API fetch ────────────────────────────────────────────────────────────────
 
 async function adsFetch(path, options = {}) {
@@ -120,18 +131,18 @@ async function adsFetch(path, options = {}) {
   return fetch(`${API_BASE}${path}`, { ...options, headers });
 }
 
-// ─── Carregar clientes reais ──────────────────────────────────────────────────
+// ─── Carregar clientes ────────────────────────────────────────────────────────
 
 async function adsCarregarClientes() {
   const sel = document.getElementById("ads-filtro-cliente");
   if (!sel) return;
   try {
-    const res = await adsFetch("/ads/clientes");
+    const res  = await adsFetch("/ads/clientes");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data.ok || !Array.isArray(data.clientes)) throw new Error("Resposta inválida");
     ADS_CLIENTES_LISTA = data.clientes;
-    sel.innerHTML = `<option value="">Todos</option>` +
+    sel.innerHTML = `<option value="">Selecione o cliente</option>` +
       data.clientes.map((c) =>
         `<option value="${adsEscape(c.slug)}">${adsEscape(c.nome)}</option>`
       ).join("");
@@ -141,15 +152,217 @@ async function adsCarregarClientes() {
   }
 }
 
-// ─── Carregar acompanhamento do backend ───────────────────────────────────────
+// ─── Carregar performance via API ML ─────────────────────────────────────────
+
+async function adsCarregarPerformance() {
+  const clienteSlug = adsGetClienteSlug();
+  const mes         = adsGetFiltroMesRef();
+
+  if (!clienteSlug || !mes) {
+    ADS_PERFORMANCE_ATUAL  = null;
+    ADS_PERFORMANCE_ESTADO = "idle";
+    adsRenderPerformance();
+    return;
+  }
+
+  ADS_PERFORMANCE_ESTADO = "loading";
+  adsRenderPerformance();
+
+  try {
+    const params = new URLSearchParams({ clienteSlug, mes });
+    const res    = await adsFetch(`/ads/performance?${params}`);
+    const data   = await res.json();
+
+    if (!res.ok || !data.ok) throw new Error(data.erro || `HTTP ${res.status}`);
+
+    if (data.semDados) {
+      ADS_PERFORMANCE_ATUAL  = null;
+      ADS_PERFORMANCE_ESTADO = "sem_dados";
+      const motEl = document.getElementById("ads-sem-dados-motivo");
+      if (motEl) motEl.textContent = data.motivo || "";
+    } else {
+      ADS_PERFORMANCE_ATUAL  = data.performance;
+      ADS_PERFORMANCE_ESTADO = "loaded";
+    }
+  } catch (err) {
+    console.warn("[ads] falha ao carregar performance, usando fallback:", err.message);
+    ADS_PERFORMANCE_ATUAL  = null;
+    ADS_PERFORMANCE_ESTADO = "fallback";
+  }
+
+  adsRenderPerformance();
+}
+
+// ─── Render: banner sem dados ─────────────────────────────────────────────────
+
+function adsRenderBanner() {
+  const banner = document.getElementById("ads-sem-dados-banner");
+  if (!banner) return;
+  banner.style.display = ADS_PERFORMANCE_ESTADO === "sem_dados" ? "flex" : "none";
+}
+
+// ─── Render: cards de resumo ──────────────────────────────────────────────────
+
+function adsRenderSummary() {
+  const grid = document.getElementById("ads-summary-grid");
+  if (!grid) return;
+
+  if (ADS_PERFORMANCE_ESTADO === "idle") {
+    grid.innerHTML = `<div class="ads-performance-empty">Selecione um <strong>cliente</strong> e um <strong>mês</strong> para carregar a performance.</div>`;
+    return;
+  }
+  if (ADS_PERFORMANCE_ESTADO === "loading") {
+    grid.innerHTML = `<div class="ads-performance-empty">Carregando dados da API Mercado Livre Ads…</div>`;
+    return;
+  }
+  if (ADS_PERFORMANCE_ESTADO === "sem_dados") {
+    grid.innerHTML = "";
+    return;
+  }
+
+  let d;
+  if (ADS_PERFORMANCE_ESTADO === "loaded" && ADS_PERFORMANCE_ATUAL) {
+    d = ADS_PERFORMANCE_ATUAL;
+  } else {
+    // fallback: mock para o mês selecionado
+    const mesNum = adsGetFiltroMes();
+    d = ADS_MOCK_FALLBACK.find((m) => m.mes === mesNum) || ADS_MOCK_FALLBACK[0];
+  }
+
+  const cards = [
+    {
+      label: "Investimento Ads",
+      value: adsFmtBRL(d.investimentoAds),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
+      accent: "ads",
+    },
+    {
+      label: "GMV Ads",
+      value: adsFmtBRL(d.gmvAds),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`,
+      accent: "ads",
+    },
+    {
+      label: "ROAS",
+      value: adsFmtNum(d.roas) + "x",
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+      accent: d.roas >= 20 ? "success" : d.roas >= 15 ? "warning" : "danger",
+    },
+    {
+      label: "Cliques",
+      value: adsFmtInt(d.cliques),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 15l-5-5M6.7 6.7A8 8 0 1 0 17.3 17.3"/></svg>`,
+      accent: "neutral",
+    },
+    {
+      label: "Impressões",
+      value: adsFmtInt(d.impressoes),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+      accent: "neutral",
+    },
+    {
+      label: "Vendas via Ads",
+      value: adsFmtInt(d.vendas),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
+      accent: "purple",
+    },
+  ];
+
+  grid.innerHTML = cards.map((c) => `
+    <div class="ads-summary-card ads-summary-card--${adsEscape(c.accent)}">
+      <div class="ads-summary-icon">${c.icon}</div>
+      <div class="ads-summary-body">
+        <div class="ads-summary-value">${adsEscape(c.value)}</div>
+        <div class="ads-summary-label">${adsEscape(c.label)}</div>
+      </div>
+    </div>`).join("");
+}
+
+// ─── Render: tabela mensal ────────────────────────────────────────────────────
+
+function adsRenderTabela() {
+  const tbody = document.getElementById("ads-table-body");
+  const badge = document.getElementById("ads-table-total");
+  if (!tbody) return;
+
+  if (ADS_PERFORMANCE_ESTADO === "idle") {
+    if (badge) badge.style.display = "none";
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Selecione um cliente e mês para ver a performance.</td></tr>`;
+    return;
+  }
+  if (ADS_PERFORMANCE_ESTADO === "loading") {
+    if (badge) badge.style.display = "none";
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Carregando…</td></tr>`;
+    return;
+  }
+  if (ADS_PERFORMANCE_ESTADO === "sem_dados") {
+    if (badge) badge.style.display = "none";
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Sem dados de Ads para este cliente.</td></tr>`;
+    return;
+  }
+
+  let rows;
+  if (ADS_PERFORMANCE_ESTADO === "loaded" && ADS_PERFORMANCE_ATUAL) {
+    const d   = ADS_PERFORMANCE_ATUAL;
+    const mes = adsGetFiltroMes();
+    const label = ADS_MESES_LABELS[mes] || d.mesRef || "—";
+    const st  = adsStatusRoas(d.roas);
+    rows = [`
+      <tr>
+        <td class="ads-td-mes"><strong>${adsEscape(label)}</strong></td>
+        <td class="num ads-td-inv">${adsEscape(adsFmtBRL(d.investimentoAds))}</td>
+        <td class="num">${adsEscape(adsFmtBRL(d.gmvAds))}</td>
+        <td class="num ${d.roas >= 20 ? "ads-num-good" : d.roas >= 15 ? "" : "ads-num-warn"}">${adsEscape(adsFmtNum(d.roas))}x</td>
+        <td class="num">${adsEscape(adsFmtInt(d.cliques))}</td>
+        <td class="num">${adsEscape(adsFmtInt(d.impressoes))}</td>
+        <td class="num">${d.vendas > 0 ? adsEscape(adsFmtInt(d.vendas)) : "—"}</td>
+        <td class="center"><span class="ads-badge ${adsEscape(st.cls)}">${adsEscape(st.label)}</span></td>
+      </tr>`];
+  } else {
+    // fallback mock: mês selecionado ou todos
+    const mesNum = adsGetFiltroMes();
+    const dados  = mesNum
+      ? ADS_MOCK_FALLBACK.filter((d) => d.mes === mesNum)
+      : ADS_MOCK_FALLBACK.filter((d) => d.investimentoAds > 0);
+    rows = dados.map((d) => {
+      const st = adsStatusRoas(d.roas);
+      return `
+        <tr>
+          <td class="ads-td-mes"><strong>${adsEscape(d.label)}</strong></td>
+          <td class="num ads-td-inv">${adsEscape(adsFmtBRL(d.investimentoAds))}</td>
+          <td class="num">${adsEscape(adsFmtBRL(d.gmvAds))}</td>
+          <td class="num ${d.roas >= 20 ? "ads-num-good" : d.roas >= 15 ? "" : "ads-num-warn"}">${adsEscape(adsFmtNum(d.roas))}x</td>
+          <td class="num">—</td>
+          <td class="num">—</td>
+          <td class="num">—</td>
+          <td class="center"><span class="ads-badge ${adsEscape(st.cls)}">${adsEscape(st.label)}</span></td>
+        </tr>`;
+    });
+  }
+
+  if (badge) { badge.textContent = String(rows.length); badge.style.display = "inline-block"; }
+  tbody.innerHTML = rows.length
+    ? rows.join("")
+    : `<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Nenhum dado para o filtro selecionado.</td></tr>`;
+}
+
+// ─── Render unificado de performance ─────────────────────────────────────────
+
+function adsRenderPerformance() {
+  adsRenderBanner();
+  adsRenderSummary();
+  adsRenderTabela();
+}
+
+// ─── Checklist semanal ────────────────────────────────────────────────────────
 
 async function adsCarregarAcompanhamento() {
   const clienteSlug = adsGetClienteSlug();
   const mes         = adsGetFiltroMesRef();
 
   if (!clienteSlug || !mes) {
-    ADS_CHECKLIST_ATUAL     = { semana1: {}, semana2: {}, semana3: {}, semana4: {} };
-    ADS_FEEDBACK_ATUAL      = "";
+    ADS_CHECKLIST_ATUAL      = { semana1: {}, semana2: {}, semana3: {}, semana4: {} };
+    ADS_FEEDBACK_ATUAL       = "";
     ADS_ACOMPANHAMENTO_ATUAL = null;
     ADS_HAS_UNSAVED_CHANGES  = false;
     adsAtualizarFeedbackTextarea();
@@ -160,11 +373,11 @@ async function adsCarregarAcompanhamento() {
   }
 
   const loja = adsGetLojaCampanha();
-  adsSetSaveStatus("Carregando...", "ads-save-loading");
+  adsSetSaveStatus("Carregando…", "ads-save-loading");
 
   try {
     const params = new URLSearchParams({ clienteSlug, mes, lojaCampanha: loja });
-    const res  = await adsFetch(`/ads/acompanhamento?${params}`);
+    const res    = await adsFetch(`/ads/acompanhamento?${params}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data.ok || !data.acompanhamento) throw new Error("Resposta inválida");
@@ -182,7 +395,6 @@ async function adsCarregarAcompanhamento() {
     adsRenderChecklist();
     adsSetSaveStatus("Carregado", "ads-save-ok");
     setTimeout(() => adsLimparSaveStatus("ads-save-ok"), 2500);
-
   } catch (err) {
     console.warn("[ads] falha ao carregar acompanhamento:", err.message);
     ADS_CHECKLIST_ATUAL     = { semana1: {}, semana2: {}, semana3: {}, semana4: {} };
@@ -207,12 +419,11 @@ function adsAtualizarUpdatedAt(updatedAt) {
   const el = document.getElementById("ads-updated-at");
   if (!el) return;
   if (!updatedAt) { el.style.display = "none"; el.textContent = ""; return; }
-  const data = new Date(updatedAt);
-  const str  = data.toLocaleString("pt-BR", {
+  const str = new Date(updatedAt).toLocaleString("pt-BR", {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
-  el.textContent  = `Última atualização: ${str}`;
+  el.textContent   = `Última atualização: ${str}`;
   el.style.display = "block";
 }
 
@@ -221,8 +432,8 @@ function adsAtualizarUpdatedAt(updatedAt) {
 function adsSetSaveStatus(msg, cls) {
   const el = document.getElementById("ads-save-status");
   if (!el) return;
-  el.textContent = msg;
-  el.className   = `ads-save-status${cls ? " " + cls : ""}`;
+  el.textContent   = msg;
+  el.className     = `ads-save-status${cls ? " " + cls : ""}`;
   el.style.display = "inline";
 }
 
@@ -265,8 +476,8 @@ async function adsSalvarAcompanhamento() {
 
   ADS_SAVING = true;
   const btn  = document.getElementById("ads-btn-salvar");
-  if (btn) { btn.disabled = true; btn.textContent = "Salvando..."; }
-  adsSetSaveStatus("Salvando...", "ads-save-loading");
+  if (btn) { btn.disabled = true; btn.textContent = "Salvando…"; }
+  adsSetSaveStatus("Salvando…", "ads-save-loading");
 
   try {
     const res = await adsFetch("/ads/acompanhamento", {
@@ -287,7 +498,6 @@ async function adsSalvarAcompanhamento() {
     adsAtualizarUpdatedAt(data.acompanhamento?.updatedAt);
     adsSetSaveStatus("Acompanhamento salvo", "ads-save-ok");
     setTimeout(() => adsLimparSaveStatus("ads-save-ok"), 2500);
-
   } catch (err) {
     console.warn("[ads] falha ao salvar:", err.message);
     adsSetSaveStatus(`Erro: ${err.message}`, "ads-save-error");
@@ -298,107 +508,7 @@ async function adsSalvarAcompanhamento() {
   }
 }
 
-// ─── Cards de resumo ──────────────────────────────────────────────────────────
-
-function adsRenderSummary() {
-  const grid = document.getElementById("ads-summary-grid");
-  if (!grid) return;
-  const dados = adsGetDadosFiltrados();
-
-  const totalInv  = dados.reduce((a, d) => a + d.investimentoAds, 0);
-  const totalGmv  = dados.reduce((a, d) => a + d.gmvAds, 0);
-  const roasVals  = dados.map((d) => d.roas).filter((v) => v > 0);
-  const roasMed   = roasVals.length ? roasVals.reduce((a, b) => a + b, 0) / roasVals.length : 0;
-  const totalFat  = dados.reduce((a, d) => a + d.faturamentoTotal, 0);
-  const tacosVals = dados.map((d) => d.tacos).filter((v) => v > 0);
-  const tacosMed  = tacosVals.length ? tacosVals.reduce((a, b) => a + b, 0) / tacosVals.length : 0;
-
-  const cards = [
-    {
-      label: "Investimento Ads",
-      value: adsFmtBRL(totalInv),
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
-      accent: "ads",
-    },
-    {
-      label: "GMV Ads",
-      value: adsFmtBRL(totalGmv),
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`,
-      accent: "ads",
-    },
-    {
-      label: "ROAS médio",
-      value: adsFmtNum(roasMed) + "x",
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
-      accent: "purple",
-    },
-    {
-      label: "Faturamento Total",
-      value: adsFmtBRL(totalFat),
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"/></svg>`,
-      accent: "purple",
-    },
-    {
-      label: "TACOS médio",
-      value: adsFmtPct(tacosMed),
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73L13 2.27a2 2 0 0 0-2 0L4 6.27A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`,
-      accent: tacosMed > 5 ? "danger" : tacosMed > 4 ? "warning" : "success",
-    },
-    {
-      label: "Feedbacks enviados",
-      value: String(dados.length * 4),
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
-      accent: "neutral",
-    },
-  ];
-
-  grid.innerHTML = cards.map((c) => `
-    <div class="ads-summary-card ads-summary-card--${adsEscape(c.accent)}">
-      <div class="ads-summary-icon">${c.icon}</div>
-      <div class="ads-summary-body">
-        <div class="ads-summary-value">${adsEscape(c.value)}</div>
-        <div class="ads-summary-label">${adsEscape(c.label)}</div>
-      </div>
-    </div>`).join("");
-}
-
-// ─── Tabela mensal ────────────────────────────────────────────────────────────
-
-function adsRenderTabela() {
-  const tbody = document.getElementById("ads-table-body");
-  const badge = document.getElementById("ads-table-total");
-  if (!tbody) return;
-
-  const dados = adsGetDadosFiltrados();
-  if (badge) { badge.textContent = String(dados.length); badge.style.display = "inline-block"; }
-
-  if (!dados.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Nenhum dado para o filtro selecionado.</td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = dados.map((d) => {
-    const st = adsStatusTacos(d.tacos);
-    const roasClass = d.roas >= 20 ? "ads-num-good" : d.roas >= 15 ? "" : "ads-num-warn";
-    return `
-      <tr>
-        <td class="ads-td-mes"><strong>${adsEscape(d.label)}</strong></td>
-        <td class="num ads-td-inv">${adsEscape(adsFmtBRL(d.investimentoAds))}</td>
-        <td class="num">${adsEscape(adsFmtBRL(d.gmvAds))}</td>
-        <td class="num ${roasClass}">${adsEscape(adsFmtNum(d.roas))}x</td>
-        <td class="num">${adsEscape(adsFmtBRL(d.faturamentoTotal))}</td>
-        <td class="num">
-          <span>${adsEscape(adsFmtBRL(d.canceladosValor))}</span>
-          ${d.canceladosPct > 0 ? `<span class="ads-td-pct">${adsEscape(adsFmtPct(d.canceladosPct))}</span>` : ""}
-        </td>
-        <td class="num">${adsEscape(adsFmtBRL(d.devolvidosValor))}</td>
-        <td class="num"><strong>${adsEscape(adsFmtPct(d.tacos))}</strong></td>
-        <td class="center"><span class="ads-badge ${adsEscape(st.cls)}">${adsEscape(st.label)}</span></td>
-      </tr>`;
-  }).join("");
-}
-
-// ─── Checklist semanal ────────────────────────────────────────────────────────
+// ─── Render: checklist semanal ────────────────────────────────────────────────
 
 function adsGetCheck(sem, idx) {
   const semKey  = `semana${sem}`;
@@ -487,50 +597,56 @@ function adsRenderChecklist() {
 // ─── Feedback para o cliente ──────────────────────────────────────────────────
 
 function adsGerarFeedback() {
-  const dados = adsGetDadosFiltrados();
+  let inv = 0, gmv = 0, roas = 0, cliques = 0, impressoes = 0, mesLabel = "período selecionado";
+  const mes = adsGetFiltroMes();
 
-  if (!dados.length) {
+  if (ADS_PERFORMANCE_ESTADO === "loaded" && ADS_PERFORMANCE_ATUAL) {
+    const d = ADS_PERFORMANCE_ATUAL;
+    inv        = d.investimentoAds;
+    gmv        = d.gmvAds;
+    roas       = d.roas;
+    cliques    = d.cliques;
+    impressoes = d.impressoes;
+    mesLabel   = ADS_MESES_LABELS[mes] || d.mesRef || mesLabel;
+  } else if (mes) {
+    const d  = ADS_MOCK_FALLBACK.find((m) => m.mes === mes);
+    if (d) { inv = d.investimentoAds; gmv = d.gmvAds; roas = d.roas; mesLabel = d.label; }
+  }
+
+  if (!inv && !gmv) {
     const ta = document.getElementById("ads-feedback-textarea");
     if (ta) ta.value = "Nenhum dado disponível para o período selecionado.";
-    ADS_FEEDBACK_ATUAL = ta ? ta.value : "";
+    ADS_FEEDBACK_ATUAL      = ta ? ta.value : "";
     ADS_HAS_UNSAVED_CHANGES = true;
     adsAtualizarSaveStatus();
     return;
   }
 
-  const d        = dados.length === 1 ? dados[0] : null;
-  const mesLabel = d ? d.label : "período selecionado";
-
-  const totalInv = dados.reduce((a, v) => a + v.investimentoAds, 0);
-  const totalGmv = dados.reduce((a, v) => a + v.gmvAds, 0);
-  const totalFat = dados.reduce((a, v) => a + v.faturamentoTotal, 0);
-  const roasMed  = dados.reduce((a, v) => a + v.roas, 0) / dados.length;
-  const tacosMed = dados.reduce((a, v) => a + v.tacos, 0) / dados.length;
-  const st       = adsStatusTacos(tacosMed);
-
+  const st = adsStatusRoas(roas);
   const linhas = [
     `📊 Relatório de Mercado Ads — ${mesLabel}`,
     ``,
-    `💰 Investimento em Ads: ${adsFmtBRL(totalInv)}`,
-    `📈 GMV gerado pelos Ads: ${adsFmtBRL(totalGmv)}`,
-    `🔁 ROAS médio: ${adsFmtNum(roasMed)}x`,
-    `🏪 Faturamento total da loja: ${adsFmtBRL(totalFat)}`,
-    `📌 TACOS médio: ${adsFmtPct(tacosMed)} (${st.label})`,
-    ``,
-    `✅ Análise:`,
+    `💰 Investimento em Ads: ${adsFmtBRL(inv)}`,
+    `📈 GMV gerado pelos Ads: ${adsFmtBRL(gmv)}`,
+    `🔁 ROAS: ${adsFmtNum(roas)}x`,
   ];
 
-  if (tacosMed <= 4) {
-    linhas.push(`Os investimentos em Ads estão bem calibrados. O TACOS de ${adsFmtPct(tacosMed)} está dentro da faixa saudável (até 4%), indicando boa eficiência de custo.`);
-  } else if (tacosMed <= 5) {
-    linhas.push(`O TACOS de ${adsFmtPct(tacosMed)} está em zona de atenção. Recomendamos revisão das campanhas de menor ROAS para otimizar o retorno.`);
-  } else {
-    linhas.push(`O TACOS de ${adsFmtPct(tacosMed)} está acima do ideal. É importante revisar os lances e pausar campanhas com ROAS abaixo de 10x para reduzir o custo proporcional.`);
+  if (cliques > 0)    linhas.push(`🖱️  Cliques: ${adsFmtInt(cliques)}`);
+  if (impressoes > 0) linhas.push(`👁️  Impressões: ${adsFmtInt(impressoes)}`);
+
+  linhas.push(``, `✅ Análise:`);
+
+  if (roas >= 20) {
+    linhas.push(`Os investimentos em Ads estão com excelente retorno. O ROAS de ${adsFmtNum(roas)}x indica alta eficiência das campanhas.`);
+  } else if (roas >= 15) {
+    linhas.push(`O ROAS de ${adsFmtNum(roas)}x está em zona de atenção. Recomendamos revisar campanhas de menor performance para otimizar o retorno.`);
+  } else if (roas > 0) {
+    linhas.push(`O ROAS de ${adsFmtNum(roas)}x está abaixo do ideal. É importante revisar os lances e pausar campanhas de baixo retorno.`);
   }
 
   linhas.push(``, `📌 Próximos passos:`);
   linhas.push(`- Revisar campanhas com ROAS abaixo da média`);
-  linhas.push(`- Acompanhar evolução dos cancelados e devolvidos`);
+  linhas.push(`- Acompanhar evolução do investimento vs. retorno`);
   linhas.push(`- Ajustar orçamento conforme sazonalidade`);
 
   const ta = document.getElementById("ads-feedback-textarea");
@@ -555,7 +671,17 @@ function adsCopiarFeedback() {
 // ─── Preencher selects ────────────────────────────────────────────────────────
 
 function adsFillSelects() {
-  // Campanhas (mockadas)
+  // Meses (todos os 12)
+  const selMes = document.getElementById("ads-filtro-mes");
+  if (selMes) {
+    const anoAtual = new Date().getFullYear();
+    selMes.innerHTML = `<option value="">Selecione o mês</option>` +
+      ADS_MESES_LABELS.slice(1).map((label, i) =>
+        `<option value="${i + 1}">${adsEscape(label)} / ${anoAtual}</option>`
+      ).join("");
+  }
+
+  // Campanhas (mockadas — sem vínculo com API ainda)
   const selCamp = document.getElementById("ads-filtro-campanha");
   if (selCamp) {
     selCamp.innerHTML = ADS_CAMPANHAS.map((c, i) =>
@@ -564,40 +690,47 @@ function adsFillSelects() {
   }
 
   // Período do checklist
-  const periodEl = document.getElementById("ads-checklist-period");
-  if (periodEl) {
-    const now = new Date();
-    periodEl.textContent = now.toLocaleDateString("pt-BR", { month: "short", year: "numeric" })
-      .replace(/^\w/, (c) => c.toUpperCase());
-  }
+  adsAtualizarPeriodoChecklist();
 
   // Cliente: populado por adsCarregarClientes() via fetch
 }
 
-// ─── Render completo (performance mockada) ────────────────────────────────────
-
-function adsRender() {
-  adsRenderSummary();
-  adsRenderTabela();
-  adsRenderChecklist();
+function adsAtualizarPeriodoChecklist() {
+  const periodEl = document.getElementById("ads-checklist-period");
+  if (!periodEl) return;
+  const mes = adsGetFiltroMes();
+  const ano = new Date().getFullYear();
+  if (!mes) {
+    periodEl.textContent = `— / ${ano}`;
+    return;
+  }
+  const d = new Date(ano, mes - 1, 1);
+  periodEl.textContent = d.toLocaleDateString("pt-BR", { month: "short", year: "numeric" })
+    .replace(/^\w/, (c) => c.toUpperCase());
 }
 
 // ─── Event listeners ─────────────────────────────────────────────────────────
 
 document.getElementById("ads-btn-atualizar")?.addEventListener("click", () => {
-  adsRender();
+  adsCarregarPerformance();
   adsCarregarAcompanhamento();
 });
+
 document.getElementById("ads-filtro-mes")?.addEventListener("change", () => {
-  adsRender();
+  adsAtualizarPeriodoChecklist();
+  adsCarregarPerformance();
   adsCarregarAcompanhamento();
 });
+
 document.getElementById("ads-filtro-cliente")?.addEventListener("change", () => {
+  adsCarregarPerformance();
   adsCarregarAcompanhamento();
 });
+
 document.getElementById("ads-filtro-campanha")?.addEventListener("change", () => {
   adsCarregarAcompanhamento();
 });
+
 document.getElementById("ads-btn-gerar")?.addEventListener("click", adsGerarFeedback);
 document.getElementById("ads-btn-copiar")?.addEventListener("click", adsCopiarFeedback);
 document.getElementById("ads-btn-salvar")?.addEventListener("click", adsSalvarAcompanhamento);
@@ -610,5 +743,6 @@ document.getElementById("ads-feedback-textarea")?.addEventListener("input", (e) 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 adsFillSelects();
-adsRender();
+adsRenderPerformance();
+adsRenderChecklist();
 adsCarregarClientes();

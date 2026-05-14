@@ -8,6 +8,7 @@ const {
   buscarResumoMensalAds,
   salvarResumoMensalAds,
 } = require("../services/adsService");
+const { buscarPerformanceML } = require("../services/ads/mlAdsService");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("../services/activityLogService");
 
 const MES_REF_REGEX = /^\d{4}-\d{2}$/;
@@ -210,10 +211,38 @@ async function putAdsResumoMensal(req, res) {
   }
 }
 
+// ─── Performance via API Mercado Livre Ads ────────────────────────────────────
+
+async function getAdsPerformance(req, res) {
+  try {
+    const clienteSlug = String(req.query.clienteSlug || "").trim();
+    const mes         = String(req.query.mes || "").trim();
+
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório." });
+    }
+    if (!mes || !MES_REF_REGEX.test(mes)) {
+      return res.status(400).json({ ok: false, erro: "mes é obrigatório no formato YYYY-MM." });
+    }
+
+    const result = await buscarPerformanceML(clienteSlug, mes);
+
+    if (result.semDados) {
+      return res.json({ ok: true, semDados: true, motivo: result.motivo });
+    }
+
+    return res.json({ ok: true, performance: result });
+  } catch (err) {
+    console.error("[getAdsPerformance]", err.message);
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+}
+
 module.exports = {
   getAdsClientes,
   getAdsAcompanhamento,
   putAdsAcompanhamento,
   getAdsResumoMensal,
   putAdsResumoMensal,
+  getAdsPerformance,
 };

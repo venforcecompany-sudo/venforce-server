@@ -48,12 +48,7 @@
           <div class="vf-form-group" style="margin:0;">
             <label for="ads-filtro-mes">Mês</label>
             <select id="ads-filtro-mes" class="vf-input">
-              <option value="">Todos</option>
-              <option value="1">Janeiro</option>
-              <option value="2">Fevereiro</option>
-              <option value="3">Março</option>
-              <option value="4">Abril</option>
-              <option value="5">Maio</option>
+              <option value="">Selecione o mês</option>
             </select>
           </div>
           <div class="vf-form-group" style="margin:0;">
@@ -62,6 +57,15 @@
               <option value="">Todas</option>
             </select>
           </div>
+        </div>
+      </div>
+
+      <!-- ── Banner: cliente sem dados de Ads ── -->
+      <div id="ads-sem-dados-banner" class="ads-sem-dados-banner" style="display:none;" role="alert">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div>
+          <strong>Cliente sem dados de Ads configurados</strong>
+          <p id="ads-sem-dados-motivo" style="margin:0;font-size:.85rem;opacity:.85;"></p>
         </div>
       </div>
 
@@ -85,10 +89,9 @@
                 <th class="num">Investimento Ads</th>
                 <th class="num">GMV Ads</th>
                 <th class="num">ROAS</th>
-                <th class="num">Faturamento Total</th>
-                <th class="num">Cancelados</th>
-                <th class="num">Devolvidos</th>
-                <th class="num">TACOS</th>
+                <th class="num">Cliques</th>
+                <th class="num">Impressões</th>
+                <th class="num">Vendas</th>
                 <th class="center">Status</th>
               </tr>
             </thead>
