@@ -56,7 +56,7 @@ async function resolverClienteToken(clienteSlug) {
 
 // ─── A) Resolver advertiser_id via endpoint correto ───────────────────────────
 // Endpoint confirmado: GET /advertising/advertisers?product_id=PADS
-// Retorna: { advertiser_id, site_id, advertiser_name, account_name }
+// Retorna: { advertisers: [{ advertiser_id, site_id, advertiser_name, account_name }] }
 
 async function resolverAdvertiser(clienteId) {
   const path = "/advertising/advertisers?product_id=PADS";
@@ -68,7 +68,25 @@ async function resolverAdvertiser(clienteId) {
     return { advertiser: null, httpStatus: null, erro: err.message };
   }
 
-  logMl(path, status, data);
+  // ── Logs diagnósticos (nunca imprime access_token) ──
+  console.log("[mlAds][advertisers] path=", path);
+  console.log("[mlAds][advertisers] status=", status);
+  console.log("[mlAds][advertisers] bodyKeys=", Object.keys(data || {}));
+  console.log(
+    "[mlAds][advertisers] advertisersLength=",
+    Array.isArray(data?.advertisers) ? data.advertisers.length : "not-array"
+  );
+  console.log(
+    "[mlAds][advertisers] firstAdvertiser=",
+    data?.advertisers?.[0]
+      ? {
+          advertiser_id:   data.advertisers[0].advertiser_id,
+          site_id:         data.advertisers[0].site_id,
+          advertiser_name: data.advertisers[0].advertiser_name,
+          account_name:    data.advertisers[0].account_name,
+        }
+      : null
+  );
 
   if (!ok) {
     if (status === 401 || status === 403) {
@@ -77,19 +95,35 @@ async function resolverAdvertiser(clienteId) {
     return { advertiser: null, httpStatus: status, apiData: data };
   }
 
-  // A resposta pode ser um objeto único ou um array
-  const raw = Array.isArray(data) ? data[0] : data;
-  if (!raw?.advertiser_id) {
-    console.warn(`[mlAds] ${path} → sem advertiser_id no body`);
+  // Parser: suporta body.advertisers (confirmado), body.results, ou array direto
+  const list =
+    Array.isArray(data?.advertisers) ? data.advertisers :
+    Array.isArray(data?.results)     ? data.results     :
+    Array.isArray(data)              ? data              :
+    [];
+
+  if (!list.length) {
+    console.warn(`[mlAds] ${path} → lista vazia após parse (bodyKeys=${Object.keys(data || {}).join(",")})`);
+    return { advertiser: null, httpStatus: status };
+  }
+
+  // Preferir advertiser com site_id === "MLB"; fallback para o primeiro
+  const chosen =
+    list.find((a) => String(a.site_id).toUpperCase() === "MLB") || list[0];
+
+  if (!chosen?.advertiser_id) {
+    console.warn(`[mlAds] ${path} → item sem advertiser_id:`, JSON.stringify(chosen));
     return { advertiser: null, httpStatus: status };
   }
 
   const advertiser = {
-    advertiserId:   String(raw.advertiser_id),
-    siteId:         String(raw.site_id || "MLB"),
-    advertiserName: raw.advertiser_name || raw.account_name || "",
+    advertiserId:   String(chosen.advertiser_id),
+    siteId:         String(chosen.site_id || "MLB"),
+    advertiserName: chosen.advertiser_name || chosen.account_name || "",
   };
-  console.log(`[mlAds] Advertiser resolvido: id=${advertiser.advertiserId} site=${advertiser.siteId} nome="${advertiser.advertiserName}"`);
+  console.log(
+    `[mlAds] Advertiser resolvido: id=${advertiser.advertiserId} site=${advertiser.siteId} nome="${advertiser.advertiserName}"`
+  );
   return { advertiser, httpStatus: status };
 }
 
