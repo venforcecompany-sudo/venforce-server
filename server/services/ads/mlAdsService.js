@@ -2,16 +2,12 @@
 const { mlFetch } = require("../../utils/mlClient");
 const pool = require("../../config/database");
 
-// ─── Códigos de erro para o frontend ─────────────────────────────────────────
-// NO_TOKEN           – cliente não tem token ML configurado
-// NO_ADVERTISER_FOUND – nenhum advertiser_id resolvido
-// NO_ADS_PERMISSION  – ML retornou 401/403 nos endpoints de Ads
-// ML_ADS_API_ERROR   – outro erro HTTP da API ML
-// NO_DATA_FOR_PERIOD – advertiser encontrado mas sem dados no período
-
-function semDados(codigo, motivo) {
-  return { semDados: true, codigo, motivo };
-}
+// ─── Códigos de retorno ───────────────────────────────────────────────────────
+// NO_TOKEN                  – cliente não tem token ML configurado
+// NO_ADVERTISER_FOUND       – /advertising/advertisers?product_id=PADS sem resultado
+// NO_ADS_PERMISSION         – 401/403 na API de Ads
+// ML_ADS_API_ERROR          – outro erro HTTP da API ML
+// NO_METRICS_ENDPOINT_MAPPED – advertiser e anúncios encontrados, endpoint de métricas ainda não mapeado
 
 // ─── Utilitários ──────────────────────────────────────────────────────────────
 
@@ -23,13 +19,13 @@ function mesRefToDateRange(mesRef) {
   return { from, to };
 }
 
-function logMlCall(path, status, body) {
+function logMl(path, status, body) {
   // Nunca imprime access_token; trunca body longo
-  const snippet = body ? JSON.stringify(body).slice(0, 300) : "(sem corpo)";
-  console.log(`[mlAds] GET ${path} → HTTP ${status} | body: ${snippet}`);
+  const snippet = body != null ? JSON.stringify(body).slice(0, 300) : "(sem corpo)";
+  console.log(`[mlAds] GET ${path} → HTTP ${status} | ${snippet}`);
 }
 
-// ─── Resolver cliente + ml_user_id direto do banco ───────────────────────────
+// ─── Resolver cliente + clienteId do banco ────────────────────────────────────
 
 async function resolverClienteToken(clienteSlug) {
   const result = await pool.query(
@@ -42,12 +38,11 @@ async function resolverClienteToken(clienteSlug) {
   );
 
   if (!result.rows.length) {
-    // Verifica se o cliente existe mas não tem token
-    const c = await pool.query(
+    const existe = await pool.query(
       "SELECT id FROM clientes WHERE slug = $1 AND ativo = true",
       [clienteSlug]
     );
-    if (!c.rows.length) throw new Error(`Cliente "${clienteSlug}" não encontrado.`);
+    if (!existe.rows.length) throw new Error(`Cliente "${clienteSlug}" não encontrado.`);
     const err = new Error("Cliente sem token Mercado Livre configurado.");
     err.adsCodigo = "NO_TOKEN";
     throw err;
@@ -59,120 +54,115 @@ async function resolverClienteToken(clienteSlug) {
   };
 }
 
-// ─── Descobrir advertiser_ids via API ML ──────────────────────────────────────
+// ─── A) Resolver advertiser_id via endpoint correto ───────────────────────────
+// Endpoint confirmado: GET /advertising/advertisers?product_id=PADS
+// Retorna: { advertiser_id, site_id, advertiser_name, account_name }
 
-async function descobrirAdvertiserIds(clienteId, mlUserId) {
-  const path = `/advertising/advertisers?user_id=${mlUserId}`;
+async function resolverAdvertiser(clienteId) {
+  const path = "/advertising/advertisers?product_id=PADS";
   let ok, status, data;
   try {
     ({ ok, status, data } = await mlFetch(clienteId, path));
   } catch (err) {
     console.warn(`[mlAds] Erro de rede em ${path}:`, err.message);
-    return { ids: [], httpStatus: null, apiData: null };
+    return { advertiser: null, httpStatus: null, erro: err.message };
   }
 
-  logMlCall(path, status, data);
+  logMl(path, status, data);
 
   if (!ok) {
-    return { ids: [], httpStatus: status, apiData: data };
+    if (status === 401 || status === 403) {
+      return { advertiser: null, httpStatus: status, permissionDenied: true };
+    }
+    return { advertiser: null, httpStatus: status, apiData: data };
+  }
+
+  // A resposta pode ser um objeto único ou um array
+  const raw = Array.isArray(data) ? data[0] : data;
+  if (!raw?.advertiser_id) {
+    console.warn(`[mlAds] ${path} → sem advertiser_id no body`);
+    return { advertiser: null, httpStatus: status };
+  }
+
+  const advertiser = {
+    advertiserId:   String(raw.advertiser_id),
+    siteId:         String(raw.site_id || "MLB"),
+    advertiserName: raw.advertiser_name || raw.account_name || "",
+  };
+  console.log(`[mlAds] Advertiser resolvido: id=${advertiser.advertiserId} site=${advertiser.siteId} nome="${advertiser.advertiserName}"`);
+  return { advertiser, httpStatus: status };
+}
+
+// ─── B) Listar campanhas ──────────────────────────────────────────────────────
+// GET /marketplace/advertising/{site_id}/advertisers/{advertiser_id}/product_ads/campaigns/search
+
+async function buscarCampanhas(clienteId, siteId, advertiserId, from, to) {
+  const path =
+    `/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search` +
+    `?limit=50&offset=0&date_from=${from}&date_to=${to}`;
+  let ok, status, data;
+  try {
+    ({ ok, status, data } = await mlFetch(clienteId, path));
+  } catch (err) {
+    console.warn(`[mlAds] Erro de rede em campanhas:`, err.message);
+    return [];
+  }
+
+  logMl(path, status, data);
+  if (!ok) {
+    console.warn(`[mlAds] Campanhas: HTTP ${status}`);
+    return [];
   }
 
   const list =
     data?.results ||
-    data?.advertisers ||
+    data?.campaigns ||
     (Array.isArray(data) ? data : []);
 
-  const ids = list
-    .map((a) => String(a.advertiser_id || a.id || "").trim())
-    .filter(Boolean);
-
-  console.log(`[mlAds] Anunciantes via API: [${ids.join(", ") || "nenhum"}]`);
-  return { ids, httpStatus: status, apiData: data };
+  console.log(`[mlAds] Campanhas encontradas: ${list.length}`);
+  return list;
 }
 
-// ─── Normalizar métricas (diferentes formatos de resposta da ML) ─────────────
+// ─── C) Listar itens/produtos anunciados ──────────────────────────────────────
+// GET /advertising/advertisers/{advertiser_id}/product_ads/items
 
-function normalizeMetrics(data) {
-  const items = Array.isArray(data?.results)
-    ? data.results
-    : Array.isArray(data?.data)
-    ? data.data
-    : Array.isArray(data)
-    ? data
-    : [];
-
-  if (items.length) {
-    return items.reduce(
-      (acc, item) => {
-        acc.cost    += Number(item.cost    || item.spend           || item.total_cost    || 0);
-        acc.clicks  += Number(item.clicks  || item.total_clicks    || 0);
-        acc.prints  += Number(item.prints  || item.impressions     || item.total_prints  || 0);
-        acc.revenue += Number(item.amount  || item.revenue         || item.direct_revenue || item.total_amount || 0);
-        acc.sales   += Number(item.quantity || item.orders         || item.units_sold    || 0);
-        return acc;
-      },
-      { cost: 0, clicks: 0, prints: 0, revenue: 0, sales: 0 }
-    );
+async function buscarItens(clienteId, advertiserId, from, to) {
+  const path =
+    `/advertising/advertisers/${advertiserId}/product_ads/items` +
+    `?date_from=${from}&date_to=${to}&limit=50&offset=0`;
+  let ok, status, data;
+  try {
+    ({ ok, status, data } = await mlFetch(clienteId, path));
+  } catch (err) {
+    console.warn(`[mlAds] Erro de rede em itens:`, err.message);
+    return [];
   }
 
-  // Resposta já agregada no nível raiz
-  return {
-    cost:    Number(data?.cost    || data?.total_cost  || 0),
-    clicks:  Number(data?.clicks  || 0),
-    prints:  Number(data?.prints  || data?.impressions || 0),
-    revenue: Number(data?.amount  || data?.revenue     || 0),
-    sales:   Number(data?.orders  || data?.quantity    || 0),
-  };
-}
-
-// ─── Buscar stats de um advertiser (com log explícito) ────────────────────────
-
-async function fetchAdvertiserStats(clienteId, advertiserId, from, to) {
-  const qs = `date_from=${from}&date_to=${to}`;
-  const endpoints = [
-    `/advertising/advertisers/${advertiserId}/ads_cost?${qs}`,
-    `/advertising/advertisers/${advertiserId}/campaigns/stats?${qs}`,
-  ];
-
-  let lastStatus = null;
-  let permissionDenied = false;
-
-  for (const path of endpoints) {
-    let ok, status, data;
-    try {
-      ({ ok, status, data } = await mlFetch(clienteId, path));
-    } catch (err) {
-      console.warn(`[mlAds] Erro de rede em ${path}:`, err.message);
-      continue;
-    }
-
-    logMlCall(path, status, data);
-    lastStatus = status;
-
-    if (status === 401 || status === 403) {
-      permissionDenied = true;
-      continue;
-    }
-
-    if (ok && data != null) {
-      console.log(`[mlAds] ✓ dados obtidos de ${path.split("?")[0]} para advertiser ${advertiserId}`);
-      return { metrics: normalizeMetrics(data), permissionDenied: false };
-    }
+  logMl(path, status, data);
+  if (!ok) {
+    console.warn(`[mlAds] Itens: HTTP ${status}`);
+    return [];
   }
 
-  return { metrics: null, permissionDenied, lastStatus };
+  const list =
+    data?.results ||
+    data?.ads ||
+    (Array.isArray(data) ? data : []);
+
+  console.log(`[mlAds] Itens encontrados: ${list.length}`);
+  return list;
 }
 
 // ─── Função principal ─────────────────────────────────────────────────────────
 
 async function buscarPerformanceML(clienteSlug, mesRef) {
-  // 1. Resolver cliente e ml_user_id do banco (sem chamar /users/me)
+  // 1. Resolver clienteId do banco
   let clienteId, mlUserId;
   try {
     ({ clienteId, mlUserId } = await resolverClienteToken(clienteSlug));
   } catch (err) {
     if (err.adsCodigo === "NO_TOKEN") {
-      return semDados("NO_TOKEN", err.message);
+      return { semDados: true, codigo: "NO_TOKEN", motivo: err.message };
     }
     throw err;
   }
@@ -182,86 +172,56 @@ async function buscarPerformanceML(clienteSlug, mesRef) {
   const { from, to } = mesRefToDateRange(mesRef);
   console.log(`[mlAds] período: ${from} → ${to}`);
 
-  // 2. Tentar descobrir advertiser_ids via API ML
-  const { ids: apiIds, httpStatus: advertisersStatus, apiData: advertisersData } =
-    await descobrirAdvertiserIds(clienteId, mlUserId);
+  // 2. Resolver advertiser_id via /advertising/advertisers?product_id=PADS
+  const { advertiser, httpStatus, permissionDenied, apiData } =
+    await resolverAdvertiser(clienteId);
 
-  // Montar lista de advertiser_ids a tentar:
-  // – IDs descobertos via API (se houver)
-  // – Fallback: mlUserId diretamente (no PAds do ML, seller_id == advertiser_id)
-  let advertiserIds = [...apiIds];
-  if (!advertiserIds.length) {
-    console.log(
-      `[mlAds] /advertising/advertisers retornou vazio (HTTP ${advertisersStatus}). ` +
-      `Tentando mlUserId=${mlUserId} como advertiser_id (fallback PAds).`
-    );
-    advertiserIds = [mlUserId];
+  if (!advertiser) {
+    if (permissionDenied) {
+      return {
+        semDados: true,
+        codigo: "NO_ADS_PERMISSION",
+        motivo: `Token ML sem permissão no endpoint de Ads (HTTP ${httpStatus}). Verifique se o escopo 'advertising' foi concedido no OAuth.`,
+      };
+    }
+    if (httpStatus && httpStatus >= 400) {
+      return {
+        semDados: true,
+        codigo: "ML_ADS_API_ERROR",
+        motivo: `API ML Ads retornou HTTP ${httpStatus}: ${JSON.stringify(apiData).slice(0, 200)}`,
+      };
+    }
+    return {
+      semDados: true,
+      codigo: "NO_ADVERTISER_FOUND",
+      motivo: `Nenhum advertiser PAds encontrado para este cliente (mlUserId=${mlUserId}). Verifique se há conta ativa no Mercado Ads.`,
+    };
   }
 
-  // 3. Buscar stats para cada advertiser_id
-  const results = await Promise.all(
-    advertiserIds.map((id) => fetchAdvertiserStats(clienteId, id, from, to))
+  const { advertiserId, siteId, advertiserName } = advertiser;
+
+  // 3. Buscar campanhas e itens em paralelo
+  const [campanhas, itens] = await Promise.all([
+    buscarCampanhas(clienteId, siteId, advertiserId, from, to),
+    buscarItens(clienteId, advertiserId, from, to),
+  ]);
+
+  // 4. Endpoint de métricas (investimento, GMV, ROAS, cliques, impressões)
+  //    ainda não mapeado com confirmação real — não inventar dados.
+  console.log(
+    `[mlAds] NO_METRICS_ENDPOINT_MAPPED — advertiser=${advertiserId} campanhas=${campanhas.length} itens=${itens.length}`
   );
 
-  let cost = 0, clicks = 0, prints = 0, revenue = 0, sales = 0;
-  let hasData = false;
-  let anyPermissionDenied = false;
-
-  for (const r of results) {
-    if (!r) continue;
-    if (r.permissionDenied) anyPermissionDenied = true;
-    if (!r.metrics) continue;
-    hasData = true;
-    cost    += r.metrics.cost;
-    clicks  += r.metrics.clicks;
-    prints  += r.metrics.prints;
-    revenue += r.metrics.revenue;
-    sales   += r.metrics.sales;
-  }
-
-  // 4. Interpretar resultado
-  if (!hasData) {
-    if (anyPermissionDenied) {
-      const msg =
-        advertisersStatus === 403 || advertisersStatus === 401
-          ? "Token ML não tem permissão para acessar ML Ads (403/401). Verifique se o escopo 'advertising' foi autorizado no OAuth."
-          : "Token ML sem permissão nos endpoints de performance de Ads.";
-      console.warn(`[mlAds] NO_ADS_PERMISSION — ${msg}`);
-      return semDados("NO_ADS_PERMISSION", msg);
-    }
-
-    // Se /advertising/advertisers retornou 4xx e não caiu em permissionDenied acima
-    if (advertisersStatus && advertisersStatus >= 400 && advertisersData) {
-      const msg = `API ML Ads retornou HTTP ${advertisersStatus} ao buscar anunciantes: ${JSON.stringify(advertisersData).slice(0, 200)}`;
-      console.warn(`[mlAds] ML_ADS_API_ERROR — ${msg}`);
-      return semDados("ML_ADS_API_ERROR", msg);
-    }
-
-    // API respondeu OK mas sem dados no período
-    if (apiIds.length > 0) {
-      return semDados("NO_DATA_FOR_PERIOD", `Anunciante(s) encontrado(s) mas sem dados no período ${from} → ${to}.`);
-    }
-
-    // Nenhum advertiser encontrado de jeito nenhum
-    return semDados(
-      "NO_ADVERTISER_FOUND",
-      `Nenhum advertiser_id encontrado para mlUserId=${mlUserId}. ` +
-      `Verifique se o cliente tem conta ativa no Mercado Ads.`
-    );
-  }
-
-  console.log(`[mlAds] ✓ performance agregada — cost=${cost} revenue=${revenue} clicks=${clicks}`);
-
   return {
-    source:          "ml_api",
-    clienteSlug,
-    mesRef,
-    investimentoAds: cost,
-    gmvAds:          revenue,
-    roas:            cost > 0 ? revenue / cost : 0,
-    cliques:         clicks,
-    impressoes:      prints,
-    vendas:          sales,
+    advertiserId,
+    siteId,
+    advertiserName,
+    mlUserId,
+    periodo: { from, to },
+    campanhas,
+    itens,
+    metricas: null,
+    codigo: "NO_METRICS_ENDPOINT_MAPPED",
   };
 }
 
