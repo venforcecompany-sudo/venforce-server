@@ -11,29 +11,12 @@ function getToken() {
 getToken();
 initLayout();
 
-// ─── Mock fallback (usado apenas se a API ML falhar) ──────────────────────────
-
-const ADS_MOCK_FALLBACK = [
-  { mes: 1,  label: "Janeiro",   investimentoAds: 6100,  gmvAds: 140900, roas: 23.10, cliques: 0, impressoes: 0, vendas: 0 },
-  { mes: 2,  label: "Fevereiro", investimentoAds: 4700,  gmvAds: 108800, roas: 23.15, cliques: 0, impressoes: 0, vendas: 0 },
-  { mes: 3,  label: "Março",     investimentoAds: 7700,  gmvAds: 117900, roas: 15.31, cliques: 0, impressoes: 0, vendas: 0 },
-  { mes: 4,  label: "Abril",     investimentoAds: 7700,  gmvAds: 146300, roas: 19.00, cliques: 0, impressoes: 0, vendas: 0 },
-  { mes: 5,  label: "Maio",      investimentoAds: 2300,  gmvAds:  43600, roas: 18.96, cliques: 0, impressoes: 0, vendas: 0 },
-  { mes: 6,  label: "Junho",     investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
-  { mes: 7,  label: "Julho",     investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
-  { mes: 8,  label: "Agosto",    investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
-  { mes: 9,  label: "Setembro",  investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
-  { mes: 10, label: "Outubro",   investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
-  { mes: 11, label: "Novembro",  investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
-  { mes: 12, label: "Dezembro",  investimentoAds: 0,     gmvAds: 0,      roas: 0,     cliques: 0, impressoes: 0, vendas: 0 },
-];
+// ─── Constantes ───────────────────────────────────────────────────────────────
 
 const ADS_MESES_LABELS = [
   "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
-
-const ADS_CAMPANHAS = ["Todas", "Campanha Geral", "Produtos Premium", "Liquidação"];
 
 const ADS_CHECKLIST_ITEMS = [
   "Dados de Ads conferidos",
@@ -53,6 +36,8 @@ const ADS_CHECKLIST_KEYS = [
   "clienteRespondeu",
 ];
 
+const ANUNCIOS_PAGE_SIZE = 25;
+
 // ─── Estado ───────────────────────────────────────────────────────────────────
 
 let ADS_CLIENTES_LISTA       = [];
@@ -62,9 +47,14 @@ let ADS_FEEDBACK_ATUAL       = "";
 let ADS_HAS_UNSAVED_CHANGES  = false;
 let ADS_SAVING               = false;
 
-// "idle" | "loading" | "loaded" | "sem_dados" | "fallback" | "error"
+// "idle" | "loading" | "loaded" | "sem_dados" | "error"
 let ADS_PERFORMANCE_ESTADO = "idle";
-let ADS_PERFORMANCE_ATUAL  = null; // dados reais da API
+let ADS_PERFORMANCE_ATUAL  = null; // dados reais da API ML
+let ADS_ANUNCIOS_PAGE      = 1;
+
+// Resumo mensal gerencial salvo manualmente (faturamentoTotal, cancelados, devolvidos, tacos)
+// Vem do endpoint GET /ads/resumo-mensal e é totalmente separado da performance Mercado Ads.
+let ADS_RESUMO_MENSAL_ATUAL = null;
 
 // ─── Helpers de formatação ────────────────────────────────────────────────────
 
@@ -72,30 +62,73 @@ function adsFmtBRL(n) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(n) || 0);
 }
 function adsFmtNum(n, decimals = 2) {
-  return Number(n).toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "0,00";
+  return v.toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 function adsFmtPct(n, decimals = 2) {
   return adsFmtNum(n, decimals) + "%";
 }
 function adsFmtInt(n) {
-  return Number(n).toLocaleString("pt-BR");
+  return (Number(n) || 0).toLocaleString("pt-BR");
 }
 function adsEscape(s) {
   const d = document.createElement("div");
   d.textContent = String(s ?? "");
   return d.innerHTML;
 }
+function adsTruncar(s, max = 70) {
+  const str = String(s || "");
+  return str.length > max ? str.slice(0, max - 1) + "…" : str;
+}
 
 // ─── Status baseado em ROAS ───────────────────────────────────────────────────
 
 function adsStatusRoas(roas) {
-  if (roas >= 20) return { label: "Saudável", cls: "ads-badge-success" };
-  if (roas >= 15) return { label: "Atenção",  cls: "ads-badge-warning" };
-  if (roas >   0) return { label: "Crítico",  cls: "ads-badge-danger"  };
+  const r = Number(roas) || 0;
+  if (r >= 20) return { label: "Saudável", cls: "ads-badge-success" };
+  if (r >= 15) return { label: "Atenção",  cls: "ads-badge-warning" };
+  if (r >   0) return { label: "Crítico",  cls: "ads-badge-danger"  };
   return                  { label: "—",        cls: ""                  };
 }
 
-// ─── Filtros ──────────────────────────────────────────────────────────────────
+function adsStatusAnuncio(a) {
+  const st = String(a.status || "").toLowerCase();
+  if (st === "active")  return { label: "Ativo",   cls: "ads-badge-success" };
+  if (st === "paused")  return { label: "Pausado", cls: "ads-badge-warning" };
+  if (st === "idle")    return { label: "Inativo", cls: "ads-badge-danger"  };
+  return                       { label: st || "—",  cls: ""                  };
+}
+
+// ─── TACOS — só faz sentido se houver faturamento total da loja ──────────────
+// ACOS  = investimentoAds / gmvAds * 100        (vem/é calculado da API Mercado Ads)
+// TACOS = investimentoAds / faturamentoTotal * 100  (faturamentoTotal é dado gerencial,
+//         vem de /ads/resumo-mensal salvo manualmente — NUNCA da API Mercado Ads)
+function adsTacosCalculado() {
+  const perf = adsPerformanceFiltrada();
+  const fat  = Number(ADS_RESUMO_MENSAL_ATUAL?.faturamentoTotal) || 0;
+  if (!fat || fat <= 0) {
+    return { tacos: null, faturamentoTotal: 0, semFaturamento: true };
+  }
+  const tacos = (Number(perf.investimentoAds) || 0) / fat * 100;
+  return {
+    tacos: Math.round(tacos * 100) / 100,
+    faturamentoTotal: fat,
+    semFaturamento: false,
+  };
+}
+
+function adsStatusTacos(t) {
+  if (t === null || t === undefined || !Number.isFinite(Number(t))) {
+    return { label: "Sem dados", cls: "" };
+  }
+  const v = Number(t);
+  if (v <= 4) return { label: "Saudável", cls: "ads-badge-success" };
+  if (v <= 5) return { label: "Atenção",  cls: "ads-badge-warning" };
+  return            { label: "Crítico",  cls: "ads-badge-danger"  };
+}
+
+// ─── Leitura dos filtros ──────────────────────────────────────────────────────
 
 function adsGetFiltroMes() {
   const sel = document.getElementById("ads-filtro-mes");
@@ -161,11 +194,14 @@ async function adsCarregarPerformance() {
   if (!clienteSlug || !mes) {
     ADS_PERFORMANCE_ATUAL  = null;
     ADS_PERFORMANCE_ESTADO = "idle";
+    ADS_ANUNCIOS_PAGE = 1;
     adsRenderPerformance();
+    adsPopularCampanhasSelect([]);
     return;
   }
 
   ADS_PERFORMANCE_ESTADO = "loading";
+  ADS_ANUNCIOS_PAGE = 1;
   adsRenderPerformance();
 
   try {
@@ -180,17 +216,41 @@ async function adsCarregarPerformance() {
       ADS_PERFORMANCE_ESTADO = "sem_dados";
       const motEl = document.getElementById("ads-sem-dados-motivo");
       if (motEl) motEl.textContent = data.motivo || "";
+      adsPopularCampanhasSelect([]);
     } else {
       ADS_PERFORMANCE_ATUAL  = data.performance;
       ADS_PERFORMANCE_ESTADO = "loaded";
+      adsPopularCampanhasSelect(data.performance?.campanhas || []);
     }
   } catch (err) {
-    console.warn("[ads] falha ao carregar performance, usando fallback:", err.message);
+    console.warn("[ads] falha ao carregar performance:", err.message);
     ADS_PERFORMANCE_ATUAL  = null;
-    ADS_PERFORMANCE_ESTADO = "fallback";
+    ADS_PERFORMANCE_ESTADO = "error";
+    const motEl = document.getElementById("ads-sem-dados-motivo");
+    if (motEl) motEl.textContent = `Erro ao consultar a API: ${err.message}`;
+    adsPopularCampanhasSelect([]);
   }
 
   adsRenderPerformance();
+}
+
+// ─── Popular select de campanhas a partir da resposta ─────────────────────────
+
+function adsPopularCampanhasSelect(campanhas) {
+  const sel = document.getElementById("ads-filtro-campanha");
+  if (!sel) return;
+  const atual = sel.value;
+  const ordenadas = [...campanhas].sort((a, b) => (b.investimentoAds || 0) - (a.investimentoAds || 0));
+  sel.innerHTML = `<option value="">Todas</option>` +
+    ordenadas.map((c) =>
+      `<option value="${adsEscape(c.campaignId)}">Campanha ${adsEscape(c.campaignId)} — ${adsFmtBRL(c.investimentoAds)}</option>`
+    ).join("");
+  // Tenta restaurar a seleção anterior se ainda existir
+  if (atual && ordenadas.some((c) => String(c.campaignId) === atual)) {
+    sel.value = atual;
+  } else {
+    sel.value = "";
+  }
 }
 
 // ─── Render: banner sem dados ─────────────────────────────────────────────────
@@ -198,7 +258,8 @@ async function adsCarregarPerformance() {
 function adsRenderBanner() {
   const banner = document.getElementById("ads-sem-dados-banner");
   if (!banner) return;
-  banner.style.display = ADS_PERFORMANCE_ESTADO === "sem_dados" ? "flex" : "none";
+  const mostrar = ADS_PERFORMANCE_ESTADO === "sem_dados" || ADS_PERFORMANCE_ESTADO === "error";
+  banner.style.display = mostrar ? "flex" : "none";
 }
 
 // ─── Render: cards de resumo ──────────────────────────────────────────────────
@@ -212,22 +273,15 @@ function adsRenderSummary() {
     return;
   }
   if (ADS_PERFORMANCE_ESTADO === "loading") {
-    grid.innerHTML = `<div class="ads-performance-empty">Carregando dados da API Mercado Livre Ads…</div>`;
+    grid.innerHTML = `<div class="ads-performance-empty">Carregando dados da API Mercado Ads…</div>`;
     return;
   }
-  if (ADS_PERFORMANCE_ESTADO === "sem_dados") {
+  if (ADS_PERFORMANCE_ESTADO === "sem_dados" || ADS_PERFORMANCE_ESTADO === "error") {
     grid.innerHTML = "";
     return;
   }
 
-  let d;
-  if (ADS_PERFORMANCE_ESTADO === "loaded" && ADS_PERFORMANCE_ATUAL) {
-    d = ADS_PERFORMANCE_ATUAL;
-  } else {
-    // fallback: mock para o mês selecionado
-    const mesNum = adsGetFiltroMes();
-    d = ADS_MOCK_FALLBACK.find((m) => m.mes === mesNum) || ADS_MOCK_FALLBACK[0];
-  }
+  const d = adsPerformanceFiltrada();
 
   const cards = [
     {
@@ -246,8 +300,34 @@ function adsRenderSummary() {
       label: "ROAS",
       value: adsFmtNum(d.roas) + "x",
       icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
-      accent: d.roas >= 20 ? "success" : d.roas >= 15 ? "warning" : "danger",
+      accent: d.roas >= 20 ? "success" : d.roas >= 15 ? "warning" : (d.roas > 0 ? "danger" : "neutral"),
     },
+    {
+      label: "ACOS",
+      value: adsFmtPct(d.acos),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 15l6-6"/><circle cx="9.5" cy="9.5" r="1"/><circle cx="14.5" cy="14.5" r="1"/></svg>`,
+      accent: d.acos > 0 && d.acos <= 5 ? "success" : d.acos <= 8 ? "warning" : (d.acos > 0 ? "danger" : "neutral"),
+      hint:   "Investimento Ads ÷ GMV Ads",
+    },
+    (function () {
+      const t = adsTacosCalculado();
+      if (t.semFaturamento) {
+        return {
+          label:  "TACOS",
+          value:  "—",
+          icon:   `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>`,
+          accent: "neutral",
+          hint:   "Informe o faturamento total em Resumo Mensal",
+        };
+      }
+      return {
+        label:  "TACOS",
+        value:  adsFmtPct(t.tacos),
+        icon:   `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>`,
+        accent: t.tacos <= 4 ? "success" : t.tacos <= 5 ? "warning" : "danger",
+        hint:   `Investimento Ads ÷ Faturamento Total (${adsFmtBRL(t.faturamentoTotal)})`,
+      };
+    })(),
     {
       label: "Cliques",
       value: adsFmtInt(d.cliques),
@@ -261,15 +341,21 @@ function adsRenderSummary() {
       accent: "neutral",
     },
     {
-      label: "Vendas via Ads",
-      value: adsFmtInt(d.vendas),
+      label: "CTR",
+      value: adsFmtPct(d.ctr),
+      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`,
+      accent: "neutral",
+    },
+    {
+      label: "Anúncios c/ venda",
+      value: `${adsFmtInt(d.vendas)} / ${adsFmtInt(d.totalAnuncios)}`,
       icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
       accent: "purple",
     },
   ];
 
   grid.innerHTML = cards.map((c) => `
-    <div class="ads-summary-card ads-summary-card--${adsEscape(c.accent)}">
+    <div class="ads-summary-card ads-summary-card--${adsEscape(c.accent)}"${c.hint ? ` title="${adsEscape(c.hint)}"` : ""}>
       <div class="ads-summary-icon">${c.icon}</div>
       <div class="ads-summary-body">
         <div class="ads-summary-value">${adsEscape(c.value)}</div>
@@ -287,63 +373,257 @@ function adsRenderTabela() {
 
   if (ADS_PERFORMANCE_ESTADO === "idle") {
     if (badge) badge.style.display = "none";
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Selecione um cliente e mês para ver a performance.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Selecione um cliente e mês para ver a performance.</td></tr>`;
     return;
   }
   if (ADS_PERFORMANCE_ESTADO === "loading") {
     if (badge) badge.style.display = "none";
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Carregando…</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Carregando…</td></tr>`;
     return;
   }
-  if (ADS_PERFORMANCE_ESTADO === "sem_dados") {
+  if (ADS_PERFORMANCE_ESTADO === "sem_dados" || ADS_PERFORMANCE_ESTADO === "error") {
     if (badge) badge.style.display = "none";
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Sem dados de Ads para este cliente.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Sem dados de Ads para este cliente.</td></tr>`;
     return;
   }
 
-  let rows;
-  if (ADS_PERFORMANCE_ESTADO === "loaded" && ADS_PERFORMANCE_ATUAL) {
-    const d   = ADS_PERFORMANCE_ATUAL;
-    const mes = adsGetFiltroMes();
-    const label = ADS_MESES_LABELS[mes] || d.mesRef || "—";
-    const st  = adsStatusRoas(d.roas);
-    rows = [`
-      <tr>
-        <td class="ads-td-mes"><strong>${adsEscape(label)}</strong></td>
-        <td class="num ads-td-inv">${adsEscape(adsFmtBRL(d.investimentoAds))}</td>
-        <td class="num">${adsEscape(adsFmtBRL(d.gmvAds))}</td>
-        <td class="num ${d.roas >= 20 ? "ads-num-good" : d.roas >= 15 ? "" : "ads-num-warn"}">${adsEscape(adsFmtNum(d.roas))}x</td>
-        <td class="num">${adsEscape(adsFmtInt(d.cliques))}</td>
-        <td class="num">${adsEscape(adsFmtInt(d.impressoes))}</td>
-        <td class="num">${d.vendas > 0 ? adsEscape(adsFmtInt(d.vendas)) : "—"}</td>
-        <td class="center"><span class="ads-badge ${adsEscape(st.cls)}">${adsEscape(st.label)}</span></td>
-      </tr>`];
-  } else {
-    // fallback mock: mês selecionado ou todos
-    const mesNum = adsGetFiltroMes();
-    const dados  = mesNum
-      ? ADS_MOCK_FALLBACK.filter((d) => d.mes === mesNum)
-      : ADS_MOCK_FALLBACK.filter((d) => d.investimentoAds > 0);
-    rows = dados.map((d) => {
-      const st = adsStatusRoas(d.roas);
-      return `
-        <tr>
-          <td class="ads-td-mes"><strong>${adsEscape(d.label)}</strong></td>
-          <td class="num ads-td-inv">${adsEscape(adsFmtBRL(d.investimentoAds))}</td>
-          <td class="num">${adsEscape(adsFmtBRL(d.gmvAds))}</td>
-          <td class="num ${d.roas >= 20 ? "ads-num-good" : d.roas >= 15 ? "" : "ads-num-warn"}">${adsEscape(adsFmtNum(d.roas))}x</td>
-          <td class="num">—</td>
-          <td class="num">—</td>
-          <td class="num">—</td>
-          <td class="center"><span class="ads-badge ${adsEscape(st.cls)}">${adsEscape(st.label)}</span></td>
-        </tr>`;
+  const d   = adsPerformanceFiltrada();
+  const mes = adsGetFiltroMes();
+  const label = ADS_MESES_LABELS[mes] || d.mesRef || "—";
+  const st  = adsStatusRoas(d.roas);
+
+  const linha = `
+    <tr>
+      <td class="ads-td-mes"><strong>${adsEscape(label)}</strong></td>
+      <td class="num ads-td-inv">${adsEscape(adsFmtBRL(d.investimentoAds))}</td>
+      <td class="num">${adsEscape(adsFmtBRL(d.gmvAds))}</td>
+      <td class="num ${d.roas >= 20 ? "ads-num-good" : d.roas >= 15 ? "" : (d.roas > 0 ? "ads-num-warn" : "")}">${adsEscape(adsFmtNum(d.roas))}x</td>
+      <td class="num">${adsEscape(adsFmtPct(d.acos))}</td>
+      <td class="num">${adsEscape(adsFmtInt(d.cliques))}</td>
+      <td class="num">${adsEscape(adsFmtInt(d.impressoes))}</td>
+      <td class="num">${d.vendas > 0 ? adsEscape(adsFmtInt(d.vendas)) : "—"}</td>
+      <td class="center"><span class="ads-badge ${adsEscape(st.cls)}">${adsEscape(st.label)}</span></td>
+    </tr>`;
+
+  if (badge) { badge.textContent = "1"; badge.style.display = "inline-block"; }
+  tbody.innerHTML = linha;
+}
+
+// ─── Recalcular performance considerando filtro de campanha ──────────────────
+
+function adsPerformanceFiltrada() {
+  if (!ADS_PERFORMANCE_ATUAL) {
+    return {
+      mesRef: "", investimentoAds: 0, gmvAds: 0, gmvDireto: 0, gmvIndireto: 0,
+      roas: 0, acos: 0, ctr: 0, cpc: 0,
+      cliques: 0, impressoes: 0, vendas: 0,
+      totalAnuncios: 0,
+    };
+  }
+
+  const campanhaFiltro = adsGetLojaCampanha();
+  if (!campanhaFiltro || campanhaFiltro === "todas" || campanhaFiltro === "Todas") {
+    return ADS_PERFORMANCE_ATUAL;
+  }
+
+  // Filtra os anúncios por campanha e recalcula agregados
+  const anuncios = (ADS_PERFORMANCE_ATUAL.anuncios || [])
+    .filter((a) => String(a.campaignId) === String(campanhaFiltro));
+
+  return adsAgregarAnuncios(anuncios, ADS_PERFORMANCE_ATUAL.mesRef);
+}
+
+function adsAgregarAnuncios(anuncios, mesRef) {
+  let cost = 0, gmv = 0, gmvDir = 0, gmvInd = 0, clicks = 0, prints = 0, vendas = 0;
+  for (const a of anuncios) {
+    const m = a.metrics || {};
+    cost   += Number(m.cost)           || 0;
+    gmv    += Number(m.totalAmount)    || 0;
+    gmvDir += Number(m.directAmount)   || 0;
+    gmvInd += Number(m.indirectAmount) || 0;
+    clicks += Number(m.clicks)         || 0;
+    prints += Number(m.prints)         || 0;
+    if ((Number(m.totalAmount) || 0) > 0) vendas += 1;
+  }
+  const roas = cost   > 0 ? gmv / cost : 0;
+  const acos = gmv    > 0 ? (cost / gmv) * 100 : 0;
+  const ctr  = prints > 0 ? (clicks / prints) * 100 : 0;
+  const cpc  = clicks > 0 ? cost / clicks : 0;
+  return {
+    mesRef: mesRef || "",
+    investimentoAds: Math.round(cost  * 100) / 100,
+    gmvAds:          Math.round(gmv   * 100) / 100,
+    gmvDireto:       Math.round(gmvDir * 100) / 100,
+    gmvIndireto:     Math.round(gmvInd * 100) / 100,
+    roas:            Math.round(roas  * 100) / 100,
+    acos:            Math.round(acos  * 100) / 100,
+    ctr:             Math.round(ctr * 10000) / 10000,
+    cpc:             Math.round(cpc   * 100) / 100,
+    cliques: clicks, impressoes: prints, vendas,
+    totalAnuncios: anuncios.length,
+  };
+}
+
+// ─── Render: tabela de anúncios ───────────────────────────────────────────────
+
+function adsAnunciosFiltradosOrdenados() {
+  if (!ADS_PERFORMANCE_ATUAL || !Array.isArray(ADS_PERFORMANCE_ATUAL.anuncios)) return [];
+  let lista = ADS_PERFORMANCE_ATUAL.anuncios.slice();
+
+  // Filtro por campanha
+  const campanhaFiltro = adsGetLojaCampanha();
+  if (campanhaFiltro && campanhaFiltro !== "todas" && campanhaFiltro !== "Todas") {
+    lista = lista.filter((a) => String(a.campaignId) === String(campanhaFiltro));
+  }
+
+  // Filtro por busca textual
+  const buscaEl = document.getElementById("ads-anuncios-busca");
+  const busca = buscaEl ? buscaEl.value.trim().toLowerCase() : "";
+  if (busca) {
+    lista = lista.filter((a) => {
+      const titulo = String(a.title || "").toLowerCase();
+      const mlb    = String(a.itemId || "").toLowerCase();
+      const marca  = String(a.brandValueName || "").toLowerCase();
+      return titulo.includes(busca) || mlb.includes(busca) || marca.includes(busca);
     });
   }
 
-  if (badge) { badge.textContent = String(rows.length); badge.style.display = "inline-block"; }
-  tbody.innerHTML = rows.length
-    ? rows.join("")
-    : `<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Nenhum dado para o filtro selecionado.</td></tr>`;
+  // Filtro por status
+  const statusEl = document.getElementById("ads-anuncios-status");
+  const status = statusEl ? statusEl.value : "";
+  if (status === "active" || status === "paused" || status === "idle") {
+    lista = lista.filter((a) => String(a.status || "").toLowerCase() === status);
+  } else if (status === "sold") {
+    lista = lista.filter((a) => (a.metrics?.totalAmount || 0) > 0);
+  }
+
+  // Ordenação
+  const ordenarEl = document.getElementById("ads-anuncios-ordenar");
+  const ordenar = ordenarEl ? ordenarEl.value : "cost_desc";
+  const cmp = {
+    cost_desc:   (a, b) => (b.metrics?.cost        || 0) - (a.metrics?.cost        || 0),
+    gmv_desc:    (a, b) => (b.metrics?.totalAmount || 0) - (a.metrics?.totalAmount || 0),
+    roas_desc:   (a, b) => (b.metrics?.roas        || 0) - (a.metrics?.roas        || 0),
+    acos_desc:   (a, b) => (b.metrics?.acos        || 0) - (a.metrics?.acos        || 0),
+    clicks_desc: (a, b) => (b.metrics?.clicks      || 0) - (a.metrics?.clicks      || 0),
+    prints_desc: (a, b) => (b.metrics?.prints      || 0) - (a.metrics?.prints      || 0),
+  }[ordenar] || ((a, b) => (b.metrics?.cost || 0) - (a.metrics?.cost || 0));
+
+  lista.sort(cmp);
+  return lista;
+}
+
+function adsRenderAnuncios() {
+  const tbody = document.getElementById("ads-anuncios-body");
+  const total = document.getElementById("ads-anuncios-total");
+  const pager = document.getElementById("ads-anuncios-pager");
+  if (!tbody) return;
+
+  if (ADS_PERFORMANCE_ESTADO === "idle") {
+    if (total) total.style.display = "none";
+    if (pager) pager.innerHTML = "";
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Selecione um cliente e mês para ver os anúncios.</td></tr>`;
+    return;
+  }
+  if (ADS_PERFORMANCE_ESTADO === "loading") {
+    if (total) total.style.display = "none";
+    if (pager) pager.innerHTML = "";
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Carregando anúncios da API Mercado Ads…</td></tr>`;
+    return;
+  }
+  if (ADS_PERFORMANCE_ESTADO === "sem_dados" || ADS_PERFORMANCE_ESTADO === "error") {
+    if (total) total.style.display = "none";
+    if (pager) pager.innerHTML = "";
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Sem anúncios para este cliente/período.</td></tr>`;
+    return;
+  }
+
+  const lista = adsAnunciosFiltradosOrdenados();
+
+  if (total) {
+    total.textContent   = String(lista.length);
+    total.style.display = "inline-block";
+  }
+
+  if (!lista.length) {
+    if (pager) pager.innerHTML = "";
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:2rem;color:var(--vf-text-m);">Nenhum anúncio para o filtro selecionado.</td></tr>`;
+    return;
+  }
+
+  const totalPag = Math.max(1, Math.ceil(lista.length / ANUNCIOS_PAGE_SIZE));
+  if (ADS_ANUNCIOS_PAGE > totalPag) ADS_ANUNCIOS_PAGE = totalPag;
+  if (ADS_ANUNCIOS_PAGE < 1) ADS_ANUNCIOS_PAGE = 1;
+
+  const ini = (ADS_ANUNCIOS_PAGE - 1) * ANUNCIOS_PAGE_SIZE;
+  const fim = ini + ANUNCIOS_PAGE_SIZE;
+  const pagina = lista.slice(ini, fim);
+
+  tbody.innerHTML = pagina.map((a) => {
+    const m = a.metrics || {};
+    const st = adsStatusAnuncio(a);
+    const roasCls = (m.roas >= 20) ? "ads-num-good" : (m.roas >= 15 ? "" : (m.roas > 0 ? "ads-num-warn" : ""));
+    const acosCls = (m.acos > 0 && m.acos <= 5) ? "ads-num-good" : (m.acos <= 8 && m.acos > 0 ? "" : (m.acos > 0 ? "ads-num-warn" : ""));
+    const thumb = a.thumbnail
+      ? `<img class="ads-anuncio-thumb" src="${adsEscape(a.thumbnail.replace(/^http:/i, "https:"))}" alt="" loading="lazy" onerror="this.style.display='none'">`
+      : `<div class="ads-anuncio-thumb ads-anuncio-thumb--ph"></div>`;
+    const linkBtn = a.permalink
+      ? `<a href="${adsEscape(a.permalink)}" target="_blank" rel="noopener" class="ads-anuncio-link" title="Abrir no Mercado Livre">
+           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+         </a>`
+      : "—";
+
+    return `
+      <tr>
+        <td class="ads-col-anuncio">
+          <div class="ads-anuncio-cell">
+            ${thumb}
+            <div class="ads-anuncio-info">
+              <div class="ads-anuncio-titulo">${adsEscape(adsTruncar(a.title, 80))}</div>
+              <div class="ads-anuncio-meta">
+                <span class="ads-anuncio-mlb">${adsEscape(a.itemId || "—")}</span>
+                ${a.brandValueName ? `<span class="ads-anuncio-marca">${adsEscape(a.brandValueName)}</span>` : ""}
+                ${a.price ? `<span class="ads-anuncio-preco">${adsEscape(adsFmtBRL(a.price))}</span>` : ""}
+              </div>
+            </div>
+          </div>
+        </td>
+        <td class="num ads-td-inv">${adsEscape(adsFmtBRL(m.cost))}</td>
+        <td class="num">${adsEscape(adsFmtBRL(m.totalAmount))}</td>
+        <td class="num ${roasCls}">${m.roas > 0 ? adsEscape(adsFmtNum(m.roas)) + "x" : "—"}</td>
+        <td class="num ${acosCls}">${m.acos > 0 ? adsEscape(adsFmtPct(m.acos)) : "—"}</td>
+        <td class="num">${adsEscape(adsFmtInt(m.clicks))}</td>
+        <td class="num">${adsEscape(adsFmtInt(m.prints))}</td>
+        <td class="num">${m.ctr > 0 ? adsEscape(adsFmtPct(m.ctr)) : "—"}</td>
+        <td class="num">${m.cpc > 0 ? adsEscape(adsFmtBRL(m.cpc)) : "—"}</td>
+        <td class="center"><span class="ads-badge ${adsEscape(st.cls)}">${adsEscape(st.label)}</span></td>
+        <td class="center">${linkBtn}</td>
+      </tr>`;
+  }).join("");
+
+  // Pager
+  if (pager) {
+    if (totalPag <= 1) {
+      pager.innerHTML = `<div class="ads-pager-info">Mostrando ${lista.length} de ${lista.length}</div>`;
+    } else {
+      const inicio = ini + 1;
+      const fimReal = Math.min(fim, lista.length);
+      pager.innerHTML = `
+        <div class="ads-pager-info">Mostrando ${inicio}–${fimReal} de ${lista.length}</div>
+        <div class="ads-pager-controls">
+          <button type="button" class="vf-btn-secondary ads-pager-btn" data-action="prev" ${ADS_ANUNCIOS_PAGE === 1 ? "disabled" : ""}>‹ Anterior</button>
+          <span class="ads-pager-page">Página ${ADS_ANUNCIOS_PAGE} de ${totalPag}</span>
+          <button type="button" class="vf-btn-secondary ads-pager-btn" data-action="next" ${ADS_ANUNCIOS_PAGE === totalPag ? "disabled" : ""}>Próxima ›</button>
+        </div>`;
+      pager.querySelectorAll(".ads-pager-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (btn.dataset.action === "prev" && ADS_ANUNCIOS_PAGE > 1) ADS_ANUNCIOS_PAGE -= 1;
+          if (btn.dataset.action === "next" && ADS_ANUNCIOS_PAGE < totalPag) ADS_ANUNCIOS_PAGE += 1;
+          adsRenderAnuncios();
+        });
+      });
+    }
+  }
 }
 
 // ─── Render unificado de performance ─────────────────────────────────────────
@@ -352,6 +632,36 @@ function adsRenderPerformance() {
   adsRenderBanner();
   adsRenderSummary();
   adsRenderTabela();
+  adsRenderAnuncios();
+}
+
+// ─── Resumo mensal gerencial (faturamento, cancelados, devolvidos, TACOS) ─────
+// Independente da API Mercado Ads. Lê dados salvos manualmente em /ads/resumo-mensal.
+
+async function adsCarregarResumoMensal() {
+  const clienteSlug = adsGetClienteSlug();
+  const mes         = adsGetFiltroMesRef();
+
+  if (!clienteSlug || !mes) {
+    ADS_RESUMO_MENSAL_ATUAL = null;
+    adsRenderPerformance();
+    return;
+  }
+
+  try {
+    const params = new URLSearchParams({ clienteSlug, mes, lojaCampanha: "todas" });
+    const res    = await adsFetch(`/ads/resumo-mensal?${params}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.erro || "Resposta inválida");
+    ADS_RESUMO_MENSAL_ATUAL = data.resumo || null;
+  } catch (err) {
+    console.warn("[ads] falha ao carregar resumo mensal:", err.message);
+    ADS_RESUMO_MENSAL_ATUAL = null;
+  }
+
+  // Re-render para refletir TACOS / faturamento
+  adsRenderPerformance();
 }
 
 // ─── Checklist semanal ────────────────────────────────────────────────────────
@@ -597,23 +907,11 @@ function adsRenderChecklist() {
 // ─── Feedback para o cliente ──────────────────────────────────────────────────
 
 function adsGerarFeedback() {
-  let inv = 0, gmv = 0, roas = 0, cliques = 0, impressoes = 0, mesLabel = "período selecionado";
+  const d   = adsPerformanceFiltrada();
   const mes = adsGetFiltroMes();
+  const mesLabel = ADS_MESES_LABELS[mes] || d.mesRef || "período selecionado";
 
-  if (ADS_PERFORMANCE_ESTADO === "loaded" && ADS_PERFORMANCE_ATUAL) {
-    const d = ADS_PERFORMANCE_ATUAL;
-    inv        = d.investimentoAds;
-    gmv        = d.gmvAds;
-    roas       = d.roas;
-    cliques    = d.cliques;
-    impressoes = d.impressoes;
-    mesLabel   = ADS_MESES_LABELS[mes] || d.mesRef || mesLabel;
-  } else if (mes) {
-    const d  = ADS_MOCK_FALLBACK.find((m) => m.mes === mes);
-    if (d) { inv = d.investimentoAds; gmv = d.gmvAds; roas = d.roas; mesLabel = d.label; }
-  }
-
-  if (!inv && !gmv) {
+  if (!d.investimentoAds && !d.gmvAds && !d.totalAnuncios) {
     const ta = document.getElementById("ads-feedback-textarea");
     if (ta) ta.value = "Nenhum dado disponível para o período selecionado.";
     ADS_FEEDBACK_ATUAL      = ta ? ta.value : "";
@@ -622,31 +920,62 @@ function adsGerarFeedback() {
     return;
   }
 
-  const st = adsStatusRoas(roas);
+  const st = adsStatusRoas(d.roas);
   const linhas = [
     `📊 Relatório de Mercado Ads — ${mesLabel}`,
     ``,
-    `💰 Investimento em Ads: ${adsFmtBRL(inv)}`,
-    `📈 GMV gerado pelos Ads: ${adsFmtBRL(gmv)}`,
-    `🔁 ROAS: ${adsFmtNum(roas)}x`,
+    `💰 Investimento em Ads: ${adsFmtBRL(d.investimentoAds)}`,
+    `📈 GMV gerado pelos Ads: ${adsFmtBRL(d.gmvAds)}`,
+    `🔁 ROAS: ${adsFmtNum(d.roas)}x`,
+    `🎯 ACOS: ${adsFmtPct(d.acos)} (Investimento Ads ÷ GMV Ads)`,
   ];
 
-  if (cliques > 0)    linhas.push(`🖱️  Cliques: ${adsFmtInt(cliques)}`);
-  if (impressoes > 0) linhas.push(`👁️  Impressões: ${adsFmtInt(impressoes)}`);
+  // TACOS é métrica gerencial: investimento / faturamento total da loja.
+  // Só aparece quando o faturamento total foi informado em Resumo Mensal.
+  const t = adsTacosCalculado();
+  if (!t.semFaturamento) {
+    const stT = adsStatusTacos(t.tacos);
+    linhas.push(`🏪 TACOS: ${adsFmtPct(t.tacos)} (Investimento Ads ÷ Faturamento Total de ${adsFmtBRL(t.faturamentoTotal)}) — ${stT.label}`);
+  } else {
+    linhas.push(`🏪 TACOS: não calculado porque o faturamento total do mês ainda não foi informado em "Resumo Mensal".`);
+  }
+
+  if (d.cliques > 0)    linhas.push(`🖱️  Cliques: ${adsFmtInt(d.cliques)}`);
+  if (d.impressoes > 0) linhas.push(`👁️  Impressões: ${adsFmtInt(d.impressoes)}`);
+  if (d.ctr > 0)        linhas.push(`📊 CTR: ${adsFmtPct(d.ctr)}`);
+  if (d.cpc > 0)        linhas.push(`💵 CPC médio: ${adsFmtBRL(d.cpc)}`);
+  if (d.totalAnuncios)  linhas.push(`📦 Anúncios analisados: ${adsFmtInt(d.totalAnuncios)} (${adsFmtInt(d.vendas)} com venda)`);
 
   linhas.push(``, `✅ Análise:`);
 
-  if (roas >= 20) {
-    linhas.push(`Os investimentos em Ads estão com excelente retorno. O ROAS de ${adsFmtNum(roas)}x indica alta eficiência das campanhas.`);
-  } else if (roas >= 15) {
-    linhas.push(`O ROAS de ${adsFmtNum(roas)}x está em zona de atenção. Recomendamos revisar campanhas de menor performance para otimizar o retorno.`);
-  } else if (roas > 0) {
-    linhas.push(`O ROAS de ${adsFmtNum(roas)}x está abaixo do ideal. É importante revisar os lances e pausar campanhas de baixo retorno.`);
+  if (d.roas >= 20) {
+    linhas.push(`Os investimentos em Ads estão com excelente retorno. O ROAS de ${adsFmtNum(d.roas)}x indica alta eficiência das campanhas.`);
+  } else if (d.roas >= 15) {
+    linhas.push(`O ROAS de ${adsFmtNum(d.roas)}x está em zona de atenção. Recomendamos revisar campanhas de menor performance para otimizar o retorno.`);
+  } else if (d.roas > 0) {
+    linhas.push(`O ROAS de ${adsFmtNum(d.roas)}x está abaixo do ideal. É importante revisar os lances e pausar campanhas de baixo retorno.`);
+  } else {
+    linhas.push(`Sem retorno mensurável das campanhas no período. Recomendamos revisar configuração das campanhas e dos anúncios ativos.`);
+  }
+
+  if (!t.semFaturamento) {
+    if (t.tacos <= 4) {
+      linhas.push(`O TACOS de ${adsFmtPct(t.tacos)} está saudável — o peso dos Ads sobre o faturamento total da loja está dentro do esperado.`);
+    } else if (t.tacos <= 5) {
+      linhas.push(`O TACOS de ${adsFmtPct(t.tacos)} está em zona de atenção. Vale rever o equilíbrio entre investimento em Ads e faturamento total.`);
+    } else {
+      linhas.push(`O TACOS de ${adsFmtPct(t.tacos)} está crítico. O investimento em Ads pesa demais sobre o faturamento total — recomendamos reduzir lances de menor retorno ou pausar campanhas pouco eficientes.`);
+    }
   }
 
   linhas.push(``, `📌 Próximos passos:`);
-  linhas.push(`- Revisar campanhas com ROAS abaixo da média`);
-  linhas.push(`- Acompanhar evolução do investimento vs. retorno`);
+  linhas.push(`- Revisar anúncios com maior ACOS e menor ROAS`);
+  linhas.push(`- Reforçar campanhas com ROAS acima da média`);
+  if (t.semFaturamento) {
+    linhas.push(`- Informar o faturamento total do mês em "Resumo Mensal" para acompanhar o TACOS`);
+  } else {
+    linhas.push(`- Acompanhar evolução do TACOS para manter o investimento equilibrado com o faturamento`);
+  }
   linhas.push(`- Ajustar orçamento conforme sazonalidade`);
 
   const ta = document.getElementById("ads-feedback-textarea");
@@ -681,18 +1010,10 @@ function adsFillSelects() {
       ).join("");
   }
 
-  // Campanhas (mockadas — sem vínculo com API ainda)
-  const selCamp = document.getElementById("ads-filtro-campanha");
-  if (selCamp) {
-    selCamp.innerHTML = ADS_CAMPANHAS.map((c, i) =>
-      `<option value="${i === 0 ? "" : c}">${adsEscape(c)}</option>`
-    ).join("");
-  }
-
   // Período do checklist
   adsAtualizarPeriodoChecklist();
 
-  // Cliente: populado por adsCarregarClientes() via fetch
+  // Campanhas e cliente: populados via API (adsCarregarClientes / adsPopularCampanhasSelect)
 }
 
 function adsAtualizarPeriodoChecklist() {
@@ -713,22 +1034,41 @@ function adsAtualizarPeriodoChecklist() {
 
 document.getElementById("ads-btn-atualizar")?.addEventListener("click", () => {
   adsCarregarPerformance();
+  adsCarregarResumoMensal();
   adsCarregarAcompanhamento();
 });
 
 document.getElementById("ads-filtro-mes")?.addEventListener("change", () => {
   adsAtualizarPeriodoChecklist();
   adsCarregarPerformance();
+  adsCarregarResumoMensal();
   adsCarregarAcompanhamento();
 });
 
 document.getElementById("ads-filtro-cliente")?.addEventListener("change", () => {
   adsCarregarPerformance();
+  adsCarregarResumoMensal();
   adsCarregarAcompanhamento();
 });
 
 document.getElementById("ads-filtro-campanha")?.addEventListener("change", () => {
+  ADS_ANUNCIOS_PAGE = 1;
+  adsRenderPerformance();
   adsCarregarAcompanhamento();
+});
+
+// Filtros locais da tabela de anúncios (não disparam fetch)
+document.getElementById("ads-anuncios-busca")?.addEventListener("input", () => {
+  ADS_ANUNCIOS_PAGE = 1;
+  adsRenderAnuncios();
+});
+document.getElementById("ads-anuncios-status")?.addEventListener("change", () => {
+  ADS_ANUNCIOS_PAGE = 1;
+  adsRenderAnuncios();
+});
+document.getElementById("ads-anuncios-ordenar")?.addEventListener("change", () => {
+  ADS_ANUNCIOS_PAGE = 1;
+  adsRenderAnuncios();
 });
 
 document.getElementById("ads-btn-gerar")?.addEventListener("click", adsGerarFeedback);

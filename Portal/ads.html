@@ -21,7 +21,7 @@
               Mercado Ads
             </div>
             <h2 class="ads-hero-title">Resumo de Ads</h2>
-            <p class="ads-hero-sub">Acompanhe investimento, ROAS, faturamento, TACOS e feedbacks por cliente.</p>
+            <p class="ads-hero-sub">Acompanhe investimento, ROAS, ACOS (Mercado Ads) e TACOS (gerencial, sobre o faturamento total da loja) — dados ao vivo da API Mercado Ads.</p>
           </div>
           <div class="ads-hero-graphic" aria-hidden="true">
             <svg width="72" height="72" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="38" stroke="rgba(234,88,12,.12)" stroke-width="2"/><circle cx="40" cy="40" r="28" stroke="rgba(90,42,143,.10)" stroke-width="2"/><circle cx="40" cy="40" r="16" fill="rgba(234,88,12,.07)"/><path d="M26 54 L34 38 L44 48 L54 26" stroke="rgba(234,88,12,.60)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="54" cy="26" r="3" fill="rgba(234,88,12,.8)"/></svg>
@@ -89,6 +89,7 @@
                 <th class="num">Investimento Ads</th>
                 <th class="num">GMV Ads</th>
                 <th class="num">ROAS</th>
+                <th class="num">ACOS</th>
                 <th class="num">Cliques</th>
                 <th class="num">Impressões</th>
                 <th class="num">Vendas</th>
@@ -98,6 +99,56 @@
             <tbody id="ads-table-body"></tbody>
           </table>
         </div>
+      </div>
+
+      <!-- ── Tabela de anúncios individuais ── -->
+      <div class="vf-card" style="margin-bottom:24px;">
+        <div class="vf-card-header">
+          <h5>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            Anúncios — Performance individual
+          </h5>
+          <div class="ads-anuncios-header-right">
+            <input type="text" id="ads-anuncios-busca" class="vf-input ads-anuncios-busca" placeholder="Filtrar por título, MLB ou marca...">
+            <select id="ads-anuncios-status" class="vf-input ads-anuncios-status">
+              <option value="">Todos status</option>
+              <option value="active">Ativos</option>
+              <option value="paused">Pausados</option>
+              <option value="idle">Sem investimento</option>
+              <option value="sold">Com venda</option>
+            </select>
+            <select id="ads-anuncios-ordenar" class="vf-input ads-anuncios-ordenar">
+              <option value="cost_desc">Maior investimento</option>
+              <option value="gmv_desc">Maior GMV</option>
+              <option value="roas_desc">Maior ROAS</option>
+              <option value="acos_desc">Maior ACOS</option>
+              <option value="clicks_desc">Mais cliques</option>
+              <option value="prints_desc">Mais impressões</option>
+            </select>
+            <span id="ads-anuncios-total" class="vf-badge" style="display:none;">0</span>
+          </div>
+        </div>
+        <div class="ads-table-wrap">
+          <table class="ads-table ads-anuncios-table">
+            <thead>
+              <tr>
+                <th class="ads-col-anuncio">Anúncio</th>
+                <th class="num">Investimento</th>
+                <th class="num">GMV</th>
+                <th class="num">ROAS</th>
+                <th class="num">ACOS</th>
+                <th class="num">Cliques</th>
+                <th class="num">Impressões</th>
+                <th class="num">CTR</th>
+                <th class="num">CPC</th>
+                <th class="center">Status</th>
+                <th class="center">Link</th>
+              </tr>
+            </thead>
+            <tbody id="ads-anuncios-body"></tbody>
+          </table>
+        </div>
+        <div id="ads-anuncios-pager" class="ads-anuncios-pager"></div>
       </div>
 
       <!-- ── Checklist semanal ── -->

@@ -212,6 +212,7 @@ async function putAdsResumoMensal(req, res) {
 }
 
 // ─── Performance via API Mercado Livre Ads ────────────────────────────────────
+// Retorna o objeto completo de performance com métricas reais + lista de anúncios.
 
 async function getAdsPerformance(req, res) {
   try {
@@ -227,28 +228,17 @@ async function getAdsPerformance(req, res) {
 
     const result = await buscarPerformanceML(clienteSlug, mes);
 
-    // Erros sem dados (sem token, sem permissão, sem advertiser)
+    // Erros sem dados (sem token, sem permissão, sem advertiser, erro de API)
     if (result.semDados) {
-      return res.json({ ok: true, semDados: true, codigo: result.codigo, motivo: result.motivo });
-    }
-
-    // Advertiser encontrado, mas endpoint de métricas ainda não mapeado
-    if (result.codigo === "NO_METRICS_ENDPOINT_MAPPED") {
       return res.json({
-        ok:            true,
-        advertiserId:  result.advertiserId,
-        siteId:        result.siteId,
-        advertiserName: result.advertiserName,
-        periodo:       result.periodo,
-        campanhas:     result.campanhas,
-        itens:         result.itens,
-        metricas:      null,
-        codigo:        result.codigo,
-        motivo:        "Advertiser e anúncios encontrados, mas endpoint de métricas ainda não mapeado.",
+        ok: true,
+        semDados: true,
+        codigo:   result.codigo,
+        motivo:   result.motivo,
       });
     }
 
-    // Métricas completas (futuro)
+    // Sucesso: devolve o objeto inteiro como `performance`
     return res.json({ ok: true, performance: result });
   } catch (err) {
     console.error("[getAdsPerformance]", err.message);

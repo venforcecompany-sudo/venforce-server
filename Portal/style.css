@@ -4824,3 +4824,203 @@ body {
   background: rgba(234,88,12,.10);
   color: #c2410c;
 }
+
+/* =========================================================================
+   ADS — ADIÇÕES PARA TABELA DE ANÚNCIOS INDIVIDUAIS
+   ─────────────────────────────────────────────────────────────────────────
+   Cole este bloco no FINAL do arquivo Portal/style.css.
+   Tudo aqui é aditivo (não sobrescreve nada que já existe no arquivo).
+   ========================================================================= */
+
+/* ── Header da tabela de anúncios: filtros locais ────────────────────────── */
+.ads-anuncios-header-right {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+
+.ads-anuncios-busca,
+.ads-anuncios-status,
+.ads-anuncios-ordenar {
+  padding: .4rem .7rem;
+  font-size: .82rem;
+  height: auto;
+  min-height: 0;
+  border-radius: 6px;
+}
+
+.ads-anuncios-busca   { width: 220px; }
+.ads-anuncios-status  { width: 150px; }
+.ads-anuncios-ordenar { width: 180px; }
+
+@media (max-width: 900px) {
+  .ads-anuncios-busca,
+  .ads-anuncios-status,
+  .ads-anuncios-ordenar { width: 100%; }
+}
+
+/* ── Coluna principal do anúncio (thumb + info) ──────────────────────────── */
+.ads-anuncios-table .ads-col-anuncio { min-width: 340px; }
+
+.ads-anuncio-cell {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+}
+
+.ads-anuncio-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--vf-bg, #f1f5f9);
+  flex-shrink: 0;
+  border: 1px solid rgba(15,23,42,.06);
+}
+
+.ads-anuncio-thumb--ph {
+  background: linear-gradient(135deg, rgba(90,42,143,.06), rgba(234,88,12,.06));
+}
+
+.ads-anuncio-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+}
+
+.ads-anuncio-titulo {
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--vf-text-h, #0f172a);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 380px;
+}
+
+.ads-anuncio-meta {
+  display: flex;
+  gap: .55rem;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: .72rem;
+  color: var(--vf-text-m, #64748b);
+}
+
+.ads-anuncio-mlb {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .68rem;
+  background: var(--vf-bg, #f1f5f9);
+  color: var(--vf-text-m, #64748b);
+  padding: .08rem .4rem;
+  border-radius: 4px;
+  border: 1px solid rgba(15,23,42,.06);
+}
+
+.ads-anuncio-marca {
+  font-size: .72rem;
+  color: var(--vf-text-m, #64748b);
+  font-weight: 500;
+}
+
+.ads-anuncio-preco {
+  font-size: .72rem;
+  color: var(--ads-orange, #ea580c);
+  font-weight: 600;
+}
+
+/* ── Link externo no final da linha ──────────────────────────────────────── */
+.ads-anuncio-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--vf-bg, #f1f5f9);
+  color: var(--vf-text-m, #64748b);
+  border: 1px solid rgba(15,23,42,.06);
+  transition: all .15s ease;
+  text-decoration: none;
+}
+.ads-anuncio-link:hover {
+  background: var(--ads-orange-l, #fff7ed);
+  color: var(--ads-orange, #ea580c);
+  border-color: rgba(234,88,12,.2);
+}
+
+/* ── Tabela de anúncios: larguras das colunas numéricas ──────────────────── */
+.ads-anuncios-table th.num,
+.ads-anuncios-table td.num {
+  min-width: 88px;
+  white-space: nowrap;
+}
+
+.ads-anuncios-table th.center,
+.ads-anuncios-table td.center {
+  min-width: 80px;
+}
+
+/* ── Pager (paginação) abaixo da tabela ──────────────────────────────────── */
+.ads-anuncios-pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .85rem 1rem;
+  border-top: 1px solid rgba(15,23,42,.05);
+  gap: .8rem;
+  flex-wrap: wrap;
+}
+
+.ads-pager-info {
+  font-size: .8rem;
+  color: var(--vf-text-m, #64748b);
+}
+
+.ads-pager-controls {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+}
+
+.ads-pager-btn {
+  padding: .35rem .8rem !important;
+  font-size: .78rem !important;
+  margin: 0 !important;
+}
+
+.ads-pager-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.ads-pager-page {
+  font-size: .78rem;
+  color: var(--vf-text-h, #0f172a);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Override .vf-page-ads para refinar larguras (sobrescreve regra ampla) */
+.vf-page-ads .ads-anuncios-table th:first-child,
+.vf-page-ads .ads-anuncios-table td:first-child { min-width: 340px; }
+
+.vf-page-ads .ads-anuncios-table th.num:nth-child(2),
+.vf-page-ads .ads-anuncios-table td.num:nth-child(2) { min-width: 110px; } /* Investimento */
+.vf-page-ads .ads-anuncios-table th.num:nth-child(3),
+.vf-page-ads .ads-anuncios-table td.num:nth-child(3) { min-width: 110px; } /* GMV */
+.vf-page-ads .ads-anuncios-table th.num:nth-child(4),
+.vf-page-ads .ads-anuncios-table td.num:nth-child(4) { min-width:  78px; } /* ROAS */
+.vf-page-ads .ads-anuncios-table th.num:nth-child(5),
+.vf-page-ads .ads-anuncios-table td.num:nth-child(5) { min-width:  82px; } /* ACOS */
+.vf-page-ads .ads-anuncios-table th.num:nth-child(6),
+.vf-page-ads .ads-anuncios-table td.num:nth-child(6) { min-width:  78px; } /* Cliques */
+.vf-page-ads .ads-anuncios-table th.num:nth-child(7),
+.vf-page-ads .ads-anuncios-table td.num:nth-child(7) { min-width:  92px; } /* Impressões */
+.vf-page-ads .ads-anuncios-table th.num:nth-child(8),
+.vf-page-ads .ads-anuncios-table td.num:nth-child(8) { min-width:  78px; } /* CTR */
+.vf-page-ads .ads-anuncios-table th.num:nth-child(9),
+.vf-page-ads .ads-anuncios-table td.num:nth-child(9) { min-width:  90px; } /* CPC */
