@@ -12,6 +12,7 @@
 
 const anunciosService = require("../services/meliAnuncios/meliAnunciosService");
 const syncService = require("../services/meliAnuncios/meliSyncService");
+const otimizadorService = require("../services/meliAnuncios/otimizadorMeliService");
 const { mlFetch } = require("../utils/mlClient");
 
 // ----------------------------------------------------------------------------
@@ -236,6 +237,82 @@ async function marcarRevisado(req, res) {
   }
 }
 
+// ----------------------------------------------------------------------------
+// POST /anuncios-meli/:itemId/otimizar
+// body: { clienteSlug, tipo }   tipo = seo | descricao | ficha_tecnica
+// Gera sugestão textual com IA e salva no banco. NÃO atualiza o Mercado Livre.
+// ----------------------------------------------------------------------------
+async function otimizar(req, res) {
+  try {
+    const { itemId } = req.params;
+    const { clienteSlug, tipo } = req.body || {};
+
+    const resultado = await otimizadorService.otimizar({
+      clienteSlug: clienteSlug,
+      itemId: itemId,
+      tipo: tipo,
+      userId: req.user && req.user.id,
+    });
+
+    // o service devolve o http status apropriado (400/404/200/500)
+    const http = resultado.http || (resultado.ok ? 200 : 400);
+    if (resultado.ok) {
+      return res.json({
+        ok: true,
+        tipo: resultado.tipo,
+        otimizacao: resultado.otimizacao,
+      });
+    }
+    return res.status(http).json({
+      ok: false,
+      codigo: resultado.codigo,
+      motivo: resultado.motivo,
+    });
+  } catch (err) {
+    console.error("[anuncios-meli] otimizar:", err.message);
+    return res.status(500).json({
+      ok: false,
+      codigo: "ERRO_INTERNO",
+      motivo: "Erro interno ao gerar a otimização.",
+    });
+  }
+}
+
+// ----------------------------------------------------------------------------
+// GET /anuncios-meli/:itemId/otimizacoes?clienteSlug=&tipo=
+// Histórico de sugestões já geradas para um anúncio.
+// ----------------------------------------------------------------------------
+async function listarOtimizacoes(req, res) {
+  try {
+    const { itemId } = req.params;
+    const { clienteSlug, tipo } = req.query || {};
+
+    if (!clienteSlug) {
+      return res
+        .status(400)
+        .json({ ok: false, motivo: "Informe o clienteSlug." });
+    }
+
+    const resultado = await otimizadorService.listarOtimizacoes({
+      clienteSlug: clienteSlug,
+      itemId: itemId,
+      tipo: tipo,
+    });
+
+    if (!resultado.ok) {
+      return res
+        .status(resultado.http || 400)
+        .json({ ok: false, motivo: resultado.motivo });
+    }
+    return res.json({ ok: true, otimizacoes: resultado.otimizacoes });
+  } catch (err) {
+    console.error("[anuncios-meli] listarOtimizacoes:", err.message);
+    return res
+      .status(500)
+      .json({ ok: false, motivo: "Erro ao listar as otimizações." });
+  }
+}
+
 module.exports = {
   listarClientes,
   sincronizar,
@@ -243,4 +320,6 @@ module.exports = {
   listar,
   detalhe,
   marcarRevisado,
+  otimizar,
+  listarOtimizacoes,
 };
