@@ -46,6 +46,7 @@ router.get("/", ctrl.listar);
 // padrão do módulo (automações: admin | user | membro).
 router.post("/:itemId/otimizar", requireAdmin, ctrl.otimizar);
 router.get("/:itemId/otimizacoes", requireAdmin, ctrl.listarOtimizacoes);
+router.patch("/otimizacoes/:id/aprovar", requireAdmin, ctrl.aprovarOtimizacao);
 
 router.patch("/:itemId/revisao", ctrl.marcarRevisado);
 

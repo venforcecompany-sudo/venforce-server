@@ -98,6 +98,21 @@ async function ensureSchema() {
   await db.query(
     `ALTER TABLE meli_anuncio_otimizacoes ADD COLUMN IF NOT EXISTS output_tokens INTEGER;`
   );
+  await db.query(
+    `ALTER TABLE meli_anuncio_otimizacoes ADD COLUMN IF NOT EXISTS titulo_aprovado TEXT;`
+  );
+  await db.query(
+    `ALTER TABLE meli_anuncio_otimizacoes ADD COLUMN IF NOT EXISTS modelo_aprovado TEXT;`
+  );
+  await db.query(
+    `ALTER TABLE meli_anuncio_otimizacoes ADD COLUMN IF NOT EXISTS aprovado_por INTEGER;`
+  );
+  await db.query(
+    `ALTER TABLE meli_anuncio_otimizacoes ADD COLUMN IF NOT EXISTS aprovado_at TIMESTAMPTZ;`
+  );
+  await db.query(
+    `ALTER TABLE meli_anuncio_otimizacoes ADD COLUMN IF NOT EXISTS feedback_observacao TEXT;`
+  );
 
   await db.query(
     `CREATE INDEX IF NOT EXISTS idx_meli_otimizacoes_item_id ON meli_anuncio_otimizacoes (item_id);`
@@ -135,21 +150,43 @@ function validarSeo(d) {
         ").",
     };
   }
-  if (titulo.length < TITULO_MIN) {
-  return {
-    ok: false,
-    erro:
-      "O título sugerido tem " +
-      titulo.length +
-      " caracteres. O objetivo é usar entre " +
-      TITULO_MIN +
-      " e " +
-      TITULO_MAX +
-      " caracteres para aproveitar melhor o limite do Mercado Livre.",
-  };
-}
   if (!d.modelo_sugerido || !String(d.modelo_sugerido).trim()) {
     return { ok: false, erro: "A IA não retornou um campo modelo sugerido." };
+  }
+  if (d.titulos_alternativos != null && !Array.isArray(d.titulos_alternativos)) {
+    return {
+      ok: false,
+      erro: "O campo titulos_alternativos deve ser uma lista de títulos.",
+    };
+  }
+
+  const alternativas = arr(d.titulos_alternativos)
+    .map((t) => String(t || "").trim())
+    .filter(Boolean);
+
+  for (let i = 0; i < alternativas.length; i++) {
+    if (alternativas[i].length > TITULO_MAX) {
+      return {
+        ok: false,
+        erro:
+          "Uma alternativa de título tem " +
+          alternativas[i].length +
+          " caracteres (limite é " +
+          TITULO_MAX +
+          ").",
+      };
+    }
+  }
+
+  d.titulo_sugerido = titulo;
+  d.modelo_sugerido = String(d.modelo_sugerido).trim();
+  d.titulos_alternativos = alternativas;
+  d.alertas = arr(d.alertas);
+
+  if (titulo.length < TITULO_MIN) {
+    d.alertas.push(
+      "Título sugerido abaixo de 55 caracteres por falta de informações confirmadas."
+    );
   }
   return { ok: true };
 }
@@ -367,6 +404,12 @@ async function otimizar({ clienteSlug, itemId, tipo, userId }) {
 
   if (tipo === "seo") {
     const titulo = String(d.titulo_sugerido).trim();
+    const titulosAlternativos = arr(d.titulos_alternativos)
+      .map((t) => String(t || "").trim())
+      .filter(Boolean);
+    if (titulosAlternativos.indexOf(titulo) === -1) {
+      titulosAlternativos.unshift(titulo);
+    }
     base.titulo_atual = anuncio.titulo || null;
     base.titulo_sugerido = titulo;
     base.titulo_sugerido_chars = titulo.length;
@@ -375,6 +418,7 @@ async function otimizar({ clienteSlug, itemId, tipo, userId }) {
     base.score_seo =
       typeof d.score_seo === "number" ? d.score_seo : null;
     base.motivo = d.motivo ? String(d.motivo) : null;
+    base.melhorias_json = { titulos_alternativos: titulosAlternativos };
     base.alertas_json = arr(d.alertas);
   } else if (tipo === "descricao") {
     base.descricao_atual = anuncio.descricao_atual || null;
@@ -438,10 +482,68 @@ async function listarOtimizacoes({ clienteSlug, itemId, tipo }) {
   return { ok: true, otimizacoes: rows };
 }
 
+async function aprovarOtimizacao({
+  id,
+  tituloAprovado,
+  modeloAprovado,
+  observacao,
+  userId,
+}) {
+  await ensureSchema();
+
+  const otimizacaoId = Number(id);
+  if (!otimizacaoId) {
+    return { ok: false, http: 400, motivo: "ID da otimização inválido." };
+  }
+
+  const titulo = String(tituloAprovado || "").trim();
+  if (!titulo) {
+    return { ok: false, http: 400, motivo: "Informe o tituloAprovado." };
+  }
+  if (titulo.length > TITULO_MAX) {
+    return {
+      ok: false,
+      http: 400,
+      motivo: "O tituloAprovado ultrapassa 60 caracteres.",
+    };
+  }
+
+  const modelo = String(modeloAprovado || "").trim();
+  if (!modelo) {
+    return { ok: false, http: 400, motivo: "Informe o modeloAprovado." };
+  }
+  const obs = String(observacao || "").trim();
+
+  const existente = await db.query(
+    `SELECT * FROM meli_anuncio_otimizacoes WHERE id = $1 LIMIT 1;`,
+    [otimizacaoId]
+  );
+  if (!existente.rows.length) {
+    return { ok: false, http: 404, motivo: "Otimização não encontrada." };
+  }
+
+  const { rows } = await db.query(
+    `UPDATE meli_anuncio_otimizacoes
+        SET status = 'aprovado',
+            titulo_aprovado = $2,
+            modelo_aprovado = $3,
+            aprovado_por = $4,
+            aprovado_at = NOW(),
+            feedback_observacao = $5,
+            updated_at = NOW()
+      WHERE id = $1
+      RETURNING *;`,
+    [otimizacaoId, titulo, modelo, userId || null, obs || null]
+  );
+
+  return { ok: true, otimizacao: rows[0] };
+}
+
 module.exports = {
   ensureSchema,
   otimizar,
   listarOtimizacoes,
+  aprovarOtimizacao,
   TIPOS_VALIDOS,
   TITULO_MIN,
   TITULO_MAX,

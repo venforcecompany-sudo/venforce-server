@@ -628,3 +628,135 @@
   }
 }
 
+/* =============================================================================
+   Otimizacao IA (drawer)
+   ========================================================================== */
+.am-ai-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.am-ai-card {
+  background: #fff;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-sm);
+  padding: 13px 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.am-ai-current-title {
+  font-size: 13px;
+  color: var(--am-text);
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+
+.am-ai-status {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--am-text-soft);
+}
+
+.am-ai-status.is-approved {
+  color: var(--am-green);
+  font-weight: 600;
+}
+
+.am-ai-error {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--am-red);
+  background: var(--am-red-soft);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.am-ai-resultados {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.am-ai-titles {
+  display: grid;
+  gap: 10px;
+}
+
+.am-ai-title-option {
+  background: #fff;
+  border: 1px solid var(--am-border);
+  border-radius: var(--am-radius-sm);
+  padding: 11px 12px;
+}
+
+.am-ai-title-option.is-recommended {
+  border-color: #b8c9ff;
+  background: #f5f8ff;
+}
+
+.am-ai-title-text {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--am-text);
+}
+
+.am-ai-meta {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--am-text-soft);
+}
+
+.am-ai-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e9efff;
+  color: #2f5bea;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.am-ai-line {
+  margin-top: 9px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--am-text);
+}
+
+.am-ai-alert {
+  margin-top: 9px;
+  background: #fff7e8;
+  border: 1px solid #f0debd;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 12.5px;
+  color: #7b5a14;
+}
+
+.am-ai-alert ul {
+  margin: 6px 0 0 15px;
+  padding: 0;
+}
+
+.am-ai-actions {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.am-ai-copy,
+.am-ai-approve {
+  min-width: 78px;
+  justify-content: center;
+}
+
