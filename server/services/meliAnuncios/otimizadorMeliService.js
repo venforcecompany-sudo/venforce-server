@@ -31,6 +31,7 @@ const anunciosService = require("./meliAnunciosService");
 // existem em otimizadorMeliPrompts.js, mas NÃO são aceitos pelo service ainda.
 // Para liberar depois, basta adicionar o tipo a este array.
 const TIPOS_VALIDOS = ["seo"];
+const TITULO_MIN = 55;
 const TITULO_MAX = 60;
 
 // -----------------------------------------------------------------------------
@@ -134,6 +135,19 @@ function validarSeo(d) {
         ").",
     };
   }
+  if (titulo.length < TITULO_MIN) {
+  return {
+    ok: false,
+    erro:
+      "O título sugerido tem " +
+      titulo.length +
+      " caracteres. O objetivo é usar entre " +
+      TITULO_MIN +
+      " e " +
+      TITULO_MAX +
+      " caracteres para aproveitar melhor o limite do Mercado Livre.",
+  };
+}
   if (!d.modelo_sugerido || !String(d.modelo_sugerido).trim()) {
     return { ok: false, erro: "A IA não retornou um campo modelo sugerido." };
   }
@@ -429,5 +443,6 @@ module.exports = {
   otimizar,
   listarOtimizacoes,
   TIPOS_VALIDOS,
+  TITULO_MIN,
   TITULO_MAX,
 };
