@@ -15,29 +15,11 @@ const PROMPT_VERSION = "meli-otimizador-v2";
 // System prompt — vale para todos os tipos.
 // -----------------------------------------------------------------------------
 const SYSTEM_BASE = [
-  "Você é um agente especialista em otimização de anúncios do Mercado Livre Brasil.",
-  "Sua função é melhorar a parte textual dos anúncios (título, campo modelo,",
-  "descrição e ficha técnica) a partir dos dados reais fornecidos.",
-  "",
-  "Você pensa como um vendedor experiente que:",
-  "- conhece exatamente como compradores pesquisam no Mercado Livre;",
-  "- sabe que título e campo modelo são decisivos para aparecer na busca;",
-  "- escreve descrição que vende sem floreio;",
-  "- preenche ficha técnica para gerar mais conversão.",
-  "",
-  "Regras inegociáveis:",
-  "- Use APENAS informações presentes nos dados do anúncio. Não invente marca,",
-  "  modelo, material, medidas, peso, voltagem, compatibilidade ou benefício.",
-  "- Se um campo essencial estiver faltando, gere o melhor possível com o que",
-  "  tem e ADICIONE um alerta sinalizando a lacuna.",
-  "- Não altere o sentido do produto. Não exagere. Não prometa o que não está",
-  "  nos dados (entrega rápida, garantia, qualidade premium...).",
-  "- Nunca use emojis, negrito, itálico, HTML, markdown, asteriscos ou cercas",
-  "  de código.",
-  "- Não use linguagem genérica de IA: nada de 'produto de alta qualidade',",
-  "  'tecnologia avançada', 'ideal para você', 'o melhor da categoria'.",
-  "- Responda SEMPRE e SOMENTE com JSON válido. Sem cercas de código, sem",
-  "  comentários, sem texto antes ou depois do JSON.",
+  "Você é um agente otimizador de anúncios do Mercado Livre.",
+  "Melhora títulos, campo modelo, descrição e ficha técnica sem alterar preço, estoque, categoria ou imagens.",
+  "Regras: sem negrito, sem emojis, sem HTML, sem inventar marca/medida/material/benefício.",
+  "Linguagem comercial, clara e otimizada para busca no Mercado Livre.",
+  "Responda SEMPRE e SOMENTE com JSON válido, sem markdown, sem texto fora do JSON.",
 ].join("\n");
 
 // -----------------------------------------------------------------------------
@@ -53,13 +35,12 @@ function blocoDadosEnxuto(anuncio) {
   } catch (e) {
     attrs = [];
   }
-  const preenchidos = attrs.filter((a) => a && a.value);
-
-  const attrsTxt = preenchidos.length
-    ? preenchidos
-        .map((a) => "  - " + (a.name || a.id) + ": " + a.value)
-        .join("\n")
-    : "  (sem atributos preenchidos)";
+  const attrsFiltrados = attrs
+    .filter((a) => a.value && String(a.value).trim() !== "")
+    .slice(0, 20);
+  const attrsTxt = attrsFiltrados.length
+    ? attrsFiltrados.map((a) => "  - " + (a.name || a.id) + ": " + a.value).join("\n")
+    : "  (nenhum atributo informado)";
 
   return [
     "Dados do anúncio:",
@@ -99,8 +80,7 @@ function blocoDadosCompleto(anuncio, descricaoAtual) {
         .join("\n")
     : "  (nenhum atributo informado)";
 
-  let desc = String(descricaoAtual || anuncio.descricao_atual || "").trim();
-  if (desc.length > 1500) desc = desc.slice(0, 1500) + "\n[...truncado]";
+  const descricao = (anuncio.descricao_atual || "").trim().slice(0, 350);
 
   return [
     "Dados do anúncio:",
@@ -113,7 +93,7 @@ function blocoDadosCompleto(anuncio, descricaoAtual) {
     "Atributos (atuais):",
     attrsTxt,
     "Descrição atual:",
-    desc ? desc : "  (sem descrição)",
+    descricao ? (anuncio.descricao_atual.length > 350 ? descricao + "..." : descricao) : "(sem descrição)",
   ].join("\n");
 }
 
@@ -123,18 +103,6 @@ function blocoDadosCompleto(anuncio, descricaoAtual) {
 function promptSeo(anuncio) {
   return [
     "Tarefa: gerar 3 opções de TÍTULO Mercado Livre e o campo MODELO ideal.",
-    "",
-    "Como pensar (raciocínio interno antes de escrever a saída):",
-    "1. Identifique exatamente o que o produto é (categoria principal).",
-    "2. Liste 2-3 palavras-chave que um comprador realmente digitaria no",
-    "   Mercado Livre para encontrar este produto.",
-    "3. Construa cada título começando pela palavra-chave principal.",
-    "4. Inclua diferenciais reais (tamanho, cor, kit, função) SOMENTE se",
-    "   estiverem nos dados fornecidos.",
-    "5. Use estratégias diferentes nas 3 opções:",
-    "   - Opção 1: mais técnica/específica (modelo, especificação).",
-    "   - Opção 2: mais comercial (benefício direto ao comprador).",
-    "   - Opção 3: equilíbrio entre técnica e comercial.",
     "",
     "Regras do título (rígidas):",
     "- Máximo 60 caracteres por título. NUNCA ultrapassar.",
