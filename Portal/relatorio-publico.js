@@ -578,6 +578,164 @@ function renderReport(payload) {
       <div class="vp-table-footer" id="vp-table-footer"></div>
     </div>
     ` : ""}
+
+  <!-- METODOLOGIA -->
+  <div class="vp-section-label" style="margin-top:32px;">Como foi calculado</div>
+  <div class="vp-table-card" style="padding:0;">
+
+    <!-- Cabeçalho clicável para expandir/recolher -->
+    <div id="vp-metod-toggle" style="
+      padding:16px 20px;cursor:pointer;
+      display:flex;align-items:center;justify-content:space-between;
+      border-bottom:1px solid var(--border);
+    " onclick="
+      var b=document.getElementById('vp-metod-body');
+      var i=document.getElementById('vp-metod-icon');
+      var open=b.style.display!=='none';
+      b.style.display=open?'none':'block';
+      i.textContent=open?'▸':'▾';
+    ">
+      <span style="font-size:13px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;">
+        Metodologia e fórmulas
+      </span>
+      <span id="vp-metod-icon" style="color:var(--muted);font-size:12px;">▸</span>
+    </div>
+
+    <!-- Corpo (começa fechado) -->
+    <div id="vp-metod-body" style="display:none;padding:20px 24px;">
+
+      <!-- Passo 1 -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--vp);margin-bottom:6px;">
+          1 · Planilhas usadas
+        </div>
+        <div style="font-size:13px;color:var(--text-2);line-height:1.7;">
+          Planilha de vendas exportada do Mercado Livre/Shopee + base de custos com MLB, custo unitário e % de imposto.
+          Os dados são cruzados pelo código do anúncio (MLB).
+        </div>
+      </div>
+
+      <!-- Passo 2 -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--vp);margin-bottom:6px;">
+          2 · Linhas excluídas do cálculo de LC
+        </div>
+        <div style="font-size:13px;color:var(--text-2);line-height:1.7;">
+          Pedidos com estado contendo: <code style="background:var(--muted-bg);border-radius:4px;padding:1px 5px;font-size:12px;">cancelad</code>
+          <code style="background:var(--muted-bg);border-radius:4px;padding:1px 5px;font-size:12px;">devolu</code>
+          <code style="background:var(--muted-bg);border-radius:4px;padding:1px 5px;font-size:12px;">reembolso</code>
+          <code style="background:var(--muted-bg);border-radius:4px;padding:1px 5px;font-size:12px;">mediacao</code>
+          são excluídos do cálculo de LC/MC, mas
+          <strong>contabilizados separadamente</strong> como cancelamentos e faturamento perdido.
+        </div>
+      </div>
+
+      <!-- Passo 3: Receita Bruta -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--vp);margin-bottom:6px;">
+          3 · Receita Bruta
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--text-2);line-height:1.8;">
+          <strong>Receita Bruta</strong> = Σ (Preço unitário de venda × Unidades) de todos os pedidos válidos<br>
+          <span style="color:var(--muted);font-size:12px;">
+            Resultado neste fechamento: <strong>${brl(d.gross)}</strong>
+          </span>
+        </div>
+      </div>
+
+      <!-- Passo 4: Receita Líquida -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--vp);margin-bottom:6px;">
+          4 · Receita Líquida
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--text-2);line-height:1.8;">
+          <strong>Receita Líquida</strong> = Σ coluna "Total (BRL)" dos pedidos válidos<br>
+          <span style="color:var(--muted);font-size:12px;">
+            É o valor que o marketplace efetivamente depositou após tarifas, frete e descontos.<br>
+            Resultado neste fechamento: <strong>${brl(d.net)}</strong>
+          </span>
+        </div>
+      </div>
+
+      <!-- Passo 5: LC -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--vp);margin-bottom:6px;">
+          5 · Lucro de Contribuição (LC) por produto
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--text-2);line-height:1.8;">
+          <code style="display:block;font-size:12px;background:var(--muted-bg);border-radius:6px;padding:10px 14px;line-height:2;white-space:pre-wrap;">
+LC = Venda Total
+   − (Venda Total × % Imposto)      ← tributos
+   − (Venda Total − Total BRL)       ← tarifas e frete MeLi
+   − (Custo unitário × Unidades)     ← custo do produto</code>
+          <span style="color:var(--muted);font-size:12px;">
+            LC Total neste fechamento: <strong>${brl(d.lcTotal)}</strong>
+          </span>
+        </div>
+      </div>
+
+      <!-- Passo 6: MC -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--vp);margin-bottom:6px;">
+          6 · Margem de Contribuição (MC)
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--text-2);line-height:1.8;">
+          <code style="display:block;font-size:12px;background:var(--muted-bg);border-radius:6px;padding:10px 14px;">
+MC = LC / Venda Total × 100</code>
+          <span style="color:var(--muted);font-size:12px;">
+            MC Média neste fechamento: <strong>${pct(d.mcMedia)}</strong>
+            — benchmark saudável é ≥ 15%.
+          </span>
+        </div>
+      </div>
+
+      <!-- Passo 7: Resultado Final -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--vp);margin-bottom:6px;">
+          7 · Resultado Final
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--text-2);line-height:1.8;">
+          <code style="display:block;font-size:12px;background:var(--muted-bg);border-radius:6px;padding:10px 14px;line-height:2;">
+Resultado Final = LC Total
+               − ADS (${brl(d.ads)})
+               − VenForce (${brl(d.venforce)})
+               − Afiliados (${brl(d.affiliates)})</code>
+          <span style="color:var(--muted);font-size:12px;">
+            Resultado neste fechamento: <strong>${brl(d.finalResult)}</strong>
+          </span>
+        </div>
+      </div>
+
+      <!-- Passo 8: TACoS -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--vp);margin-bottom:6px;">
+          8 · TACoS
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--text-2);line-height:1.8;">
+          <code style="display:block;font-size:12px;background:var(--muted-bg);border-radius:6px;padding:10px 14px;">
+TACoS = ADS / Receita Bruta × 100</code>
+          <span style="color:var(--muted);font-size:12px;">
+            Mede o peso dos anúncios sobre o faturamento total.<br>
+            TACoS neste fechamento: <strong>${pct(d.tacos)}</strong>
+          </span>
+        </div>
+      </div>
+
+      <!-- Nota sobre unmatchedIds -->
+      ${d.unmatchedIds.length > 0 ? `
+      <div style="background:var(--warn-bg);border:1px solid #FDE68A;border-radius:8px;padding:12px 16px;font-size:13px;color:var(--warn);line-height:1.7;">
+        <strong>⚠️ ${d.unmatchedIds.length} produto(s) sem custo cadastrado</strong> foram excluídos do cálculo de LC/MC.
+        A receita não considerada foi de ${brl(d.ignoredRevenue)}.
+        Para incluir esses produtos, cadastre o custo na base e reprocesse o fechamento.
+      </div>
+      ` : `
+      <div style="background:var(--ok-bg);border:1px solid #BBF7D0;border-radius:8px;padding:12px 16px;font-size:13px;color:var(--ok);">
+        ✅ Todos os produtos foram cruzados com a base de custos — nenhuma receita excluída.
+      </div>
+      `}
+
+    </div>
+  </div>
   `;
 
   root.innerHTML = html;
