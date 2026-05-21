@@ -1201,4 +1201,468 @@ initUploadDragDrop("fin-orders-all");
 limparFinStats();
 limparFinResumoExecutivo();
 limparShopeeReconciliacao();
+// ─────────────────────────────────────────────────────────────────────────────
+// ENTREGA PARA O CLIENTE — Sistema de Abas
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Estado persistente do formulário de entrega (não perde ao trocar de aba)
+const _entregaState = {
+  periodo:   "",
+  cliente:   "",
+  destaques: ["", "", ""],
+  atencoes:  ["", ""],
+  prioridades: {
+    alta:  [{ titulo: "", desc: "", data: "" }, { titulo: "", desc: "", data: "" }, { titulo: "", desc: "", data: "" }],
+    media: [{ titulo: "", desc: "", data: "" }, { titulo: "", desc: "", data: "" }, { titulo: "", desc: "", data: "" }],
+    baixa: [{ titulo: "", desc: "", data: "" }, { titulo: "", desc: "", data: "" }, { titulo: "", desc: "", data: "" }],
+  },
+};
+
+// Lê o estado do formulário dos inputs do DOM
+function _syncEntregaStateFromDOM() {
+  const g = (id) => document.getElementById(id)?.value || "";
+  _entregaState.periodo = g("ent-periodo");
+  _entregaState.cliente = g("ent-cliente");
+  _entregaState.destaques = [g("ent-d1"), g("ent-d2"), g("ent-d3")];
+  _entregaState.atencoes  = [g("ent-a1"), g("ent-a2")];
+
+  ["alta", "media", "baixa"].forEach((nv, ni) => {
+    [1, 2, 3].forEach((n, i) => {
+      _entregaState.prioridades[nv][i] = {
+        titulo: g(`ent-${nv}-${n}-t`),
+        desc:   g(`ent-${nv}-${n}-d`),
+        data:   g(`ent-${nv}-${n}-dt`),
+      };
+    });
+  });
+}
+
+// Preenche os inputs com o estado salvo
+function _applyEntregaStateToDOM() {
+  const s = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ""; };
+  s("ent-periodo", _entregaState.periodo);
+  s("ent-cliente", _entregaState.cliente);
+  _entregaState.destaques.forEach((v, i) => s(`ent-d${i + 1}`, v));
+  _entregaState.atencoes.forEach((v, i)  => s(`ent-a${i + 1}`, v));
+  ["alta", "media", "baixa"].forEach((nv) => {
+    [1, 2, 3].forEach((n, i) => {
+      s(`ent-${nv}-${n}-t`,  _entregaState.prioridades[nv][i].titulo);
+      s(`ent-${nv}-${n}-d`,  _entregaState.prioridades[nv][i].desc);
+      s(`ent-${nv}-${n}-dt`, _entregaState.prioridades[nv][i].data);
+    });
+  });
+}
+
+// Troca entre abas
+function _switchTab(tab) {
+  const dash = document.getElementById("vft-dashboard");
+  const ent  = document.getElementById("vft-entrega");
+  const btnD = document.getElementById("vft-btn-dashboard");
+  const btnE = document.getElementById("vft-btn-entrega");
+  if (!dash || !ent) return;
+
+  if (tab === "dashboard") {
+    dash.style.display = ""; ent.style.display = "none";
+    btnD.classList.add("vft-active"); btnE.classList.remove("vft-active");
+  } else {
+    // Antes de mostrar a aba de entrega, aplica o estado salvo
+    _applyEntregaStateToDOM();
+    dash.style.display = "none"; ent.style.display = "";
+    btnD.classList.remove("vft-active"); btnE.classList.add("vft-active");
+    // Scroll suave para o topo da área
+    document.getElementById("vft-root")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+// Constrói o HTML do formulário de entrega
+function _buildEntregaFormHTML() {
+  const inputCls = "vft-input";
+  const textareaCls = "vft-input vft-textarea";
+
+  const destaque = (id, placeholder) =>
+    `<input id="${id}" class="${inputCls}" type="text" placeholder="${placeholder}" />`;
+
+  const acao = (nv, n) => `
+    <div class="vft-action-group">
+      <div class="vft-action-title">Ação ${n}</div>
+      <label class="vft-label">Título</label>
+      <input id="ent-${nv}-${n}-t" class="${inputCls}" type="text" placeholder="ex: Reestruturar campanhas ADS" />
+      <label class="vft-label">O que será feito</label>
+      <input id="ent-${nv}-${n}-d" class="${inputCls}" type="text" placeholder="Descreva a ação" />
+      <label class="vft-label">Data prevista</label>
+      <input id="ent-${nv}-${n}-dt" class="${inputCls}" type="text" placeholder="ex: 15/06" />
+    </div>`;
+
+  return `
+  <div id="vft-entrega" style="display:none;" class="vft-entrega-panel">
+
+    <!-- Identificação -->
+    <div class="vft-form-section">
+      <div class="vft-form-section-label">Identificação</div>
+      <div class="vft-row-2">
+        <div>
+          <label class="vft-label">Período</label>
+          <input id="ent-periodo" class="${inputCls}" type="text" placeholder="ex: Maio 2026" />
+        </div>
+        <div>
+          <label class="vft-label">Nome do cliente</label>
+          <input id="ent-cliente" class="${inputCls}" type="text" placeholder="ex: Maximus Ferramentas" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Destaques -->
+    <div class="vft-form-section">
+      <div class="vft-form-section-label">Destaques do Mês</div>
+      <div class="vft-form-section-sub">Estes itens serão exibidos no relatório do cliente como checkmarks positivos e pontos de atenção.</div>
+
+      <label class="vft-label" style="margin-top:14px;">✅ Destaques positivos</label>
+      ${destaque("ent-d1", "ex: Crescimento de receita acima da meta")}
+      ${destaque("ent-d2", "ex: ROAS acima da meta")}
+      ${destaque("ent-d3", "ex: Full indo bem pelo 2º mês seguido")}
+
+      <label class="vft-label" style="margin-top:14px;">⚠️ Pontos de atenção</label>
+      ${destaque("ent-a1", "ex: Ruptura de estoque no produto X")}
+      ${destaque("ent-a2", "ex: ACOS acima do ideal em campanhas brand")}
+    </div>
+
+    <!-- Plano de Prioridades -->
+    <div class="vft-form-section">
+      <div class="vft-form-section-label">Plano de Prioridades — Próximo Mês</div>
+      <div class="vft-form-section-sub">Preencha as ações planejadas. Deixe em branco o que não se aplica.</div>
+      <div class="vft-prio-grid">
+
+        <div class="vft-prio-col vft-prio-alta">
+          <div class="vft-prio-head">
+            <span class="vft-prio-dot" style="background:#f87171;"></span>
+            Alta Prioridade
+          </div>
+          ${acao("alta", 1)}${acao("alta", 2)}${acao("alta", 3)}
+        </div>
+
+        <div class="vft-prio-col vft-prio-media">
+          <div class="vft-prio-head">
+            <span class="vft-prio-dot" style="background:#fbbf24;"></span>
+            Média Prioridade
+          </div>
+          ${acao("media", 1)}${acao("media", 2)}${acao("media", 3)}
+        </div>
+
+        <div class="vft-prio-col vft-prio-baixa">
+          <div class="vft-prio-head">
+            <span class="vft-prio-dot" style="background:#60a5fa;"></span>
+            Baixa Prioridade
+          </div>
+          ${acao("baixa", 1)}${acao("baixa", 2)}${acao("baixa", 3)}
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Ações -->
+    <div class="vft-form-actions">
+      <div id="vft-ent-status" class="vft-ent-status" style="display:none;"></div>
+      <button id="btn-vft-gerar" class="fc-btn fc-btn-primary fc-btn-lg" type="button">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+        </svg>
+        Gerar link para o cliente
+      </button>
+
+      <div class="vft-link-row" id="vft-link-row" style="display:none;">
+        <input id="vft-link-output" class="vft-link-input" type="text" readonly />
+        <div class="vft-link-btns">
+          <button id="btn-vft-copiar" class="fc-btn fc-btn-secondary" type="button">Copiar</button>
+          <button id="btn-vft-abrir"  class="fc-btn fc-btn-secondary" type="button">Abrir</button>
+        </div>
+      </div>
+    </div>
+
+  </div>`;
+}
+
+// Inicia o sistema de abas após processamento bem-sucedido
+function initEntregaTabs() {
+  // Evita criar duas vezes
+  if (document.getElementById("vft-root")) return;
+
+  const fcWrap = document.getElementById("fc-wrap");
+  if (!fcWrap) return;
+
+  // Encontrar o ponto de inserção: antes do dashboard
+  const dashSection = fcWrap.querySelector(".fc-dashboard-panel");
+  if (!dashSection) return;
+
+  // Criar o container root das abas
+  const tabRoot = document.createElement("div");
+  tabRoot.id = "vft-root";
+
+  // CSS inline das abas (não depende de style.css)
+  const style = document.createElement("style");
+  style.textContent = `
+    #vft-root { margin-bottom: 0; }
+
+    /* Tab bar */
+    .vft-bar {
+      display: flex;
+      border-bottom: 1.5px solid rgba(255,255,255,0.08);
+      margin-bottom: 20px;
+    }
+    .vft-tab-btn {
+      padding: 12px 26px;
+      background: none; border: none; cursor: pointer;
+      font-size: 13px; font-weight: 600; color: #71717a;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1.5px;
+      transition: color .15s, border-color .15s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .vft-tab-btn:hover { color: #c084fc; }
+    .vft-tab-btn.vft-active { color: #c084fc; border-bottom-color: #c084fc; }
+    .vft-tab-btn .vft-tab-icon { font-size: 15px; }
+
+    /* Entrega panel */
+    .vft-entrega-panel { padding-bottom: 40px; }
+
+    /* Seções do form */
+    .vft-form-section {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 16px;
+      padding: 22px 24px;
+      margin-bottom: 14px;
+    }
+    .vft-form-section-label {
+      font-size: 10px; font-weight: 800;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: #c084fc; margin-bottom: 6px;
+    }
+    .vft-form-section-sub {
+      font-size: 12.5px; color: #71717a; margin-bottom: 14px; line-height: 1.6;
+    }
+    .vft-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 640px) { .vft-row-2 { grid-template-columns: 1fr; } }
+
+    /* Inputs */
+    .vft-label {
+      display: block; font-size: 11px; font-weight: 700;
+      color: #71717a; margin: 6px 0 4px; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .vft-input {
+      display: block; width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 9px; padding: 9px 13px;
+      font-size: 13px; color: #f4f4f5;
+      margin-bottom: 6px;
+      transition: border-color .15s;
+      box-sizing: border-box;
+    }
+    .vft-input:focus { outline: none; border-color: #7c3aed; background: rgba(124,58,237,0.06); }
+    .vft-input::placeholder { color: #52525b; }
+    .vft-textarea { resize: vertical; min-height: 72px; }
+
+    /* Prioridades */
+    .vft-prio-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px; margin-top: 14px;
+    }
+    @media (max-width: 860px) { .vft-prio-grid { grid-template-columns: 1fr; } }
+    .vft-prio-col {
+      border-radius: 12px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+    .vft-prio-alta  { border-top: 3px solid #f87171; }
+    .vft-prio-media { border-top: 3px solid #fbbf24; }
+    .vft-prio-baixa { border-top: 3px solid #60a5fa; }
+    .vft-prio-head {
+      display: flex; align-items: center; gap: 7px;
+      padding: 12px 14px;
+      font-size: 12px; font-weight: 700; color: #a1a1aa;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .vft-prio-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .vft-action-group {
+      padding: 12px 12px 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .vft-action-group:last-child { border-bottom: none; }
+    .vft-action-title {
+      font-size: 11px; font-weight: 700; color: #52525b;
+      text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px;
+    }
+
+    /* Ações finais */
+    .vft-form-actions {
+      padding: 8px 0; display: flex; flex-direction: column; gap: 12px; align-items: flex-start;
+    }
+    .vft-ent-status { font-size: 13px; }
+    .vft-link-row {
+      display: flex; align-items: center; gap: 10px; width: 100%; flex-wrap: wrap;
+    }
+    .vft-link-input {
+      flex: 1; min-width: 200px;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 9px; padding: 9px 13px; font-size: 13px; color: #a1a1aa;
+    }
+    .vft-link-btns { display: flex; gap: 8px; }
+  `;
+  document.head.appendChild(style);
+
+  // Tab bar
+  tabRoot.innerHTML = `
+    <div class="vft-bar">
+      <button id="vft-btn-dashboard" class="vft-tab-btn vft-active" type="button">
+        <span class="vft-tab-icon">📊</span> Dashboard Financeiro
+      </button>
+      <button id="vft-btn-entrega" class="vft-tab-btn" type="button">
+        <span class="vft-tab-icon">📤</span> Entrega para o Cliente
+      </button>
+    </div>
+    ${_buildEntregaFormHTML()}
+  `;
+
+  // Inserir antes do dashboard
+  fcWrap.insertBefore(tabRoot, dashSection);
+
+  // Envolver o dashboard + tabela em um wrapper de aba
+  const dashWrapper = document.createElement("div");
+  dashWrapper.id = "vft-dashboard";
+
+  // Mover dashboard, shopee recon e tabela para dentro do wrapper
+  const shopeeRecon = document.getElementById("fin-shopee-reconciliacao");
+  const tabelaEl    = document.getElementById("fin-tabela");
+
+  dashSection.parentNode.insertBefore(dashWrapper, dashSection);
+  dashWrapper.appendChild(dashSection);
+  if (shopeeRecon) dashWrapper.appendChild(shopeeRecon);
+  if (tabelaEl)    dashWrapper.appendChild(tabelaEl);
+
+  // Eventos das abas
+  document.getElementById("vft-btn-dashboard").addEventListener("click", () => _switchTab("dashboard"));
+  document.getElementById("vft-btn-entrega").addEventListener("click", () => _switchTab("entrega"));
+
+  // Evento do botão de gerar link na aba entrega
+  document.getElementById("btn-vft-gerar")?.addEventListener("click", _gerarLinkComEntrega);
+
+  // Copiar
+  document.getElementById("btn-vft-copiar")?.addEventListener("click", async () => {
+    const url = document.getElementById("vft-link-output")?.value;
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      _setEntStatus("✓ Link copiado.", "ok");
+    } catch { _setEntStatus("Copie manualmente o link acima.", "warn"); }
+  });
+
+  // Abrir
+  document.getElementById("btn-vft-abrir")?.addEventListener("click", () => {
+    const url = document.getElementById("vft-link-output")?.value;
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  });
+
+  // Auto-save ao digitar (mantém estado mesmo sem mudar de aba)
+  document.getElementById("vft-entrega")?.querySelectorAll("input, textarea").forEach(el => {
+    el.addEventListener("input", () => _syncEntregaStateFromDOM());
+  });
+}
+
+function _setEntStatus(msg, type) {
+  const el = document.getElementById("vft-ent-status");
+  if (!el) return;
+  if (!msg) { el.style.display = "none"; return; }
+  el.textContent = msg;
+  el.style.display = "block";
+  el.style.color = type === "ok" ? "#4ade80" : type === "err" ? "#f87171" : "#fbbf24";
+}
+
+// Gerar link incluindo os dados do formulário de entrega
+async function _gerarLinkComEntrega() {
+  if (!TOKEN) return;
+  if (!ultimoFechamentoFinanceiro?.data) {
+    _setEntStatus("Processe um fechamento antes de gerar o link.", "err");
+    return;
+  }
+
+  // Salvar estado atual do form
+  _syncEntregaStateFromDOM();
+
+  const btn = document.getElementById("btn-vft-gerar");
+  if (btn) { btn.disabled = true; btn.textContent = "Gerando…"; }
+  _setEntStatus("Gerando e publicando…", "warn");
+  document.getElementById("vft-link-row").style.display = "none";
+
+  try {
+    const data = ultimoFechamentoFinanceiro.data;
+    const payload = montarPayloadFechamentoCliente(data);
+
+    // Injetar dados de entrega no payload
+    payload.entrega = {
+      cliente:   _entregaState.cliente,
+      periodo:   _entregaState.periodo || payload.periodo,
+      destaques: _entregaState.destaques.filter(Boolean),
+      atencoes:  _entregaState.atencoes.filter(Boolean),
+      prioridades: _entregaState.prioridades,
+    };
+    payload.periodo = _entregaState.periodo || payload.periodo;
+
+    const criarResp = await fetch(`${API_BASE}/entregas-cliente`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + TOKEN },
+      body: JSON.stringify({
+        tipo: "fechamento_mensal",
+        titulo: payload.titulo || "Fechamento Financeiro",
+        periodo: payload.periodo || "",
+        status: "rascunho",
+        payload_json: payload,
+        origem_tipo: "fechamento_financeiro",
+        origem_id: null,
+      }),
+    });
+
+    if (criarResp.status === 401) { window.location.replace("index.html"); return; }
+    const criarJson = await criarResp.json();
+    if (!criarResp.ok) throw new Error(criarJson?.erro || criarJson?.error || "Falha ao criar entrega.");
+
+    const entregaId = criarJson?.entrega?.id;
+    if (!entregaId) throw new Error("Entrega criada sem ID.");
+
+    const pubResp = await fetch(`${API_BASE}/entregas-cliente/${encodeURIComponent(entregaId)}/publicar`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+
+    if (pubResp.status === 401) { window.location.replace("index.html"); return; }
+    const pubJson = await pubResp.json();
+    if (!pubResp.ok) throw new Error(pubJson?.erro || pubJson?.error || "Falha ao publicar entrega.");
+
+    const token = pubJson?.entrega?.token_publico;
+    if (!token) throw new Error("Token público não gerado.");
+
+    const publicUrl = `${window.location.origin}/relatorio-publico.html?token=${encodeURIComponent(token)}`;
+
+    const outputEl = document.getElementById("vft-link-output");
+    if (outputEl) outputEl.value = publicUrl;
+    document.getElementById("vft-link-row").style.display = "flex";
+    _setEntStatus("✓ Link gerado com sucesso. Copie e envie ao cliente.", "ok");
+
+  } catch (err) {
+    _setEntStatus("Erro: " + (err?.message || "Falha ao gerar link."), "err");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Gerar link para o cliente"; }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH na função processarFechamentoFinanceiro:
+// Chamar initEntregaTabs() após processamento bem-sucedido.
+//
+// Localize a linha:
+//   document.getElementById("fc-wrap")?.setAttribute("data-processed", "");
+//
+// E adicione LOGO ABAIXO:
+//   initEntregaTabs();
+// ─────────────────────────────────────────────────────────────────────────────
 

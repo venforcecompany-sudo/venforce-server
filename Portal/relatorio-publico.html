@@ -3,36 +3,48 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VenForce — Relatório do Cliente</title>
+  <title>VenForce — Fechamento Financeiro</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="relatorio-publico.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23B957F0'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>" />
 </head>
 <body>
 
-  <!-- TOPBAR -->
-  <header class="vp-topbar no-print">
-    <div class="vp-brand">
-      <div class="vp-mark">VF</div>
-      <div>
-        <div class="vp-brand-name">VenForce</div>
-        <div class="vp-brand-sub">Entrega para cliente</div>
+  <header class="rp-topbar no-print">
+    <div class="rp-topbar-inner">
+      <div class="rp-brand">
+        <div class="rp-logo-mark">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div>
+          <div class="rp-brand-name">VenForce</div>
+          <div class="rp-brand-sub">Relatório de fechamento</div>
+        </div>
       </div>
+      <button id="btn-pdf" class="rp-btn-pdf" type="button">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Baixar PDF
+      </button>
     </div>
-    <button id="btn-pdf" class="vp-btn-pdf" type="button">Baixar PDF</button>
   </header>
 
-  <!-- MAIN -->
-  <main class="vp-page">
-    <div id="vp-root">
-      <div class="vp-loading">Carregando relatório…</div>
+  <main class="rp-main">
+    <div id="rp-root">
+      <div class="rp-loading">
+        <div class="rp-loading-spinner"></div>
+        <span>Carregando relatório…</span>
+      </div>
     </div>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="relatorio-publico.js"></script>
 </body>
 </html>
