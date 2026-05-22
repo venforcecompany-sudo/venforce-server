@@ -67,6 +67,7 @@ const meliAnunciosRoutes = require("./routes/meliAnunciosRoutes");
 const externalFirebaseRoutes = require("./routes/externalFirebaseRoutes");
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3333;
 
 // MIDDLEWARES
