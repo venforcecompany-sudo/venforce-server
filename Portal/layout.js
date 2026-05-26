@@ -176,8 +176,8 @@
     logo.innerHTML = `
       <button type="button" id="vf-menu-btn" aria-label="Abrir menu" style="display:none;background:transparent;border:1px solid var(--vf-border);border-radius:10px;width:36px;height:36px;align-items:center;justify-content:center;color:var(--vf-text-m);cursor:pointer;">${svgIcon("menu")}</button>
       <a href="dashboard.html" class="vf-sidebar-logo-link">
-        <span class="vf-sidebar-logo-icon" aria-hidden="true">V</span>
-        <span class="vf-sidebar-logo-text">Venforce<span class="vf-logo-go-inline">Go</span></span>
+        <span class="vf-sidebar-logo-icon" aria-hidden="true">VF</span>
+        <span class="vf-sidebar-logo-text"><span class="vf-logo-wordmark">Venforce</span><span class="vf-logo-go-inline">Go</span></span>
       </a>
       <button type="button" id="vf-sidebar-toggle" class="vf-sidebar-toggle" aria-label="Recolher menu" aria-expanded="true">${svgIcon("chevron-left")}</button>
     `;

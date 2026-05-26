@@ -5029,13 +5029,7 @@ body {
    Topbar de áreas + sidebar hierárquica
    ========================================================= */
 
-/* Logo: texto inline "Go" em roxo */
-.vf-logo-go-inline {
-  color: var(--vf-primary);
-  font-weight: 700;
-}
-
-/* Logo: ícone compacto "V" visível apenas quando sidebar recolhida */
+/* Logo: ícone compacto "VF" visível apenas quando sidebar recolhida */
 .vf-sidebar-logo-icon {
   display: none;
   width: 28px;
@@ -5129,4 +5123,30 @@ body {
     padding: 0 0.75rem;
     font-size: 0.8rem;
   }
+}
+
+/* ── Logo wordmark ── */
+.vf-logo-wordmark {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.vf-logo-go-inline {
+  color: var(--vf-primary);
+  font-weight: 800;
+  margin-left: 1px;
+}
+
+/* ── Sidebar active link accent ── */
+.vf-sidebar-nav a.active {
+  background: rgba(124,58,237,0.12);
+  color: var(--vf-primary);
+  border-left: 2px solid var(--vf-primary);
+  padding-left: calc(1rem - 2px);
+}
+
+/* ── Topbar active link stronger ── */
+.vf-topbar-link.is-active {
+  border-bottom-width: 2.5px;
+  font-weight: 700;
 }
