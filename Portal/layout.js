@@ -85,7 +85,7 @@
       links: [
         { label: "Dashboard",     href: "dashboard.html",     icon: "vf-dashboard"  },
         { label: "Bases de custo",href: "dashboard.html",     icon: "database"      },
-        { label: "Anúncios ML",   href: "anuncios-meli.html", icon: "activity"      },
+        { label: "Anúncios ML",   href: "anuncios-meli.html", icon: "activity",     adminOnly: true },
         { label: "Mercado Ads",   href: "ads.html",           icon: "trending-up"   },
         { label: "Otimizador",    href: "automacoes.html",    icon: "repeat"        },
         { label: "Design",        href: "design.html",        icon: "layers"        },
@@ -145,10 +145,11 @@
     return PAGE_TO_GROUP[page] || "operacao";
   }
 
-  function buildSidebarLinks(groupId) {
+  function buildSidebarLinks(groupId, isAdmin) {
     const group = NAV_GROUPS[groupId];
     if (!group) return "";
     return group.links
+      .filter((l) => !l.adminOnly || isAdmin)
       .map((l) => {
         const cls = isActiveLink(l.href) ? ' class="active"' : "";
         return `<a${cls} href="${l.href}">${svgIcon(l.icon)}<span>${l.label}</span></a>`;
@@ -215,7 +216,7 @@
 
     const nav = document.createElement("nav");
     nav.className = "vf-sidebar-nav";
-    nav.innerHTML = `<div class="vf-sidebar-section-title">${(NAV_GROUPS[activeGroup] || NAV_GROUPS.operacao).label}</div>${buildSidebarLinks(activeGroup)}`;
+    nav.innerHTML = `<div class="vf-sidebar-section-title">${(NAV_GROUPS[activeGroup] || NAV_GROUPS.operacao).label}</div>${buildSidebarLinks(activeGroup, isAdmin)}`;
 
     const footer = document.createElement("div");
     footer.className = "vf-sidebar-footer";
