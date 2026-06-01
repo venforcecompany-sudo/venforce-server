@@ -312,17 +312,21 @@ const CARDS = [
   { id: "valorCanceladoAjustado",       label: "Valor cancelado",       fmt: fmtBRL, cls: "--danger",  comp: "valorCanceladoPct",   inv: true },
 ];
 
-const ICONE_CARD = {
-  "--purple":  `<path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"/>`,
-  "--success": `<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>`,
-  "--warning": `<line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>`,
-  "--danger":  `<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>`,
-  "--neutral": `<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>`,
+const ICONE_METRICAS = {
+  "vendasBrutas":                 `<path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"/>`,
+  "quantidadeVendas":             `<path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>`,
+  "unidadesVendidas":             `<polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/>`,
+  "precoMedioUnidade":            `<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>`,
+  "ticketMedio":                  `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>`,
+  "comissaoEstimada":             `<circle cx="12" cy="12" r="10"/><path d="M15 9h.01"/><path d="M9 15h.01"/><line x1="14.5" y1="9.5" x2="9.5" y2="14.5"/>`,
+  "descontoEstimado":             `<line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>`,
+  "quantidadeCanceladasAjustada": `<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>`,
+  "valorCanceladoAjustado":       `<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>`,
 };
 
-function svgCard(cls) {
-  const d = ICONE_CARD[cls] || ICONE_CARD["--neutral"];
-  return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+function svgCard(id) {
+  const d = ICONE_METRICAS[id] || `<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>`;
+  return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 }
 
 function renderPct(val, invert) {
@@ -336,21 +340,24 @@ function renderPct(val, invert) {
 }
 
 function renderCards(resumo, comparativo) {
-  document.getElementById("metricas-cards-grid").innerHTML = CARDS.map(cfg => {
-    const valor = resumo[cfg.id];
-    const comp  = comparativo && cfg.comp ? comparativo[cfg.comp] : null;
-    return `<div class="ads-summary-card ads-summary-card${cfg.cls}">
-      <div class="ads-summary-icon">${svgCard(cfg.cls)}</div>
-      <div class="ads-summary-body">
-        <div class="ads-summary-value">${cfg.fmt(valor)}</div>
-        <div class="ads-summary-label">
+  document.getElementById("metricas-cards-grid").innerHTML =
+    `<div class="metricas-section-label">Resumo do período</div>` +
+    CARDS.map(cfg => {
+      const valor   = resumo[cfg.id];
+      const comp    = comparativo && cfg.comp ? comparativo[cfg.comp] : null;
+      const pctHtml = renderPct(comp, cfg.inv);
+      return `<div class="metricas-kpi-card metricas-kpi-card${cfg.cls}">
+        <div class="metricas-kpi-top">
+          <div class="metricas-kpi-icon">${svgCard(cfg.id)}</div>
+          ${pctHtml}
+        </div>
+        <div class="metricas-kpi-value">${cfg.fmt(valor)}</div>
+        <div class="metricas-kpi-label">
           ${esc(cfg.label)}
           ${cfg.hint ? `<span class="metricas-hint">${esc(cfg.hint)}</span>` : ""}
         </div>
-        ${renderPct(comp, cfg.inv)}
-      </div>
-    </div>`;
-  }).join("");
+      </div>`;
+    }).join("");
 }
 
 // ─── Gráfico de linha (SVG puro) ──────────────────────────────────────────────
@@ -358,8 +365,8 @@ function renderCards(resumo, comparativo) {
 function criarLinhaChart(dados, campo, cor, fmtYFn) {
   if (!dados.length) return `<p class="metricas-chart-empty">Sem dados para exibir.</p>`;
 
-  const W = 480, H = 160;
-  const P = { t: 14, r: 12, b: 34, l: 58 };
+  const W = 480, H = 200;
+  const P = { t: 16, r: 12, b: 36, l: 60 };
   const iW = W - P.l - P.r;
   const iH = H - P.t - P.b;
 
@@ -407,8 +414,8 @@ function criarLinhaChart(dados, campo, cor, fmtYFn) {
 function criarBarrasChart(dados, campo, cor) {
   if (!dados.length) return `<p class="metricas-chart-empty">Sem dados para exibir.</p>`;
 
-  const W = 480, H = 130;
-  const P = { t: 8, r: 12, b: 32, l: 36 };
+  const W = 480, H = 175;
+  const P = { t: 10, r: 12, b: 34, l: 42 };
   const iW = W - P.l - P.r;
   const iH = H - P.t - P.b;
 
@@ -469,13 +476,13 @@ function renderTabelaPorDia(porDia) {
     return;
   }
   tbody.innerHTML = porDia.map(d => `<tr>
-    <td style="white-space:nowrap;">${fmtDataLonga(d.data)}</td>
+    <td class="metricas-table-date">${fmtDataLonga(d.data)}</td>
     <td class="num">${fmtBRL(d.vendasBrutas)}</td>
     <td class="num">${fmtInt(d.quantidadeVendas)}</td>
     <td class="num">${fmtInt(d.unidadesVendidas)}</td>
     <td class="num">${fmtBRL(d.ticketMedio)}</td>
-    <td class="num">${fmtInt(d.quantidadeCanceladas)}</td>
-    <td class="num">${fmtBRL(d.valorCancelado)}</td>
+    <td class="num metricas-table-cancel">${fmtInt(d.quantidadeCanceladas)}</td>
+    <td class="num metricas-table-cancel">${fmtBRL(d.valorCancelado)}</td>
   </tr>`).join("");
 }
 
@@ -489,9 +496,9 @@ function renderTabelaTopProdutos(topProdutos) {
   }
 
   tbody.innerHTML = topProdutos.slice(0, 50).map(p => `<tr>
-    <td title="${esc(p.titulo)}">${esc(trunc(p.titulo))}</td>
-    <td><code style="font-size:.78rem;color:var(--vf-text-m);">${esc(p.itemId)}</code></td>
-    <td style="font-size:.82rem;color:var(--vf-text-m);">${esc(p.sku || "—")}</td>
+    <td class="metricas-table-produto" title="${esc(p.titulo)}">${esc(trunc(p.titulo))}</td>
+    <td><span class="metricas-table-code">${esc(p.itemId)}</span></td>
+    <td><span class="metricas-table-sku">${esc(p.sku || "—")}</span></td>
     <td class="num">${fmtInt(p.unidades)}</td>
     <td class="num">${fmtBRL(p.faturamento)}</td>
     <td class="num">${fmtBRL(p.ticketMedio)}</td>

@@ -5449,31 +5449,106 @@ body {
   margin: 0 auto 12px;
 }
 
-/* ── Cards ──────────────────────────────────────────────────────── */
+/* ── Rótulo de seção ────────────────────────────────────────────── */
+.metricas-section-label {
+  grid-column: 1 / -1;
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--vf-text-l);
+  margin: 0 0 6px;
+  padding: 0;
+}
+/* Quando usado fora do grid (ex: seção gráficos) */
+div > .metricas-section-label {
+  display: block;
+  margin-bottom: 14px;
+}
+
+/* ── KPI Cards ──────────────────────────────────────────────────── */
 .metricas-cards-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 28px;
 }
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   .metricas-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 480px) {
   .metricas-cards-grid { grid-template-columns: 1fr; }
 }
 
+.metricas-kpi-card {
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  padding: 1.1rem 1.2rem .95rem;
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow .18s, border-color .18s;
+}
+.metricas-kpi-card:hover {
+  box-shadow: var(--vf-shadow-card-hover);
+}
+.metricas-kpi-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 11px;
+  gap: 8px;
+}
+.metricas-kpi-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.metricas-kpi-value {
+  font-size: 1.42rem;
+  font-weight: 700;
+  letter-spacing: -.025em;
+  color: var(--vf-text);
+  line-height: 1.1;
+  margin-bottom: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.metricas-kpi-label {
+  font-size: .71rem;
+  font-weight: 600;
+  color: var(--vf-text-m);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  line-height: 1.3;
+}
+
+/* Cores dos ícones por variante */
+.metricas-kpi-card--purple .metricas-kpi-icon  { background: var(--vf-primary-l); color: var(--vf-primary); }
+.metricas-kpi-card--success .metricas-kpi-icon { background: #ecfdf5; color: #047857; }
+.metricas-kpi-card--warning .metricas-kpi-icon { background: #fffbeb; color: #d97706; }
+.metricas-kpi-card--danger .metricas-kpi-icon  { background: #fef2f2; color: #dc2626; }
+.metricas-kpi-card--neutral .metricas-kpi-icon { background: var(--vf-bg); color: var(--vf-text-m); }
+
+/* Borda de atenção discreta nos cards de cancelamento */
+.metricas-kpi-card--danger { border-color: rgba(220,38,38,.15); }
+.metricas-kpi-card--danger:hover { border-color: rgba(220,38,38,.30); }
+
 /* Delta comparativo (%) */
 .metricas-pct {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: .70rem;
+  font-size: .69rem;
   font-weight: 700;
   border-radius: 999px;
   padding: 2px 7px;
-  margin-top: 3px;
   line-height: 1.4;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .metricas-pct--pos { background: #ecfdf5; color: #047857; }
 .metricas-pct--neg { background: #fef2f2; color: #b91c1c; }
@@ -5481,12 +5556,14 @@ body {
 /* Dica discreta nos cards de cancelamento */
 .metricas-hint {
   display: block;
-  font-size: .67rem;
+  font-size: .65rem;
   color: var(--vf-text-l);
   font-style: italic;
-  margin-top: 1px;
+  margin-top: 2px;
   white-space: normal;
   line-height: 1.3;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 /* ── Gráficos ───────────────────────────────────────────────────── */
@@ -5494,7 +5571,7 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 @media (max-width: 760px) {
   .metricas-charts-row { grid-template-columns: 1fr; }
@@ -5507,34 +5584,47 @@ body {
   overflow: hidden;
 }
 .metricas-chart-header {
-  padding: .65rem 1.25rem .4rem;
-  font-size: .73rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: .8rem 1.25rem .55rem;
+  font-size: .7rem;
   font-weight: 700;
   color: var(--vf-text-m);
   text-transform: uppercase;
-  letter-spacing: .07em;
+  letter-spacing: .08em;
   border-bottom: 1px solid var(--vf-border);
 }
-.metricas-chart-body  { padding: .8rem 1rem .6rem; }
+.metricas-chart-header svg { color: var(--vf-text-l); flex-shrink: 0; }
+.metricas-chart-body  { padding: 1rem 1rem .75rem; }
 .metricas-chart-svg   { width: 100%; height: auto; display: block; overflow: visible; }
 .metricas-chart-label { font-size: 9px; fill: #9ca3af; font-family: var(--vf-font, sans-serif); }
-.metricas-chart-empty { color: var(--vf-text-l); font-size: .875rem; text-align: center; padding: 1.5rem 0; margin: 0; }
+.metricas-chart-empty {
+  color: var(--vf-text-l);
+  font-size: .875rem;
+  text-align: center;
+  padding: 2.5rem 0;
+  margin: 0;
+}
 
-/* ── Top produtos: barras horizontais ───────────────────────────── */
+/* ── Top produtos: card especial ────────────────────────────────── */
+.metricas-top-card { margin-bottom: 16px !important; }
+.metricas-top-bar-section { padding: .85rem 1.5rem 1.1rem; }
+
 .metricas-top-row {
   display: grid;
-  grid-template-columns: 180px 1fr 120px;
+  grid-template-columns: 190px 1fr 130px;
   align-items: center;
-  gap: 10px;
-  padding: 5px 0;
+  gap: 12px;
+  padding: 6px 0;
   border-bottom: 1px solid var(--vf-border);
 }
 .metricas-top-row:last-child { border-bottom: none; }
 @media (max-width: 560px) {
-  .metricas-top-row { grid-template-columns: 100px 1fr 80px; }
+  .metricas-top-row { grid-template-columns: 110px 1fr 88px; }
 }
 .metricas-top-label {
-  font-size: .78rem;
+  font-size: .79rem;
   color: var(--vf-text);
   white-space: nowrap;
   overflow: hidden;
@@ -5543,20 +5633,94 @@ body {
 .metricas-top-bar-wrap {
   background: var(--vf-bg);
   border-radius: 999px;
-  height: 9px;
+  height: 8px;
   overflow: hidden;
 }
 .metricas-top-bar {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--vf-primary), rgba(var(--vf-hover-rgb), .65));
+  background: linear-gradient(90deg, var(--vf-primary), rgba(var(--vf-hover-rgb), .55));
   min-width: 4px;
+  transition: width .4s ease;
 }
 .metricas-top-value {
-  font-size: .78rem;
+  font-size: .79rem;
   font-weight: 700;
   color: var(--vf-text);
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* ── Tabelas ────────────────────────────────────────────────────── */
+.metricas-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.metricas-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .845rem;
+}
+.metricas-table thead th {
+  text-align: left;
+  padding: .6rem 1.1rem;
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--vf-text-m);
+  border-bottom: 2px solid var(--vf-border);
+  white-space: nowrap;
+  background: #fafbfc;
+}
+.metricas-table thead th.num { text-align: right; }
+.metricas-table tbody td {
+  padding: .6rem 1.1rem;
+  border-bottom: 1px solid var(--vf-border);
+  color: var(--vf-text);
+  vertical-align: middle;
+}
+.metricas-table tbody td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.metricas-table tbody tr:last-child td { border-bottom: none; }
+.metricas-table tbody tr:hover td { background: #f8f9fc; }
+
+.metricas-table-date { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Coluna cancelamento — vermelho suave */
+.metricas-table-cancel { color: #b91c1c !important; }
+
+/* Produto — quebra de linha controlada */
+.metricas-table-produto {
+  max-width: 340px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 900px) {
+  .metricas-table-produto { max-width: 180px; }
+}
+
+/* MLB code badge */
+.metricas-table-code {
+  font-family: var(--vf-mono);
+  font-size: .74rem;
+  color: var(--vf-text-m);
+  background: var(--vf-bg);
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--vf-border);
+  white-space: nowrap;
+  display: inline-block;
+}
+
+/* SKU */
+.metricas-table-sku {
+  font-size: .79rem;
+  color: var(--vf-text-l);
 }
