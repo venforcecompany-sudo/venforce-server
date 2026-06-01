@@ -5166,3 +5166,182 @@ body {
 .vf-sidebar.is-collapsed .vf-sidebar-separator {
   display: none;
 }
+
+/* ===================================================================
+   Métricas ML — Portal VenForce
+   Prefixo: metricas-
+   =================================================================== */
+
+.vf-page-metricas .vf-content {
+  max-width: 1440px;
+  padding-left:  clamp(1.25rem, 3vw, 2rem);
+  padding-right: clamp(1.25rem, 3vw, 2rem);
+}
+
+/* Accent azul ML para o hero eyebrow (sobrescreve --ads-orange) */
+.vf-page-metricas .ads-hero-eyebrow {
+  color: #2563eb;
+  background: #eff6ff;
+  border-color: rgba(37, 99, 235, .18);
+}
+
+/* ── Filtros ────────────────────────────────────────────────────── */
+.metricas-filters-body {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 100px 100px 1fr auto;
+  gap: 10px;
+  padding: .7rem 1.5rem .85rem;
+  align-items: end;
+}
+@media (max-width: 1050px) {
+  .metricas-filters-body { grid-template-columns: 1fr 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .metricas-filters-body { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 420px) {
+  .metricas-filters-body { grid-template-columns: 1fr; }
+}
+
+/* Inputs de data personalizada — ocultos por padrão */
+.metricas-date-custom          { display: none !important; }
+.metricas-date-custom.is-visible { display: block !important; }
+
+/* ── Estado (idle / loading / empty / error) ────────────────────── */
+.metricas-estado {
+  text-align: center;
+  padding: 3rem 2rem;
+  color: var(--vf-text-m);
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  box-shadow: var(--vf-shadow-card);
+  margin-bottom: 24px;
+  font-size: .93rem;
+  animation: fadeUp .3s ease-out both;
+}
+.metricas-estado p { margin: 0; }
+.metricas-estado svg { display: block; margin: 0 auto 10px; }
+.metricas-estado--error { color: var(--vf-danger); }
+.metricas-estado-spinner {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--vf-border);
+  border-top-color: var(--vf-primary);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  margin: 0 auto 12px;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────── */
+.metricas-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 24px;
+}
+@media (max-width: 800px) {
+  .metricas-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .metricas-cards-grid { grid-template-columns: 1fr; }
+}
+
+/* Delta comparativo (%) */
+.metricas-pct {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: .70rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 7px;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.metricas-pct--pos { background: #ecfdf5; color: #047857; }
+.metricas-pct--neg { background: #fef2f2; color: #b91c1c; }
+
+/* Dica discreta nos cards de cancelamento */
+.metricas-hint {
+  display: block;
+  font-size: .67rem;
+  color: var(--vf-text-l);
+  font-style: italic;
+  margin-top: 1px;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+/* ── Gráficos ───────────────────────────────────────────────────── */
+.metricas-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+@media (max-width: 760px) {
+  .metricas-charts-row { grid-template-columns: 1fr; }
+}
+.metricas-chart-card {
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  box-shadow: var(--vf-shadow-card);
+  overflow: hidden;
+}
+.metricas-chart-header {
+  padding: .65rem 1.25rem .4rem;
+  font-size: .73rem;
+  font-weight: 700;
+  color: var(--vf-text-m);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  border-bottom: 1px solid var(--vf-border);
+}
+.metricas-chart-body  { padding: .8rem 1rem .6rem; }
+.metricas-chart-svg   { width: 100%; height: auto; display: block; overflow: visible; }
+.metricas-chart-label { font-size: 9px; fill: #9ca3af; font-family: var(--vf-font, sans-serif); }
+.metricas-chart-empty { color: var(--vf-text-l); font-size: .875rem; text-align: center; padding: 1.5rem 0; margin: 0; }
+
+/* ── Top produtos: barras horizontais ───────────────────────────── */
+.metricas-top-row {
+  display: grid;
+  grid-template-columns: 180px 1fr 120px;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--vf-border);
+}
+.metricas-top-row:last-child { border-bottom: none; }
+@media (max-width: 560px) {
+  .metricas-top-row { grid-template-columns: 100px 1fr 80px; }
+}
+.metricas-top-label {
+  font-size: .78rem;
+  color: var(--vf-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.metricas-top-bar-wrap {
+  background: var(--vf-bg);
+  border-radius: 999px;
+  height: 9px;
+  overflow: hidden;
+}
+.metricas-top-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--vf-primary), rgba(var(--vf-hover-rgb), .65));
+  min-width: 4px;
+}
+.metricas-top-value {
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--vf-text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

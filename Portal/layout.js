@@ -105,6 +105,7 @@
         { label: "Financeiro",   href: "financeiro.html",    icon: "vf-financeiro" },
         { label: "Conversão",    href: "fechamento.html",    icon: "vf-fechamento" },
         { label: "Relatórios",   href: "relatorios.html",    icon: "bar-chart"     },
+        { label: "Métricas",     href: "metricas.html",      icon: "trending-up"   },
 
         { separator: true, label: "FERRAMENTAS" },
         { label: "Extensão",         href: "extensao.html",       icon: "download" },
@@ -161,6 +162,7 @@
     "extensao.html":          "operacao",
     "ferramenta-or.html":     "operacao",
     "baixador-midias.html":   "operacao",
+    "metricas.html":          "operacao",
     "dashboard.html":       "operacao",
   };
 
