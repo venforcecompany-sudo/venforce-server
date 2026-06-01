@@ -5254,13 +5254,14 @@ body {
 /* Popover calendário */
 .metricas-calendar-popover {
   position: absolute;
-  top: calc(100% + 6px);
+  bottom: calc(100% + 8px);
+  top: auto;
   left: 0;
   z-index: 1050;
   background: var(--vf-surface);
   border: 1px solid var(--vf-border);
   border-radius: var(--vf-radius);
-  box-shadow: 0 8px 32px rgba(15,23,42,.13), 0 2px 8px rgba(15,23,42,.07);
+  box-shadow: 0 -4px 24px rgba(15,23,42,.10), 0 2px 8px rgba(15,23,42,.06);
   padding: 14px 14px 12px;
   min-width: 280px;
   animation: slideDown .18s ease-out both;
