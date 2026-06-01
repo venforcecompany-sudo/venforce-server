@@ -76,7 +76,42 @@ function calOpen() {
     _calMonth = now.getMonth();
   }
   calRender();
-  document.getElementById("metricas-calendar-popover").style.display = "";
+
+  const pop = document.getElementById("metricas-calendar-popover");
+  pop.style.visibility = "hidden";
+  pop.style.display    = "";
+  _calPosition(pop);
+  pop.style.visibility = "";
+}
+
+function _calPosition(pop) {
+  const btn  = document.getElementById("metricas-date-picker-btn");
+  const rect = btn.getBoundingClientRect();
+  const W    = pop.offsetWidth  || 314;
+  const H    = pop.offsetHeight || 360;
+  const gap  = 8;
+  const vpW  = window.innerWidth;
+  const vpH  = window.innerHeight;
+
+  // Horizontal: alinha à esquerda do botão, mas não sai da viewport
+  let left = rect.left;
+  if (left + W > vpW - gap) left = vpW - W - gap;
+  if (left < gap) left = gap;
+
+  // Vertical: prefere acima se couber, senão abre abaixo
+  const spaceAbove = rect.top  - gap;
+  const spaceBelow = vpH - rect.bottom - gap;
+  let top;
+  if (spaceAbove >= H || spaceAbove >= spaceBelow) {
+    top = rect.top - H - gap;
+    if (top < gap) top = gap;
+  } else {
+    top = rect.bottom + gap;
+    if (top + H > vpH - gap) top = Math.max(gap, vpH - H - gap);
+  }
+
+  pop.style.left = left + "px";
+  pop.style.top  = top  + "px";
 }
 
 function calClose() {
