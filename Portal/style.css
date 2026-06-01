@@ -5188,24 +5188,228 @@ body {
 /* ── Filtros ────────────────────────────────────────────────────── */
 .metricas-filters-body {
   display: grid;
-  grid-template-columns: 1.6fr 1fr 100px 100px 1fr auto;
+  grid-template-columns: 1.6fr 1fr 1fr auto;
   gap: 10px;
   padding: .7rem 1.5rem .85rem;
   align-items: end;
 }
+.metricas-filters-body--has-picker {
+  grid-template-columns: 1.6fr 1fr 1.2fr 1fr auto;
+}
 @media (max-width: 1050px) {
-  .metricas-filters-body { grid-template-columns: 1fr 1fr 1fr; }
+  .metricas-filters-body,
+  .metricas-filters-body--has-picker { grid-template-columns: 1fr 1fr; }
 }
-@media (max-width: 640px) {
-  .metricas-filters-body { grid-template-columns: 1fr 1fr; }
-}
-@media (max-width: 420px) {
-  .metricas-filters-body { grid-template-columns: 1fr; }
+@media (max-width: 560px) {
+  .metricas-filters-body,
+  .metricas-filters-body--has-picker { grid-template-columns: 1fr; }
 }
 
-/* Inputs de data personalizada — ocultos por padrão */
-.metricas-date-custom          { display: none !important; }
-.metricas-date-custom.is-visible { display: block !important; }
+/* ── Date Picker personalizado ──────────────────────────────────── */
+.metricas-date-picker-wrap {
+  display: none;
+  position: relative;
+  margin: 0;
+}
+.metricas-filters-body--has-picker .metricas-date-picker-wrap {
+  display: block;
+}
+
+.metricas-date-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 38px;
+  padding: 0 .75rem;
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius-sm);
+  font-family: var(--vf-font);
+  font-size: .84rem;
+  color: var(--vf-text-m);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color .15s, box-shadow .15s;
+}
+.metricas-date-picker-btn:hover,
+.metricas-date-picker-btn:focus {
+  border-color: var(--vf-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(var(--vf-primary-rgb), .10);
+}
+.metricas-date-picker-btn svg { flex-shrink: 0; color: var(--vf-text-l); }
+.metricas-date-picker-btn--has-value { color: var(--vf-text); }
+.metricas-date-picker-btn--has-value svg { color: var(--vf-primary); }
+
+/* Popover calendário */
+.metricas-calendar-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1050;
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  box-shadow: 0 8px 32px rgba(15,23,42,.13), 0 2px 8px rgba(15,23,42,.07);
+  padding: 14px 14px 12px;
+  min-width: 280px;
+  animation: slideDown .18s ease-out both;
+}
+@media (max-width: 520px) {
+  .metricas-calendar-popover {
+    position: fixed;
+    top: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 16px;
+    min-width: min(320px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+  }
+}
+
+.metricas-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.metricas-cal-label {
+  font-weight: 600;
+  font-size: .9rem;
+  color: var(--vf-text);
+  text-align: center;
+  flex: 1;
+}
+.metricas-cal-nav {
+  background: none;
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius-sm);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.15rem;
+  line-height: 1;
+  color: var(--vf-text-m);
+  padding: 0;
+  transition: background .12s, border-color .12s, color .12s;
+  flex-shrink: 0;
+}
+.metricas-cal-nav:hover {
+  background: var(--vf-primary-l);
+  border-color: var(--vf-primary);
+  color: var(--vf-primary);
+}
+
+.metricas-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 3px;
+}
+.metricas-calendar-weekdays span {
+  text-align: center;
+  font-size: .67rem;
+  font-weight: 600;
+  color: var(--vf-text-l);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 3px 0 5px;
+}
+
+.metricas-calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0;
+}
+.metricas-calendar-day {
+  position: relative;
+  text-align: center;
+  padding: 7px 2px;
+  font-size: .82rem;
+  cursor: pointer;
+  border-radius: 0;
+  color: var(--vf-text);
+  transition: background .1s, color .1s;
+  user-select: none;
+  z-index: 0;
+}
+.metricas-calendar-day:not(.metricas-calendar-day--empty):hover {
+  background: var(--vf-primary-l);
+  color: var(--vf-primary);
+  border-radius: 6px;
+  z-index: 1;
+}
+.metricas-calendar-day--empty {
+  cursor: default;
+  pointer-events: none;
+}
+.metricas-calendar-day--today {
+  font-weight: 700;
+}
+.metricas-calendar-day--today::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--vf-primary);
+}
+.metricas-calendar-day--start,
+.metricas-calendar-day--end,
+.metricas-calendar-day--single {
+  background: var(--vf-primary) !important;
+  color: #fff !important;
+  font-weight: 700;
+  z-index: 1;
+}
+.metricas-calendar-day--start {
+  border-radius: 6px 0 0 6px;
+}
+.metricas-calendar-day--end {
+  border-radius: 0 6px 6px 0;
+}
+.metricas-calendar-day--single {
+  border-radius: 6px;
+}
+.metricas-calendar-day--start::after,
+.metricas-calendar-day--end::after,
+.metricas-calendar-day--single::after {
+  display: none;
+}
+.metricas-calendar-day--in-range {
+  background: var(--vf-primary-l);
+  color: var(--vf-primary);
+  border-radius: 0;
+}
+
+.metricas-calendar-hint {
+  font-size: .72rem;
+  color: var(--vf-text-l);
+  text-align: center;
+  margin-top: 8px;
+  min-height: 1.1em;
+}
+.metricas-calendar-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vf-border);
+}
+.metricas-cal-apply-btn {
+  padding: .32rem .9rem !important;
+  font-size: .82rem !important;
+  margin: 0 !important;
+}
 
 /* ── Estado (idle / loading / empty / error) ────────────────────── */
 .metricas-estado {

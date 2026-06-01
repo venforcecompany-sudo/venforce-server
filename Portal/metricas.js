@@ -52,6 +52,126 @@ function fmtIntChart(n) {
   return String(v);
 }
 
+// ─── Date Picker state ────────────────────────────────────────────────────────
+
+let _calFrom  = null;  // "YYYY-MM-DD"
+let _calTo    = null;  // "YYYY-MM-DD"
+let _calStep  = 0;     // 0 = aguardando 1º clique, 1 = aguardando 2º clique
+let _calYear  = new Date().getFullYear();
+let _calMonth = new Date().getMonth();
+
+const CAL_MONTHS = [
+  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
+];
+
+function calOpen() {
+  if (_calFrom) {
+    const d = new Date(_calFrom + "T00:00:00");
+    _calYear  = d.getFullYear();
+    _calMonth = d.getMonth();
+  } else {
+    const now = new Date();
+    _calYear  = now.getFullYear();
+    _calMonth = now.getMonth();
+  }
+  calRender();
+  document.getElementById("metricas-calendar-popover").style.display = "";
+}
+
+function calClose() {
+  const el = document.getElementById("metricas-calendar-popover");
+  if (el) el.style.display = "none";
+}
+
+function calRender() {
+  document.getElementById("metricas-cal-label").textContent =
+    `${CAL_MONTHS[_calMonth]} ${_calYear}`;
+
+  const firstDow  = new Date(_calYear, _calMonth, 1).getDay();
+  const daysCount = new Date(_calYear, _calMonth + 1, 0).getDate();
+  const todayIso  = new Date().toISOString().slice(0, 10);
+
+  const lo = _calFrom && _calTo
+    ? (_calFrom <= _calTo ? _calFrom : _calTo)
+    : _calFrom;
+  const hi = _calFrom && _calTo
+    ? (_calFrom <= _calTo ? _calTo : _calFrom)
+    : null;
+
+  let html = "";
+  for (let i = 0; i < firstDow; i++) {
+    html += `<div class="metricas-calendar-day metricas-calendar-day--empty"></div>`;
+  }
+  for (let d = 1; d <= daysCount; d++) {
+    const m   = String(_calMonth + 1).padStart(2, "0");
+    const day = String(d).padStart(2, "0");
+    const iso = `${_calYear}-${m}-${day}`;
+    let cls   = "metricas-calendar-day";
+
+    if (iso === todayIso) cls += " metricas-calendar-day--today";
+
+    if (lo && hi) {
+      if (lo === hi && iso === lo)        cls += " metricas-calendar-day--single";
+      else if (iso === lo)               cls += " metricas-calendar-day--start";
+      else if (iso === hi)               cls += " metricas-calendar-day--end";
+      else if (iso > lo && iso < hi)     cls += " metricas-calendar-day--in-range";
+    } else if (lo && iso === lo) {
+      cls += " metricas-calendar-day--start";
+    }
+
+    html += `<div class="${cls}" data-date="${iso}">${d}</div>`;
+  }
+  document.getElementById("metricas-calendar-days").innerHTML = html;
+
+  const hint = document.getElementById("metricas-calendar-hint");
+  if (hint) {
+    hint.textContent = _calStep === 1
+      ? "Clique para definir a data final"
+      : "Clique para definir a data inicial";
+  }
+}
+
+function calHandleDay(iso) {
+  if (_calStep === 0) {
+    _calFrom = iso;
+    _calTo   = null;
+    _calStep = 1;
+  } else {
+    _calTo   = iso;
+    _calStep = 0;
+    if (_calFrom > _calTo) { const t = _calFrom; _calFrom = _calTo; _calTo = t; }
+  }
+  calRender();
+  calUpdateBtnLabel();
+}
+
+function calUpdateBtnLabel() {
+  const span = document.getElementById("metricas-date-picker-label");
+  const btn  = document.getElementById("metricas-date-picker-btn");
+  if (!span || !btn) return;
+  if (_calFrom && _calTo) {
+    span.textContent = `${fmtDataLonga(_calFrom)} até ${fmtDataLonga(_calTo)}`;
+    btn.classList.add("metricas-date-picker-btn--has-value");
+  } else if (_calFrom) {
+    span.textContent = `${fmtDataLonga(_calFrom)} → …`;
+    btn.classList.remove("metricas-date-picker-btn--has-value");
+  } else {
+    span.textContent = "Selecione as datas";
+    btn.classList.remove("metricas-date-picker-btn--has-value");
+  }
+}
+
+function calApply() {
+  if (!_calFrom || !_calTo) {
+    mostrarEstado("error", "Selecione a data inicial e final.");
+    return;
+  }
+  calClose();
+  const slug = (document.getElementById("metricas-sel-cliente").value || "").trim();
+  if (slug) filtrar();
+}
+
 // ─── Cálculo de período ───────────────────────────────────────────────────────
 
 function calcularPeriodo(preset) {
@@ -382,18 +502,18 @@ async function filtrar() {
   const compare = document.getElementById("metricas-sel-compare").value;
 
   if (!slug) {
-    mostrarEstado("idle");
+    mostrarEstado("error", "Selecione um cliente para filtrar as métricas.");
     return;
   }
 
   let dateFrom, dateTo;
   if (preset === "custom") {
-    dateFrom = document.getElementById("metricas-input-from").value;
-    dateTo   = document.getElementById("metricas-input-to").value;
-    if (!dateFrom || !dateTo) {
-      mostrarEstado("error", "Informe a data inicial e final para o período personalizado.");
+    if (!_calFrom || !_calTo) {
+      mostrarEstado("error", "Selecione a data inicial e final.");
       return;
     }
+    dateFrom = _calFrom;
+    dateTo   = _calTo;
   } else {
     const p = calcularPeriodo(preset);
     if (!p) { mostrarEstado("error", "Período inválido."); return; }
@@ -425,22 +545,68 @@ document.addEventListener("DOMContentLoaded", async () => {
   mostrarEstado("idle");
 
   const selPeriodo = document.getElementById("metricas-sel-periodo");
-  const wrapFrom   = document.getElementById("metricas-wrap-from");
-  const wrapTo     = document.getElementById("metricas-wrap-to");
 
   function syncCustomDates() {
-    const custom = selPeriodo.value === "custom";
-    wrapFrom.classList.toggle("is-visible", custom);
-    wrapTo.classList.toggle("is-visible", custom);
-    if (custom) {
-      const p = calcularPeriodo("last_30_days");
-      const inputFrom = document.getElementById("metricas-input-from");
-      const inputTo   = document.getElementById("metricas-input-to");
-      if (!inputFrom.value) inputFrom.value = p.from;
-      if (!inputTo.value)   inputTo.value   = p.to;
+    const isCustom = selPeriodo.value === "custom";
+    const body = document.querySelector(".metricas-filters-body");
+    body.classList.toggle("metricas-filters-body--has-picker", isCustom);
+    if (!isCustom) {
+      calClose();
+      _calFrom = null;
+      _calTo   = null;
+      _calStep = 0;
+      const span = document.getElementById("metricas-date-picker-label");
+      const btn  = document.getElementById("metricas-date-picker-btn");
+      if (span) span.textContent = "Selecione as datas";
+      if (btn)  btn.classList.remove("metricas-date-picker-btn--has-value");
     }
   }
   selPeriodo.addEventListener("change", syncCustomDates);
+
+  // Toggle popover ao clicar no botão
+  document.getElementById("metricas-date-picker-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const pop = document.getElementById("metricas-calendar-popover");
+    if (!pop.style.display || pop.style.display === "none") {
+      calOpen();
+    } else {
+      calClose();
+    }
+  });
+
+  // Clique nos dias
+  document.getElementById("metricas-calendar-days").addEventListener("click", (e) => {
+    const day = e.target.closest(".metricas-calendar-day:not(.metricas-calendar-day--empty)");
+    if (day && day.dataset.date) calHandleDay(day.dataset.date);
+  });
+
+  // Navegação de meses
+  document.getElementById("metricas-cal-prev").addEventListener("click", (e) => {
+    e.stopPropagation();
+    _calMonth--;
+    if (_calMonth < 0) { _calMonth = 11; _calYear--; }
+    calRender();
+  });
+  document.getElementById("metricas-cal-next").addEventListener("click", (e) => {
+    e.stopPropagation();
+    _calMonth++;
+    if (_calMonth > 11) { _calMonth = 0; _calYear++; }
+    calRender();
+  });
+
+  // Botão Aplicar
+  document.getElementById("metricas-cal-apply").addEventListener("click", (e) => {
+    e.stopPropagation();
+    calApply();
+  });
+
+  // Impede que cliques dentro do popover fechem ele
+  document.getElementById("metricas-calendar-popover").addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+
+  // Fecha o popover ao clicar fora
+  document.addEventListener("click", () => calClose());
 
   document.getElementById("metricas-btn-filtrar").addEventListener("click", filtrar);
   document.getElementById("metricas-btn-atualizar").addEventListener("click", filtrar);
