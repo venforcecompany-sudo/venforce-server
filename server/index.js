@@ -65,6 +65,7 @@ const adsRoutes = require("./routes/adsRoutes");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
 const meliAnunciosRoutes = require("./routes/meliAnunciosRoutes");
 const metricasRoutes = require("./routes/metricasRoutes");
+const clickupRoutes = require("./routes/clickupRoutes");
 const externalFirebaseRoutes = require("./routes/externalFirebaseRoutes");
 
 const app = express();
@@ -421,6 +422,7 @@ app.use("/bases/assistente", assistenteBaseRoutes);
 app.use("/ads", adsRoutes);
 app.use("/anuncios-meli", meliAnunciosRoutes);
 app.use("/metricas", metricasRoutes);
+app.use("/api/clickup", clickupRoutes);
 
 app.post("/scans", authMiddleware, async (req, res) => {
   try {

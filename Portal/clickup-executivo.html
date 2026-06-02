@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gestão - ClickUp | Venforce</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="venforce-ui-v2.css" />
+  <link rel="stylesheet" href="clickup-executivo.css" />
+</head>
+<body class="vf-page vf-page-clickup">
+  <div class="vf-main-with-sidebar">
+    <main class="vf-content">
+      <section class="vf-page-head">
+        <div class="vf-page-head__main">
+          <span class="vf-kicker">GESTÃO - CLICKUP</span>
+          <h1>Controle Executivo ClickUp</h1>
+          <p class="vf-page-head__sub">
+            Entregas concluídas, comentários, canais, clientes e produtividade por responsável.
+          </p>
+        </div>
+
+        <div class="vf-page-head__actions">
+          <button id="btn-clickup-refresh" class="vf-btn vf-btn-primary" type="button">
+            Atualizar
+          </button>
+          <button id="btn-clickup-export" class="vf-btn vf-btn-ghost" type="button">
+            Exportar CSV
+          </button>
+        </div>
+      </section>
+
+      <section class="vf-clickup-filters vf-card">
+        <label>
+          <span>De</span>
+          <input id="clickup-date-from" type="date" />
+        </label>
+
+        <label>
+          <span>Até</span>
+          <input id="clickup-date-to" type="date" />
+        </label>
+
+        <label>
+          <span>Responsável</span>
+          <select id="clickup-person-filter">
+            <option value="">Todos</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Cliente</span>
+          <select id="clickup-client-filter">
+            <option value="">Todos</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Canal</span>
+          <select id="clickup-channel-filter">
+            <option value="">Todos</option>
+          </select>
+        </label>
+
+        <label class="vf-clickup-search">
+          <span>Buscar</span>
+          <input id="clickup-search" type="search" placeholder="Tarefa, comentário, cliente..." />
+        </label>
+      </section>
+
+      <div id="clickup-alert" class="vf-clickup-alert" hidden></div>
+
+      <section class="vf-clickup-kpis vf-kpi-grid">
+        <article class="vf-kpi">
+          <span class="vf-kpi__label">Entregas concluídas</span>
+          <strong id="kpi-concluidas">0</strong>
+          <small>No período filtrado</small>
+        </article>
+
+        <article class="vf-kpi">
+          <span class="vf-kpi__label">Tarefas abertas</span>
+          <strong id="kpi-abertas">0</strong>
+          <small>Lista Nova Gestão</small>
+        </article>
+
+        <article class="vf-kpi vf-kpi--warning">
+          <span class="vf-kpi__label">Atrasadas abertas</span>
+          <strong id="kpi-atrasadas">0</strong>
+          <small>Prazo vencido</small>
+        </article>
+
+        <article class="vf-kpi">
+          <span class="vf-kpi__label">Sem prazo</span>
+          <strong id="kpi-sem-prazo">0</strong>
+          <small>Sem due date</small>
+        </article>
+
+        <article class="vf-kpi">
+          <span class="vf-kpi__label">Clientes atendidos</span>
+          <strong id="kpi-clientes">0</strong>
+          <small>Com entrega no período</small>
+        </article>
+
+        <article class="vf-kpi">
+          <span class="vf-kpi__label">% com comentário</span>
+          <strong id="kpi-comentario">0%</strong>
+          <small>Entregas comentadas</small>
+        </article>
+      </section>
+
+      <section class="vf-clickup-grid">
+        <article class="vf-card vf-clickup-panel vf-clickup-panel--large">
+          <div class="vf-card-head">
+            <div>
+              <h2>Resumo por responsável</h2>
+              <p>Total, entregas, abertas, atrasadas e score de uso.</p>
+            </div>
+          </div>
+
+          <div class="vf-table-wrap">
+            <table class="vf-table" id="clickup-people-table">
+              <thead>
+                <tr>
+                  <th>Responsável</th>
+                  <th>Total</th>
+                  <th>Concluídas</th>
+                  <th>Abertas</th>
+                  <th>Atrasadas</th>
+                  <th>Sem prazo</th>
+                  <th>Com comentário</th>
+                  <th>Score</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="vf-card vf-clickup-panel">
+          <div class="vf-card-head">
+            <div>
+              <h2>Clientes</h2>
+              <p>Mais entregas no período.</p>
+            </div>
+          </div>
+          <div id="clickup-client-ranking" class="vf-clickup-ranking"></div>
+        </article>
+
+        <article class="vf-card vf-clickup-panel">
+          <div class="vf-card-head">
+            <div>
+              <h2>Canais</h2>
+              <p>Listas mais usadas.</p>
+            </div>
+          </div>
+          <div id="clickup-channel-ranking" class="vf-clickup-ranking"></div>
+        </article>
+      </section>
+
+      <section class="vf-card vf-clickup-panel">
+        <div class="vf-card-head">
+          <div>
+            <h2>Histórico de entregas</h2>
+            <p>Data de conclusão, tarefa, comentário, responsável, canal, cliente e link.</p>
+          </div>
+          <span id="clickup-table-count" class="vf-muted">0 registros</span>
+        </div>
+
+        <div class="vf-table-wrap">
+          <table class="vf-table vf-clickup-deliveries" id="clickup-deliveries-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Tarefa</th>
+                <th>Comentário</th>
+                <th>Responsáveis</th>
+                <th>Canal</th>
+                <th>Cliente</th>
+                <th>Status</th>
+                <th>Link</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="layout.js"></script>
+  <script src="clickup-executivo.js"></script>
+</body>
+</html>

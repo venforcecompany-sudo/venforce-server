@@ -142,6 +142,14 @@
         { label: "Atividade", href: "atividade.html", icon: "activity" },
       ],
     },
+    clickup: {
+      label: "Gestão - Clickup",
+      defaultPage: "clickup-executivo.html",
+      adminOnly: true,
+      links: [
+        { label: "Resumo executivo", href: "clickup-executivo.html", icon: "activity" },
+      ],
+    },
   };
 
   const PAGE_TO_GROUP = {
@@ -150,6 +158,7 @@
     "callbacks.html":       "clientes",
     "usuarios.html":        "admin",
     "atividade.html":       "admin",
+    "clickup-executivo.html": "clickup",
     "guia-vendedor.html":   "guia",
     "anuncios-meli.html":   "operacao",
     "ads.html":             "operacao",
