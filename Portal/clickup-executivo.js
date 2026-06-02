@@ -1,3 +1,5 @@
+const STORAGE_KEY = "vf-token";
+const API_BASE = "https://venforce-server.onrender.com";
 const ClickUpExecutivo = (() => {
   const state = {
     data: null,
@@ -81,7 +83,7 @@ const ClickUpExecutivo = (() => {
         page_limit: '120',
       });
 
-      const response = await fetch(`/api/clickup/executivo/resumo?${params.toString()}`, {
+      const response = await fetch(`${API_BASE}/api/clickup/executivo/resumo?${params.toString()}`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${token}`,
