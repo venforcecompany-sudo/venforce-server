@@ -93,7 +93,7 @@
         { label: "Dashboard",    href: "dashboard.html",     icon: "vf-dashboard" },
 
         { separator: true, label: "MARKETPLACE" },
-        { label: "Bases",        href: "dashboard.html",     icon: "database"     },
+        { label: "Bases de Custo", href: "bases.html",         icon: "database"     },
         { label: "Anúncios ML",  href: "anuncios-meli.html", icon: "activity",    adminOnly: true },
         { label: "Mercado Ads",  href: "ads.html",           icon: "trending-up"  },
         { label: "Otimizador",   href: "automacoes.html",    icon: "repeat"       },
@@ -164,6 +164,7 @@
     "baixador-midias.html":   "operacao",
     "metricas.html":          "operacao",
     "dashboard.html":       "operacao",
+    "bases.html":           "operacao",
   };
 
   function detectGroup() {
