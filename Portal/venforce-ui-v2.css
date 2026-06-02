@@ -220,7 +220,19 @@ body { font-size: 15px; letter-spacing: -0.006em; }
   align-items: center;
   gap: 0.6rem;
 }
-.vf-card-h .link { font-size: 0.8rem; font-weight: 600; color: var(--vf-primary); }
+.vf-card-title-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 0;
+}
+.vf-card-title-stack p {
+  margin: 0;
+  color: var(--vf-text-m);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+.vf-card-h .link { flex-shrink: 0; font-size: 0.8rem; font-weight: 600; color: var(--vf-primary); }
 .vf-card-h .link:hover { text-decoration: underline; }
 .vf-card-body { padding: 1.4rem; }
 
@@ -719,6 +731,7 @@ body { font-size: 15px; letter-spacing: -0.006em; }
   .vf-kpi-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 480px) {
+  .vf-card-h { align-items: flex-start; }
   .vf-kpi-grid { grid-template-columns: 1fr; }
   .vf-operation-grid,
   .vf-actions-grid { grid-template-columns: 1fr; }

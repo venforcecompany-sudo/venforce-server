@@ -90,7 +90,10 @@
       <!-- STATUS DA OPERAÇÃO -->
       <section class="vf-card vf-operation-section" aria-labelledby="dash-operation-title">
         <div class="vf-card-h">
-          <h5 id="dash-operation-title">Status da operação</h5>
+          <div class="vf-card-title-stack">
+            <h5 id="dash-operation-title">Status da operação</h5>
+            <p>Integrações, bases e diagnósticos em um resumo rápido.</p>
+          </div>
         </div>
         <div class="vf-card-body">
           <div class="vf-operation-grid">
@@ -150,12 +153,15 @@
           <!-- Prioridades de hoje -->
           <div class="vf-card">
             <div class="vf-card-h">
-              <h5>
-                <span class="vf-ico-chip is-danger">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
-                </span>
-                Prioridades de hoje
-              </h5>
+              <div class="vf-card-title-stack">
+                <h5>
+                  <span class="vf-ico-chip is-danger">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
+                  </span>
+                  Prioridades de hoje
+                </h5>
+                <p>Ações que reduzem risco operacional no dia.</p>
+              </div>
               <span id="dash-prioridades-count" class="vf-tag" style="display:none;"></span>
             </div>
             <div id="dash-prioridades">
@@ -180,12 +186,15 @@
           <!-- Diagnósticos recentes -->
           <div class="vf-card">
             <div class="vf-card-h">
-              <h5>
-                <span class="vf-ico-chip">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
-                </span>
-                Diagnósticos recentes
-              </h5>
+              <div class="vf-card-title-stack">
+                <h5>
+                  <span class="vf-ico-chip">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+                  </span>
+                  Diagnósticos recentes
+                </h5>
+                <p>Últimos relatórios gerados pela automação.</p>
+              </div>
               <a class="link" href="relatorios.html">Ver todos →</a>
             </div>
             <div id="dash-relatorios-wrap">
@@ -229,16 +238,19 @@
         <!-- COLUNA DIREITA -->
         <div class="vf-dashboard-stack">
 
-          <!-- Confiabilidade das bases -->
+          <!-- Cobertura de custo -->
           <div class="vf-card">
             <div class="vf-card-h">
-              <h5>
-                <span class="vf-ico-chip is-success">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                </span>
-                Confiabilidade das bases
-              </h5>
-              <a class="link" href="bases.html">Ver todas →</a>
+              <div class="vf-card-title-stack">
+                <h5>
+                  <span class="vf-ico-chip is-success">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  </span>
+                  Cobertura de custo
+                </h5>
+                <p>Bases com baixa cobertura podem gerar diagnósticos incompletos.</p>
+              </div>
+              <a class="link" href="bases.html">Ver bases →</a>
             </div>
             <div id="dash-health">
               <!-- skeletons -->
@@ -273,7 +285,10 @@
       <!-- Atalhos rápidos -->
       <section class="vf-card vf-quick-section" aria-labelledby="dash-quick-title">
         <div class="vf-card-h">
-          <h5 id="dash-quick-title">Atalhos rápidos</h5>
+          <div class="vf-card-title-stack">
+            <h5 id="dash-quick-title">Atalhos rápidos</h5>
+            <p>Caminhos diretos para as rotinas mais usadas.</p>
+          </div>
         </div>
         <div class="vf-card-body">
           <div class="vf-actions-grid">

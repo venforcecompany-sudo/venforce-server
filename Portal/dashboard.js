@@ -138,6 +138,16 @@ function setOperationCard(key, { label, value, foot, state } = {}) {
   }
 }
 
+function setEmptyState(emptyEl, { title, desc, actionHtml } = {}) {
+  if (!emptyEl) return;
+  const titleEl = emptyEl.querySelector(".vf-empty__title");
+  const descEl = emptyEl.querySelector(".vf-empty__desc");
+  if (titleEl && title) titleEl.textContent = title;
+  if (descEl && desc) descEl.textContent = desc;
+  const action = emptyEl.querySelector(".vf-btn");
+  if (actionHtml === "") action?.remove();
+}
+
 async function fetchDashboardJson(path) {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${TOKEN}` }
@@ -163,7 +173,7 @@ function renderOperationBases(bases) {
     setOperationCard("base-clients", {
       label: "Clientes com base",
       value: clientesComBase.size,
-      foot: `${clientesComBase.size} ${plural(clientesComBase.size, "cliente")} único${clientesComBase.size !== 1 ? "s" : ""} com base ativa`,
+      foot: `${clientesComBase.size} ${plural(clientesComBase.size, "cliente")} com base de custo atrelada`,
     });
     return;
   }
@@ -171,7 +181,7 @@ function renderOperationBases(bases) {
   setOperationCard("base-clients", {
     label: "Bases ativas",
     value: ativas.length,
-    foot: ativas.length === 0 ? "Nenhuma base ativa" : "Payload sem cliente identificável",
+    foot: ativas.length === 0 ? "Nenhuma base ativa" : "Sem cliente identificável no payload de /bases",
     state: ativas.length === 0 ? "muted" : undefined,
   });
 }
@@ -194,7 +204,7 @@ function renderOperationRelatorios(data, relatorios) {
   const total = getRelatoriosTotal(data || {}, relatorios || []);
   setOperationCard("reports", {
     value: total,
-    foot: total === 0 ? "Nenhum diagnóstico gerado" : `${total} ${plural(total, "relatório")} no histórico`,
+    foot: total === 0 ? "Nenhum diagnóstico retornado" : `Total retornado por /automacoes/relatorios`,
   });
 }
 
@@ -223,11 +233,11 @@ async function loadOperationMlStatus() {
 
     setOperationCard("ml-connected", {
       value: conectados,
-      foot: conectados === 0 ? "Nenhum cliente ML autorizado" : `${conectados} ${plural(conectados, "cliente")} com token ativo`,
+      foot: conectados === 0 ? "Nenhum cliente Mercado Livre com token válido" : `Clientes Mercado Livre com token ativo/válido`,
     });
     setOperationCard("ml-pending", {
       value: pendentes,
-      foot: pendentes === 0 ? "Todas as contas ativas conectadas" : `${pendentes} ${plural(pendentes, "cliente")} ativo${pendentes !== 1 ? "s" : ""} sem token válido`,
+      foot: pendentes === 0 ? "Nenhum cliente ativo sem token válido" : `Clientes ativos sem token ML válido`,
     });
   } catch (err) {
     const forbidden = err?.status === 403;
@@ -407,6 +417,10 @@ async function loadRelatorios() {
 
     if (relatorios.length === 0) {
       tbody.closest("table").style.display = "none";
+      setEmptyState(emptyEl, {
+        title: "Nenhum diagnóstico ainda",
+        desc: "Rode o primeiro diagnóstico em Automações.",
+      });
       if (emptyEl) emptyEl.style.display = "";
       return;
     }
@@ -447,6 +461,11 @@ async function loadRelatorios() {
     if (tbody) {
       tbody.closest("table").style.display = "none";
     }
+    setEmptyState(emptyEl, {
+      title: err?.status === 403 ? "Sem permissão" : "Diagnósticos indisponíveis",
+      desc: err?.status === 403 ? "Seu usuário não tem acesso aos relatórios." : "Não foi possível carregar os diagnósticos agora.",
+      actionHtml: err?.status === 403 ? "" : undefined,
+    });
     if (emptyEl) emptyEl.style.display = "";
   }
 }
@@ -462,7 +481,11 @@ async function loadDashboard() {
       headers: { Authorization: `Bearer ${TOKEN}` }
     });
     if (res.status === 401) { clearSession(); return; }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const err = new Error(`HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
 
     const json = await res.json();
     const bases = Array.isArray(json?.bases) ? json.bases
@@ -475,15 +498,15 @@ async function loadDashboard() {
     renderHealth(bases);
     renderOperationBases(bases);
 
-  } catch (_) {
+  } catch (err) {
     // Bases indisponíveis: mostra zeros nos KPIs atuais e erro apenas no card operacional.
     renderKpis([]);
     renderPrioridades([]);
     renderHealth([]);
     setOperationCard("base-clients", {
       value: "—",
-      foot: "Dados indisponíveis",
-      state: "error",
+      foot: err?.status === 403 ? "Sem permissão" : "Dados indisponíveis",
+      state: err?.status === 403 ? "muted" : "error",
     });
   }
 
