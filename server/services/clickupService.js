@@ -14,22 +14,18 @@ class ClickUpServiceError extends Error {
 
 function getConfig() {
   const token = process.env.CLICKUP_TOKEN;
-  const teamId = process.env.CLICKUP_TEAM_ID;
-  const spaceId = process.env.CLICKUP_SPACE_ID;
+  const teamId = process.env.CLICKUP_TEAM_ID || '';
+  const spaceId = process.env.CLICKUP_SPACE_ID || '';
   const defaultListId = process.env.CLICKUP_NOVA_GESTAO_LIST_ID || '';
-  const defaultPageLimit = toSafeInteger(process.env.CLICKUP_DEFAULT_PAGE_LIMIT, 20, 1, 200);
+  const defaultPageLimit = toSafeInteger(process.env.CLICKUP_DEFAULT_PAGE_LIMIT, 120, 1, 200);
   const cacheTtlSeconds = toSafeInteger(process.env.CLICKUP_CACHE_TTL_SECONDS, 300, 0, 3600);
 
   if (!token) {
     throw new ClickUpServiceError('CLICKUP_TOKEN não configurado no backend.', 500, 'CLICKUP_TOKEN_MISSING');
   }
 
-  if (!teamId) {
-    throw new ClickUpServiceError('CLICKUP_TEAM_ID não configurado no backend.', 500, 'CLICKUP_TEAM_ID_MISSING');
-  }
-
-  if (!spaceId) {
-    throw new ClickUpServiceError('CLICKUP_SPACE_ID não configurado no backend.', 500, 'CLICKUP_SPACE_ID_MISSING');
+  if (!defaultListId) {
+    throw new ClickUpServiceError('CLICKUP_NOVA_GESTAO_LIST_ID não configurado.', 500, 'CLICKUP_NOVA_GESTAO_LIST_ID_MISSING');
   }
 
   return {
@@ -49,7 +45,7 @@ async function getResumoExecutivo(options = {}) {
   const pageLimit = toSafeInteger(options.pageLimit, config.defaultPageLimit, 1, 200);
   const includeComments = Boolean(options.includeComments);
 
-  const targetListId = String(options.listId || config.defaultListId || '').trim();
+  const targetListId = String(config.defaultListId).trim();
   const targetListName = String(options.listName || DEFAULT_LIST_NAME).trim();
 
   const cacheKey = JSON.stringify({
@@ -65,13 +61,13 @@ async function getResumoExecutivo(options = {}) {
   const cached = getCache(cacheKey, config.cacheTtlSeconds);
   if (cached) return cached;
 
-  const allTasks = await fetchWorkspaceTasks({
+  const { tasks: allTasks, pagesFetched } = await fetchListTasks({
     config,
+    listId: targetListId,
     pageLimit,
   });
 
-  const listFilter = filterTasksForTargetList(allTasks, targetListId, targetListName);
-  const listTasks = listFilter.tasks;
+  const listTasks = allTasks;
 
   const deliveries = listTasks
     .filter(isDeliveryTask)
@@ -86,15 +82,15 @@ async function getResumoExecutivo(options = {}) {
     deliveries: deliveriesWithComments,
     range,
     meta: {
+      source_endpoint: 'list_tasks',
       fetched_tasks: allTasks.length,
       filtered_list_tasks: listTasks.length,
       deliveries_in_period: deliveries.length,
-      filter_mode: listFilter.filterMode,
-      target_list_id: targetListId || null,
+      target_list_id: targetListId,
       target_list_name: targetListName,
       page_limit: pageLimit,
+      pages_fetched: pagesFetched,
       include_comments: includeComments,
-      available_lists_sample: buildAvailableListsSample(allTasks),
     },
   });
 
@@ -102,20 +98,21 @@ async function getResumoExecutivo(options = {}) {
   return payload;
 }
 
-async function fetchWorkspaceTasks({ config, pageLimit }) {
+async function fetchListTasks({ config, listId, pageLimit }) {
   const tasks = [];
+  let pagesFetched = 0;
 
   for (let page = 0; page < pageLimit; page += 1) {
-    const url = new URL(`${CLICKUP_API_BASE}/team/${encodeURIComponent(config.teamId)}/task`);
+    const url = new URL(`${CLICKUP_API_BASE}/list/${encodeURIComponent(listId)}/task`);
 
-    url.searchParams.set('page', String(page));
+    url.searchParams.set('archived', 'false');
     url.searchParams.set('include_closed', 'true');
     url.searchParams.set('subtasks', 'true');
-    url.searchParams.set('order_by', 'updated');
-    url.searchParams.set('reverse', 'true');
-    url.searchParams.append('space_ids[]', config.spaceId);
+    url.searchParams.set('page', String(page));
 
     const data = await clickupFetchJson(url.toString(), config.token);
+    pagesFetched += 1;
+
     const pageTasks = Array.isArray(data.tasks) ? data.tasks : [];
 
     if (pageTasks.length === 0) break;
@@ -123,58 +120,7 @@ async function fetchWorkspaceTasks({ config, pageLimit }) {
     tasks.push(...pageTasks);
   }
 
-  return tasks;
-}
-
-function filterTasksForTargetList(tasks, targetListId, targetListName) {
-  const expectedName = String(targetListName || DEFAULT_LIST_NAME).trim();
-
-  if (targetListId) {
-    const byId = tasks.filter((task) => getTaskListInfo(task).id === targetListId);
-    if (byId.length > 0) {
-      return { tasks: byId, filterMode: 'list_id' };
-    }
-
-    return {
-      tasks: tasks.filter((task) => getTaskListInfo(task).name === expectedName),
-      filterMode: 'list_name_fallback',
-    };
-  }
-
-  return {
-    tasks: tasks.filter((task) => getTaskListInfo(task).name === expectedName),
-    filterMode: 'list_name',
-  };
-}
-
-function buildAvailableListsSample(tasks) {
-  const lists = new Map();
-
-  for (const task of tasks) {
-    const list = getTaskListInfo(task);
-    const key = list.id || list.name || 'sem_lista';
-
-    if (!lists.has(key)) {
-      lists.set(key, {
-        id: list.id || null,
-        name: list.name || 'sem_lista',
-        count: 0,
-      });
-    }
-
-    lists.get(key).count += 1;
-  }
-
-  return Array.from(lists.values())
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-}
-
-function getTaskListInfo(task) {
-  return {
-    id: String(safeNested(task, ['list', 'id']) || '').trim(),
-    name: String(safeNested(task, ['list', 'name']) || '').trim(),
-  };
+  return { tasks, pagesFetched };
 }
 
 async function fetchTaskComments(taskId, config) {
@@ -406,7 +352,7 @@ function calculateUsageScore(item) {
 function mapDelivery(task, comment) {
   return {
     id: String(task.id || ''),
-    data_conclusao: timestampToIso(task.date_done || task.date_closed || task.date_updated),
+    data_conclusao: timestampToIso(getCompletionTimestamp(task) || task.date_updated),
     tarefa: task.name || '-',
     comentario: comment ? extractCommentText(comment) : 'Sem comentário',
     responsaveis: getAssigneeNames(task),
@@ -419,21 +365,19 @@ function mapDelivery(task, comment) {
 }
 
 function isDeliveryTask(task) {
-  if (task.date_done !== null && task.date_done !== undefined) return true;
-
-  const status = normalizeText(safeNested(task, ['status', 'status']));
-  const statusType = normalizeText(safeNested(task, ['status', 'type']));
-
-  return ['concluido', 'aprovado', 'arquivado'].includes(status)
-    || ['closed', 'done', 'complete'].includes(statusType);
+  return getCompletionTimestamp(task) !== null;
 }
 
 function isTaskDoneWithinRange(task, startMs, endMs) {
-  const dateDone = toNumberOrNull(task.date_done || task.date_closed);
+  const dateDone = getCompletionTimestamp(task);
 
   if (dateDone === null) return false;
 
   return dateDone >= startMs && dateDone <= endMs;
+}
+
+function getCompletionTimestamp(task) {
+  return toNumberOrNull(task.date_done) || toNumberOrNull(task.date_closed);
 }
 
 function getAssigneeNames(task) {
