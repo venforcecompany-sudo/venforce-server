@@ -7,6 +7,12 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="venforce-ui-v2.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
+  <style>
+    .vf-dash-faixa { margin-bottom: 2.5rem; }
+    .vf-dash-faixa__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+    .vf-dash-faixa__title { font-size: 1rem; font-weight: 700; color: var(--vf-text, #1a1a2e); margin: 0; }
+    .vf-dash-faixa__sub { font-size: .8rem; color: var(--vf-muted, #888); margin: .2rem 0 0; }
+  </style>
 </head>
 <body class="vf-page vf-page-dashboard">
 
@@ -18,7 +24,7 @@
         <div class="vf-page-head__main">
           <span class="vf-kicker">● Central de Operação</span>
           <h1 id="dash-greeting">Central de Operação</h1>
-          <p class="vf-page-head__sub">O que precisa da sua atenção hoje. Prioridades, saúde das bases e atalhos para agir.</p>
+          <p class="vf-page-head__sub">O que precisa da sua atenção hoje. Prioridades, saúde da operação e atividade recente.</p>
         </div>
         <div class="vf-page-head__actions">
           <a class="vf-btn vf-btn--ghost" href="relatorios.html">
@@ -39,149 +45,165 @@
         <a class="vf-btn vf-btn--sm vf-btn--ghost vf-banner__action" href="bases.html">Revisar bases</a>
       </div>
 
-      <!-- KPIs -->
-      <div class="vf-kpi-grid vf-reveal" id="dash-kpis">
-        <!-- skeleton inicial -->
-        <div class="vf-kpi is-primary">
-          <div class="vf-kpi__top">
-            <span class="vf-kpi__label">Bases cadastradas</span>
-            <span class="vf-ico-chip">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-            </span>
+      <!-- ═══ FAIXA 1 — Precisa de você hoje ════════════════════════════════ -->
+      <section class="vf-dash-faixa" aria-labelledby="faixa-hoje-title">
+        <div class="vf-dash-faixa__head">
+          <div>
+            <h2 class="vf-dash-faixa__title" id="faixa-hoje-title">Precisa de você hoje</h2>
+            <p class="vf-dash-faixa__sub">Ações que reduzem risco operacional agora.</p>
           </div>
-          <div class="vf-kpi__value" id="kpi-total-bases"><div class="vf-skel vf-skel--title"></div></div>
-          <div class="vf-kpi__foot" id="kpi-bases-foot"><div class="vf-skel vf-skel--text" style="width:60%"></div></div>
+          <span id="dash-prioridades-count" class="vf-tag" style="display:none;"></span>
         </div>
-
-        <div class="vf-kpi is-success">
-          <div class="vf-kpi__top">
-            <span class="vf-kpi__label">Bases ativas</span>
-            <span class="vf-ico-chip is-success">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            </span>
-          </div>
-          <div class="vf-kpi__value" id="kpi-bases-ativas"><div class="vf-skel vf-skel--title"></div></div>
-          <div class="vf-kpi__foot" id="kpi-ativas-foot"><div class="vf-skel vf-skel--text" style="width:55%"></div></div>
-        </div>
-
-        <div class="vf-kpi is-warning">
-          <div class="vf-kpi__top">
-            <span class="vf-kpi__label">Mercado Livre</span>
-            <span class="vf-ico-chip is-warning">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-            </span>
-          </div>
-          <div class="vf-kpi__value" id="kpi-meli"><div class="vf-skel vf-skel--title"></div></div>
-          <div class="vf-kpi__foot" id="kpi-meli-foot"><div class="vf-skel vf-skel--text" style="width:50%"></div></div>
-        </div>
-
-        <div class="vf-kpi">
-          <div class="vf-kpi__top">
-            <span class="vf-kpi__label">Shopee</span>
-            <span class="vf-ico-chip">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-            </span>
-          </div>
-          <div class="vf-kpi__value" id="kpi-shopee"><div class="vf-skel vf-skel--title"></div></div>
-          <div class="vf-kpi__foot" id="kpi-shopee-foot"><div class="vf-skel vf-skel--text" style="width:50%"></div></div>
-        </div>
-      </div>
-
-      <!-- STATUS DA OPERAÇÃO -->
-      <section class="vf-card vf-operation-section" aria-labelledby="dash-operation-title">
-        <div class="vf-card-h">
-          <div class="vf-card-title-stack">
-            <h5 id="dash-operation-title">Status da operação</h5>
-            <p>Integrações, bases e diagnósticos em um resumo rápido.</p>
-          </div>
-        </div>
-        <div class="vf-card-body">
-          <div class="vf-operation-grid">
-            <div class="vf-operation-card is-success">
-              <div class="vf-operation-card__top">
-                <span class="vf-operation-card__label" id="op-ml-connected-label">ML conectados</span>
-                <span class="vf-ico-chip is-success">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                </span>
+        <div class="vf-card">
+          <div id="dash-prioridades">
+            <!-- skeletons iniciais -->
+            <div class="vf-priority">
+              <span class="vf-pdot"></span>
+              <div class="vf-priority__main">
+                <div class="vf-skel vf-skel--text" style="width:70%;margin:4px 0;"></div>
+                <div class="vf-skel vf-skel--text" style="width:45%;"></div>
               </div>
-              <div class="vf-operation-card__value" id="op-ml-connected-value"><div class="vf-skel vf-skel--title"></div></div>
-              <div class="vf-operation-card__foot" id="op-ml-connected-foot"><div class="vf-skel vf-skel--text" style="width:70%"></div></div>
             </div>
-
-            <div class="vf-operation-card is-warning">
-              <div class="vf-operation-card__top">
-                <span class="vf-operation-card__label" id="op-ml-pending-label">ML pendentes</span>
-                <span class="vf-ico-chip is-warning">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                </span>
+            <div class="vf-priority">
+              <span class="vf-pdot"></span>
+              <div class="vf-priority__main">
+                <div class="vf-skel vf-skel--text" style="width:60%;margin:4px 0;"></div>
+                <div class="vf-skel vf-skel--text" style="width:40%;"></div>
               </div>
-              <div class="vf-operation-card__value" id="op-ml-pending-value"><div class="vf-skel vf-skel--title"></div></div>
-              <div class="vf-operation-card__foot" id="op-ml-pending-foot"><div class="vf-skel vf-skel--text" style="width:70%"></div></div>
-            </div>
-
-            <div class="vf-operation-card is-info">
-              <div class="vf-operation-card__top">
-                <span class="vf-operation-card__label" id="op-base-clients-label">Clientes com base</span>
-                <span class="vf-ico-chip is-info">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-                </span>
-              </div>
-              <div class="vf-operation-card__value" id="op-base-clients-value"><div class="vf-skel vf-skel--title"></div></div>
-              <div class="vf-operation-card__foot" id="op-base-clients-foot"><div class="vf-skel vf-skel--text" style="width:70%"></div></div>
-            </div>
-
-            <div class="vf-operation-card is-primary">
-              <div class="vf-operation-card__top">
-                <span class="vf-operation-card__label" id="op-reports-label">Diagnósticos gerados</span>
-                <span class="vf-ico-chip">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-                </span>
-              </div>
-              <div class="vf-operation-card__value" id="op-reports-value"><div class="vf-skel vf-skel--title"></div></div>
-              <div class="vf-operation-card__foot" id="op-reports-foot"><div class="vf-skel vf-skel--text" style="width:70%"></div></div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- GRID PRINCIPAL -->
-      <div class="vf-grid-2 vf-dashboard-grid">
+      <!-- ═══ FAIXA 2 — Saúde da operação ══════════════════════════════════ -->
+      <section class="vf-dash-faixa" aria-labelledby="faixa-saude-title">
+        <div class="vf-dash-faixa__head">
+          <div>
+            <h2 class="vf-dash-faixa__title" id="faixa-saude-title">Saúde da operação</h2>
+            <p class="vf-dash-faixa__sub">Score da carteira, integrações ML e frescor das bases.</p>
+          </div>
+        </div>
 
-        <!-- COLUNA ESQUERDA -->
-        <div class="vf-dashboard-stack">
+        <!-- Cards operacionais -->
+        <div class="vf-card vf-operation-section" style="margin-bottom:1rem;">
+          <div class="vf-card-body">
+            <div class="vf-operation-grid">
 
-          <!-- Prioridades de hoje -->
-          <div class="vf-card">
-            <div class="vf-card-h">
-              <div class="vf-card-title-stack">
-                <h5>
-                  <span class="vf-ico-chip is-danger">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
+              <!-- Score (NOVO) -->
+              <div class="vf-operation-card is-primary">
+                <div class="vf-operation-card__top">
+                  <span class="vf-operation-card__label">Saúde da carteira</span>
+                  <span class="vf-ico-chip">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                   </span>
-                  Prioridades de hoje
-                </h5>
-                <p>Ações que reduzem risco operacional no dia.</p>
-              </div>
-              <span id="dash-prioridades-count" class="vf-tag" style="display:none;"></span>
-            </div>
-            <div id="dash-prioridades">
-              <!-- skeletons -->
-              <div class="vf-priority">
-                <span class="vf-pdot"></span>
-                <div class="vf-priority__main">
-                  <div class="vf-skel vf-skel--text" style="width:70%;margin:4px 0;"></div>
-                  <div class="vf-skel vf-skel--text" style="width:45%;"></div>
+                </div>
+                <div class="vf-operation-card__value" id="op-score-value">
+                  <div class="vf-skel vf-skel--title"></div>
+                </div>
+                <div class="vf-operation-card__foot" id="op-score-badge">
+                  <div class="vf-skel vf-skel--text" style="width:60%"></div>
+                </div>
+                <div class="vf-operation-card__foot" style="margin-top:.4rem;font-size:.73rem;opacity:.6;">
+                  Diagnósticos: <span id="op-reports-value">—</span>
+                  <span id="op-reports-foot"></span>
+                  <span id="op-reports-label" style="display:none;"></span>
                 </div>
               </div>
-              <div class="vf-priority">
-                <span class="vf-pdot"></span>
-                <div class="vf-priority__main">
-                  <div class="vf-skel vf-skel--text" style="width:60%;margin:4px 0;"></div>
-                  <div class="vf-skel vf-skel--text" style="width:40%;"></div>
+
+              <!-- ML conectados -->
+              <div class="vf-operation-card is-success">
+                <div class="vf-operation-card__top">
+                  <span class="vf-operation-card__label" id="op-ml-connected-label">ML conectados</span>
+                  <span class="vf-ico-chip is-success">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                  </span>
                 </div>
+                <div class="vf-operation-card__value" id="op-ml-connected-value"><div class="vf-skel vf-skel--title"></div></div>
+                <div class="vf-operation-card__foot" id="op-ml-connected-foot"><div class="vf-skel vf-skel--text" style="width:70%"></div></div>
+                <a class="vf-btn vf-btn--sm vf-btn--ghost" href="ml-tokens.html" style="margin-top:.75rem;">Gerenciar →</a>
               </div>
+
+              <!-- ML pendentes -->
+              <div class="vf-operation-card is-warning">
+                <div class="vf-operation-card__top">
+                  <span class="vf-operation-card__label" id="op-ml-pending-label">ML pendentes</span>
+                  <span class="vf-ico-chip is-warning">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  </span>
+                </div>
+                <div class="vf-operation-card__value" id="op-ml-pending-value"><div class="vf-skel vf-skel--title"></div></div>
+                <div class="vf-operation-card__foot" id="op-ml-pending-foot"><div class="vf-skel vf-skel--text" style="width:70%"></div></div>
+              </div>
+
+              <!-- Clientes com base -->
+              <div class="vf-operation-card is-info">
+                <div class="vf-operation-card__top">
+                  <span class="vf-operation-card__label" id="op-base-clients-label">Clientes com base</span>
+                  <span class="vf-ico-chip is-info">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                  </span>
+                </div>
+                <div class="vf-operation-card__value" id="op-base-clients-value"><div class="vf-skel vf-skel--title"></div></div>
+                <div class="vf-operation-card__foot" id="op-base-clients-foot"><div class="vf-skel vf-skel--text" style="width:70%"></div></div>
+                <a class="vf-btn vf-btn--sm vf-btn--ghost" href="clientes.html" style="margin-top:.75rem;">Ver clientes →</a>
+              </div>
+
             </div>
           </div>
+        </div>
+
+        <!-- Frescor das bases (antes: Cobertura de custo) -->
+        <div class="vf-card">
+          <div class="vf-card-h">
+            <div class="vf-card-title-stack">
+              <h5>
+                <span class="vf-ico-chip is-success">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </span>
+                Frescor das bases
+              </h5>
+              <p>Bases atualizadas recentemente geram diagnósticos confiáveis.</p>
+            </div>
+            <a class="link" href="bases.html">Ver bases →</a>
+          </div>
+          <div id="dash-health">
+            <!-- skeletons -->
+            <div class="vf-health">
+              <div class="vf-health__top">
+                <div class="vf-skel vf-skel--text" style="width:100px;"></div>
+                <div class="vf-skel vf-skel--text" style="width:30px;"></div>
+              </div>
+              <div class="vf-bar"><div class="vf-skel" style="width:100%;height:7px;border-radius:99px;"></div></div>
+            </div>
+            <div class="vf-health">
+              <div class="vf-health__top">
+                <div class="vf-skel vf-skel--text" style="width:80px;"></div>
+                <div class="vf-skel vf-skel--text" style="width:30px;"></div>
+              </div>
+              <div class="vf-bar"><div class="vf-skel" style="width:100%;height:7px;border-radius:99px;"></div></div>
+            </div>
+            <div id="dash-health-empty" class="vf-empty" style="display:none;">
+              <div class="vf-empty__ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              </div>
+              <p class="vf-empty__title">Nenhuma base cadastrada</p>
+              <p class="vf-empty__desc">Importe uma planilha de custos para começar.</p>
+              <a class="vf-btn vf-btn--subtle" href="bases.html">Importar base</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══ FAIXA 3 — Atividade recente ══════════════════════════════════ -->
+      <section class="vf-dash-faixa" aria-labelledby="faixa-atividade-title">
+        <div class="vf-dash-faixa__head">
+          <div>
+            <h2 class="vf-dash-faixa__title" id="faixa-atividade-title">Atividade recente</h2>
+            <p class="vf-dash-faixa__sub">Diagnósticos gerados e ações da equipe.</p>
+          </div>
+        </div>
+
+        <div class="vf-grid-2 vf-dashboard-grid">
 
           <!-- Diagnósticos recentes -->
           <div class="vf-card">
@@ -203,6 +225,7 @@
                   <tr>
                     <th>Base</th>
                     <th class="num">Itens</th>
+                    <th class="num">Críticos</th>
                     <th>Atualizado</th>
                     <th>Status</th>
                   </tr>
@@ -210,13 +233,15 @@
                 <tbody id="dash-relatorios-tbody">
                   <tr>
                     <td><div class="vf-skel vf-skel--text" style="width:80px;"></div></td>
-                    <td><div class="vf-skel vf-skel--text" style="width:40px;"></div></td>
+                    <td><div class="vf-skel vf-skel--text" style="width:35px;"></div></td>
+                    <td><div class="vf-skel vf-skel--text" style="width:25px;"></div></td>
                     <td><div class="vf-skel vf-skel--text" style="width:60px;"></div></td>
                     <td><div class="vf-skel vf-skel--text" style="width:50px;"></div></td>
                   </tr>
                   <tr>
                     <td><div class="vf-skel vf-skel--text" style="width:90px;"></div></td>
-                    <td><div class="vf-skel vf-skel--text" style="width:40px;"></div></td>
+                    <td><div class="vf-skel vf-skel--text" style="width:35px;"></div></td>
+                    <td><div class="vf-skel vf-skel--text" style="width:25px;"></div></td>
                     <td><div class="vf-skel vf-skel--text" style="width:60px;"></div></td>
                     <td><div class="vf-skel vf-skel--text" style="width:50px;"></div></td>
                   </tr>
@@ -233,54 +258,41 @@
             </div>
           </div>
 
-        </div>
-
-        <!-- COLUNA DIREITA -->
-        <div class="vf-dashboard-stack">
-
-          <!-- Cobertura de custo -->
-          <div class="vf-card">
+          <!-- Timeline de ações (admin) -->
+          <div class="vf-card" id="dash-timeline-section">
             <div class="vf-card-h">
               <div class="vf-card-title-stack">
                 <h5>
-                  <span class="vf-ico-chip is-success">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  <span class="vf-ico-chip">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   </span>
-                  Cobertura de custo
+                  Últimas ações
                 </h5>
-                <p>Bases com baixa cobertura podem gerar diagnósticos incompletos.</p>
+                <p>Atividade recente da equipe.</p>
               </div>
-              <a class="link" href="bases.html">Ver bases →</a>
+              <a class="link" href="atividade.html">Ver tudo →</a>
             </div>
-            <div id="dash-health">
+            <div id="dash-timeline">
               <!-- skeletons -->
-              <div class="vf-health">
-                <div class="vf-health__top">
-                  <div class="vf-skel vf-skel--text" style="width:100px;"></div>
-                  <div class="vf-skel vf-skel--text" style="width:30px;"></div>
+              <div class="vf-priority">
+                <span class="vf-pdot"></span>
+                <div class="vf-priority__main">
+                  <div class="vf-skel vf-skel--text" style="width:70%;margin:4px 0;"></div>
+                  <div class="vf-skel vf-skel--text" style="width:45%;"></div>
                 </div>
-                <div class="vf-bar"><div class="vf-skel" style="width:100%;height:7px;border-radius:99px;"></div></div>
               </div>
-              <div class="vf-health">
-                <div class="vf-health__top">
-                  <div class="vf-skel vf-skel--text" style="width:80px;"></div>
-                  <div class="vf-skel vf-skel--text" style="width:30px;"></div>
+              <div class="vf-priority">
+                <span class="vf-pdot"></span>
+                <div class="vf-priority__main">
+                  <div class="vf-skel vf-skel--text" style="width:60%;margin:4px 0;"></div>
+                  <div class="vf-skel vf-skel--text" style="width:40%;"></div>
                 </div>
-                <div class="vf-bar"><div class="vf-skel" style="width:100%;height:7px;border-radius:99px;"></div></div>
-              </div>
-              <div id="dash-health-empty" class="vf-empty" style="display:none;">
-                <div class="vf-empty__ico">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-                </div>
-                <p class="vf-empty__title">Nenhuma base cadastrada</p>
-                <p class="vf-empty__desc">Importe uma planilha de custos para começar.</p>
-                <a class="vf-btn vf-btn--subtle" href="bases.html">Importar base</a>
               </div>
             </div>
           </div>
 
         </div>
-      </div>
+      </section>
 
       <!-- Atalhos rápidos -->
       <section class="vf-card vf-quick-section" aria-labelledby="dash-quick-title">
