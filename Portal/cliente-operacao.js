@@ -504,6 +504,7 @@
     renderHeader(workspace);
     renderPilotNote();
     renderOperationalRecord(workspace);
+    renderIdentityPanel(workspace.cliente);
     renderChannels(workspace);
     renderReadiness(workspace);
     renderFutureData(workspace);
@@ -559,21 +560,101 @@
     `).join("");
   }
 
+  function renderIdentityPanel(cliente) {
+    const el = document.getElementById("vfop-identity-panel");
+    if (!el || !cliente) return;
+
+    const rows = [
+      ["Nome", escapeHTML(cliente.nome || "—")],
+      ["Slug", `<span class="vfop-line-main" style="font-family:monospace;font-size:11.5px">${escapeHTML(cliente.slug || "—")}</span>`],
+      ["Status", cliente.ativo !== false
+        ? `<span class="vfop-status vfop-status--success">Ativo</span>`
+        : `<span class="vfop-status vfop-status--danger">Inativo</span>`],
+      ["Canais", escapeHTML(String(cliente.canaisCount || "—"))],
+      ["API key", `<span class="vfop-status vfop-status--muted">somente admin</span>`],
+    ];
+
+    el.innerHTML = `
+      <div class="vfop-identity">
+        <div class="vfop-identity-head">
+          <span class="vfop-section-eyebrow">Identidade</span>
+        </div>
+        ${rows.map(([label, val]) => `
+          <div class="vfop-identity-row">
+            <span class="vfop-identity-label">${escapeHTML(label)}</span>
+            <span class="vfop-identity-val">${val}</span>
+          </div>`).join("")}
+      </div>`;
+  }
+
   function renderChannels(workspace) {
-    const tbody = document.getElementById("vfop-channels-body");
-    if (!tbody) return;
-    tbody.innerHTML = workspace.channels.map((channel) => `
-      <tr>
-        <td><span class="vfop-line-main">${escapeHTML(channel.canal)}</span><span class="vfop-line-sub">${sourceText(channel.source)}</span></td>
-        <td>${escapeHTML(channel.marketplace)}</td>
-        <td><span class="vfop-line-main">${escapeHTML(channel.name)}</span><span class="vfop-line-sub">${escapeHTML(channel.id)}</span></td>
-        <td>${statusBadge(channel.base.label, channel.base.tone)}</td>
-        <td>${statusBadge(channel.grant.label, channel.grant.tone)}</td>
-        <td>${statusBadge(channel.diagnostico.label, channel.diagnostico.tone)}</td>
-        <td>${statusBadge(channel.fechamento.label, channel.fechamento.tone)}</td>
-        <td>${escapeHTML(channel.pending)}</td>
-      </tr>
-    `).join("");
+    const target = document.getElementById("vfop-channels-body");
+    if (!target) return;
+    target.innerHTML = workspace.channels.map((channel) => renderChannelCard({
+      marketplace: channel.marketplace,
+      nome: channel.name,
+      identificador: channel.id,
+      source: channel.source,
+      baseHtml: statusBadge(channel.base.label, channel.base.tone),
+      grantHtml: statusBadge(channel.grant.label, channel.grant.tone),
+      diagHtml: statusBadge(channel.diagnostico.label, channel.diagnostico.tone),
+      fechHtml: statusBadge(channel.fechamento.label, channel.fechamento.tone),
+      pendencia: channel.pending,
+    })).join("");
+  }
+
+  function renderChannelCard(canal) {
+    const sourceClass = canal.source === "real"
+      ? "vfop-source-tag--real"
+      : canal.source === "preview"
+      ? "vfop-source-tag--preview"
+      : "vfop-source-tag--todo";
+
+    const sourceLabel = canal.source === "real"
+      ? "Real" : canal.source === "preview"
+      ? "Preview" : "TODO";
+
+    return `
+      <div class="vfop-channel-card">
+        <div class="vfop-channel-card-head">
+          <div>
+            <div class="vfop-channel-card-title">
+              ${escapeHTML(canal.marketplace)} · ${escapeHTML(canal.nome)}
+            </div>
+            <div class="vfop-channel-card-sub">
+              ${escapeHTML(canal.identificador || "")}
+            </div>
+          </div>
+          <span class="vfop-source-tag ${sourceClass}">
+            ${sourceLabel}
+          </span>
+        </div>
+        <div class="vfop-channel-card-body">
+          <div class="vfop-channel-field">
+            <span class="vfop-channel-field-label">
+              ${canal.marketplace === "Shopee" ? "API" : "Grant ML"}
+            </span>
+            <span>${canal.grantHtml || "—"}</span>
+          </div>
+          <div class="vfop-channel-field">
+            <span class="vfop-channel-field-label">Base</span>
+            <span>${canal.baseHtml || "—"}</span>
+          </div>
+          <div class="vfop-channel-field">
+            <span class="vfop-channel-field-label">Diagnóstico</span>
+            <span>${canal.diagHtml || "—"}</span>
+          </div>
+          <div class="vfop-channel-field">
+            <span class="vfop-channel-field-label">Fechamento</span>
+            <span>${canal.fechHtml || "—"}</span>
+          </div>
+        </div>
+        <div class="vfop-channel-card-footer">
+          <span class="vfop-channel-pending">
+            ${escapeHTML(canal.pendencia || "sem pendência crítica")}
+          </span>
+        </div>
+      </div>`;
   }
 
   function renderReadiness(workspace) {
