@@ -22,6 +22,7 @@
     vinculoClientes: [],
     tokens: [],
     relatorios: [],
+    entregas: [],
     ads: null,
     cobertura: null,
     sources: {},
@@ -84,6 +85,7 @@
       loadTokens(),
       loadRelatorios(),
       loadBaseCobertura(),
+      loadEntregas(state.selectedCliente),
     ]);
 
     state.bases = results[0];
@@ -92,6 +94,7 @@
     state.tokens = results[3];
     state.relatorios = results[4];
     state.cobertura = results[5];
+    state.entregas = results[6];
     state.ads = await loadAds(state.selectedCliente);
     renderClienteOperacao(normalizeClienteWorkspace());
     setLoading(false);
@@ -103,6 +106,7 @@
     state.selectedKey = getClienteOptionKey(nextCliente);
     state.selectedCliente = nextCliente;
     state.ads = await loadAds(nextCliente);
+    state.entregas = await loadEntregas(nextCliente);
     renderClienteOperacao(normalizeClienteWorkspace());
   }
 
@@ -158,6 +162,17 @@
     const result = await apiGet("/operacao/base-cobertura", "cobertura", "GET /operacao/base-cobertura");
     if (!result.ok) return null;
     return result.data || null;
+  }
+
+  async function loadEntregas(cliente) {
+    const slug = cliente?.slug
+      || state.selectedCliente?.slug
+      || FALLBACK_CLIENTE?.slug
+      || "";
+    if (!slug) return [];
+    const result = await apiGet(`/entregas-cliente?cliente_slug=${encodeURIComponent(slug)}`, "entregas", "GET /entregas-cliente");
+    if (!result.ok) return [];
+    return Array.isArray(result.data?.entregas) ? result.data.entregas : [];
   }
 
   async function apiGet(path, key, label) {
@@ -281,13 +296,30 @@
   function buildSetupScore(workspace) {
     const reportAge = getAgeDays(workspace.relatorioPrincipal?.created_at || workspace.relatorioPrincipal?.createdAt);
     const recentReport = workspace.hasDiagnosis && (reportAge == null || reportAge <= 30);
+    const temFechamento = (state.entregas || []).some(
+      (e) => e?.tipo === "fechamento_mensal" || e?.tipo === "fechamento"
+    );
+    const ultimoFechamento = (state.entregas || [])
+      .filter((e) => e?.tipo === "fechamento_mensal" || e?.tipo === "fechamento")
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+    const dataUltimo = ultimoFechamento?.created_at
+      ? new Date(ultimoFechamento.created_at).toLocaleDateString("pt-BR")
+      : null;
     const checks = [
       setupItem("cliente", "Cliente cadastrado", Boolean(workspace.cliente), "Cadastro encontrado", sourceKind("clientes"), 12),
       setupItem("canal", "Canal principal definido", Boolean(workspace.channel), marketplaceLabel(workspace.channel), workspace.channel ? "real" : "preview", 10),
       setupItem("base", "Base vinculada", workspace.hasBase, workspace.hasBase ? getBaseName(workspace.basePrincipal) : "Aguardando vinculo oficial", sourceKind("vinculos"), 18),
       setupItem("grant", "Grant ML conectado", workspace.hasGrant, workspace.tokenState.detail, sourceKind("tokens"), 18),
       setupItem("diagnostico", "Primeiro diagnostico", workspace.hasDiagnosis, workspace.hasDiagnosis ? getReportName(workspace.relatorioPrincipal) : "Nao localizado", sourceKind("relatorios"), 14),
-      setupItem("fechamento", "Primeiro fechamento", false, "Aguardando contrato por cliente", "todo", 8),
+      {
+        key: "fechamento",
+        label: "Primeiro fechamento",
+        done: temFechamento,
+        detail: temFechamento ? `Último: ${dataUltimo}` : "Aguardando primeiro fechamento",
+        source: sourceKind("entregas"),
+        points: 8,
+        tone: temFechamento ? "success" : "warning",
+      },
       setupItem("ads", "Ads/acompanhamento", workspace.hasAds, workspace.hasAds ? "Acompanhamento salvo no periodo" : "Sem acompanhamento do periodo", sourceKind("ads"), 10),
       setupItem("frete", "Frete historico", false, "Pendente para backend futuro", "todo", 10),
     ];
