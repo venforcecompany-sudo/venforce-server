@@ -888,7 +888,9 @@
               ${escapeHTML(canal.nome || "")}
               ${canal.isPrincipal
                 ? `<span class="vfop-badge vfop-badge-brand"
-                         style="font-size:10px">principal</span>`
+                         style="font-size:9px;padding:1px 5px">
+                     principal
+                   </span>`
                 : ""}
             </div>
             <div class="vfop-canal-name-sub">
@@ -896,9 +898,6 @@
             </div>
           </div>
           ${statusBadge}
-          <span class="vfop-source-tag ${srcClass}">
-            ${srcLabel}
-          </span>
         </div>
         <div class="vfop-canal-fields">
           ${cells.map(c => `
