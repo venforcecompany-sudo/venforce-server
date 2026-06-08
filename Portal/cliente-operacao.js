@@ -23,7 +23,6 @@
     tokens: [],
     relatorios: [],
     ads: null,
-    clickup: null,
     cobertura: null,
     sources: {},
     failures: [],
@@ -94,8 +93,6 @@
     state.relatorios = results[4];
     state.cobertura = results[5];
     state.ads = await loadAds(state.selectedCliente);
-    state.clickup = await loadClickup();
-
     renderClienteOperacao(normalizeClienteWorkspace());
     setLoading(false);
   }
@@ -155,10 +152,6 @@
     const result = await apiGet(`/ads/acompanhamento?${params.toString()}`, "ads", "GET /ads/acompanhamento");
     if (!result.ok) return null;
     return result.data?.acompanhamento || result.data || null;
-  }
-
-  async function loadClickup() {
-    return null;
   }
 
   async function loadBaseCobertura() {
@@ -245,7 +238,6 @@
       relatorioPrincipal,
       relatorios,
       ads: state.ads,
-      clickup: state.clickup,
       coverage: normalizeCoverage(state.cobertura),
       hasBase: Boolean(basePrincipal),
       hasGrant: Boolean(tokenPrincipal),
@@ -276,7 +268,7 @@
       { label: "Status", value: workspace.cliente?.ativo === false ? "Inativo" : "Ativo", hint: sourceHint("clientes") },
       { label: "Canais detectados", value: getDetectedChannels(workspace).join(", "), hint: "real + preview quando canal futuro" },
       { label: "Base oficial vinculada", value: workspace.hasBase ? getBaseName(workspace.basePrincipal) : "Pendente", hint: workspace.hasBase ? sourceHint("vinculos") : "vincular em Bases de Custo" },
-      { label: "Grant ML", value: workspace.tokenState.label, hint: workspace.tokenState.detail },
+      { label: "Grant ML", value: workspace.tokenState.label, hint: workspace.tokenState.detail, tone: workspace.tokenState.tone },
       { label: "API key", value: apiKeyStatus, hint: "valor completo nao e exibido" },
       { label: "Observacao", value: "Dados sensiveis em clientes.html", hint: "cadastro administrativo separado" },
     ];
@@ -289,7 +281,7 @@
       setupItem("cliente", "Cliente cadastrado", Boolean(workspace.cliente), "Cadastro encontrado", sourceKind("clientes"), 12),
       setupItem("canal", "Canal principal definido", Boolean(workspace.channel), marketplaceLabel(workspace.channel), workspace.channel ? "real" : "preview", 10),
       setupItem("base", "Base vinculada", workspace.hasBase, workspace.hasBase ? getBaseName(workspace.basePrincipal) : "Aguardando vinculo oficial", sourceKind("vinculos"), 18),
-      setupItem("grant", "Grant ML conectado", workspace.tokenState.tone === "success", workspace.tokenState.detail, sourceKind("tokens"), 18),
+      setupItem("grant", "Grant ML conectado", workspace.hasGrant, workspace.tokenState.detail, sourceKind("tokens"), 18),
       setupItem("diagnostico", "Primeiro diagnostico", workspace.hasDiagnosis, workspace.hasDiagnosis ? getReportName(workspace.relatorioPrincipal) : "Nao localizado", sourceKind("relatorios"), 14),
       setupItem("fechamento", "Primeiro fechamento", false, "Aguardando contrato por cliente", "todo", 8),
       setupItem("ads", "Ads/acompanhamento", workspace.hasAds, workspace.hasAds ? "Acompanhamento salvo no periodo" : "Sem acompanhamento do periodo", sourceKind("ads"), 10),
@@ -339,7 +331,14 @@
       futureRow("Produtos/anuncios sem custo", semCusto == null ? `${missingCostValue} prev.` : String(missingCostValue), semCusto == null ? "preview" : "real", semCusto == null ? "Aguardando total no relatorio" : "Diagnostico mais recente"),
       futureRow("Sem frete confiavel", "Pendente", "todo", "Contrato futuro de frete historico por cliente"),
       futureRow("Sem marketplace identificado", workspace.channel ? "Nao" : "Sim", workspace.channel ? "real" : "preview", workspace.channel ? marketplaceLabel(workspace.channel) : "Canal principal nao veio nos dados"),
-      futureRow("Token ausente/vencendo", workspace.tokenState.tone === "success" ? "Nao" : "Sim", sourceKind("tokens"), workspace.tokenState.detail),
+      futureRow(
+        "Grant ML ausente",
+        state.sources.tokens?.ok ? (workspace.hasGrant ? "Nao" : "Sim") : "Nao validado",
+        sourceKind("tokens"),
+        state.sources.tokens?.ok
+          ? (workspace.hasGrant ? "Grant ML conectado" : "Conectar em clientes.html")
+          : "Nao foi possivel validar /admin/ml-tokens"
+      ),
       futureRow("Relatorio antigo", !workspace.hasDiagnosis ? "Sem relatorio" : (reportAge != null && reportAge > 30 ? `${reportAge} dias` : "Nao"), sourceKind("relatorios"), workspace.hasDiagnosis ? "Diagnostico localizado" : "Rode o primeiro diagnostico"),
       futureRow("Precificacao pendente", workspace.pricing.blockers.length ? "Sim" : "Nao", "todo", workspace.pricing.blockers.join(", ") || "Sem bloqueio critico no piloto"),
       futureRow("Frete historico pendente", "Sim", "todo", "Necessario para calculo fino de margem"),
@@ -355,7 +354,7 @@
     const mcMedia = firstFiniteNumber([relatorio.mc_media, relatorio.margem_media, relatorio.margemAtual]);
     const blockers = [];
     if (!workspace.hasBase) blockers.push("base vinculada");
-    if (workspace.tokenState.tone !== "success") blockers.push("grant ML valido");
+    if (!workspace.hasGrant) blockers.push("grant ML");
     if (!workspace.hasDiagnosis) blockers.push("diagnostico");
     return {
       isMock: mcMedia == null,
@@ -425,15 +424,18 @@
 
   function buildActions(workspace) {
     const semCusto = workspace.futureData.find((item) => item.label === "Produtos/anuncios sem custo");
-    return [
+    const actions = [
       actionRow("Vincular base", workspace.hasBase ? "OK" : "Alta", workspace.hasBase ? getBaseName(workspace.basePrincipal) : "Base oficial ausente", sourceKind("vinculos"), workspace.hasBase ? "Concluido" : "Pendente"),
-      actionRow("Conectar grant", workspace.tokenState.tone === "success" ? "OK" : "Alta", workspace.tokenState.detail, sourceKind("tokens"), workspace.tokenState.label),
       actionRow("Rodar diagnostico", workspace.hasDiagnosis ? "OK" : "Alta", workspace.hasDiagnosis ? getReportName(workspace.relatorioPrincipal) : "Primeiro diagnostico nao localizado", sourceKind("relatorios"), workspace.hasDiagnosis ? "Concluido" : "Pendente"),
       actionRow("Revisar anuncios sem custo", semCusto?.source === "real" ? "Media" : "Baixa", semCusto?.detail || "Aguardando relatorio", semCusto?.source || "preview", semCusto?.value || "Preview"),
       actionRow("Atualizar frete historico", "Media", "Necessario para calculo fino de margem", "todo", "TODO backend"),
       actionRow("Gerar relatorio", workspace.hasDiagnosis ? "Baixa" : "Media", workspace.hasDiagnosis ? "Relatorio localizado" : "Sem diagnostico salvo", sourceKind("relatorios"), workspace.hasDiagnosis ? "Opcional" : "Pendente"),
-      actionRow("Abrir tarefa ClickUp", "Baixa", "Formalizar pendencias do setup", "todo", "TODO integracao"),
+      // FUTURO: ClickUp por cliente.
     ];
+    if (!workspace.hasGrant && state.sources.tokens?.ok) {
+      actions.splice(1, 0, actionRow("Conectar grant", "Alta", "Grant ML ausente", "real", "Pendente"));
+    }
+    return actions;
   }
 
   function buildHistory(workspace) {
@@ -446,7 +448,7 @@
       historyRow("Diagnostico rodado", workspace.hasDiagnosis ? getReportName(workspace.relatorioPrincipal) : "pendente", reportDate, sourceKind("relatorios")),
       historyRow("Relatorio salvo", workspace.hasDiagnosis ? "Disponivel em relatorios" : "aguarda diagnostico", reportDate, sourceKind("relatorios")),
       historyRow("Fechamento processado", "TODO contrato por cliente", null, "todo"),
-      historyRow("Tarefa criada", "TODO ClickUp por cliente", null, "todo"),
+      // FUTURO: ClickUp por cliente.
     ];
   }
 
@@ -515,7 +517,7 @@
     target.innerHTML = workspace.record.map((item) => `
       <div class="vfop-record-item">
         <div class="vfop-record-item__label">${escapeHTML(item.label)}</div>
-        <div class="vfop-record-item__value">${escapeHTML(item.value)}</div>
+        <div class="vfop-record-item__value">${item.tone ? statusBadge(item.value, item.tone) : escapeHTML(item.value)}</div>
         <div class="vfop-record-item__hint">${escapeHTML(item.hint || "")}</div>
       </div>
     `).join("");
@@ -669,28 +671,18 @@
   function getTokenState(token, source) {
     if (!source?.ok) {
       return {
-        label: source?.status === 403 ? "Sem permissao" : "Parcial",
+        label: source?.status === 403 ? "Sem permissao" : "Nao validado",
         tone: "warning",
         detail: source?.status === 403 ? "Rota admin indisponivel para este usuario" : "Nao foi possivel validar tokens",
       };
     }
-    if (!token) return { label: "Ausente", tone: "danger", detail: "Nenhum grant localizado para o cliente" };
-
-    const expiresRaw = token.expires_at || token.expiresAt || token.expira_em || token.expiration;
-    const expires = expiresRaw ? new Date(expiresRaw) : null;
-    const activeFlag = token.ativo !== false && String(token.status || "").toLowerCase() !== "revogado";
-    if (!activeFlag) return { label: "Inativo", tone: "danger", detail: "Grant existe, mas esta inativo" };
-    if (!expires || Number.isNaN(expires.getTime())) return { label: "Conectado", tone: "success", detail: "Grant localizado sem vencimento no payload" };
-
-    const days = Math.ceil((expires.getTime() - Date.now()) / 86400000);
-    if (days < 0) return { label: "Vencido", tone: "danger", detail: `Token venceu ha ${Math.abs(days)} dias` };
-    if (days <= 7) return { label: "Expira breve", tone: "warning", detail: `Token vence em ${days} dias` };
-    return { label: "Conectado", tone: "success", detail: `Token valido por ${days} dias` };
+    if (!token) return { label: "Precisa grant", tone: "warning", detail: "Conectar em clientes.html" };
+    return { label: "Grantado", tone: "success", detail: "Grant ML conectado" };
   }
 
   function getMainPending(workspace) {
     if (!workspace.hasBase) return "vincular base";
-    if (workspace.tokenState.tone !== "success") return "regularizar grant";
+    if (!workspace.hasGrant) return "conectar grant";
     if (!workspace.hasDiagnosis) return "rodar diagnostico";
     return "sem pendencia critica";
   }
