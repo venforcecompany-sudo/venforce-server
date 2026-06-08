@@ -940,3 +940,117 @@ header.topbar {
   top: 0 !important;
   z-index: 50 !important;
 }
+
+/* ── DONUT SCORE ─────────────────────────────────────────── */
+.vfop-donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.vfop-donut-svg {
+  flex-shrink: 0;
+  transform: rotate(-90deg);
+}
+
+.vfop-donut-label {
+  transform: rotate(90deg);
+  transform-origin: center;
+}
+
+.vfop-donut-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vfop-donut-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--vfop-text);
+  line-height: 1.2;
+}
+
+.vfop-donut-meta {
+  font-size: 11.5px;
+  color: var(--vfop-muted);
+}
+
+.vfop-donut-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+/* ── QUICK ACCESS ────────────────────────────────────────── */
+.vfop-quick-access {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.vfop-quick-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--vfop-soft);
+  white-space: nowrap;
+}
+
+.vfop-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--vfop-border-strong);
+  border-radius: 3px;
+  background: var(--vfop-surface);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--vfop-text);
+  cursor: pointer;
+  transition: background .12s;
+  white-space: nowrap;
+}
+
+.vfop-quick-chip:hover {
+  background: var(--vfop-subtle);
+}
+
+.vfop-quick-chip--active {
+  background: var(--vfop-primary);
+  border-color: var(--vfop-primary);
+  color: #fff;
+}
+
+.vfop-quick-chip-remove {
+  font-size: 10px;
+  opacity: .5;
+  cursor: pointer;
+  margin-left: 2px;
+  line-height: 1;
+}
+
+.vfop-quick-chip-remove:hover {
+  opacity: 1;
+}
+
+/* ── SELETOR EXPANDIDO ───────────────────────────────────── */
+.vfop-client-selector-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.vfop-selector-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--vfop-soft);
+}
