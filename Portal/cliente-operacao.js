@@ -209,8 +209,11 @@
 
   function normalizeClienteWorkspace() {
     const cliente = state.selectedCliente || FALLBACK_CLIENTE;
+    console.log('[DIAG] vinculos (base-vinculos):', JSON.stringify(state.vinculos.slice(0, 2), null, 2));
+    console.log('[DIAG] vinculoClientes (base-vinculos/clientes):', JSON.stringify(state.vinculoClientes.slice(0, 2), null, 2));
     const allBases = uniqueBy([...state.bases, ...state.vinculos], getBaseStableKey);
     const basesDoCliente = allBases.filter((base) => matchesCliente(base, cliente));
+    console.log('[DIAG] basesDoCliente resultado:', basesDoCliente.length, JSON.stringify(basesDoCliente.slice(0,1), null, 2));
     const vinculoClientes = state.vinculoClientes.filter((item) => matchesCliente(item, cliente));
     const tokenRows = state.tokens.filter((token) => matchesCliente(token, cliente));
     const baseKeys = basesDoCliente.map(getBaseSlug).filter(Boolean).map(slugKey);
