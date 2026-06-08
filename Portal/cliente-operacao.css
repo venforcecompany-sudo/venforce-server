@@ -841,3 +841,93 @@
   .vfop-head-2col { grid-template-columns: 1fr; }
   .vfop-channel-grid { grid-template-columns: 1fr; }
 }
+
+/* ── CLIENT CHIP ─────────────────────────────────────────── */
+.vfop-client-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px 4px 8px;
+  border: 1px solid var(--vfop-border);
+  border-radius: 4px;
+  background: var(--vfop-subtle);
+  font-size: 12px;
+  color: var(--vfop-text);
+  white-space: nowrap;
+}
+
+.vfop-client-chip-score {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vfop-muted);
+}
+
+.vfop-client-chip-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.vfop-client-chip-badge--ok {
+  background: var(--vfop-success-bg, #eef7f2);
+  color: var(--vfop-success);
+}
+
+.vfop-client-chip-badge--warn {
+  background: var(--vfop-warning-bg, #fdf2e3);
+  color: var(--vfop-warning);
+}
+
+/* ── BOTÕES DE AÇÃO DO CARD ──────────────────────────────── */
+.vfop-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border-radius: 3px;
+  border: 1px solid var(--vfop-border-strong);
+  background: var(--vfop-surface);
+  color: var(--vfop-text);
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .12s;
+  font-family: inherit;
+}
+
+.vfop-card-action:hover {
+  background: var(--vfop-subtle);
+}
+
+.vfop-card-action--primary {
+  background: var(--vfop-primary);
+  border-color: var(--vfop-primary);
+  color: #fff;
+}
+
+.vfop-card-action--primary:hover {
+  opacity: .86;
+  background: var(--vfop-primary);
+}
+
+/* ── SIDEBAR SCROLL FIX ──────────────────────────────────── */
+.vf-sidebar,
+[class*="sidebar"],
+nav.sidebar,
+.layout-sidebar {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  max-height: 100vh !important;
+}
+
+/* Topbar fixa */
+.vf-topbar,
+[class*="topbar"],
+header.topbar {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 50 !important;
+}
