@@ -712,75 +712,165 @@
     if (!target) return;
     const reportAge = getAgeDays(workspace.relatorioPrincipal?.created_at || workspace.relatorioPrincipal?.createdAt);
     const diagnosticoOk = workspace.hasDiagnosis && (reportAge == null || reportAge <= 30);
-    target.innerHTML = workspace.channels.map((channel) => renderChannelCard({
-      marketplace: channel.marketplace,
-      nome: channel.name,
-      identificador: channel.id,
-      source: channel.source,
-      baseHtml: statusBadge(channel.base.label, channel.base.tone),
-      grantHtml: statusBadge(channel.grant.label, channel.grant.tone),
-      diagHtml: statusBadge(channel.diagnostico.label, channel.diagnostico.tone),
-      fechHtml: statusBadge(channel.fechamento.label, channel.fechamento.tone),
-      pendencia: channel.pending,
-      clienteSlug: workspace.slug,
-      temBase: workspace.hasBase,
-      temGrant: workspace.hasGrant,
-      diagnosticoOk,
-    })).join("");
+    target.innerHTML = workspace.channels.map((channel, index) => {
+      const canalActions = [];
+      if (channel.source === "real") {
+        if (!workspace.hasBase) {
+          canalActions.push({ label: "Vincular base", href: "bases.html" });
+        } else if (channel.marketplace !== "Shopee" && !workspace.hasGrant) {
+          canalActions.push({
+            label: "Copiar link ML",
+            primary: true,
+            onclick: `copiarLinkML('${escapeJsString(workspace.slug || "")}')`,
+          });
+        } else if (!diagnosticoOk) {
+          canalActions.push({ label: "Rodar diagnóstico", href: "automacoes.html", primary: true });
+        }
+      }
+
+      return renderChannelCard({
+        marketplace: channel.marketplace,
+        nome: channel.name,
+        identificador: channel.id,
+        source: channel.source,
+        baseHtml: statusBadge(channel.base.label, channel.base.tone),
+        grantHtml: statusBadge(channel.grant.label, channel.grant.tone),
+        diagHtml: statusBadge(channel.diagnostico.label, channel.diagnostico.tone),
+        fechHtml: statusBadge(channel.fechamento.label, channel.fechamento.tone),
+        pendencia: channel.pending,
+        clienteSlug: workspace.slug,
+        temBase: workspace.hasBase,
+        temGrant: workspace.hasGrant,
+        diagnosticoOk,
+        baseOk: workspace.hasBase,
+        grantOk: workspace.hasGrant,
+        diagOk: diagnosticoOk,
+        isPrincipal: index === 0,
+        acoes: canalActions,
+      });
+    }).join("");
   }
 
   function renderChannelCard(canal) {
-    const sourceClass = canal.source === "real"
+    const mp = (canal.marketplace || "").toLowerCase();
+    const iconClass = mp.includes("shopee")
+      ? "vfop-canal-icon--shopee"
+      : mp.includes("meli") || mp.includes("mercado")
+      ? "vfop-canal-icon--meli"
+      : "vfop-canal-icon--outro";
+
+    const iconLetter = mp.includes("shopee") ? "S"
+      : mp.includes("meli") || mp.includes("mercado") ? "ML"
+      : "?";
+
+    const srcClass = canal.source === "real"
       ? "vfop-source-tag--real"
       : canal.source === "preview"
       ? "vfop-source-tag--preview"
       : "vfop-source-tag--todo";
 
-    const sourceLabel = canal.source === "real"
-      ? "Real" : canal.source === "preview"
-      ? "Preview" : "TODO";
+    const srcLabel = canal.source === "real" ? "Real"
+      : canal.source === "preview" ? "Preview" : "TODO";
+
+    const statusBadge = (() => {
+      if (canal.source !== "real") {
+        return `<span class="vfop-badge vfop-badge-neutral">
+          canal futuro</span>`;
+      }
+      const hasGrant = canal.grantOk ?? canal.temGrant;
+      const hasBase  = canal.baseOk ?? canal.temBase;
+      const hasDiag  = canal.diagOk ?? canal.diagnosticoOk;
+      if (!hasGrant && mp.includes("meli")) {
+        return `<span class="vfop-badge vfop-badge-crit">
+          <span class="vfop-dot vfop-dot-err"></span>
+          incompleto</span>`;
+      }
+      if (!hasBase) {
+        return `<span class="vfop-badge vfop-badge-warn">
+          <span class="vfop-dot vfop-dot-warn"></span>
+          em config</span>`;
+      }
+      if (!hasDiag) {
+        return `<span class="vfop-badge vfop-badge-warn">
+          <span class="vfop-dot vfop-dot-warn"></span>
+          em config</span>`;
+      }
+      return `<span class="vfop-badge vfop-badge-ok">
+        <span class="vfop-dot vfop-dot-ok"></span>
+        operável</span>`;
+    })();
+
+    const cells = [
+      {
+        label: mp.includes("shopee") ? "API / Grant" : "Grant ML",
+        html: canal.grantHtml || `<span class="vfop-badge
+          vfop-badge-neutral">—</span>`
+      },
+      {
+        label: "Base de custo",
+        html: canal.baseHtml || `<span class="vfop-badge
+          vfop-badge-neutral">—</span>`
+      },
+      {
+        label: "Diagnóstico",
+        html: canal.diagHtml || `<span class="vfop-badge
+          vfop-badge-neutral">—</span>`
+      },
+      {
+        label: "Fechamento",
+        html: canal.fechHtml || `<span class="vfop-badge
+          vfop-badge-neutral">—</span>`
+      },
+    ];
+
+    const btns = canal.acoes || [];
+    const btnsHtml = btns.length
+      ? btns.map(b => b.primary
+          ? `<button class="vfop-action vfop-action--primary"
+               onclick="${escapeHTML(b.onclick || "")}">${escapeHTML(b.label)}</button>`
+          : b.href
+          ? `<a href="${escapeHTML(b.href)}" class="vfop-action">${escapeHTML(b.label)}</a>`
+          : `<button class="vfop-action"
+               onclick="${escapeHTML(b.onclick || "")}">${escapeHTML(b.label)}</button>`
+        ).join("")
+      : "";
 
     return `
-      <div class="vfop-channel-card">
-        <div class="vfop-channel-card-head">
-          <div>
-            <div class="vfop-channel-card-title">
-              ${escapeHTML(canal.marketplace)} · ${escapeHTML(canal.nome)}
+      <div class="vfop-canal-card">
+        <div class="vfop-canal-head">
+          <div class="vfop-canal-icon ${iconClass}">
+            ${iconLetter}
+          </div>
+          <div class="vfop-canal-name">
+            <div class="vfop-canal-name-main">
+              ${escapeHTML(canal.marketplace || "")} ·
+              ${escapeHTML(canal.nome || "")}
+              ${canal.isPrincipal
+                ? `<span class="vfop-badge vfop-badge-brand"
+                         style="font-size:10px">principal</span>`
+                : ""}
             </div>
-            <div class="vfop-channel-card-sub">
+            <div class="vfop-canal-name-sub">
               ${escapeHTML(canal.identificador || "")}
             </div>
           </div>
-          <span class="vfop-source-tag ${sourceClass}">
-            ${sourceLabel}
+          ${statusBadge}
+          <span class="vfop-source-tag ${srcClass}">
+            ${srcLabel}
           </span>
         </div>
-        <div class="vfop-channel-card-body">
-          <div class="vfop-channel-field">
-            <span class="vfop-channel-field-label">
-              ${canal.marketplace === "Shopee" ? "API" : "Grant ML"}
-            </span>
-            <span>${canal.grantHtml || "—"}</span>
-          </div>
-          <div class="vfop-channel-field">
-            <span class="vfop-channel-field-label">Base</span>
-            <span>${canal.baseHtml || "—"}</span>
-          </div>
-          <div class="vfop-channel-field">
-            <span class="vfop-channel-field-label">Diagnóstico</span>
-            <span>${canal.diagHtml || "—"}</span>
-          </div>
-          <div class="vfop-channel-field">
-            <span class="vfop-channel-field-label">Fechamento</span>
-            <span>${canal.fechHtml || "—"}</span>
-          </div>
+        <div class="vfop-canal-fields">
+          ${cells.map(c => `
+            <div class="vfop-canal-field-cell">
+              <div class="vfop-canal-field-cell-label">
+                ${escapeHTML(c.label)}
+              </div>
+              ${c.html}
+            </div>`).join("")}
         </div>
-        <div class="vfop-channel-card-footer">
-          <span class="vfop-channel-pending">
-            ${escapeHTML(canal.pendencia || "sem pendência crítica")}
-          </span>
-          ${renderChannelCardAction(canal)}
-        </div>
+        ${btnsHtml
+          ? `<div class="vfop-canal-foot">${btnsHtml}</div>`
+          : ""}
       </div>`;
   }
 
@@ -916,7 +1006,88 @@
   window.removerAtalho = removerAtalho;
   window.selecionarClienteRapido = selecionarClienteRapido;
 
+  function renderReadinessPanel(workspace) {
+    const el = document.getElementById("vfop-readiness-body");
+    if (!el) return;
+
+    const score  = workspace?.setup?.score  || 0;
+    const label  = workspace?.setup?.label  || "Setup incompleto";
+    const checks = workspace?.setup?.checks || [];
+    const isOk   = score >= 80;
+    const color  = isOk ? "#1a7a45"
+      : score >= 45 ? "#855100" : "#9b1c1c";
+    const bgColor = isOk ? "#eef7f2"
+      : score >= 45 ? "#fdf2e3" : "#fef1f0";
+
+    const badgeClass = isOk ? "vfop-badge-ok"
+      : score >= 45 ? "vfop-badge-warn" : "vfop-badge-crit";
+
+    const blockers = checks
+      .filter(c => !c.done && c.points > 0)
+      .slice(0, 4);
+
+    const blockersHtml = blockers.length
+      ? blockers.map(c => `
+          <div style="display:flex;align-items:center;
+                      gap:8px;font-size:13px;padding:3px 0">
+            <span style="width:7px;height:7px;border-radius:50%;
+                         flex-shrink:0;background:${
+              c.tone === "danger"  ? "#9b1c1c" :
+              c.tone === "warning" ? "#855100" : "#8c96a6"
+            };display:inline-block"></span>
+            <b>${escapeHTML(c.label || c.key || "")}</b>
+            <span style="margin-left:auto;font-size:11px;
+                         font-weight:600;color:#8c96a6;">
+              +${c.points} pts
+            </span>
+          </div>`).join("")
+      : `<div style="font-size:12.5px;color:#1a7a45;">
+           ✓ Sem bloqueadores críticos
+         </div>`;
+
+    el.innerHTML = `
+      <div class="vfop-conic-ring"
+           style="width:132px;height:132px;
+                  background:conic-gradient(
+                    ${color} 0 ${score}%,
+                    #eaecf0 ${score}% 100%)">
+        <div class="vfop-conic-inner"
+             style="width:95px;height:95px;">
+          <span class="vfop-conic-pct">
+            ${score}<sup>%</sup>
+          </span>
+          <span class="vfop-conic-sub">setup</span>
+        </div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;
+                    gap:8px;margin-bottom:10px">
+          <span class="vfop-badge ${badgeClass}">
+            <span style="width:6px;height:6px;border-radius:50%;
+                         background:${color};display:inline-block">
+            </span>
+            ${escapeHTML(label)}
+          </span>
+          ${!isOk
+            ? `<span style="font-size:12px;color:#8c96a6;">
+                 faltam ${100 - score} pts para "pronto"
+               </span>`
+            : ""}
+        </div>
+        ${!isOk
+          ? `<div style="font-size:13px;color:#5a6578;
+                         margin-bottom:12px;line-height:1.5">
+               Resolva o que está crítico primeiro:
+             </div>`
+          : ""}
+        <div style="display:flex;flex-direction:column;gap:4px">
+          ${blockersHtml}
+        </div>
+      </div>`;
+  }
+
   function renderReadiness(workspace) {
+    renderReadinessPanel(workspace);
     setText("vfop-score-value", `${workspace.setup.score}%`);
     setText("vfop-score-label", workspace.setup.label);
     const bar = document.getElementById("vfop-score-bar");
@@ -924,14 +1095,29 @@
 
     const list = document.getElementById("vfop-setup-list");
     if (!list) return;
+    list.classList.add("vfop-check-v2");
     list.innerHTML = workspace.setup.checks.map((item) => `
-      <div class="vfop-check-item">
-        <span class="vfop-check-dot vfop-check-dot--${escapeHTML(item.tone)}" aria-hidden="true"></span>
-        <div class="vfop-check-main">
-          <strong>${escapeHTML(item.label)}</strong>
-          <span>${escapeHTML(item.detail)}</span>
+      <div class="vfop-check-v2-item
+        ${item.done ? "vfop-check-v2-item--done" : ""}">
+        <div class="vfop-check-v2-box
+          ${item.done
+            ? "vfop-check-v2-box--done"
+            : "vfop-check-v2-box--pend"}">
         </div>
-        ${sourceTag(item.source)}
+        <span class="vfop-check-v2-text">
+          ${escapeHTML(item.label || item.key || "")}
+          ${item.detail
+            ? `<span style="display:block;font-size:11px;
+                            color:#8c96a6;margin-top:1px;">
+                 ${escapeHTML(item.detail)}
+               </span>`
+            : ""}
+        </span>
+        ${item.points
+          ? `<span class="vfop-check-v2-pts">
+               +${item.points}
+             </span>`
+          : ""}
       </div>
     `).join("");
   }
@@ -950,17 +1136,74 @@
   }
 
   function renderActions(workspace) {
-    const tbody = document.getElementById("vfop-action-body");
-    if (!tbody) return;
-    tbody.innerHTML = workspace.actions.map((item) => `
-      <tr>
-        <td><span class="vfop-line-main">${escapeHTML(item.title)}</span></td>
-        <td>${escapeHTML(item.priority)}</td>
-        <td>${escapeHTML(item.reason)}</td>
-        <td>${sourceTag(item.source)}</td>
-        <td>${escapeHTML(item.status)}</td>
-      </tr>
-    `).join("");
+    renderAcoes(workspace.actions);
+  }
+
+  function renderAcoes(acoes) {
+    const el = document.getElementById("vfop-action-body");
+    if (!el) return;
+
+    const toneMap = {
+      "Alta": "crit", "Media": "warn",
+      "OK": "ok", "Baixa": "info"
+    };
+
+    const emojiMap = {
+      "crit": "⚠", "warn": "◉",
+      "ok": "✓", "info": "ℹ"
+    };
+
+    const normalized = (acoes || []).map((a) => ({
+      acao: a.acao || a.title || "",
+      prioridade: a.prioridade || a.priority || "",
+      motivo: a.motivo || a.reason || "",
+      fonte: a.fonte || sourceText(a.source || ""),
+      status: a.status || "",
+    }));
+
+    if (!normalized.length) {
+      el.innerHTML = `<div style="padding:14px;font-size:13px;
+        color:#8c96a6;">Sem ações pendentes.</div>`;
+      return;
+    }
+
+    el.innerHTML = `<div class="vfop-alerts"
+                        style="padding:14px;">` +
+      normalized.map(a => {
+        const tone = toneMap[a.prioridade] || "info";
+        const icon = emojiMap[tone];
+        const concluido = (a.status || "").toLowerCase()
+          .includes("conclu");
+        if (concluido) return "";
+        return `
+          <div class="vfop-alert vfop-alert--${tone}">
+            <div class="vfop-alert-icon">${icon}</div>
+            <div>
+              <div class="vfop-alert-title">
+                ${escapeHTML(a.acao || "")}
+              </div>
+              <div class="vfop-alert-desc">
+                ${escapeHTML(a.motivo || "")}
+                ${a.fonte ? `<span style="margin-left:6px;">
+                  <span class="vfop-source-tag
+                    vfop-source-tag--${
+                      (a.fonte||"").includes("Real") ? "real" :
+                      (a.fonte||"").includes("TODO") ? "todo" :
+                      "preview"
+                    }">
+                    ${escapeHTML(a.fonte)}
+                  </span></span>` : ""}
+              </div>
+            </div>
+            ${a.status && !concluido
+              ? `<span class="vfop-alert-action"
+                       style="font-size:11.5px;
+                              color:#8c96a6;">
+                   ${escapeHTML(a.status)}
+                 </span>`
+              : ""}
+          </div>`;
+      }).join("") + "</div>";
   }
 
   function renderHistory(workspace) {
