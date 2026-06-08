@@ -1474,3 +1474,162 @@ header.topbar {
   flex-shrink: 0;
   margin-left: auto;
 }
+
+/* ── CLIENT SWITCHER BAR ─────────────────────────────────── */
+.vfop-switcher-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 16px;
+  flex-wrap: wrap;
+}
+
+.vfop-switch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 12px 6px 8px;
+  background: var(--vfop-surface);
+  border: 1px solid var(--vfop-border);
+  border-radius: 7px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color .12s;
+  min-width: 0;
+}
+
+.vfop-switch-chip:hover {
+  border-color: var(--vfop-border-deep);
+}
+
+.vfop-switch-chip-ic {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--vfop-primary-dim, #ede8f5);
+  color: var(--vfop-primary);
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.vfop-switch-chip-body {
+  line-height: 1.1;
+  min-width: 0;
+}
+
+.vfop-switch-chip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vfop-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vfop-switch-chip-meta {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--vfop-soft);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+.vfop-switch-chip-chev {
+  color: var(--vfop-soft);
+  font-size: 11px;
+  margin-left: 2px;
+}
+
+/* Quick access chips */
+.vfop-quick-chips {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.vfop-quick-chip-v2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--vfop-surface);
+  border: 1px solid var(--vfop-border-deep);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vfop-text);
+  cursor: pointer;
+  transition: background .12s;
+  white-space: nowrap;
+}
+
+.vfop-quick-chip-v2:hover {
+  background: var(--vfop-subtle);
+}
+
+.vfop-quick-chip-v2--active {
+  background: var(--vfop-primary-dim, #ede8f5);
+  border-color: var(--vfop-primary);
+  color: var(--vfop-primary);
+}
+
+.vfop-quick-chip-v2-ic {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--vfop-primary-dim);
+  color: var(--vfop-primary);
+  display: grid;
+  place-items: center;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.vfop-quick-chip-v2--active .vfop-quick-chip-v2-ic {
+  background: var(--vfop-primary);
+  color: #fff;
+}
+
+.vfop-quick-chip-v2-score {
+  font-size: 10px;
+  color: var(--vfop-soft);
+  font-weight: 600;
+}
+
+/* ── H1 GRANDE ───────────────────────────────────────────── */
+#vfop-page-title {
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  letter-spacing: -.025em !important;
+  line-height: 1.1 !important;
+  margin: 4px 0 8px !important;
+  color: var(--vfop-text) !important;
+}
+
+/* ── HERO GRID ───────────────────────────────────────────── */
+.vfop-hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 14px;
+  margin-bottom: 14px;
+  align-items: stretch;
+}
+
+/* ── ESCONDER CADASTRO (info vai para identidade) ──────────*/
+.vfop-section--cadastro {
+  display: none !important;
+}
+
+/* Identidade agora tem mais espaço */
+.vfop-identity .vfop-identity-row {
+  padding: 9px 16px;
+}
+
+@media (max-width: 960px) {
+  .vfop-hero-grid { grid-template-columns: 1fr; }
+}
