@@ -18,6 +18,23 @@
             <div class="vfop-client-head__main">
               <div class="vfop-kicker">Cliente Operacao v1</div>
               <h1 id="vfop-title">Ficha operacional do cliente</h1>
+              <div style="display:flex;align-items:center;
+                          justify-content:space-between;
+                          gap:10px;margin:8px 0 4px;flex-wrap:wrap;">
+                <div id="vfop-client-chip"></div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                  <a id="vfop-btn-editar"
+                     href="clientes.html"
+                     class="vfop-action">
+                    Editar cliente
+                  </a>
+                  <button id="vfop-btn-copiar-link"
+                          class="vfop-action vfop-action--ghost"
+                          style="display:none;">
+                    Copiar link ML
+                  </button>
+                </div>
+              </div>
               <div class="vfop-meta-strip" aria-label="Resumo do cliente selecionado">
                 <span id="vfop-client-name">Selecionando cliente...</span>
                 <span id="vfop-client-channel">Canal principal: --</span>
