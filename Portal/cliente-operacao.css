@@ -1441,3 +1441,36 @@ header.topbar {
 .vfop-section-head .vfop-score-compact {
   margin-left: auto;
 }
+
+/* Esconder chip flutuante do header —
+   o donut vive no painel de prontidão */
+#vfop-client-chip {
+  display: none !important;
+}
+
+#vfop-quick-access {
+  margin: 0 !important;
+}
+
+/* Atalhos ficam abaixo do seletor de cliente */
+.vfop-client-tools #vfop-quick-access {
+  display: flex !important;
+}
+
+/* Badges do cabeçalho do card não empilharem */
+.vfop-canal-head {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.vfop-canal-name-main {
+  font-size: 13px;
+  flex-wrap: nowrap;
+}
+
+/* Limitar badges no head do card */
+.vfop-canal-head > .vfop-badge,
+.vfop-canal-head > .vfop-source-tag {
+  flex-shrink: 0;
+  margin-left: auto;
+}
