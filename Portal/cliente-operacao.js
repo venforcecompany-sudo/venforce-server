@@ -505,6 +505,8 @@
     renderPilotNote();
     renderOperationalRecord(workspace);
     renderIdentityPanel(workspace.cliente);
+    renderClientChip(workspace.cliente, workspace.setup?.score);
+    renderMLLinkButton(workspace.cliente);
     renderChannels(workspace);
     renderReadiness(workspace);
     renderFutureData(workspace);
@@ -587,9 +589,58 @@
       </div>`;
   }
 
+  function renderClientChip(cliente, scorePercent) {
+    const el = document.getElementById("vfop-client-chip");
+    if (!el || !cliente) return;
+
+    const pct = scorePercent || 0;
+    const isOk = pct >= 80;
+
+    el.innerHTML = `
+      <div class="vfop-client-chip">
+        <span style="font-weight:600;">${escapeHTML(cliente.nome || "—")}</span>
+        <span class="vfop-client-chip-score">${escapeHTML(String(pct))}% setup</span>
+        <span class="vfop-client-chip-badge
+          ${isOk ? "vfop-client-chip-badge--ok"
+                  : "vfop-client-chip-badge--warn"}">
+          ${isOk ? "Completo" : "Em configuração"}
+        </span>
+      </div>`;
+  }
+
+  function renderMLLinkButton(cliente) {
+    const temGrant = (state.tokens || []).some(
+      (t) => t?.cliente_slug === cliente?.slug ||
+             t?.cliente_id   === cliente?.id
+    );
+
+    const btnLink = document.getElementById("vfop-btn-copiar-link");
+    if (btnLink) {
+      if (!temGrant) {
+        btnLink.style.display = "inline-flex";
+        btnLink.textContent   = "Copiar link ML";
+        btnLink.onclick = () => {
+          const url =
+            `https://venforce-server.onrender.com/ml/conectar/${cliente.slug}`;
+          navigator.clipboard.writeText(url).then(() => {
+            btnLink.textContent = "Link copiado!";
+            setTimeout(() => {
+              btnLink.textContent = "Copiar link ML";
+            }, 2000);
+          });
+        };
+      } else {
+        btnLink.style.display = "none";
+        btnLink.onclick = null;
+      }
+    }
+  }
+
   function renderChannels(workspace) {
     const target = document.getElementById("vfop-channels-body");
     if (!target) return;
+    const reportAge = getAgeDays(workspace.relatorioPrincipal?.created_at || workspace.relatorioPrincipal?.createdAt);
+    const diagnosticoOk = workspace.hasDiagnosis && (reportAge == null || reportAge <= 30);
     target.innerHTML = workspace.channels.map((channel) => renderChannelCard({
       marketplace: channel.marketplace,
       nome: channel.name,
@@ -600,6 +651,10 @@
       diagHtml: statusBadge(channel.diagnostico.label, channel.diagnostico.tone),
       fechHtml: statusBadge(channel.fechamento.label, channel.fechamento.tone),
       pendencia: channel.pending,
+      clienteSlug: workspace.slug,
+      temBase: workspace.hasBase,
+      temGrant: workspace.hasGrant,
+      diagnosticoOk,
     })).join("");
   }
 
@@ -653,9 +708,62 @@
           <span class="vfop-channel-pending">
             ${escapeHTML(canal.pendencia || "sem pendência crítica")}
           </span>
+          ${renderChannelCardAction(canal)}
         </div>
       </div>`;
   }
+
+  function renderChannelCardAction(canal) {
+    if (canal.source !== "real") {
+      return `<span style="font-size:11px;color:var(--vfop-muted);">
+        canal futuro
+      </span>`;
+    }
+
+    if (!canal.temBase) {
+      return `<a href="bases.html" class="vfop-card-action">
+        Vincular base
+      </a>`;
+    }
+
+    if (canal.marketplace !== "Shopee" && !canal.temGrant) {
+      return `<button class="vfop-card-action vfop-card-action--primary"
+              onclick="copiarLinkML('${escapeJsString(canal.clienteSlug || "")}')">
+        Copiar link ML
+      </button>`;
+    }
+
+    if (!canal.diagnosticoOk) {
+      return `<a href="automacoes.html"
+         class="vfop-card-action vfop-card-action--primary">
+        Rodar diagnóstico
+      </a>`;
+    }
+
+    return `<span style="font-size:11px;color:var(--vfop-success);">
+      ✓ Canal operacional
+    </span>`;
+  }
+
+  function copiarLinkML(slug) {
+    const url =
+      `https://venforce-server.onrender.com/ml/conectar/${slug}`;
+    navigator.clipboard.writeText(url).then(() => {
+      const btns = document.querySelectorAll(
+        ".vfop-card-action--primary"
+      );
+      btns.forEach(b => {
+        if (b.textContent.includes("link ML")) {
+          b.textContent = "Copiado!";
+          setTimeout(() => {
+            b.textContent = "Copiar link ML";
+          }, 2000);
+        }
+      });
+    });
+  }
+
+  window.copiarLinkML = copiarLinkML;
 
   function renderReadiness(workspace) {
     setText("vfop-score-value", `${workspace.setup.score}%`);
@@ -1088,5 +1196,12 @@
     const div = document.createElement("div");
     div.textContent = value == null ? "" : String(value);
     return div.innerHTML;
+  }
+
+  function escapeJsString(value) {
+    return String(value ?? "")
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "\\'")
+      .replace(/[\r\n]+/g, " ");
   }
 })();
