@@ -3,9 +3,24 @@
 
   const STORAGE_KEY = "vf-token";
   const USER_KEY = "vf-user";
+  const SOURCE_MODE_KEY = "vf-control-center-mode";
+  const DEBUG_ENABLED_KEY = "vf-debug-enabled";
+  const DEBUG_LOG_KEY = "vf-debug-logs";
   const CONTROL_CENTER_MODE = "mock";
+  const VALID_MODES = ["mock", "browser", "backend"];
   const API_BASE_HINT = "https://venforce-server.onrender.com";
   const SLOW_LIMIT_MS = 1000;
+  const SENSITIVE_KEY_PARTS = [
+    "authorization",
+    "accesstoken",
+    "refreshtoken",
+    "apikey",
+    "token",
+    "password",
+    "senha",
+    "xapikey",
+    "clientsecret"
+  ];
 
   initLayout();
 
@@ -16,7 +31,9 @@
     screenFilter: "all",
     search: "",
     activeTab: "request",
-    debug: true,
+    mockDebug: true,
+    browserDebug: isBrowserDebugEnabled(),
+    mode: resolveInitialMode(),
     user: readUserSafe(),
     token: localStorage.getItem(STORAGE_KEY) || ""
   };
@@ -27,17 +44,9 @@
 
   async function initControlCenter() {
     cacheElements();
-    renderSessionContext();
     bindEvents();
-
-    const rawEntries = CONTROL_CENTER_MODE === "mock"
-      ? loadMockData()
-      : await loadBackendData();
-
-    state.entries = rawEntries.map(normalizeEntry);
-    state.selectedId = state.entries[0]?.id || null;
-    hydrateScreenFilter();
-    renderAll();
+    renderSessionContext();
+    await reloadEntries();
   }
 
   function cacheElements() {
@@ -45,14 +54,24 @@
     els.detail = document.querySelector("[data-vfc-detail]");
     els.visibleCount = document.querySelector("[data-vfc-visible-count]");
     els.statusButtons = Array.from(document.querySelectorAll("[data-vfc-status-filter]"));
+    els.modeButtons = Array.from(document.querySelectorAll("[data-vfc-mode]"));
     els.screenFilter = document.querySelector("[data-vfc-screen-filter]");
     els.search = document.querySelector("[data-vfc-search]");
     els.clear = document.querySelector("[data-vfc-clear]");
+    els.refresh = document.querySelector("[data-vfc-refresh]");
     els.debug = document.querySelector("[data-vfc-debug]");
+    els.browserDebug = document.querySelector("[data-vfc-browser-debug]");
     els.userName = document.querySelector("[data-vfc-user-name]");
     els.userRole = document.querySelector("[data-vfc-user-role]");
     els.tokenState = document.querySelector("[data-vfc-token-state]");
     els.apiBase = document.querySelector("[data-vfc-api-base]");
+    els.envMode = document.querySelector("[data-vfc-env-mode]");
+    els.kicker = document.querySelector("[data-vfc-kicker]");
+    els.browserDebugState = document.querySelector("[data-vfc-browser-debug-state]");
+    els.modeTitle = document.querySelector("[data-vfc-mode-title]");
+    els.modeCopy = document.querySelector("[data-vfc-mode-copy]");
+    els.modeStorage = document.querySelector("[data-vfc-mode-storage]");
+    els.footerSource = document.querySelector("[data-vfc-footer-source]");
     els.summary = {
       total: document.querySelector('[data-vfc-summary="total"]'),
       ok: document.querySelector('[data-vfc-summary="ok"]'),
@@ -65,6 +84,16 @@
   }
 
   function bindEvents() {
+    els.modeButtons.forEach((button) => {
+      button.addEventListener("click", async () => {
+        const nextMode = button.dataset.vfcMode || CONTROL_CENTER_MODE;
+        if (!VALID_MODES.includes(nextMode)) return;
+        state.mode = nextMode;
+        localStorage.setItem(SOURCE_MODE_KEY, nextMode);
+        await reloadEntries();
+      });
+    });
+
     els.statusButtons.forEach((button) => {
       button.addEventListener("click", () => {
         state.statusFilter = button.dataset.vfcStatusFilter || "all";
@@ -83,35 +112,86 @@
       renderAll();
     });
 
+    els.refresh.addEventListener("click", reloadEntries);
+
     els.clear.addEventListener("click", () => {
+      if (state.mode === "browser") {
+        clearDebugLogs();
+      }
+
       state.entries = [];
       state.selectedId = null;
+      hydrateScreenFilter();
       renderAll();
+      renderModeState();
     });
 
     els.debug.addEventListener("click", () => {
-      state.debug = !state.debug;
-      els.debug.textContent = `debug mock: ${state.debug ? "on" : "off"}`;
-      els.debug.setAttribute("aria-pressed", String(state.debug));
+      state.mockDebug = !state.mockDebug;
 
-      if (state.debug && state.entries.length === 0) {
+      if (state.mode === "mock" && state.mockDebug && state.entries.length === 0) {
         state.entries = loadMockData().map(normalizeEntry);
         state.selectedId = state.entries[0]?.id || null;
+        hydrateScreenFilter();
       }
 
       renderAll();
+      renderModeState();
     });
 
-    document.addEventListener("keydown", (event) => {
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "d") {
-        event.preventDefault();
-        els.debug.click();
+    els.browserDebug.addEventListener("click", async () => {
+      const next = !state.browserDebug;
+      setBrowserDebugEnabled(next);
+      state.browserDebug = isBrowserDebugEnabled();
+
+      if (state.browserDebug) {
+        ensureBrowserDebugClientLoaded();
       }
+
+      if (state.mode === "browser") {
+        await reloadEntries();
+      } else {
+        renderModeState();
+        renderDetail();
+      }
+    });
+
+    window.addEventListener("storage", (event) => {
+      if (event.key === DEBUG_LOG_KEY && state.mode === "browser") {
+        reloadEntries();
+      }
+      if (event.key === DEBUG_ENABLED_KEY) {
+        state.browserDebug = isBrowserDebugEnabled();
+        renderModeState();
+      }
+    });
+
+    window.addEventListener("vf-debug-log", () => {
+      if (state.mode === "browser") reloadEntries();
     });
   }
 
+  async function reloadEntries() {
+    const rawEntries = await loadEntriesForMode(state.mode);
+    state.entries = rawEntries.map(normalizeEntry);
+
+    if (!state.entries.some((entry) => entry.id === state.selectedId)) {
+      state.selectedId = state.entries[0]?.id || null;
+    }
+
+    hydrateScreenFilter();
+    renderAll();
+    renderModeState();
+  }
+
+  async function loadEntriesForMode(mode) {
+    if (mode === "browser") return loadBrowserLogs();
+    if (mode === "backend") return loadBackendData();
+    return state.mockDebug ? loadMockData() : [];
+  }
+
   function renderSessionContext() {
-    const userName = state.user.nome || state.user.email || "Usuário";
+    const userName = state.user.nome || state.user.email || "Usuario";
     const role = state.user.role || "sem role";
 
     els.userName.textContent = sanitizeText(userName);
@@ -120,15 +200,47 @@
     els.apiBase.textContent = API_BASE_HINT;
   }
 
+  function renderModeState() {
+    const meta = getModeMeta(state.mode);
+    state.browserDebug = isBrowserDebugEnabled();
+
+    els.modeButtons.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.vfcMode === state.mode);
+    });
+
+    els.debug.textContent = `debug mock: ${state.mockDebug ? "on" : "off"}`;
+    els.debug.setAttribute("aria-pressed", String(state.mockDebug));
+    els.debug.disabled = state.mode !== "mock";
+
+    els.browserDebug.textContent = `debug navegador: ${state.browserDebug ? "on" : "off"}`;
+    els.browserDebug.setAttribute("aria-pressed", String(state.browserDebug));
+
+    els.clear.textContent = state.mode === "browser" ? "limpar logs" : state.mode === "backend" ? "limpar painel" : "limpar mock";
+    els.refresh.textContent = state.mode === "browser" ? "reler logs" : "recarregar fonte";
+
+    els.envMode.textContent = meta.env;
+    els.kicker.textContent = meta.kicker;
+    els.modeTitle.textContent = meta.title;
+    els.modeCopy.textContent = meta.copy;
+    els.modeStorage.textContent = meta.storage;
+    els.footerSource.textContent = meta.footer;
+    els.browserDebugState.textContent = state.browserDebug ? "on" : "off";
+  }
+
   function hydrateScreenFilter() {
+    const current = state.screenFilter;
     const screens = Array.from(new Set(state.entries.map((entry) => entry.screen))).sort();
     els.screenFilter.innerHTML = '<option value="all">Todas</option>';
+
     screens.forEach((screen) => {
       const option = document.createElement("option");
       option.value = screen;
       option.textContent = screen;
       els.screenFilter.appendChild(option);
     });
+
+    state.screenFilter = current === "all" || screens.includes(current) ? current : "all";
+    els.screenFilter.value = state.screenFilter;
   }
 
   function renderAll() {
@@ -169,9 +281,11 @@
       if (state.search) {
         const haystack = [
           entry.endpoint,
+          entry.url,
           entry.method,
           entry.screen,
           entry.description,
+          entry.source,
           String(entry.status),
           JSON.stringify(entry.payload || {}),
           JSON.stringify(entry.response || {}),
@@ -187,7 +301,7 @@
 
   function renderRows() {
     const rows = getVisibleEntries();
-    els.visibleCount.textContent = `${rows.length} visíveis`;
+    els.visibleCount.textContent = `${rows.length} visiveis`;
 
     if (!rows.length) {
       els.rows.innerHTML = '<tr><td class="vfc-empty-table" colspan="7">nenhuma request corresponde aos filtros atuais</td></tr>';
@@ -244,8 +358,8 @@
       <div class="vfc-chip-row">
         <span class="vfc-chip">${escapeHtml(selected.method)}</span>
         <span class="vfc-chip ${getChipClass(selected)}">${formatDuration(selected.duration)}</span>
-        <span class="vfc-chip">auth masked</span>
-        <span class="vfc-chip">${state.debug ? "debug on" : "debug off"}</span>
+        <span class="vfc-chip">${escapeHtml(selected.sourceLabel)}</span>
+        <span class="vfc-chip">${state.browserDebug ? "browser debug on" : "browser debug off"}</span>
       </div>
       <div class="vfc-tabs" role="tablist" aria-label="Detalhes da request">
         ${["request", "response", "contexto", "erro"].map((tab) => `
@@ -261,7 +375,7 @@
 
     els.detail.querySelectorAll("[data-vfc-tab]").forEach((button) => {
       button.addEventListener("click", () => {
-        state.activeTab = button.dataset.vfcTab;
+        state.activeTab = button.dataset.vfcTab || "request";
         renderDetail();
       });
     });
@@ -271,11 +385,12 @@
     if (state.activeTab === "request") {
       return `
         ${renderKv({
-          url: API_BASE_HINT + entry.endpoint,
-          método: entry.method,
+          url: entry.url || `${API_BASE_HINT}${entry.endpoint}`,
+          metodo: entry.method,
           status: formatStatus(entry.status),
-          duração: formatDuration(entry.duration),
+          duracao: formatDuration(entry.duration),
           origem: entry.screen,
+          fonte: entry.sourceLabel,
           authorization: state.token ? maskSensitive(`Bearer ${state.token}`) : "ausente"
         })}
         <p class="vfc-code-label">payload enviado</p>
@@ -287,11 +402,11 @@
       return `
         ${renderKv({
           status: formatStatus(entry.status),
-          tipo: entry.status === 0 ? "network" : "application/json",
-          cache: "no-store",
-          request_id: `mock-${entry.id}`
+          tipo: entry.status === 0 ? "network" : entry.contentType || "application/json",
+          cache: entry.cache || "no-store",
+          request_id: entry.id
         })}
-        <p class="vfc-code-label">response json</p>
+        <p class="vfc-code-label">response sanitizado</p>
         <pre class="vfc-code">${escapeHtml(formatJson(sanitizePayload(entry.response || { ok: false, network: "sem resposta HTTP" })))}</pre>
       `;
     }
@@ -299,23 +414,25 @@
     if (state.activeTab === "contexto") {
       return `
         ${renderKv({
-          usuário: state.user.nome || state.user.email || "Usuário",
+          usuario: state.user.nome || state.user.email || "Usuario",
           role: state.user.role || "sem role",
-          ambiente: "mock/frontend",
+          modo: getModeMeta(state.mode).title,
+          source: entry.sourceLabel,
+          storage: entry.storage || getModeMeta(state.mode).storage,
           api_base: API_BASE_HINT,
           token: state.token ? maskSensitive(`Bearer ${state.token}`) : "ausente",
-          localStorage: "vf-token, vf-user",
           origem: entry.screen
         })}
         <p class="vfc-code-label">contexto seguro</p>
         <pre class="vfc-code">${escapeHtml(formatJson(sanitizePayload({
           user: {
             id: state.user.id || "mock-user",
-            nome: state.user.nome || state.user.email || "Usuário",
+            nome: state.user.nome || state.user.email || "Usuario",
             role: state.user.role || "sem role"
           },
           screen: entry.screen,
           routeGuard: entry.endpoint.includes("/admin") ? "admin-only" : "authenticated",
+          browserDebug: state.browserDebug ? "enabled" : "disabled",
           token: state.token ? "presente" : "ausente",
           tokenMasked: state.token ? maskSensitive(`Bearer ${state.token}`) : "ausente",
           tokenFull: "nunca exibir token completo"
@@ -327,8 +444,8 @@
       ${renderKv({
         tipo: entry.error?.type || "none",
         severidade: getErrorSeverity(entry),
-        último_erro: entry.error?.message || "sem erro",
-        ação_sugerida: entry.error?.action || entry.error?.hint || "nenhuma"
+        ultimo_erro: entry.error?.message || "sem erro",
+        acao_sugerida: entry.error?.action || entry.error?.hint || "nenhuma"
       })}
       <p class="vfc-code-label">erro formatado</p>
       <pre class="vfc-code ${entry.error ? "vfc-error-box" : ""}">${escapeHtml(formatJson(sanitizePayload(entry.error || { ok: true, message: "request sem erro" })))}</pre>
@@ -372,7 +489,7 @@
         endpoint: "/base-vinculos",
         status: 200,
         duration: 126,
-        description: "vínculos + sugestões",
+        description: "vinculos + sugestoes",
         payload: null,
         response: {
           ok: true,
@@ -421,7 +538,7 @@
         endpoint: "/automacoes/relatorios",
         status: 200,
         duration: 173,
-        description: "relatórios recentes",
+        description: "relatorios recentes",
         payload: null,
         response: {
           ok: true,
@@ -440,7 +557,7 @@
         endpoint: "/automacoes/diagnostico-completo/start",
         status: 200,
         duration: 2400,
-        description: "diagnóstico iniciado · lento",
+        description: "diagnostico iniciado, lento",
         payload: {
           clienteSlug: "alpha-store",
           baseSlug: "loja-meli-principal",
@@ -462,7 +579,7 @@
         endpoint: "/automacoes/diagnostico-completo/883",
         status: 200,
         duration: 311,
-        description: "polling diagnóstico",
+        description: "polling diagnostico",
         payload: null,
         response: {
           ok: true,
@@ -483,16 +600,21 @@
         endpoint: "/admin/ml-tokens",
         status: 403,
         duration: 68,
-        description: "sem permissão admin",
-        payload: null,
+        description: "sem permissao admin",
+        payload: {
+          headers: {
+            Authorization: "Bearer mock-token",
+            "x-api-key": "mock-api-key"
+          }
+        },
         response: {
           ok: false,
           erro: "Acesso restrito a administradores."
         },
         error: {
           type: "permission",
-          message: "Usuário membro tentou acessar rota admin-only.",
-          hint: "Ocultar bloco sensível ou degradar para score parcial."
+          message: "Usuario membro tentou acessar rota admin-only.",
+          hint: "Ocultar bloco sensivel ou degradar para score parcial."
         }
       },
       {
@@ -503,16 +625,16 @@
         endpoint: "/operacao/base-cobertura",
         status: 401,
         duration: 42,
-        description: "token inválido",
+        description: "token invalido",
         payload: null,
         response: {
           ok: false,
-          erro: "Token inválido ou expirado"
+          erro: "Token invalido ou expirado"
         },
         error: {
           type: "auth",
           message: "JWT expirado ou ausente no localStorage.",
-          action: "Limpar sessão e redirecionar para index.html."
+          action: "Limpar sessao e redirecionar para index.html."
         }
       },
       {
@@ -531,7 +653,7 @@
         },
         error: {
           type: "server",
-          message: "ClickUp API respondeu 502 durante agregação.",
+          message: "ClickUp API respondeu 502 durante agregacao.",
           requestId: "mock-cc-9f7a"
         }
       },
@@ -548,7 +670,8 @@
           formData: true,
           sales: "vendas-ml-maio.xlsx",
           costs: "custos-maio.xlsx",
-          ordersAll: "orders-all-shopee.xlsx"
+          ordersAll: "orders-all-shopee.xlsx",
+          password: "mock-password"
         },
         response: {
           ok: true,
@@ -573,67 +696,213 @@
         error: {
           type: "network",
           message: "Failed to fetch",
-          hint: "Verificar conexão, CORS, Render cold start ou DNS."
+          hint: "Verificar conexao, CORS, Render cold start ou DNS."
         }
       }
     ];
   }
 
+  function loadBrowserLogs() {
+    const fromClient = window.VFDebugClient?.getLogs?.();
+    const clientLogs = Array.isArray(fromClient)
+      ? fromClient.map((entry) => ({ ...entry, storage: entry.storage || "VFDebugClient/sessionStorage" }))
+      : [];
+
+    const sessionLogs = readStoredLogs(sessionStorage, "sessionStorage");
+    const localLogs = readStoredLogs(localStorage, "localStorage");
+    const seen = new Set();
+
+    return clientLogs.concat(sessionLogs, localLogs)
+      .filter((entry) => {
+        const key = String(entry.id || `${entry.timestamp || ""}-${entry.endpoint || ""}-${entry.duration || ""}`);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => String(a.timestamp || a.time || "").localeCompare(String(b.timestamp || b.time || "")));
+  }
+
   async function loadBackendData() {
     // TODO: integrar futuramente com endpoint interno de observabilidade.
-    // Regras futuras: nunca retornar tokens completos, access_token, refresh_token,
-    // api_key ou Authorization completo. A tela deve consumir apenas payload
-    // sanitizado e normalizar com normalizeEntry(entry).
+    // Esta funcao deve receber apenas dados ja sanitizados no backend.
+    // Nao chamar fetch aqui enquanto o endpoint nao existir.
     return [];
   }
 
   function normalizeEntry(entry) {
+    const endpoint = sanitizeUrl(entry.endpoint || endpointFromUrl(entry.url) || "/");
+    const url = sanitizeUrl(entry.url || `${API_BASE_HINT}${endpoint}`);
+    const source = String(entry.source || state.mode || "mock");
+    const status = Number(entry.status || 0);
+    const payload = entry.payload !== undefined ? entry.payload : entry.requestPayload;
+    const response = entry.response !== undefined ? entry.response : entry.responseBody;
+    const error = entry.error || (status >= 400 || status === 0 ? { type: "http", message: entry.description || "request com erro" } : null);
+
     return {
       id: String(entry.id || cryptoRandomId()),
-      time: String(entry.time || formatClock(new Date())),
-      screen: String(entry.screen || "portal"),
+      timestamp: String(entry.timestamp || ""),
+      time: String(entry.time || formatClockFromTimestamp(entry.timestamp) || formatClock(new Date())),
+      screen: String(entry.screen || entry.page || "portal"),
       method: String(entry.method || "GET").toUpperCase(),
-      endpoint: String(entry.endpoint || "/"),
-      status: Number(entry.status || 0),
-      duration: Number(entry.duration || 0),
-      description: String(entry.description || entry.label || "request"),
-      payload: sanitizePayload(entry.payload || null),
-      response: sanitizePayload(entry.response || null),
-      error: sanitizePayload(entry.error || null)
+      endpoint,
+      url,
+      status,
+      duration: Number(entry.duration || entry.durationMs || 0),
+      description: String(entry.description || buildDescription(status, endpoint)),
+      payload: sanitizePayload(payload || null),
+      response: sanitizePayload(response || null),
+      error: sanitizePayload(error || null),
+      source,
+      sourceLabel: getSourceLabel(source),
+      storage: String(entry.storage || ""),
+      contentType: String(entry.contentType || entry.responseContentType || ""),
+      cache: String(entry.cache || "")
     };
   }
 
-  function sanitizePayload(data) {
+  function readStoredLogs(storage, label) {
+    try {
+      const parsed = JSON.parse(storage.getItem(DEBUG_LOG_KEY) || "[]");
+      return Array.isArray(parsed)
+        ? parsed.map((entry) => ({ ...entry, storage: entry.storage || label }))
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function clearDebugLogs() {
+    try {
+      sessionStorage.removeItem(DEBUG_LOG_KEY);
+      localStorage.removeItem(DEBUG_LOG_KEY);
+      window.VFDebugClient?.clearLogs?.();
+    } catch {
+      // A limpeza de logs nunca deve interferir na tela.
+    }
+  }
+
+  function ensureBrowserDebugClientLoaded() {
+    if (window.VFDebugClient) return;
+    if (document.querySelector('script[data-vf-debug-client="true"]')) return;
+
+    try {
+      const script = document.createElement("script");
+      script.src = "vf-debug-client.js";
+      script.async = true;
+      script.dataset.vfDebugClient = "true";
+      document.head.appendChild(script);
+    } catch {
+      // Debug eh auxiliar; falhas de carregamento nao podem quebrar o Portal.
+    }
+  }
+
+  function setBrowserDebugEnabled(enabled) {
+    if (enabled && !isAdminUser()) {
+      localStorage.setItem(DEBUG_ENABLED_KEY, "false");
+      return;
+    }
+    localStorage.setItem(DEBUG_ENABLED_KEY, enabled ? "true" : "false");
+    if (enabled) {
+      window.VFDebugClient?.enable?.();
+    } else {
+      window.VFDebugClient?.disable?.();
+    }
+  }
+
+  function isBrowserDebugEnabled() {
+    return isAdminUser() && localStorage.getItem(DEBUG_ENABLED_KEY) === "true";
+  }
+
+  function isAdminUser() {
+    const role = String(readUserSafe().role || "").toLowerCase();
+    return role === "admin";
+  }
+
+  function resolveInitialMode() {
+    const stored = localStorage.getItem(SOURCE_MODE_KEY);
+    return VALID_MODES.includes(stored) ? stored : CONTROL_CENTER_MODE;
+  }
+
+  function getModeMeta(mode) {
+    if (mode === "browser") {
+      return {
+        env: "browser logs",
+        kicker: "browser logs · sessionStorage",
+        title: "Fonte browser logs",
+        copy: state.browserDebug
+          ? "Lendo requests reais capturadas pelo navegador depois que o debug foi ligado."
+          : "Debug do navegador desligado. Logs antigos ainda podem aparecer ate serem limpos.",
+        storage: "sessionStorage/localStorage",
+        footer: "browser logs reais"
+      };
+    }
+
+    if (mode === "backend") {
+      return {
+        env: "backend futuro",
+        kicker: "backend futuro · TODO",
+        title: "Fonte backend futuro",
+        copy: "Reserva tecnica para observabilidade do backend. Nenhuma chamada real e feita nesta etapa.",
+        storage: "sem endpoint nesta fase",
+        footer: "backend TODO"
+      };
+    }
+
+    return {
+      env: "mock/frontend",
+      kicker: "mock/frontend · dados simulados",
+      title: "Fonte mock",
+      copy: "Dados simulados para validar filtros, detalhes e sanitizacao antes das proximas migracoes.",
+      storage: "memoria local da tela",
+      footer: "mock preview"
+    };
+  }
+
+  function getSourceLabel(source) {
+    if (source === "browser") return "browser log";
+    if (source === "backend") return "backend futuro";
+    return "mock";
+  }
+
+  function sanitizePayload(data, seen = new WeakSet()) {
     if (data === null || data === undefined) return data;
 
     if (typeof data === "string") {
-      return looksSensitiveValue(data) ? maskSensitive(data) : data;
+      return looksSensitiveValue(data) ? maskSensitive(data) : truncateLongText(data);
+    }
+
+    if (typeof data === "number" || typeof data === "boolean") return data;
+
+    if (typeof FormData !== "undefined" && data instanceof FormData) {
+      const form = {};
+      data.forEach((value, key) => {
+        form[key] = summarizeBodyValue(value);
+      });
+      return sanitizePayload(form, seen);
     }
 
     if (Array.isArray(data)) {
-      return data.map((item) => sanitizePayload(item));
+      return data.map((item) => sanitizePayload(item, seen));
     }
 
     if (typeof data === "object") {
+      if (seen.has(data)) return "[Circular]";
+      seen.add(data);
+
+      if (data instanceof Date) return data.toISOString();
+
       return Object.entries(data).reduce((acc, [key, value]) => {
-        const lower = key.toLowerCase();
-        if (
-          lower.includes("access_token") ||
-          lower.includes("refresh_token") ||
-          lower.includes("authorization") ||
-          lower.includes("api_key") ||
-          lower.includes("apikey") ||
-          lower === "token"
-        ) {
-          acc[key] = maskSensitive(value);
-          return acc;
-        }
-        acc[key] = sanitizePayload(value);
+        acc[key] = isSensitiveKey(key) ? maskSensitive(value) : sanitizePayload(value, seen);
         return acc;
       }, {});
     }
 
-    return data;
+    return String(data);
+  }
+
+  function isSensitiveKey(key) {
+    const normalized = String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    return SENSITIVE_KEY_PARTS.some((part) => normalized.includes(part));
   }
 
   function maskSensitive(value) {
@@ -655,7 +924,62 @@
     if (/^Bearer\s+/i.test(text)) return true;
     if (/^eyJ[a-zA-Z0-9_-]+\./.test(text)) return true;
     if (/^vf_[a-f0-9]{16,}$/i.test(text)) return true;
+    if (/^(sk|pk|ghp|glpat)_[a-zA-Z0-9_-]{16,}$/i.test(text)) return true;
     return text.length > 80 && /^[a-zA-Z0-9._-]+$/.test(text);
+  }
+
+  function sanitizeUrl(value) {
+    const raw = String(value || "");
+    if (!raw) return "";
+
+    try {
+      const url = new URL(raw, window.location.href);
+      url.searchParams.forEach((paramValue, key) => {
+        if (isSensitiveKey(key) || looksSensitiveValue(paramValue)) {
+          url.searchParams.set(key, maskSensitive(paramValue));
+        }
+      });
+
+      url.pathname = url.pathname.split("/").map((segment) => {
+        const decoded = safeDecode(segment);
+        return looksSensitiveValue(decoded) ? encodeURIComponent(maskSensitive(decoded)) : segment;
+      }).join("/");
+
+      if (raw.startsWith("http")) return url.toString();
+      return `${url.pathname}${url.search}`;
+    } catch {
+      return looksSensitiveValue(raw) ? maskSensitive(raw) : raw;
+    }
+  }
+
+  function endpointFromUrl(value) {
+    if (!value) return "";
+    try {
+      const url = new URL(String(value), window.location.href);
+      return `${url.pathname}${url.search}`;
+    } catch {
+      return String(value);
+    }
+  }
+
+  function safeDecode(value) {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
+  function truncateLongText(value) {
+    const text = String(value || "");
+    return text.length > 4000 ? `${text.slice(0, 4000)}...[truncated]` : text;
+  }
+
+  function summarizeBodyValue(value) {
+    if (typeof File !== "undefined" && value instanceof File) {
+      return { file: value.name, size: value.size, type: value.type || "application/octet-stream" };
+    }
+    return value;
   }
 
   function readUserSafe() {
@@ -664,6 +988,14 @@
     } catch {
       return {};
     }
+  }
+
+  function buildDescription(status, endpoint) {
+    if (status === 0) return "network error";
+    if (status >= 500) return "erro servidor";
+    if (status >= 400) return "erro cliente/autorizacao";
+    if (status >= 200 && status < 300) return "request ok";
+    return endpoint || "request";
   }
 
   function getStatusClass(entry) {
@@ -683,7 +1015,7 @@
   function getErrorSeverity(entry) {
     if (entry.status === 0) return "network";
     if (is5xx(entry)) return "alta";
-    if (is4xx(entry)) return "média";
+    if (is4xx(entry)) return "media";
     return "none";
   }
 
@@ -715,6 +1047,12 @@
     return JSON.stringify(value, null, 2);
   }
 
+  function formatClockFromTimestamp(timestamp) {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? "" : formatClock(date);
+  }
+
   function formatClock(date) {
     return [
       String(date.getHours()).padStart(2, "0"),
@@ -724,11 +1062,12 @@
   }
 
   function cryptoRandomId() {
+    if (window.crypto?.randomUUID) return `req-${window.crypto.randomUUID()}`;
     return `req-${Math.random().toString(16).slice(2, 10)}`;
   }
 
   function sanitizeText(value) {
-    return String(value || "").trim() || "—";
+    return String(value || "").trim() || "-";
   }
 
   function escapeHtml(value) {

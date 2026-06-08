@@ -1,6 +1,8 @@
 // Layout compartilhado (sidebar/topbar) para páginas do portal
 (function () {
   const STORAGE_KEY = "vf-token";
+  const DEBUG_ENABLED_KEY = "vf-debug-enabled";
+  const DEBUG_CLIENT_SRC = "vf-debug-client.js";
 
   function getUserSafe() {
     try {
@@ -9,6 +11,58 @@
       return {};
     }
   }
+
+  function getDebugUrlFlag() {
+    try {
+      return new URLSearchParams(window.location.search || "").get("vf_debug");
+    } catch {
+      return null;
+    }
+  }
+
+  function loadDebugClientIfSafe() {
+    try {
+      const user = getUserSafe();
+      const isAdmin = String(user.role || "").toLowerCase() === "admin";
+      const hasToken = !!localStorage.getItem(STORAGE_KEY);
+      const urlFlag = getDebugUrlFlag();
+
+      if (urlFlag === "0" || urlFlag === "false" || urlFlag === "off") {
+        localStorage.setItem(DEBUG_ENABLED_KEY, "false");
+        return;
+      }
+
+      if (!isAdmin || !hasToken) return;
+
+      if (urlFlag === "1" || urlFlag === "true" || urlFlag === "on") {
+        localStorage.setItem(DEBUG_ENABLED_KEY, "true");
+      }
+
+      if (localStorage.getItem(DEBUG_ENABLED_KEY) !== "true") return;
+      if (window.__VF_DEBUG_CLIENT_LOADING__ || window.VFDebugClient) return;
+      if (document.querySelector('script[data-vf-debug-client="true"]')) return;
+
+      window.__VF_DEBUG_CLIENT_LOADING__ = true;
+
+      if (document.readyState === "loading" && typeof document.write === "function") {
+        document.write('<script src="' + DEBUG_CLIENT_SRC + '" data-vf-debug-client="true"><\/script>');
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = DEBUG_CLIENT_SRC;
+      script.async = true;
+      script.dataset.vfDebugClient = "true";
+      script.onerror = function () {
+        window.__VF_DEBUG_CLIENT_LOADING__ = false;
+      };
+      (document.head || document.documentElement).appendChild(script);
+    } catch {
+      // O debug client e auxiliar; qualquer falha deve manter o Portal intacto.
+    }
+  }
+
+  loadDebugClientIfSafe();
 
   function clearSession() {
     localStorage.removeItem(STORAGE_KEY);

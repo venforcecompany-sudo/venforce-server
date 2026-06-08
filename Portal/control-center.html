@@ -16,7 +16,7 @@
     <main class="vfc-control-center" data-vfc-shell>
       <header class="vfc-header">
         <div class="vfc-title-block">
-          <p class="vfc-kicker">mock/frontend · memory logs</p>
+          <p class="vfc-kicker" data-vfc-kicker>mock/frontend · browser logs</p>
           <h1>VenForce Control Center</h1>
           <p>Requests, respostas e contexto técnico do Portal</p>
         </div>
@@ -24,7 +24,7 @@
         <section class="vfc-env-grid" aria-label="Contexto técnico atual">
           <div class="vfc-env-item">
             <span>ambiente</span>
-            <strong>mock/frontend</strong>
+            <strong data-vfc-env-mode>mock/frontend</strong>
           </div>
           <div class="vfc-env-item">
             <span>usuário</span>
@@ -33,6 +33,10 @@
           <div class="vfc-env-item">
             <span>role</span>
             <strong data-vfc-user-role>—</strong>
+          </div>
+          <div class="vfc-env-item">
+            <span>debug browser</span>
+            <strong data-vfc-browser-debug-state>off</strong>
           </div>
           <div class="vfc-env-item">
             <span>token</span>
@@ -44,6 +48,17 @@
           </div>
         </section>
       </header>
+
+      <section class="vfc-mode-strip" aria-live="polite">
+        <div class="vfc-mode-copy">
+          <span data-vfc-mode-title>Fonte mock</span>
+          <strong data-vfc-mode-copy>Dados simulados para validar a interface antes de conectar logs reais.</strong>
+        </div>
+        <div class="vfc-mode-copy vfc-mode-copy--right">
+          <span>storage</span>
+          <strong data-vfc-mode-storage>memória local da tela</strong>
+        </div>
+      </section>
 
       <section class="vfc-summary" aria-label="Resumo de requests mockadas">
         <div class="vfc-summary-cell">
@@ -77,6 +92,15 @@
       </section>
 
       <section class="vfc-toolbar" aria-label="Filtros">
+        <div class="vfc-mode-control">
+          <span>Fonte</span>
+          <div class="vfc-segment" role="tablist" aria-label="Fonte dos logs">
+            <button class="vfc-segment-button is-active" type="button" data-vfc-mode="mock">mock</button>
+            <button class="vfc-segment-button" type="button" data-vfc-mode="browser">browser logs</button>
+            <button class="vfc-segment-button" type="button" data-vfc-mode="backend">backend futuro</button>
+          </div>
+        </div>
+
         <div class="vfc-segment" role="tablist" aria-label="Filtro por status">
           <button class="vfc-segment-button is-active" type="button" data-vfc-status-filter="all">Todas</button>
           <button class="vfc-segment-button" type="button" data-vfc-status-filter="ok">OK</button>
@@ -133,13 +157,15 @@
 
       <footer class="vfc-footer">
         <div class="vfc-footer-meta">
-          <span>logs apenas em memória</span>
-          <span>mock preview</span>
-          <span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>D</kbd></span>
+          <span data-vfc-footer-source>mock preview</span>
+          <span>dados sensíveis mascarados</span>
+          <span>admin only</span>
         </div>
         <div class="vfc-footer-actions">
+          <button class="vfc-mini-button" type="button" data-vfc-refresh>reler logs</button>
           <button class="vfc-mini-button" type="button" data-vfc-clear>limpar mock</button>
           <button class="vfc-mini-button" type="button" data-vfc-debug aria-pressed="true">debug mock: on</button>
+          <button class="vfc-mini-button" type="button" data-vfc-browser-debug aria-pressed="false">debug navegador: off</button>
         </div>
       </footer>
     </main>
