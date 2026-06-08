@@ -1633,3 +1633,83 @@ header.topbar {
 @media (max-width: 960px) {
   .vfop-hero-grid { grid-template-columns: 1fr; }
 }
+
+/* ── FIX READINESS LAYOUT ───────────────────────────────── */
+#vfop-readiness-body,
+.vfop-readiness-main {
+  display: flex !important;
+  gap: 24px !important;
+  align-items: center !important;
+  padding: 20px !important;
+  flex-wrap: nowrap !important;
+}
+
+.vfop-conic-ring {
+  flex-shrink: 0 !important;
+  width: 132px !important;
+  height: 132px !important;
+}
+
+.vfop-conic-inner {
+  width: 94px !important;
+  height: 94px !important;
+}
+
+/* ── FIX CANAL CARD CABEÇALHO ───────────────────────────── */
+.vfop-canal-head {
+  display: grid !important;
+  grid-template-columns: 36px 1fr auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 13px 15px !important;
+  flex-wrap: unset !important;
+}
+
+.vfop-canal-name-main {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: block !important;
+  flex-wrap: unset !important;
+}
+
+/* Badge "principal" fica inline no nome */
+.vfop-canal-name-main .vfop-badge {
+  font-size: 9.5px !important;
+  padding: 1px 5px !important;
+  vertical-align: middle !important;
+  margin-left: 4px !important;
+}
+
+/* Status badge (operável / em config) vai para a terceira
+   coluna do grid — isolado à direita */
+.vfop-canal-head > .vfop-badge,
+.vfop-canal-head > .vfop-source-tag,
+.vfop-canal-head > span[class*="badge"],
+.vfop-canal-head > span[class*="status"] {
+  margin-left: 0 !important;
+  flex-shrink: 0 !important;
+  align-self: center !important;
+}
+
+/* ── FIX SWITCHER BAR ────────────────────────────────────── */
+.vfop-switcher-bar {
+  border-bottom: 1px solid var(--vfop-border);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.vfop-switch-chip {
+  flex-shrink: 0;
+}
+
+/* Score no chip — uma linha só */
+.vfop-switch-chip-meta {
+  white-space: nowrap;
+  font-size: 9.5px;
+}
