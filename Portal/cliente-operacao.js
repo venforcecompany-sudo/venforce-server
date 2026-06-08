@@ -597,19 +597,55 @@
     const el = document.getElementById("vfop-identity-panel");
     if (!el || !cliente) return;
 
+    const workspace = normalizeClienteWorkspace
+      ? null : null; // só lê o que já está no state
+
+    const basePrincipal = state.vinculos?.find(
+      v => v?.vinculo?.cliente_slug === cliente.slug
+        || v?.vinculo?.cliente_id   === cliente.id
+    );
+    const baseNome = basePrincipal?.nome
+      || basePrincipal?.slug
+      || "Pendente";
+    const baseOk = !!basePrincipal;
+
+    const temGrant = (state.tokens || []).some(
+      t => t?.cliente_slug === cliente.slug
+        || t?.cliente_id   === cliente.id
+    );
+
     const rows = [
-      ["Nome", escapeHTML(cliente.nome || "—")],
-      ["Slug", `<span class="vfop-line-main" style="font-family:monospace;font-size:11.5px">${escapeHTML(cliente.slug || "—")}</span>`],
+      ["Nome",   escapeHTML(cliente.nome || "—")],
+      ["Slug",
+        `<span style="font-family:monospace;font-size:12px">
+          ${escapeHTML(cliente.slug || "—")}
+        </span>`],
       ["Status", cliente.ativo !== false
-        ? `<span class="vfop-status vfop-status--success">Ativo</span>`
-        : `<span class="vfop-status vfop-status--danger">Inativo</span>`],
-      ["Canais", escapeHTML(String(
-        state.canais?.length ||
-        cliente.canaisCount ||
-        (state.vinculos?.length ? state.vinculos.length : null) ||
+        ? `<span class="vfop-badge vfop-badge-ok">ativo</span>`
+        : `<span class="vfop-badge vfop-badge-crit">inativo</span>`
+      ],
+      ["Canais", String(
+        state.canais?.length
+        || state.vinculos?.length
+        ||
         "—"
-      ))],
-      ["API key", `<span class="vfop-status vfop-status--muted">somente admin</span>`],
+      )],
+      ["Base",   baseOk
+        ? `<span class="vfop-badge vfop-badge-ok">
+             ${escapeHTML(baseNome)}
+           </span>`
+        : `<span class="vfop-badge vfop-badge-warn">
+             pendente
+           </span>`
+      ],
+      ["Grant ML", temGrant
+        ? `<span class="vfop-badge vfop-badge-ok">
+             grantado
+           </span>`
+        : `<span class="vfop-badge vfop-badge-warn">
+             precisa grant
+           </span>`
+      ],
     ];
 
     el.innerHTML = `
@@ -617,52 +653,57 @@
         <div class="vfop-identity-head">
           <span class="vfop-section-eyebrow">Identidade</span>
         </div>
-        ${rows.map(([label, val]) => `
+        ${rows.map(([l, v]) => `
           <div class="vfop-identity-row">
-            <span class="vfop-identity-label">${escapeHTML(label)}</span>
-            <span class="vfop-identity-val">${val}</span>
+            <span class="vfop-identity-label">${l}</span>
+            <span class="vfop-identity-val">${v}</span>
           </div>`).join("")}
+        <div style="padding:10px 14px;border-top:
+                    1px solid var(--vfop-border-soft);
+                    display:flex;align-items:center;
+                    justify-content:space-between;">
+          <span style="font-size:11.5px;
+                       color:var(--vfop-soft);">
+            API key, tokens e segredos
+          </span>
+          <span class="vfop-badge vfop-badge-neutral">
+            somente admin
+          </span>
+        </div>
       </div>`;
   }
 
   function renderClientChip(cliente, scorePercent) {
-    const el = document.getElementById("vfop-client-chip");
-    if (!el || !cliente) return;
+    const titleEl = document.getElementById("vfop-page-title");
+    if (titleEl && cliente?.nome) {
+      titleEl.textContent = cliente.nome;
+    }
+
+    const chipEl = document.getElementById("vfop-switcher-chip");
+    if (!chipEl || !cliente) return;
 
     const pct   = Math.round(scorePercent || 0);
     const isOk  = pct >= 80;
-    const r     = 15.9;
-    const circ  = 2 * Math.PI * r;
-    const dash  = (pct / 100) * circ;
-    const color = isOk ? "#1a7a45" : (pct >= 45 ? "#855100" : "#9b1c1c");
-    const label = isOk ? "Setup completo" : "Em configuração";
+    const color = isOk ? "#1a7a45"
+      : (pct >= 45 ? "#855100" : "#9b1c1c");
+    const status = isOk ? "completo" : "em configuração";
+    const initials = (cliente.nome || "?")
+      .split(/\s+/).slice(0, 2)
+      .map(w => w[0]).join("").toUpperCase();
 
-    el.innerHTML = `
-      <div class="vfop-donut-wrap">
-        <svg class="vfop-donut-svg" width="54" height="54"
-             viewBox="0 0 36 36">
-          <circle cx="18" cy="18" r="${r}"
-            fill="none" stroke="#eaecf0" stroke-width="2.8"/>
-          <circle cx="18" cy="18" r="${r}"
-            fill="none" stroke="${color}" stroke-width="2.8"
-            stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}"
-            stroke-dashoffset="${(circ * 0.25).toFixed(1)}"
-            stroke-linecap="round"/>
-          <text class="vfop-donut-label"
-                x="18" y="21"
-                text-anchor="middle"
-                font-size="7" font-weight="700"
-                fill="${color}">${pct}%</text>
-        </svg>
-        <div class="vfop-donut-info">
-          <div style="font-size:13px;font-weight:600;
-                      color:var(--vfop-text);">
+    chipEl.innerHTML = `
+      <div class="vfop-switch-chip">
+        <div class="vfop-switch-chip-ic">${escapeHTML(initials)}</div>
+        <div class="vfop-switch-chip-body">
+          <div class="vfop-switch-chip-name">
             ${escapeHTML(cliente.nome || "—")}
           </div>
-          <div style="font-size:11.5px;color:var(--vfop-muted);">
-            ${label}
+          <div class="vfop-switch-chip-meta"
+               style="color:${color}">
+            setup ${pct}% · ${status}
           </div>
         </div>
+        <span class="vfop-switch-chip-chev">▾</span>
       </div>`;
   }
 
@@ -947,35 +988,39 @@
   }
 
   function renderAtalhos() {
-    ensureQuickAccessContainer();
-    const wrap = document.getElementById("vfop-quick-access");
+    const wrap = document.getElementById("vfop-quick-chips");
     if (!wrap) return;
     const KEY = "vfop-atalhos-clientes";
     let lista = [];
     try {
       lista = JSON.parse(localStorage.getItem(KEY) || "[]");
     } catch {}
-    if (!lista.length) { wrap.style.display = "none"; return; }
+    if (!lista.length) { wrap.innerHTML = ""; return; }
 
-    const slugAtual = getClienteSlug(state.selectedCliente || {});
+    const slugAtual = state.selectedCliente?.slug || "";
 
-    wrap.style.display = "flex";
-    wrap.innerHTML =
-      `<span class="vfop-quick-label">Atalhos</span>` +
-      lista.map(a => {
-        const safeSlug = escapeHTML(escapeJsString(a.slug));
-        return `
-        <span class="vfop-quick-chip
-          ${slugKey(a.slug) === slugKey(slugAtual) ? " vfop-quick-chip--active" : ""}"
-              onclick="selecionarClienteRapido('${safeSlug}')">
-          ${escapeHTML(a.nome)}
-          <span class="vfop-quick-chip-remove"
+    wrap.innerHTML = lista.map(a => {
+      const isActive = a.slug === slugAtual;
+      const initials = (a.nome || "?")
+        .split(/\s+/).slice(0, 2)
+        .map(w => w[0]).join("").toUpperCase();
+      const safeSlug = escapeHTML(escapeJsString(a.slug));
+
+      return `
+        <div class="vfop-quick-chip-v2
+          ${isActive ? "vfop-quick-chip-v2--active" : ""}"
+             onclick="selecionarClienteRapido('${safeSlug}')">
+          <div class="vfop-quick-chip-v2-ic">
+            ${escapeHTML(initials)}
+          </div>
+          <span>${escapeHTML(a.nome)}</span>
+          <span class="vfop-quick-chip-v2-score"
                 onclick="event.stopPropagation();
                          removerAtalho('${safeSlug}')">
             ×
           </span>
-        </span>`;
-      }).join("");
+        </div>`;
+    }).join("");
   }
 
   function removerAtalho(slug) {
