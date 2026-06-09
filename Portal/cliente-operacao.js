@@ -1071,63 +1071,115 @@
       .slice(0, 4);
 
     const blockersHtml = blockers.length
-      ? blockers.map(c => `
-          <div style="display:flex;align-items:center;
-                      gap:8px;font-size:13px;padding:3px 0">
-            <span style="width:7px;height:7px;border-radius:50%;
-                         flex-shrink:0;background:${
-              c.tone === "danger"  ? "#9b1c1c" :
-              c.tone === "warning" ? "#855100" : "#8c96a6"
-            };display:inline-block"></span>
-            <b>${escapeHTML(c.label || c.key || "")}</b>
-            <span style="margin-left:auto;font-size:11px;
-                         font-weight:600;color:#8c96a6;">
-              +${c.points} pts
-            </span>
-          </div>`).join("")
+      ? blockers.map(c => {
+          const nome = String(c.label || c.key || "—")
+            .replace(/</g,"&lt;").replace(/>/g,"&gt;");
+          const dotColor =
+            c.tone === "danger"  ? "#9b1c1c" :
+            c.tone === "warning" ? "#855100" : "#8c96a6";
+          return `
+            <div style="display:flex;align-items:center;
+                        gap:8px;font-size:13px;padding:4px 0;
+                        line-height:1.3;">
+              <span style="width:7px;height:7px;flex-shrink:0;
+                           border-radius:50%;display:inline-block;
+                           background:${dotColor}"></span>
+              <span><b>${nome}</b></span>
+              <span style="margin-left:auto;font-size:11.5px;
+                           font-weight:600;color:#8c96a6;
+                           white-space:nowrap;">
+                +${c.points} pts
+              </span>
+            </div>`;
+        }).join("")
       : `<div style="font-size:12.5px;color:#1a7a45;">
            ✓ Sem bloqueadores críticos
          </div>`;
 
     el.innerHTML = `
-      <div class="vfop-conic-ring"
-           style="width:132px;height:132px;
-                  background:conic-gradient(
-                    ${color} 0 ${score}%,
-                    #eaecf0 ${score}% 100%)">
-        <div class="vfop-conic-inner"
-             style="width:95px;height:95px;">
-          <span class="vfop-conic-pct">
-            ${score}<sup>%</sup>
-          </span>
-          <span class="vfop-conic-sub">setup</span>
-        </div>
-      </div>
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;
-                    gap:8px;margin-bottom:10px">
-          <span class="vfop-badge ${badgeClass}">
-            <span style="width:6px;height:6px;border-radius:50%;
-                         background:${color};display:inline-block">
+      <div style="display:flex;gap:24px;align-items:center;
+                  flex:1;">
+        <div class="vfop-conic-ring"
+             style="width:132px;height:132px;
+                    background:conic-gradient(
+                      ${color} 0 ${score}%,
+                      #eaecf0 ${score}% 100%)">
+          <div class="vfop-conic-inner"
+               style="width:95px;height:95px;">
+            <span class="vfop-conic-pct">
+              ${score}<sup>%</sup>
             </span>
-            ${escapeHTML(label)}
-          </span>
-          ${!isOk
-            ? `<span style="font-size:12px;color:#8c96a6;">
-                 faltam ${100 - score} pts para "pronto"
-               </span>`
-            : ""}
+            <span class="vfop-conic-sub">setup</span>
+          </div>
         </div>
-        ${!isOk
-          ? `<div style="font-size:13px;color:#5a6578;
-                         margin-bottom:12px;line-height:1.5">
-               Resolva o que está crítico primeiro:
-             </div>`
-          : ""}
-        <div style="display:flex;flex-direction:column;gap:4px">
-          ${blockersHtml}
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;
+                      gap:8px;margin-bottom:10px">
+            <span class="vfop-badge ${badgeClass}">
+              <span style="width:6px;height:6px;border-radius:50%;
+                           background:${color};display:inline-block">
+              </span>
+              ${escapeHTML(label)}
+            </span>
+            ${!isOk
+              ? `<span style="font-size:12px;color:#8c96a6;">
+                   faltam ${100 - score} pts para "pronto"
+                 </span>`
+              : ""}
+          </div>
+          ${!isOk
+            ? `<div style="font-size:13px;color:#5a6578;
+                           margin-bottom:12px;line-height:1.5">
+                 Resolva o que está crítico primeiro:
+               </div>`
+            : ""}
+          <div style="display:flex;flex-direction:column;gap:4px">
+            ${blockersHtml}
+          </div>
         </div>
       </div>`;
+
+    const panelEl = el.closest(".vfop-panel")
+      || el.parentElement?.closest(".vfop-panel")
+      || el.parentElement;
+
+    const oldFoot = panelEl?.querySelector(".vfop-panel-foot");
+    if (oldFoot) oldFoot.remove();
+
+    const clienteSlug = state.selectedCliente?.slug || "";
+    const temGrant = (state.tokens || []).some(
+      t => t?.cliente_slug === clienteSlug
+        || t?.cliente_id === state.selectedCliente?.id
+    );
+
+    const footEl = document.createElement("div");
+    footEl.className = "vfop-panel-foot";
+    footEl.innerHTML = `
+      <span class="vfop-panel-foot-note">
+        Pesos renormalizados por canal — Shopee não exige grant
+      </span>
+      <div class="vfop-panel-foot-actions">
+        ${!temGrant && clienteSlug ? `
+          <button class="vfop-action vfop-action--primary"
+                  style="font-size:12px;padding:5px 11px;"
+                  onclick="copiarLinkML('${clienteSlug}')">
+            Copiar link ML
+          </button>` : ""}
+        <a href="bases.html"
+           class="vfop-action--ghost-arrow">
+          Bases →
+        </a>
+        <a href="automacoes.html"
+           class="vfop-action--ghost-arrow">
+          Diagnóstico →
+        </a>
+        <a href="financeiro.html"
+           class="vfop-action--ghost-arrow">
+          Fechamento →
+        </a>
+      </div>`;
+
+    if (panelEl) panelEl.appendChild(footEl);
   }
 
   function renderReadiness(workspace) {
