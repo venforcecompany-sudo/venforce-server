@@ -7,6 +7,7 @@ const repo = require("./cliente360Repository");
 const dataQuality = require("./cliente360DataQualityService");
 const diagnosticoEngine = require("./cliente360DiagnosticoEngine");
 const freteHistoricoService = require("./cliente360FreteHistoricoService");
+const { calcularTacos } = require("./cliente360SyncService");
 const { competenciaAtual, parseCompetencia } = require("../../utils/periodoUtils");
 
 const SYNC_STALE_H = 18; // horas até considerar snapshot "stale"
@@ -66,6 +67,7 @@ function mapRelatorios(rows) {
     itensAtencao: r.itens_atencao,
     itensSaudaveis: r.itens_saudaveis,
     mcMedia: numOrNull(r.mc_media),
+    margemAlvo: numOrNull(r.margem_alvo),
     criadoEm: r.created_at,
   }));
 }
@@ -272,10 +274,14 @@ async function getCliente360(slug, options = {}) {
   if (resumoMes.adsInvestido === null && ctx.ads && ctx.ads.investimentoAds !== null) {
     resumoMes.adsInvestido = ctx.ads.investimentoAds;
     resumoMes.adsRef = ctx.ads.referencia ? ctx.ads.mes : null;
-    if (resumoMes.tacos === null) resumoMes.tacos = ctx.ads.tacos; // TACoS do módulo Ads
   }
-  // Regra de ausência: sem Ads ⇒ TACoS indefinido.
-  if (resumoMes.adsInvestido === null) resumoMes.tacos = null;
+  // TACoS sempre sobre o faturamento da Cliente 360 — nunca o TACoS do módulo
+  // Ads (que divide pelo faturamento gerencial). Sem Ads ⇒ TACoS indefinido.
+  if (resumoMes.adsInvestido === null) {
+    resumoMes.tacos = null;
+  } else if (resumoMes.tacos === null) {
+    resumoMes.tacos = calcularTacos(resumoMes.faturamento, resumoMes.adsInvestido);
+  }
 
   const setup = computeSetup({
     bases: ctx.bases, grant: ctx.grant, relatorios: ctx.relatorios,

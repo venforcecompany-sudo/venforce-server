@@ -95,7 +95,7 @@ function diagAcaoRecomendada({ diagnostico, precoEfetivo, precoAlvo }) {
   if (!Number.isFinite(delta)) return "Manter preço atual.";
   if (Math.abs(delta / precoEfetivo) < 0.005) return "Manter preço atual.";
   if (delta > 0) return `Subir preço para R$ ${precoAlvo.toFixed(2)}.`;
-  return `Reduzir preço para R$ ${precoAlvo.toFixed(2)}.`;
+  return "Manter preço atual (margem acima do alvo).";
 }
 
 // Replica EXATAMENTE o pipeline de enriquecimento da rota /automacoes/precificacao/preview-ml para 1 item.

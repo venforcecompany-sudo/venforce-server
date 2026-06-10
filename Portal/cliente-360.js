@@ -259,7 +259,8 @@ function normalizeCliente360Response(data) {
     total_itens: r.totalItens, itens_com_base: r.itensComBase,
     itens_sem_base: r.itensSemBase, itens_criticos: r.itensCriticos,
     itens_atencao: r.itensAtencao, itens_saudaveis: r.itensSaudaveis,
-    mc_media: r.mcMedia, created_at: r.criadoEm, updated_at: r.criadoEm,
+    mc_media: r.mcMedia, margem_alvo: r.margemAlvo ?? null,
+    created_at: r.criadoEm, updated_at: r.criadoEm,
   }));
 
   // Entregas / histórico
@@ -278,8 +279,8 @@ function normalizeCliente360Response(data) {
   // resumoMes no shape do renderCockpit
   const rm = data.resumoMes || {};
   const pedidos = rm.pedidos, cancelados = rm.cancelados;
-  const cancelPct = (pedidos && cancelados != null) ? (cancelados / pedidos * 100)
-                   : (cancelados != null ? 0 : null);
+  // % só quando há pedidos reais; sem denominador → null (nunca 0% falso).
+  const cancelPct = (pedidos > 0 && cancelados != null) ? (cancelados / pedidos * 100) : null;
   S.resumoMes = {
     competencia: S.periodo.competencia, label: S.periodo.label,
     faturamento: rm.faturamento ?? null,
@@ -292,6 +293,9 @@ function normalizeCliente360Response(data) {
     valorCancelado: null,
     adsInvestido: rm.adsInvestido ?? null,
     adsRef: rm.adsRef ?? (a && a.referencia ? a.mes : null),
+    // Snapshot e enriquecimento vêm de ads_resumos_mensais (gerencial);
+    // 'mercado_ads' só após aplicarAdsNoCockpit (performance ao vivo).
+    adsFonte: (rm.adsInvestido ?? null) != null ? 'gerencial' : null,
     tacos: rm.tacos ?? null,
     roas: a?.roas ?? null,
     fechamentos: rm.fechamentosCount ?? 0,
@@ -416,8 +420,9 @@ function consolidarResumoMes() {
     ?? ultimoRel?.mc_media ?? ultimoRel?.mcMedia ?? ultimoRel?.mc_medio ?? null;
 
   const pedidos    = temML ? (r?.quantidadeVendas ?? 0) : null;
-  const cancelados = temML ? (r?.quantidadeCancelada ?? 0) : null;
-  const cancelPct  = (temML && pedidos > 0) ? (cancelados / pedidos * 100) : (temML ? 0 : null);
+  // Mesmos campos da aba Métricas (ajustada → API → null). Nunca 0 falso.
+  const cancelados = temML ? (r?.quantidadeCanceladasAjustada ?? r?.quantidadeCanceladasApi ?? null) : null;
+  const cancelPct  = (temML && pedidos > 0 && cancelados != null) ? (cancelados / pedidos * 100) : null;
 
   // Ads do mês: prioriza a competência atual; senão usa o registro mais recente (marcado como ref.)
   const comp = S.periodo.competencia;
@@ -432,9 +437,9 @@ function consolidarResumoMes() {
 
   const adsInvest = adsEntry ? (adsEntry.investimento ?? 0) : null;
   const fat = temML ? (r?.vendasBrutas ?? 0) : null;
-  // TACoS: usa o salvo; senão deriva de ads/faturamento se ambos existirem.
-  let tacos = adsEntry?.tacos ?? null;
-  if (tacos === null && adsInvest !== null && fat) tacos = adsInvest / fat * 100;
+  // TACoS sempre Ads ÷ faturamento da Cliente 360. Sem faturamento ML → null
+  // (nunca cai no TACoS gerencial, que usa outro denominador).
+  const tacos = (adsInvest !== null && fat) ? adsInvest / fat * 100 : null;
 
   return {
     competencia:  comp,
@@ -447,10 +452,11 @@ function consolidarResumoMes() {
     cancelPct,
     unidades:     temML ? (r?.unidadesVendidas ?? 0) : null,
     ticketMedio:  temML ? (r?.ticketMedio ?? 0) : null,
-    valorCancelado: temML ? (r?.valorCancelado ?? 0) : null,
+    valorCancelado: temML ? (r?.valorCanceladoAjustado ?? r?.valorCanceladoApi ?? null) : null,
     // Operação e mídia
     adsInvestido: adsInvest,
     adsRef,
+    adsFonte: adsInvest != null ? 'gerencial' : null,
     tacos,
     roas:         adsEntry?.roas ?? null,
     fechamentos:  S.entregas.filter(e => e.tipo === 'fechamento_mensal').length,
@@ -610,13 +616,20 @@ function renderCockpit() {
 
   // Operação e mídia
   const tacosCls = m.tacos == null ? 'muted' : m.tacos > TACOS_WARN ? 'crit' : 'ok';
-  const adsSub = m.adsRef ? `<span class="c360-chip flat">ref. ${esc(m.adsRef)}</span>`
-               : (m.adsInvestido == null ? 'sem registro do mês' : 'Investimento no mês');
+  // Fonte sempre explícita: Mercado Ads (ao vivo, igual à tela Ads) ou
+  // gerencial (ads_resumos_mensais). Mês de referência ganha chip de alerta.
+  const adsFonteChip = m.adsFonte === 'mercado_ads'
+    ? `<span class="c360-chip flat">fonte: Mercado Ads</span>`
+    : `<span class="c360-chip flat">fonte: gerencial</span>`;
+  const adsSub = m.adsInvestido == null ? 'sem registro do mês'
+    : `${m.adsRef ? `<span class="c360-chip warn">ref. ${esc(m.adsRef)}</span> ` : ''}${adsFonteChip}`;
 
   const oper = [
     card('Ads investido', `<div class="c360-card-value">${valOr(m.adsInvestido, fmtBRL)}</div>`, adsSub),
     card('TACoS', `<div class="c360-card-value ${tacosCls}">${valOr(m.tacos, fmtPct)}</div>`,
-         m.tacos == null ? 'sem registro de Ads' : 'Ads ÷ faturamento'),
+         m.tacos == null
+           ? (m.adsInvestido == null ? 'sem registro de Ads' : 'sem faturamento do mês')
+           : 'Ads ÷ faturamento (Cliente 360)'),
     card('Fechamentos', `<div class="c360-card-value">${fmt(m.fechamentos)}</div>`, 'salvos no total'),
     card('Diagnósticos', `<div class="c360-card-value">${fmt(m.diagnosticos)}</div>`, 'rodados no total'),
   ];
@@ -840,7 +853,18 @@ function renderAreaChart(host, porDia) {
     const v = d.quantidadeVendas ?? d.pedidos ?? d.qtd_vendas;
     return (v === null || v === undefined || v === '') ? null : Number(v);
   };
-  const data = porDia.map(d => ({ v: Number(d.vendasBrutas) || 0, dia: d.data, ped: pedDe(d) }));
+  let data = porDia.map(d => {
+    const v = Number(d.vendasBrutas) || 0;
+    let ped = pedDe(d);
+    // Dia com venda e 0 pedidos é impossível (toda venda é um pedido):
+    // a fonte não rastreia pedidos/dia → indisponível, não 0.
+    if (ped === 0 && v > 0) ped = null;
+    return { v, dia: d.data, ped };
+  });
+  // Série inteira sem contagem positiva com venda no mês = fonte sem pedidos/dia.
+  if (!data.some(d => d.ped != null && d.ped > 0) && data.some(d => d.v > 0)) {
+    data = data.map(d => ({ ...d, ped: null }));
+  }
   const max = Math.max(1, ...data.map(d => d.v));
   const total = data.reduce((s, d) => s + d.v, 0);
   const n = data.length;
@@ -1588,9 +1612,13 @@ function aplicarAdsNoCockpit() {
   if (invest == null) return;
   S.resumoMes.adsInvestido = invest;
   S.resumoMes.adsRef = null;   // performance é do mês selecionado, não referência
-  // TACoS = investimento ÷ faturamentoTotal (gerencial). Sem faturamento real → mantém null.
-  const fat = Number(S.adsResumo?.faturamentoTotal) || 0;
-  S.resumoMes.tacos = fat > 0 ? Math.round((invest / fat) * 10000) / 100 : (S.adsResumo?.tacos ?? null);
+  S.resumoMes.adsFonte = 'mercado_ads';   // mesma fonte da tela Ads
+  // TACoS = investimento ÷ faturamento da Cliente 360. Sem faturamento → null
+  // (nunca usa o faturamento/TACoS gerencial, que tem outro denominador).
+  const fat = Number(S.resumoMes.faturamento);
+  S.resumoMes.tacos = (Number.isFinite(fat) && fat > 0)
+    ? Math.round((invest / fat) * 10000) / 100
+    : null;
   renderCockpit();
 }
 
@@ -1629,7 +1657,7 @@ function renderAds360(el) {
           ${kpi('GMV Ads', valOr(p.gmvAds, fmtBRL))}
           ${kpi('ROAS', valOr(p.roas, v => fmt(v, 2) + 'x'))}
           ${kpi('ACOS', valOr(p.acos, fmtPct))}
-          ${kpi('TACoS', valOr(S.resumoMes?.tacos, fmtPct), S.adsResumo?.faturamentoTotal ? 'sobre faturamento' : 'sem faturamento gerencial')}
+          ${kpi('TACoS', valOr(S.resumoMes?.tacos, fmtPct), S.resumoMes?.faturamento ? 'sobre faturamento (Cliente 360)' : 'sem faturamento do mês')}
           ${kpi('Cliques', valOr(p.cliques, v => fmt(v)))}
           ${kpi('Impressões', valOr(p.impressoes, v => fmt(v)))}
           ${kpi('Vendas', valOr(p.vendas, v => fmt(v)))}

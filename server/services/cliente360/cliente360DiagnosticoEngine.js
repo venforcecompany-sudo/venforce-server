@@ -128,19 +128,25 @@ function avaliarRegras(contexto) {
     }));
   }
 
-  // 8. MC média baixa (crítico/atenção)
+  // 8. MC média abaixo da margem alvo (crítico/atenção). Usa a margem alvo do
+  // último relatório quando houver; só cai nos thresholds fixos sem alvo.
+  // MC na margem alvo ou acima dela NUNCA gera problema.
   const mcPct = mcParaPercent(resumoMes?.mcMedia);
-  if (mcPct !== null) {
-    if (mcPct < MC_WARN) {
+  const ultimoRel = Array.isArray(contexto.relatorios) ? contexto.relatorios[0] : null;
+  const alvoPct = mcParaPercent(ultimoRel?.margemAlvo ?? ultimoRel?.margem_alvo);
+  const limiteOk = alvoPct !== null ? alvoPct : MC_OK;
+  const limiteCrit = alvoPct !== null ? Math.max(0, alvoPct - 4) : MC_WARN;
+  if (mcPct !== null && mcPct < limiteOk) {
+    if (mcPct < limiteCrit) {
       itens.push(item("issue", "critico", `MC média baixa (${mcPct.toFixed(1)}%)`, {
-        descricao: `MC abaixo de ${MC_WARN}%.`,
+        descricao: `MC bem abaixo da margem alvo de ${limiteOk.toFixed(1)}%.`,
         fonte: "relatorios.mc_media",
-        acaoRecomendada: "Revisar preço, custo ou frete dos anúncios críticos.",
+        acaoRecomendada: "Subir preço ou revisar custo/frete dos anúncios críticos.",
         impactoEstimado: "Margem comprometida",
       }));
-    } else if (mcPct < MC_OK) {
+    } else {
       itens.push(item("risk", "atencao", `MC média em atenção (${mcPct.toFixed(1)}%)`, {
-        descricao: `MC entre ${MC_WARN}% e ${MC_OK}%.`,
+        descricao: `MC abaixo da margem alvo de ${limiteOk.toFixed(1)}%.`,
         fonte: "relatorios.mc_media",
         acaoRecomendada: "Acompanhar margem; revisar itens de menor MC.",
       }));

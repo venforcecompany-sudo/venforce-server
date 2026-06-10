@@ -109,7 +109,7 @@ async function findRelatoriosByCliente(clienteSlug, options = {}) {
     `SELECT id, cliente_slug, base_slug, escopo, status,
             total_itens, itens_com_base, itens_sem_base,
             itens_criticos, itens_atencao, itens_saudaveis,
-            mc_media, created_at
+            mc_media, margem_alvo, created_at
        FROM relatorios
       WHERE cliente_slug = $1
       ORDER BY created_at DESC
