@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cliente 360 DevUI</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="./cliente360.css">
+</head>
+<body>
+  <main class="container c360dev-shell">
+    <header class="c360dev-header">
+      <p class="c360dev-kicker">Cliente 360 DevUI</p>
+      <h1>Cliente 360 DevUI</h1>
+      <div class="c360dev-badges" aria-label="Informacoes de acesso">
+        <span>READ-ONLY</span>
+        <span>Somente ADM</span>
+      </div>
+      <p>Acesso por URL direta. Não linkado ao portal oficial.</p>
+      <p>Somente ADM.</p>
+    </header>
+
+    <section id="c360dev-root" aria-live="polite"></section>
+  </main>
+
+  <script src="./cliente360.js" defer></script>
+</body>
+</html>
