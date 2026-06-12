@@ -5735,3 +5735,191 @@ div > .metricas-section-label {
   font-size: .79rem;
   color: var(--vf-text-l);
 }
+
+/* ── Usuários v2 — seções por role ─────────────────────── */
+
+/* Role pill: seller */
+.vf-role-pill.is-seller {
+  background: rgba(16, 143, 119, 0.08);
+  border-color: rgba(16, 143, 119, 0.2);
+  color: #0e7c67;
+}
+
+/* Seção */
+.vu-section {
+  border-top: 1px solid var(--vf-border);
+  padding: 1.25rem 1.75rem 0.5rem;
+}
+.vu-section:first-child { border-top: none; }
+
+.vu-section-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0.75rem;
+}
+
+.vu-section-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.vu-dot-admin  { background: var(--vf-primary); }
+.vu-dot-membro { background: #9ca3af; }
+.vu-dot-seller { background: #0e7c67; }
+
+.vu-section-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--vf-text);
+}
+
+.vu-section-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: var(--vf-bg, #f5f6f8);
+  border: 1px solid var(--vf-border);
+  color: var(--vf-text-m);
+  border-radius: 999px;
+  padding: 1px 7px;
+  min-width: 22px;
+  text-align: center;
+}
+
+.vu-section-note {
+  font-size: 0.75rem;
+  color: var(--vf-text-l);
+  margin-left: 4px;
+}
+
+.vu-section-body { margin-bottom: 0.5rem; }
+
+.vu-vazio {
+  font-size: 0.85rem;
+  color: var(--vf-text-l);
+  margin: 0.25rem 0 1rem;
+}
+
+/* Tabela compacta dentro de cada seção */
+.vu-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.vu-table {
+  min-width: 820px;
+  width: 100%;
+}
+
+.vu-table thead th,
+.vu-table tbody td {
+  padding: 0.5rem 0.75rem;
+  vertical-align: middle;
+}
+
+.vu-table thead th {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vf-text-l);
+  border-bottom: 1px solid var(--vf-border);
+  white-space: nowrap;
+}
+
+.vu-table tbody tr {
+  border-bottom: 1px solid rgba(229,231,235,0.5);
+}
+
+.vu-table tbody tr:last-child { border-bottom: none; }
+
+/* Ações compactas por linha */
+.vu-actions {
+  flex-wrap: nowrap;
+  gap: 6px;
+  justify-content: flex-start;
+}
+
+/* Select de role */
+.vu-role-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0.22rem 1.6rem 0.22rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid var(--vf-border);
+  border-radius: 6px;
+  background: var(--vf-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239ca3af' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 0.5rem center;
+  color: var(--vf-text);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  height: 28px;
+}
+
+.vu-role-select:focus {
+  outline: none;
+  border-color: rgba(var(--vf-primary-rgb), 0.4);
+  box-shadow: 0 0 0 2px rgba(var(--vf-primary-rgb), 0.08);
+}
+
+.vu-role-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Chip de vínculo seller */
+.vu-vinculo-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(16, 143, 119, 0.08);
+  border: 1px solid rgba(16, 143, 119, 0.18);
+  color: #0e7c67;
+  white-space: nowrap;
+}
+
+.vu-sem-vinculo {
+  font-size: 0.75rem;
+  color: var(--vf-text-l);
+  font-style: italic;
+}
+
+/* Toast */
+.vu-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9000;
+  padding: 0.65rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  max-width: 360px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+
+.vu-toast-show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.vu-toast-ok {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+}
+
+.vu-toast-danger {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}

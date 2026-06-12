@@ -1191,7 +1191,14 @@ app.patch("/usuarios/:id", authMiddleware, requireAdmin, async (req, res) => {
     const valores = [];
     let i = 1;
     if (ativo !== undefined) { campos.push(`ativo = $${i++}`); valores.push(ativo); }
-    if (role !== undefined) { campos.push(`role = $${i++}`); valores.push(role); }
+    if (role !== undefined) {
+      const rolesPermitidas = ['admin', 'membro', 'seller'];
+      if (!rolesPermitidas.includes(role)) {
+        return res.status(400).json({ ok: false, erro: `Role inválida. Permitidas: ${rolesPermitidas.join(', ')}.` });
+      }
+      campos.push(`role = $${i++}`);
+      valores.push(role);
+    }
     if (!campos.length) return res.status(400).json({ ok: false, erro: "Nenhum campo para atualizar." });
     valores.push(targetId);
     const result = await pool.query(
