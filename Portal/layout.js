@@ -162,6 +162,7 @@
 
         { separator: true, label: "ANÁLISES" },
         { label: "Financeiro",   href: "financeiro.html",    icon: "vf-financeiro" },
+        { label: "Fechamentos API", href: "fechamentos-api.html", icon: "vf-financeiro", adminOnly: true },
         { label: "Conversão",    href: "fechamento.html",    icon: "vf-fechamento" },
         { label: "Relatórios",   href: "relatorios.html",    icon: "bar-chart"     },
         { label: "Métricas",     href: "metricas.html",      icon: "trending-up"   },
@@ -227,6 +228,7 @@
     "scans.html":           "operacao",
     "automacoes.html":      "operacao",
     "financeiro.html":      "operacao",
+    "fechamentos-api.html": "operacao",
     "relatorios.html":      "operacao",
     "fechamento.html":      "operacao",
     "extensao.html":          "operacao",

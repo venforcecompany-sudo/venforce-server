@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Venforce — Fechamentos API</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="venforce-ui-v2.css">
+  <link rel="stylesheet" href="cliente-operacao.css">
+  <link rel="stylesheet" href="fechamentos-api.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
+</head>
+<body class="vf-page vfop-body">
+  <div class="vf-main-with-sidebar">
+    <main class="vfop-page fapi-page" id="fapi-main" aria-label="Fechamentos API">
+
+      <!-- ══ HEADER COMPACTO ═══════════════════════════════ -->
+      <header class="fapi-phead">
+        <div class="fapi-phead-left">
+          <div class="fapi-eyebrow">Conciliação por pedido</div>
+          <h1 class="fapi-title">Fechamentos API</h1>
+          <p class="fapi-sub">Pedidos · faturamento · produtos · base/diagnóstico</p>
+        </div>
+        <div class="fapi-phead-right">
+          <span id="fapi-motor-status" class="fapi-motor fapi-motor--mock">● Mock</span>
+          <span id="fapi-confianca" class="fapi-confianca" hidden></span>
+        </div>
+      </header>
+
+      <!-- ══ CONTROLES (cliente / competência) ═════════════ -->
+      <div class="fapi-controls">
+        <div class="fapi-field">
+          <label for="fapi-client-select">Cliente</label>
+          <select id="fapi-client-select" class="vfop-select"><option value="">Carregando…</option></select>
+        </div>
+        <div class="fapi-field">
+          <label for="fapi-comp-select">Competência</label>
+          <select id="fapi-comp-select" class="vfop-select"></select>
+        </div>
+      </div>
+
+      <!-- ══ CONTEÚDO (render via JS) ══════════════════════ -->
+      <div id="fapi-content"></div>
+
+    </main>
+  </div>
+
+  <script src="layout.js"></script>
+  <script src="fechamentos-api.js"></script>
+</body>
+</html>
