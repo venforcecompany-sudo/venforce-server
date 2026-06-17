@@ -572,6 +572,593 @@ function processMeli(salesRowsRaw, costRowsRaw, ads, venforce, affiliates) {
 
 
 
+const CENTRAL_FIELDS = {
+  saleStatus: ["estado", "descricao do status", "status"],
+  packId: ["pack id", "id do pacote", "numero do pacote", "n de pacote"],
+  shipmentId: ["shipment id", "id do envio", "numero do envio", "n de envio"],
+  sku: ["sku", "seller sku", "codigo sku", "codigo do sku"],
+  productRevenue: ["receita por produtos (brl)", "receita por produtos"],
+  unitPrice: [
+    "preco unitario de venda do anuncio (brl)",
+    "preco unitario de venda do anuncio",
+  ],
+  total: ["total (brl)", "total"],
+  tarifaVenda: ["tarifa de venda e impostos (brl)", "tarifa de venda e impostos"],
+  tarifaEnvio: ["tarifas de envio (brl)", "tarifas de envio"],
+  cancelRefund: [
+    "cancelamentos e reembolsos (brl)",
+    "cancelamentos e reembolsos",
+  ],
+  cost: [
+    "preco de custo",
+    "preco custo",
+    "custo",
+    "custo do produto",
+    "custo produto",
+    "custo unitario",
+  ],
+  tax: [
+    "imposto",
+    "imposto %",
+    "imposto percentual",
+    "percentual imposto",
+    "aliquota",
+  ],
+};
+
+function normalizeCentralKey(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u00aa\u00ba\u00b0]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findCentralField(row, candidates) {
+  const entries = Object.entries(row || {});
+  const normalizedCandidates = candidates.map(normalizeCentralKey);
+
+  for (const [key, value] of entries) {
+    const normalized = normalizeCentralKey(key);
+    if (normalizedCandidates.includes(normalized)) {
+      return { present: true, value };
+    }
+  }
+
+  for (const [key, value] of entries) {
+    const normalized = normalizeCentralKey(key);
+    if (normalizedCandidates.some((candidate) => normalized.includes(candidate))) {
+      return { present: true, value };
+    }
+  }
+
+  return { present: false, value: null };
+}
+
+function centralFieldHasValue(field) {
+  if (!field || !field.present) return false;
+  if (field.value === null || field.value === undefined) return false;
+  return String(field.value).trim() !== "";
+}
+
+function centralTextFromField(field) {
+  return centralFieldHasValue(field) ? String(field.value).trim() : null;
+}
+
+function addCentralCostEntry(map, key, row) {
+  const normalized = normalizeId(key);
+  if (!normalized) return;
+
+  if (!map.has(normalized)) map.set(normalized, row);
+
+  const noPrefix = normalized.replace(/^MLB/i, "");
+  if (noPrefix && !map.has(noPrefix)) map.set(noPrefix, row);
+  if (noPrefix && !map.has(`MLB${noPrefix}`)) map.set(`MLB${noPrefix}`, row);
+}
+
+function buildCentralCostMap(rows) {
+  const map = new Map();
+
+  for (const rawRow of rows || []) {
+    const parsed = parseMeliCostRows([rawRow])[0];
+    if (!parsed || !parsed.id) continue;
+
+    const costField = findCentralField(rawRow, CENTRAL_FIELDS.cost);
+    const taxField = findCentralField(rawRow, CENTRAL_FIELDS.tax);
+    const row = {
+      ...parsed,
+      hasCost: centralFieldHasValue(costField) && parsed.cost > 0,
+      hasTax: centralFieldHasValue(taxField),
+    };
+
+    addCentralCostEntry(map, parsed.id, row);
+    if (parsed.modelId) addCentralCostEntry(map, parsed.modelId, row);
+  }
+
+  return map;
+}
+
+function getCentralCostForAd(costMap, adId) {
+  const normalized = normalizeId(adId);
+  const noPrefix = normalized.replace(/^MLB/i, "");
+
+  return (
+    costMap.get(normalized) ||
+    costMap.get(noPrefix) ||
+    costMap.get(`MLB${noPrefix}`) ||
+    null
+  );
+}
+
+function buildCentralPedidoId(row, index) {
+  const saleNumber = String(row.saleNumber || "").trim();
+  if (saleNumber) return saleNumber;
+  const adId = normalizeId(row.adId || row.adIdRaw);
+  return adId ? `MELI-${adId}-${index + 1}` : `MELI-LINHA-${index + 1}`;
+}
+
+function addCentralPendencia(pendencias, pendencia) {
+  if (!pendencias.includes(pendencia)) pendencias.push(pendencia);
+}
+
+function buildCentralComponent({
+  pedidoId,
+  itemId,
+  tipo,
+  valor,
+  fonte,
+  confianca,
+  obs,
+}) {
+  return {
+    pedidoId,
+    itemId,
+    tipo,
+    valor: valor === null || valor === undefined ? null : round2(valor),
+    fonte,
+    confianca,
+    obs,
+  };
+}
+
+function processMeliForCentralVendas({
+  salesRowsRaw = [],
+  costRowsRaw = [],
+  clienteSlug = null,
+  competencia = null,
+} = {}) {
+  const salesRows = parseMeliRows(salesRowsRaw);
+  const costMap = buildCentralCostMap(costRowsRaw);
+
+  const pedidos = [];
+  const itens = [];
+  const componentes = [];
+  const consumedIndexes = new Set();
+
+  function isMainRow(row) {
+    return !row.adId && Math.abs(row.productRevenue) > 0;
+  }
+
+  function isItemRow(row) {
+    return !!row.adId && row.units > 0;
+  }
+
+  function computePlatformAdjustment(row) {
+    const expected =
+      (row.productRevenue || 0) +
+      (row.tarifaVenda || 0) +
+      (row.tarifaEnvio || 0) +
+      (row.descontosBonus || 0);
+    return round2(expected - (row.total || 0));
+  }
+
+  function buildSourceFinancials(sourceRow, sourceRaw, componentRows) {
+    const tarifaVendaField = findCentralField(sourceRaw, CENTRAL_FIELDS.tarifaVenda);
+    const tarifaEnvioField = findCentralField(sourceRaw, CENTRAL_FIELDS.tarifaEnvio);
+    const cancelRefundField = findCentralField(sourceRaw, CENTRAL_FIELDS.cancelRefund);
+
+    return {
+      total: allocateByUnits(sourceRow.total, componentRows),
+      ajustePlataforma: allocateByUnits(computePlatformAdjustment(sourceRow), componentRows),
+      tarifaVenda: centralFieldHasValue(tarifaVendaField)
+        ? allocateByUnits(sourceRow.tarifaVenda, componentRows)
+        : null,
+      tarifaEnvio: centralFieldHasValue(tarifaEnvioField)
+        ? allocateByUnits(sourceRow.tarifaEnvio, componentRows)
+        : null,
+      cancelRefund: centralFieldHasValue(cancelRefundField)
+        ? allocateByUnits(sourceRow.cancelRefund, componentRows)
+        : null,
+      hasTarifaVenda: centralFieldHasValue(tarifaVendaField),
+      hasTarifaEnvio: centralFieldHasValue(tarifaEnvioField),
+      hasCancelRefund: centralFieldHasValue(cancelRefundField),
+    };
+  }
+
+  function createPedido(sourceRow, sourceRaw, sourceIndex) {
+    const pedidoId = buildCentralPedidoId(sourceRow, sourceIndex);
+    const packId = centralTextFromField(findCentralField(sourceRaw, CENTRAL_FIELDS.packId));
+    const shipmentId = centralTextFromField(findCentralField(sourceRaw, CENTRAL_FIELDS.shipmentId));
+    const status =
+      centralTextFromField(findCentralField(sourceRaw, CENTRAL_FIELDS.saleStatus)) || null;
+
+    return {
+      pedidoId,
+      packId,
+      shipmentId,
+      clienteSlug,
+      competencia,
+      dataPedido: sourceRow.saleDate || null,
+      status,
+      quantidadeItens: 0,
+      faturamento: 0,
+      lucroContribuicao: 0,
+      resultado: 0,
+      margemContribuicaoPercentual: null,
+      confianca: "confiavel",
+      pendencias: [],
+      _temResultado: false,
+    };
+  }
+
+  function applyConfidence(pedido, itemConfianca, pendencias) {
+    for (const pendencia of pendencias) {
+      addCentralPendencia(pedido.pendencias, pendencia);
+    }
+
+    if (itemConfianca === "bloqueado") {
+      pedido.confianca = "bloqueado";
+      return;
+    }
+
+    if (itemConfianca === "parcial" && pedido.confianca !== "bloqueado") {
+      pedido.confianca = "parcial";
+    }
+  }
+
+  function pushCentralItem({
+    pedido,
+    item,
+    rawItem,
+    totalRateado,
+    ajustePlataforma,
+    financials,
+    allocationIndex,
+  }) {
+    const id = normalizeId(item.adId || item.adIdRaw);
+    let cost = item.modelIdRaw ? getCentralCostForAd(costMap, item.modelIdRaw) : null;
+    if (!cost) cost = getCentralCostForAd(costMap, id);
+
+    const units = round2(item.units);
+    const price = round2(item.unitSalePrice);
+    const productRevenueField = findCentralField(rawItem, CENTRAL_FIELDS.productRevenue);
+    const unitPriceField = findCentralField(rawItem, CENTRAL_FIELDS.unitPrice);
+    const sku = centralTextFromField(findCentralField(rawItem, CENTRAL_FIELDS.sku));
+
+    const hasProduct =
+      !!id &&
+      units > 0 &&
+      (centralFieldHasValue(unitPriceField) ||
+        centralFieldHasValue(productRevenueField) ||
+        Math.abs(Number(totalRateado || 0)) > 0);
+    const hasCost = !!cost && cost.hasCost;
+    const hasTax = !!cost && cost.hasTax;
+    const vendaTotal =
+      hasProduct && price > 0
+        ? round2(units * price)
+        : hasProduct
+          ? round2(Math.abs(totalRateado))
+          : null;
+    const totalFormatado = round2(totalRateado);
+    const impostoPercent = hasTax ? round2(cost.taxPercent || 0) : null;
+    const impostoDec =
+      impostoPercent === null ? 0 : impostoPercent > 1 ? impostoPercent / 100 : impostoPercent;
+    const precoCusto = hasCost ? round2(cost.cost || 0) : null;
+    const precoCustoTotal =
+      hasCost && vendaTotal !== null ? round2(units * precoCusto) : null;
+    const impostoInterno =
+      hasTax && vendaTotal !== null ? round2(vendaTotal * impostoDec) : null;
+
+    const pendencias = [];
+    if (!hasProduct) addCentralPendencia(pendencias, "produto_ausente");
+    if (!hasCost) addCentralPendencia(pendencias, "custo_produto_ausente");
+    if (!financials.hasTarifaVenda) addCentralPendencia(pendencias, "tarifa_venda_ausente");
+    if (!financials.hasTarifaEnvio) addCentralPendencia(pendencias, "frete_seller_ausente");
+    if (!hasTax) addCentralPendencia(pendencias, "imposto_interno_ausente");
+
+    const bloqueado = !hasProduct || !hasCost;
+    const parcial =
+      !bloqueado &&
+      (!financials.hasTarifaVenda || !financials.hasTarifaEnvio || !hasTax);
+    const confianca = bloqueado ? "bloqueado" : parcial ? "parcial" : "confiavel";
+
+    let lucroContribuicao = null;
+    let margemContribuicaoPercentual = null;
+
+    if (!bloqueado) {
+      if (totalFormatado < 0) {
+        lucroContribuicao = round2(totalFormatado);
+        const baseCalcMcNeg = vendaTotal > 0 ? vendaTotal : round2(Math.abs(totalRateado));
+        margemContribuicaoPercentual =
+          baseCalcMcNeg > 0 ? round2((lucroContribuicao / baseCalcMcNeg) * 100) : 0;
+      } else if (totalFormatado > 0) {
+        lucroContribuicao = round2(
+          vendaTotal -
+            (vendaTotal * impostoDec) -
+            (vendaTotal - totalFormatado) -
+            precoCustoTotal
+        );
+        const baseCalcMc = vendaTotal > 0 ? vendaTotal : round2(Math.abs(totalRateado));
+        margemContribuicaoPercentual =
+          baseCalcMc > 0 ? round2((lucroContribuicao / baseCalcMc) * 100) : 0;
+      } else {
+        lucroContribuicao = 0;
+        margemContribuicaoPercentual = 0;
+      }
+    }
+
+    const itemId = `${pedido.pedidoId}:${id || "SEM_ID"}:${item.rowIndex}`;
+    const itemPayload = {
+      pedidoId: pedido.pedidoId,
+      itemId,
+      mlb: id || null,
+      sku,
+      titulo: item.title || null,
+      quantidade: units,
+      valorUnitario: centralFieldHasValue(unitPriceField) ? price : null,
+      receitaProduto: vendaTotal,
+      custoProduto: precoCustoTotal,
+      impostoInterno,
+      lucroContribuicao,
+      resultado: lucroContribuicao,
+      margemContribuicaoPercentual,
+      confianca,
+      pendencias,
+    };
+
+    itens.push(itemPayload);
+
+    componentes.push(
+      buildCentralComponent({
+        pedidoId: pedido.pedidoId,
+        itemId,
+        tipo: "receita_produto",
+        valor: vendaTotal,
+        fonte: hasProduct ? "planilha_vendas" : "ausente",
+        confianca: hasProduct ? "real" : "bloqueado",
+        obs: hasProduct ? null : "Produto ausente ou incompleto na planilha de vendas.",
+      }),
+      buildCentralComponent({
+        pedidoId: pedido.pedidoId,
+        itemId,
+        tipo: "tarifa_venda",
+        valor: financials.tarifaVenda ? financials.tarifaVenda[allocationIndex] : null,
+        fonte: financials.hasTarifaVenda ? "planilha_vendas" : "ausente",
+        confianca: financials.hasTarifaVenda ? "real" : "ausente",
+        obs: financials.hasTarifaVenda
+          ? null
+          : "Tarifa ausente; o resultado usa o total liquido do fechamento atual.",
+      }),
+      buildCentralComponent({
+        pedidoId: pedido.pedidoId,
+        itemId,
+        tipo: "frete_seller",
+        valor: financials.tarifaEnvio ? financials.tarifaEnvio[allocationIndex] : null,
+        fonte: financials.hasTarifaEnvio ? "planilha_vendas" : "ausente",
+        confianca: financials.hasTarifaEnvio ? "real" : "ausente",
+        obs: financials.hasTarifaEnvio
+          ? null
+          : "Frete seller ausente; o resultado usa o total liquido do fechamento atual.",
+      }),
+      buildCentralComponent({
+        pedidoId: pedido.pedidoId,
+        itemId,
+        tipo: "custo_produto",
+        valor: precoCustoTotal === null ? null : -precoCustoTotal,
+        fonte: hasCost ? "planilha_custos" : "ausente",
+        confianca: hasCost ? "real" : "bloqueado",
+        obs: hasCost ? null : "Custo do produto ausente na planilha de custos.",
+      }),
+      buildCentralComponent({
+        pedidoId: pedido.pedidoId,
+        itemId,
+        tipo: "imposto_interno",
+        valor: impostoInterno === null ? null : -impostoInterno,
+        fonte: hasTax ? "planilha_custos" : "ausente",
+        confianca: hasTax ? "real" : "ausente",
+        obs: hasTax ? null : "Imposto interno ausente na planilha de custos.",
+      }),
+      buildCentralComponent({
+        pedidoId: pedido.pedidoId,
+        itemId,
+        tipo: "cancelamento_reembolso",
+        valor: financials.cancelRefund ? financials.cancelRefund[allocationIndex] : null,
+        fonte: financials.hasCancelRefund ? "planilha_vendas" : "ausente",
+        confianca: financials.hasCancelRefund ? "real" : "ausente",
+        obs: financials.hasCancelRefund ? null : "Cancelamento/reembolso ausente na planilha.",
+      })
+    );
+
+    pedido.quantidadeItens = round2(pedido.quantidadeItens + units);
+    pedido.faturamento = round2(pedido.faturamento + (vendaTotal || 0));
+    if (lucroContribuicao !== null) {
+      pedido.lucroContribuicao = round2(pedido.lucroContribuicao + lucroContribuicao);
+      pedido.resultado = pedido.lucroContribuicao;
+      pedido._temResultado = true;
+    }
+    applyConfidence(pedido, confianca, pendencias);
+
+    if (Math.abs(Number(ajustePlataforma || 0)) > 0.01) {
+      addCentralPendencia(pedido.pendencias, "ajuste_plataforma_presente");
+    }
+  }
+
+  function finishPedido(pedido) {
+    if (pedido.confianca === "bloqueado" || !pedido._temResultado) {
+      pedido.lucroContribuicao = null;
+      pedido.resultado = null;
+      pedido.margemContribuicaoPercentual = null;
+    } else {
+      pedido.lucroContribuicao = round2(pedido.lucroContribuicao);
+      pedido.resultado = pedido.lucroContribuicao;
+      pedido.margemContribuicaoPercentual =
+        pedido.faturamento > 0
+          ? round2((pedido.lucroContribuicao / pedido.faturamento) * 100)
+          : 0;
+    }
+
+    delete pedido._temResultado;
+    pedidos.push(pedido);
+  }
+
+  const EXCLUIR_ESTADOS = /cancelad|devolu|reembolso|mediacao|reemb/i;
+
+  for (let i = 0; i < salesRows.length; i++) {
+    if (consumedIndexes.has(i)) continue;
+
+    const current = salesRows[i];
+    const currentRaw = salesRowsRaw[i] || {};
+    const estadoAtual = String(
+      findField(currentRaw, ["estado", "descricao do status"]) ?? ""
+    ).trim();
+
+    if (EXCLUIR_ESTADOS.test(estadoAtual) && !isMainRow(current)) continue;
+
+    if (isMainRow(current)) {
+      const children = [];
+      const childrenIndexes = [];
+      let j = i + 1;
+
+      while (j < salesRows.length) {
+        const next = salesRows[j];
+
+        if (isMainRow(next)) break;
+        if (next.saleDate !== current.saleDate) break;
+        if (!isItemRow(next)) break;
+
+        children.push(next);
+        childrenIndexes.push(j);
+        j++;
+      }
+
+      if (children.length > 0) {
+        const pedido = createPedido(current, currentRaw, i);
+        const financials = buildSourceFinancials(current, currentRaw, children);
+
+        for (let k = 0; k < children.length; k++) {
+          pushCentralItem({
+            pedido,
+            item: children[k],
+            rawItem: salesRowsRaw[childrenIndexes[k]] || {},
+            totalRateado: financials.total[k],
+            ajustePlataforma: financials.ajustePlataforma[k],
+            financials,
+            allocationIndex: k,
+          });
+          consumedIndexes.add(childrenIndexes[k]);
+        }
+
+        consumedIndexes.add(i);
+        finishPedido(pedido);
+        continue;
+      }
+
+      consumedIndexes.add(i);
+      continue;
+    }
+
+    if (isItemRow(current)) {
+      const pedido = createPedido(current, currentRaw, i);
+      const financials = buildSourceFinancials(current, currentRaw, [current]);
+
+      pushCentralItem({
+        pedido,
+        item: current,
+        rawItem: currentRaw,
+        totalRateado: financials.total[0],
+        ajustePlataforma: financials.ajustePlataforma[0],
+        financials,
+        allocationIndex: 0,
+      });
+
+      consumedIndexes.add(i);
+      finishPedido(pedido);
+    }
+  }
+
+  const receitaConfiavel = round2(
+    pedidos
+      .filter((pedido) => pedido.confianca === "confiavel")
+      .reduce((sum, pedido) => sum + Number(pedido.faturamento || 0), 0)
+  );
+  const receitaParcial = round2(
+    pedidos
+      .filter((pedido) => pedido.confianca === "parcial")
+      .reduce((sum, pedido) => sum + Number(pedido.faturamento || 0), 0)
+  );
+  const receitaBloqueada = round2(
+    pedidos
+      .filter((pedido) => pedido.confianca === "bloqueado")
+      .reduce((sum, pedido) => sum + Number(pedido.faturamento || 0), 0)
+  );
+  const faturamento = round2(receitaConfiavel + receitaParcial);
+  const pedidosComResultado = pedidos.filter(
+    (pedido) => pedido.lucroContribuicao !== null && pedido.lucroContribuicao !== undefined
+  );
+  const lucroContribuicao = pedidosComResultado.length
+    ? round2(
+        pedidosComResultado.reduce(
+          (sum, pedido) => sum + Number(pedido.lucroContribuicao || 0),
+          0
+        )
+      )
+    : null;
+
+  const totaisPorTipo = {};
+  for (const tipo of [
+    "receita_produto",
+    "tarifa_venda",
+    "frete_seller",
+    "custo_produto",
+    "imposto_interno",
+    "cancelamento_reembolso",
+  ]) {
+    totaisPorTipo[tipo] = round2(
+      componentes
+        .filter((component) => component.tipo === tipo && component.valor !== null)
+        .reduce((sum, component) => sum + Number(component.valor || 0), 0)
+    );
+  }
+
+  return {
+    pedidos,
+    itens,
+    componentes,
+    resumo: {
+      clienteSlug,
+      competencia,
+      pedidosTotal: pedidos.length,
+      pedidosConfiaveis: pedidos.filter((pedido) => pedido.confianca === "confiavel").length,
+      pedidosParciais: pedidos.filter((pedido) => pedido.confianca === "parcial").length,
+      pedidosBloqueados: pedidos.filter((pedido) => pedido.confianca === "bloqueado").length,
+      faturamento,
+      lucroContribuicao,
+      margemContribuicaoPercentual:
+        lucroContribuicao !== null && faturamento > 0
+          ? round2((lucroContribuicao / faturamento) * 100)
+          : null,
+      receitaConfiavel,
+      receitaParcial,
+      receitaBloqueada,
+      totaisPorTipo,
+    },
+  };
+}
+
+
+
 module.exports = {
   parseMeliRows,
   parseMeliCostRows,
@@ -579,4 +1166,5 @@ module.exports = {
   buildMeliBaseSheetRows,
   allocateByUnits,
   processMeli,
+  processMeliForCentralVendas,
 };
