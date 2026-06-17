@@ -64,6 +64,7 @@ const baseVinculosRoutes = require("./routes/baseVinculosRoutes");
 const assistenteBaseRoutes = require("./routes/assistenteBaseRoutes");
 const operacaoRoutes = require("./routes/operacaoRoutes");
 const cliente360Routes = require("./routes/cliente360Routes");
+const centralVendasRoutes = require("./routes/centralVendasRoutes");
 const adsRoutes = require("./routes/adsRoutes");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
 const meliAnunciosRoutes = require("./routes/meliAnunciosRoutes");
@@ -72,6 +73,7 @@ const clickupRoutes = require("./routes/clickupRoutes");
 const externalFirebaseRoutes = require("./routes/externalFirebaseRoutes");
 const tiktokShopRoutes = require("./routes/tiktokShopRoutes");
 const sellerRoutes = require("./routes/sellerRoutes");
+const { ensureCentralVendasTables } = require("./services/centralVendas/centralVendasRepository");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -441,6 +443,7 @@ app.use("/", basesRoutes);
 app.use("/base-vinculos", baseVinculosRoutes);
 app.use("/bases/assistente", assistenteBaseRoutes);
 app.use("/operacao/cliente-360", cliente360Routes);
+app.use("/operacao/central-vendas", centralVendasRoutes);
 app.use("/operacao", operacaoRoutes);
 app.use("/seller", sellerRoutes);
 app.use("/ads", adsRoutes);
@@ -1295,5 +1298,8 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`VenForce rodando em http://localhost:${PORT}`);
+  ensureCentralVendasTables().catch((err) => {
+    console.error("[centralVendas] erro ao garantir tabelas no boot:", err.message);
+  });
   startTokenRefreshWorker();
 });
