@@ -21,13 +21,13 @@ document.getElementById("year").textContent = new Date().getFullYear();
 // ─── Tabs ───
 function switchTab(tab) {
   const isLogin = tab === "login";
-  document.getElementById("login-form").style.display    = isLogin ? "" : "none";
-  document.getElementById("register-form").style.display = isLogin ? "none" : "";
+  document.getElementById("login-form").style.display         = isLogin ? "" : "none";
+  document.getElementById("alterar-senha-info").style.display = isLogin ? "none" : "";
   document.getElementById("tab-login").classList.toggle("active", isLogin);
-  document.getElementById("tab-register").classList.toggle("active", !isLogin);
-  document.getElementById("brand-subtitle").textContent  = isLogin
+  document.getElementById("tab-alterar-senha").classList.toggle("active", !isLogin);
+  document.getElementById("brand-subtitle").textContent = isLogin
     ? "Acesse o painel administrativo"
-    : "Crie sua conta gratuitamente";
+    : "Altere sua senha com o administrador";
   hideAlert("error");
   hideAlert("success");
 }
@@ -96,39 +96,3 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
   }
 });
 
-// ─── REGISTER ───
-document.getElementById("register-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  hideAllAlerts();
-
-  const nome  = document.getElementById("reg-nome").value.trim();
-  const email = document.getElementById("reg-email").value.trim();
-  const senha = document.getElementById("reg-senha").value;
-
-  if (!nome || !email || !senha) { showAlert("error", "Preencha todos os campos."); return; }
-  if (senha.length < 6)          { showAlert("error", "A senha deve ter ao menos 6 caracteres."); return; }
-
-  setLoading("btn-register", "btn-register-spinner", "btn-register-text", true, "Criar conta");
-
-  try {
-    const res  = await fetch(`${API_BASE}/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nome, email, password: senha }),
-    });
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      showAlert("error", data?.erro || data?.message || "Erro ao criar conta.");
-      return;
-    }
-
-    showAlert("success", "Conta criada! Faça login para continuar.");
-    document.getElementById("register-form").reset();
-    setTimeout(() => switchTab("login"), 1800);
-  } catch {
-    showAlert("error", "Não foi possível conectar ao servidor.");
-  } finally {
-    setLoading("btn-register", "btn-register-spinner", "btn-register-text", false, "Criar conta");
-  }
-});

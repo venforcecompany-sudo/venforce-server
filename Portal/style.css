@@ -5765,9 +5765,10 @@ div > .metricas-section-label {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.vu-dot-admin  { background: var(--vf-primary); }
-.vu-dot-membro { background: #9ca3af; }
-.vu-dot-seller { background: #0e7c67; }
+.vu-dot-admin   { background: var(--vf-primary); }
+.vu-dot-membro  { background: #9ca3af; }
+.vu-dot-seller  { background: #0e7c67; }
+.vu-dot-shopee  { background: #ee4d2d; }
 
 .vu-section-label {
   font-size: 0.78rem;

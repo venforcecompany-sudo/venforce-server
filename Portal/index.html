@@ -27,7 +27,7 @@
       <!-- Tabs -->
       <div class="vf-tabs">
         <button class="vf-tab active" id="tab-login" onclick="switchTab('login')">Entrar</button>
-        <button class="vf-tab" id="tab-register" onclick="switchTab('register')">Criar conta</button>
+        <button class="vf-tab" id="tab-alterar-senha" onclick="switchTab('alterar-senha')">Alterar senha</button>
       </div>
 
       <!-- Alert -->
@@ -41,7 +41,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
-        <span id="form-success-msg">Conta criada com sucesso.</span>
+        <span id="form-success-msg"></span>
       </div>
 
       <!-- LOGIN FORM -->
@@ -60,25 +60,12 @@
         </button>
       </form>
 
-      <!-- REGISTER FORM -->
-      <form id="register-form" novalidate style="display:none;">
-        <div class="vf-form-group">
-          <label for="reg-nome">Nome completo</label>
-          <input type="text" id="reg-nome" class="vf-input" placeholder="Seu nome" autocomplete="name" required>
-        </div>
-        <div class="vf-form-group">
-          <label for="reg-email">E-mail</label>
-          <input type="email" id="reg-email" class="vf-input" placeholder="seu@email.com" autocomplete="email" required>
-        </div>
-        <div class="vf-form-group">
-          <label for="reg-senha">Senha</label>
-          <input type="password" id="reg-senha" class="vf-input" placeholder="Mínimo 6 caracteres" autocomplete="new-password" required>
-        </div>
-        <button type="submit" id="btn-register" class="vf-btn-primary">
-          <span id="btn-register-text">Criar conta</span>
-          <span id="btn-register-spinner" class="btn-spinner" style="display:none;"></span>
-        </button>
-      </form>
+      <!-- ALTERAR SENHA -->
+      <div id="alterar-senha-info" style="display:none;padding:1.25rem 0 0.5rem;">
+        <p style="color:var(--vf-text-m);font-size:0.9rem;text-align:center;line-height:1.6;">
+          Para alterar sua senha, solicite ao administrador da VenForce.
+        </p>
+      </div>
 
       <div class="login-footer">
         Venforce &copy; <span id="year"></span> &mdash; Marketplace Management

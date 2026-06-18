@@ -124,8 +124,9 @@ async function loadUsuarios() {
 
 /* ── AGRUPAR POR ROLE ────────────────────────────────────── */
 function grupoDeRole(role) {
-  if (role === "admin")  return "admin";
-  if (role === "seller") return "seller";
+  if (role === "admin")            return "admin";
+  if (role === "seller")           return "seller";
+  if (role === "shopee_reviewer")  return "shopee_reviewer";
   return "membro"; // inclui "user" legado e "membro"
 }
 
@@ -138,10 +139,14 @@ function statusBadge(ativo) {
 
 /* ── BADGE DE ROLE ───────────────────────────────────────── */
 function roleBadge(role) {
-  const cls = role === "admin"  ? "is-admin"
-            : role === "seller" ? "is-seller"
+  const cls = role === "admin"           ? "is-admin"
+            : role === "seller"          ? "is-seller"
+            : role === "shopee_reviewer" ? "is-shopee"
             : "";
-  const label = role === "admin" ? "admin" : role === "seller" ? "seller" : "membro";
+  const label = role === "admin"           ? "admin"
+              : role === "seller"          ? "seller"
+              : role === "shopee_reviewer" ? "shopee reviewer"
+              : "membro";
   return `<span class="vf-role-pill ${cls}">${label}</span>`;
 }
 
@@ -150,9 +155,10 @@ function roleSelect(u) {
   const grupo = grupoDeRole(u.role);
   return `
     <select class="vu-role-select" data-uid="${esc(u.id)}" aria-label="Alterar role de ${esc(u.nome)}">
-      <option value="admin"  ${grupo === "admin"  ? "selected" : ""}>Admin</option>
-      <option value="membro" ${grupo === "membro" ? "selected" : ""}>Membro</option>
-      <option value="seller" ${grupo === "seller" ? "selected" : ""}>Seller</option>
+      <option value="admin"           ${grupo === "admin"           ? "selected" : ""}>Admin</option>
+      <option value="membro"          ${grupo === "membro"          ? "selected" : ""}>Membro</option>
+      <option value="seller"          ${grupo === "seller"          ? "selected" : ""}>Seller</option>
+      <option value="shopee_reviewer" ${grupo === "shopee_reviewer" ? "selected" : ""}>Shopee Reviewer</option>
     </select>`;
 }
 
@@ -287,11 +293,11 @@ function renderSecao(grupo, lista, vinculoMap, bodyId, countId) {
   });
 }
 
-/* ── RENDERIZAR AS 3 SEÇÕES ──────────────────────────────── */
+/* ── RENDERIZAR AS 4 SEÇÕES ──────────────────────────────── */
 function renderSections(lista, vinculoMap) {
   if (!lista.length) { showEmpty(); return; }
 
-  const grupos = { admin: [], membro: [], seller: [] };
+  const grupos = { admin: [], membro: [], seller: [], shopee_reviewer: [] };
   lista.forEach(u => {
     const g = grupoDeRole(u.role);
     grupos[g].push(u);
@@ -301,9 +307,10 @@ function renderSections(lista, vinculoMap) {
   const badge = document.getElementById("usuarios-count");
   if (badge) { badge.textContent = String(total); badge.style.display = "inline-block"; }
 
-  renderSecao("admin",  grupos.admin,  vinculoMap, "vu-body-admin",  "vu-count-admin");
-  renderSecao("membro", grupos.membro, vinculoMap, "vu-body-membro", "vu-count-membro");
-  renderSecao("seller", grupos.seller, vinculoMap, "vu-body-seller", "vu-count-seller");
+  renderSecao("admin",           grupos.admin,           vinculoMap, "vu-body-admin",  "vu-count-admin");
+  renderSecao("membro",          grupos.membro,          vinculoMap, "vu-body-membro", "vu-count-membro");
+  renderSecao("seller",          grupos.seller,          vinculoMap, "vu-body-seller", "vu-count-seller");
+  renderSecao("shopee_reviewer", grupos.shopee_reviewer, vinculoMap, "vu-body-shopee", "vu-count-shopee");
 
   showSections();
 }
