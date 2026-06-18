@@ -26,6 +26,7 @@ let marketplaceAtivo = "shopee"; // "shopee" | "meli"
 // Estado do último resultado baixável
 let _convBlobUrl  = null;
 let _convFilename = null;
+let _convJsonData = null;
 
 /** Paginação / busca — só afeta exibição */
 let tablePage = 1;
@@ -249,6 +250,7 @@ function base64ToBlob(base64, mimeType) {
 function limparConvBlob() {
   if (_convBlobUrl) { URL.revokeObjectURL(_convBlobUrl); _convBlobUrl = null; }
   _convFilename = null;
+  _convJsonData = null;
   const btn = document.getElementById("btn-download-conversao");
   if (btn) btn.style.display = "none";
 }
@@ -259,6 +261,44 @@ function setConvBlob(blob, filename) {
   _convFilename = filename || "conversao-resultado.xlsx";
   const btn = document.getElementById("btn-download-conversao");
   if (btn) btn.style.display = "";
+}
+
+function setConvData(data, filename) {
+  limparConvBlob();
+  _convJsonData = data;
+  _convFilename = filename || "conversao-resultado.csv";
+  const btn = document.getElementById("btn-download-conversao");
+  if (btn) btn.style.display = "";
+}
+
+function dadosParaCSV(data) {
+  function csvRow(cells) {
+    return cells.map((c) => {
+      const s = c == null ? "" : String(c);
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(",");
+  }
+  const rows = [];
+  if (Array.isArray(data.curvaAbcCompleta) && data.curvaAbcCompleta.length) {
+    rows.push(csvRow(["ID", "Produto", "Faturamento", "% Fat.", "Acum. Fat.", "Unidades", "% Unid.", "Acum. Unid.", "Curva Fat", "Curva Uni", "Final"]));
+    data.curvaAbcCompleta.forEach((r) => {
+      rows.push(csvRow([
+        r.id ?? r.productId ?? r.produtoId ?? "",
+        r.produto ?? r.nome ?? r.titulo ?? "",
+        r.faturamento ?? r.fat ?? r.faturamentoTotalItem ?? 0,
+        ((r.percentualFaturamento ?? r.percFat ?? r.pctFat ?? r.percentualFat ?? 0) * 100).toFixed(2) + "%",
+        ((r.acumuladoFaturamento ?? r.acumFat ?? r.acumuladoFat ?? 0) * 100).toFixed(2) + "%",
+        r.unidadesTotais ?? r.unidades ?? r.unid ?? r.unidadesPagas ?? 0,
+        ((r.percentualUnidades ?? r.percUnid ?? r.pctUnid ?? r.percentualUnid ?? 0) * 100).toFixed(2) + "%",
+        ((r.acumuladoUnidades ?? r.acumUnid ?? r.acumuladoUnid ?? 0) * 100).toFixed(2) + "%",
+        r.curvaFat || r.curva_fat || r.curvaFaturamento || "",
+        r.curvaUni || r.curva_uni || r.curvaUnidades || "",
+        r.curvaFinal || r.curva_final || r.curva || "",
+      ]));
+    });
+  }
+  return rows.join("\r\n");
 }
 
 function limparStats() {
@@ -547,6 +587,8 @@ async function processarArquivo() {
     if (b64) {
       const blob = base64ToBlob(b64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       setConvBlob(blob, `conversao-${marketplaceAtivo}-resultado.xlsx`);
+    } else if (dadosAtuais) {
+      setConvData(dadosAtuais, `conversao-${marketplaceAtivo}.csv`);
     }
   } catch (err) {
     setStatus("Erro: " + (err?.message || "Falha ao processar."), "danger");
@@ -601,6 +643,8 @@ async function compilarArquivos() {
     if (b64) {
       const blob = base64ToBlob(b64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       setConvBlob(blob, `conversao-${marketplaceAtivo}-compilado.xlsx`);
+    } else if (dadosAtuais) {
+      setConvData(dadosAtuais, `conversao-${marketplaceAtivo}.csv`);
     }
   } catch (err) {
     setStatus("Erro: " + (err?.message || "Falha ao compilar."), "danger");
@@ -755,13 +799,25 @@ document.querySelectorAll(".fc-mp-pill").forEach((pill) => {
 const btnDownloadConv = document.getElementById("btn-download-conversao");
 if (btnDownloadConv) {
   btnDownloadConv.addEventListener("click", () => {
-    if (!_convBlobUrl) return;
-    const a = document.createElement("a");
-    a.href = _convBlobUrl;
-    a.download = _convFilename || "conversao-resultado.xlsx";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    if (_convBlobUrl) {
+      const a = document.createElement("a");
+      a.href = _convBlobUrl;
+      a.download = _convFilename || "conversao-resultado.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } else if (_convJsonData) {
+      const csv = dadosParaCSV(_convJsonData);
+      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = _convFilename || "conversao-resultado.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
   });
 }
 
