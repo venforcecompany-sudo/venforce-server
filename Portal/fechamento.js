@@ -251,33 +251,69 @@ function limparConvBlob() {
   if (_convBlobUrl) { URL.revokeObjectURL(_convBlobUrl); _convBlobUrl = null; }
   _convFilename = null;
   _convJsonData = null;
+  hideConvDownloadButton();
+}
+
+function hideConvDownloadButton() {
   const btn = document.getElementById("btn-download-conversao");
   if (btn) btn.style.display = "none";
 }
 
-function setConvBlob(blob, filename) {
-  limparConvBlob();
-  _convBlobUrl = URL.createObjectURL(blob);
-  _convFilename = filename || "conversao-resultado.xlsx";
-  const btn = document.getElementById("btn-download-conversao");
-  if (btn) btn.style.display = "";
+function showConvDownloadButton() {
+  const btn = ensureConvDownloadButton();
+  btn.style.display = "inline-flex";
 }
 
-function setConvData(data, filename) {
-  limparConvBlob();
-  _convJsonData = data;
-  _convFilename = filename || "conversao-resultado.csv";
-  const btn = document.getElementById("btn-download-conversao");
-  if (btn) btn.style.display = "";
+let _convBtnWired = false;
+function ensureConvDownloadButton() {
+  let btn = document.getElementById("btn-download-conversao");
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "btn-download-conversao";
+    btn.className = "fc-btn fc-btn-primary fc-btn-main";
+    btn.textContent = "⬇ Baixar planilha";
+    btn.style.display = "none";
+    const statusEl = document.getElementById("fechamento-status");
+    const actionsEl = document.querySelector(".fc-actions");
+    if (statusEl && statusEl.parentNode) {
+      statusEl.parentNode.insertBefore(btn, statusEl.nextSibling);
+    } else if (actionsEl) {
+      actionsEl.appendChild(btn);
+    } else {
+      document.body.appendChild(btn);
+    }
+  }
+  if (!_convBtnWired) {
+    _convBtnWired = true;
+    btn.addEventListener("click", exportConvResultado);
+  }
+  return btn;
+}
+
+function domTabelaParaCSV() {
+  const table = document.querySelector("#fc-tab-content table.fc-table");
+  if (!table) return "";
+  function cell(el) {
+    const s = (el.textContent || "").replace(/\s+/g, " ").trim();
+    return s.includes(";") || s.includes('"') || s.includes("\n")
+      ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  const rows = [];
+  table.querySelectorAll("tr").forEach((tr) => {
+    const cells = Array.from(tr.querySelectorAll("th,td")).map(cell);
+    if (cells.length) rows.push(cells.join(";"));
+  });
+  return rows.join("\r\n");
 }
 
 function dadosParaCSV(data) {
   function csvRow(cells) {
     return cells.map((c) => {
       const s = c == null ? "" : String(c);
-      return s.includes(",") || s.includes('"') || s.includes("\n")
+      return s.includes(";") || s.includes('"') || s.includes("\n")
         ? '"' + s.replace(/"/g, '""') + '"' : s;
-    }).join(",");
+    }).join(";");
   }
   const rows = [];
   if (Array.isArray(data.curvaAbcCompleta) && data.curvaAbcCompleta.length) {
@@ -299,6 +335,45 @@ function dadosParaCSV(data) {
     });
   }
   return rows.join("\r\n");
+}
+
+function exportConvResultado() {
+  // Caminho 1: blob/XLSX do backend
+  if (_convBlobUrl) {
+    const a = document.createElement("a");
+    a.href = _convBlobUrl;
+    a.download = _convFilename || "conversao-resultado.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return;
+  }
+  // Caminho 2: dados JSON em memória
+  const src = _convJsonData || dadosAtuais;
+  if (src && typeof src === "object") {
+    const csv = dadosParaCSV(src);
+    if (csv) {
+      _downloadCSV(csv, _convFilename || "conversao-resultado.csv");
+      return;
+    }
+  }
+  // Caminho 3: fallback — ler a tabela renderizada no DOM
+  const csv = domTabelaParaCSV();
+  if (csv) {
+    _downloadCSV(csv, "conversao-resultado.csv");
+  }
+}
+
+function _downloadCSV(csv, filename) {
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 function limparStats() {
@@ -577,7 +652,7 @@ async function processarArquivo() {
     const json = await res.json();
     if (!res.ok) throw new Error(json.erro || json.message || "HTTP " + res.status);
 
-    dadosAtuais = json.data;
+    dadosAtuais = (json.data && typeof json.data === "object") ? json.data : json;
     tablePage = 1;
     renderResumo();
     renderTabContent();
@@ -585,11 +660,13 @@ async function processarArquivo() {
 
     const b64 = json.excelBase64 || json.data?.excelBase64;
     if (b64) {
-      const blob = base64ToBlob(b64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      setConvBlob(blob, `conversao-${marketplaceAtivo}-resultado.xlsx`);
-    } else if (dadosAtuais) {
-      setConvData(dadosAtuais, `conversao-${marketplaceAtivo}.csv`);
+      _convBlobUrl = URL.createObjectURL(
+        base64ToBlob(b64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      );
+      _convFilename = `conversao-${marketplaceAtivo}-resultado.xlsx`;
     }
+    _convJsonData = dadosAtuais;
+    showConvDownloadButton();
   } catch (err) {
     setStatus("Erro: " + (err?.message || "Falha ao processar."), "danger");
   } finally {
@@ -633,7 +710,7 @@ async function compilarArquivos() {
     const json = await res.json();
     if (!res.ok) throw new Error(json.erro || json.message || "HTTP " + res.status);
 
-    dadosAtuais = json.data;
+    dadosAtuais = (json.data && typeof json.data === "object") ? json.data : json;
     tablePage = 1;
     renderResumo();
     renderTabContent();
@@ -641,11 +718,13 @@ async function compilarArquivos() {
 
     const b64 = json.excelBase64 || json.data?.excelBase64;
     if (b64) {
-      const blob = base64ToBlob(b64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      setConvBlob(blob, `conversao-${marketplaceAtivo}-compilado.xlsx`);
-    } else if (dadosAtuais) {
-      setConvData(dadosAtuais, `conversao-${marketplaceAtivo}.csv`);
+      _convBlobUrl = URL.createObjectURL(
+        base64ToBlob(b64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      );
+      _convFilename = `conversao-${marketplaceAtivo}-compilado.xlsx`;
     }
+    _convJsonData = dadosAtuais;
+    showConvDownloadButton();
   } catch (err) {
     setStatus("Erro: " + (err?.message || "Falha ao compilar."), "danger");
   } finally {
@@ -796,30 +875,7 @@ document.querySelectorAll(".fc-mp-pill").forEach((pill) => {
   });
 });
 
-const btnDownloadConv = document.getElementById("btn-download-conversao");
-if (btnDownloadConv) {
-  btnDownloadConv.addEventListener("click", () => {
-    if (_convBlobUrl) {
-      const a = document.createElement("a");
-      a.href = _convBlobUrl;
-      a.download = _convFilename || "conversao-resultado.xlsx";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } else if (_convJsonData) {
-      const csv = dadosParaCSV(_convJsonData);
-      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = _convFilename || "conversao-resultado.csv";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    }
-  });
-}
+ensureConvDownloadButton();
 
 limparStats();
 renderTabContent();
