@@ -17,6 +17,8 @@ const API_BASE = "https://venforce-server.onrender.com";
 
 // Último fechamento processado (snapshot para entrega ao cliente)
 let ultimoFechamentoFinanceiro = null;
+let _xlsBlobUrl  = null;
+let _xlsFilename = null;
 
 function escapeHTML(s) {
   const d = document.createElement("div");
@@ -983,6 +985,20 @@ function base64ToBlob(base64, mimeType) {
   return new Blob([bytes], { type: mimeType });
 }
 
+function limparXlsBlob() {
+  if (_xlsBlobUrl) { URL.revokeObjectURL(_xlsBlobUrl); _xlsBlobUrl = null; }
+  _xlsFilename = null;
+  const btn = document.getElementById("btn-fin-download");
+  if (btn) btn.style.display = "none";
+}
+function setXlsBlob(blob, filename) {
+  limparXlsBlob();
+  _xlsBlobUrl = URL.createObjectURL(blob);
+  _xlsFilename = filename || "fechamento-resultado.xlsx";
+  const btn = document.getElementById("btn-fin-download");
+  if (btn) btn.style.display = "";
+}
+
 function todayISO() {
   const d = new Date();
   const y = d.getFullYear();
@@ -993,6 +1009,8 @@ function todayISO() {
 
 async function processarFechamentoFinanceiro() {
   if (!TOKEN) return;
+
+  limparXlsBlob();
 
   const marketplace = document.getElementById("fin-marketplace")?.value || "";
   if (!marketplace) { setStatus("Selecione o marketplace.", "danger"); return; }
@@ -1061,14 +1079,7 @@ async function processarFechamentoFinanceiro() {
 
     if (json.excelBase64) {
       const blob = base64ToBlob(json.excelBase64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `fechamento-${marketplace}-${todayISO()}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      setXlsBlob(blob, `fechamento-${marketplace}-${todayISO()}.xlsx`);
     }
   } catch (err) {
     setStatus("Erro: " + (err?.message || "Falha ao processar."), "danger");
@@ -1172,6 +1183,7 @@ if (btnFinLimpar) {
     const marketplace = document.getElementById("fin-marketplace");
     if (marketplace) marketplace.value = "";
 
+    limparXlsBlob();
     limparFinStats();
     limparFinResumoExecutivo();
     limparShopeeReconciliacao();
@@ -1185,6 +1197,19 @@ if (btnFinLimpar) {
     setLinkClienteOutput("");
     setStatusLinkCliente("", "");
     setStatus("", "");
+  });
+}
+
+const btnFinDownload = document.getElementById("btn-fin-download");
+if (btnFinDownload) {
+  btnFinDownload.addEventListener("click", () => {
+    if (!_xlsBlobUrl) return;
+    const a = document.createElement("a");
+    a.href = _xlsBlobUrl;
+    a.download = _xlsFilename || "fechamento-resultado.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   });
 }
 

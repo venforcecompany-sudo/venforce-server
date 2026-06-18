@@ -23,6 +23,10 @@ let abaAtiva = "abc";
 
 let marketplaceAtivo = "shopee"; // "shopee" | "meli"
 
+// Estado do último resultado baixável
+let _convBlobUrl  = null;
+let _convFilename = null;
+
 /** Paginação / busca — só afeta exibição */
 let tablePage = 1;
 
@@ -233,6 +237,28 @@ function setLoading(on) {
   if (!btn) return;
   btn.disabled = !!on;
   btn.textContent = on ? "Processando..." : "Analisar planilha única";
+}
+
+function base64ToBlob(base64, mimeType) {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+
+function limparConvBlob() {
+  if (_convBlobUrl) { URL.revokeObjectURL(_convBlobUrl); _convBlobUrl = null; }
+  _convFilename = null;
+  const btn = document.getElementById("btn-download-conversao");
+  if (btn) btn.style.display = "none";
+}
+
+function setConvBlob(blob, filename) {
+  limparConvBlob();
+  _convBlobUrl = URL.createObjectURL(blob);
+  _convFilename = filename || "conversao-resultado.xlsx";
+  const btn = document.getElementById("btn-download-conversao");
+  if (btn) btn.style.display = "";
 }
 
 function limparStats() {
@@ -491,6 +517,7 @@ async function processarArquivo() {
     return;
   }
 
+  limparConvBlob();
   setLoading(true);
   setStatus("Processando...", "info");
 
@@ -515,6 +542,12 @@ async function processarArquivo() {
     renderResumo();
     renderTabContent();
     setStatus("✓ Processado com sucesso.", "success");
+
+    const b64 = json.excelBase64 || json.data?.excelBase64;
+    if (b64) {
+      const blob = base64ToBlob(b64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      setConvBlob(blob, `conversao-${marketplaceAtivo}-resultado.xlsx`);
+    }
   } catch (err) {
     setStatus("Erro: " + (err?.message || "Falha ao processar."), "danger");
   } finally {
@@ -531,6 +564,8 @@ async function compilarArquivos() {
     setStatus("Selecione ao menos uma planilha.", "danger");
     return;
   }
+
+  limparConvBlob();
 
   const btnCompilar = document.getElementById("btn-compilar");
   if (btnCompilar) {
@@ -561,6 +596,12 @@ async function compilarArquivos() {
     renderResumo();
     renderTabContent();
     setStatus("✓ Compilado com sucesso.", "success");
+
+    const b64 = json.excelBase64 || json.data?.excelBase64;
+    if (b64) {
+      const blob = base64ToBlob(b64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      setConvBlob(blob, `conversao-${marketplaceAtivo}-compilado.xlsx`);
+    }
   } catch (err) {
     setStatus("Erro: " + (err?.message || "Falha ao compilar."), "danger");
   } finally {
@@ -621,6 +662,7 @@ if (btnLimpar) {
     tablePage = 1;
 
     dadosAtuais = null;
+    limparConvBlob();
     limparStats();
 
     const el = ensureTabContentEl();
@@ -693,6 +735,7 @@ document.querySelectorAll(".fc-mp-pill").forEach((pill) => {
     }
 
     dadosAtuais = null;
+    limparConvBlob();
     limparStats();
     tablePage = 1;
     const searchEl = document.getElementById("fc-table-search");
@@ -708,6 +751,19 @@ document.querySelectorAll(".fc-mp-pill").forEach((pill) => {
     renderTabContent();
   });
 });
+
+const btnDownloadConv = document.getElementById("btn-download-conversao");
+if (btnDownloadConv) {
+  btnDownloadConv.addEventListener("click", () => {
+    if (!_convBlobUrl) return;
+    const a = document.createElement("a");
+    a.href = _convBlobUrl;
+    a.download = _convFilename || "conversao-resultado.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+}
 
 limparStats();
 renderTabContent();
