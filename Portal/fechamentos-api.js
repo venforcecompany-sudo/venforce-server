@@ -507,6 +507,8 @@ function initFechamentosApi() {
     // Trocar competência reseta filtros e seleção.
     comp.addEventListener('change', () => { F.competencia = comp.value; F.selectedOrderId = null; resetFilters(); carregarTela(); });
   }
+  const controls = document.querySelector('.fapi-controls');
+  if (controls) montarBlocoImportacao(controls);
   carregarTela();
 }
 function resetFilters() {
@@ -929,6 +931,91 @@ function wireInteractions() {
     row.addEventListener('keydown', e => { if (e.key === 'Enter') abrirPedido(row.dataset.pedido); });
   });
   if (F.selectedOrderId) abrirPedido(F.selectedOrderId);
+}
+
+/* ── IMPORTAÇÃO DE VENDAS (admin only) ───────────────────── */
+function montarBlocoImportacao(controls) {
+  const user = JSON.parse(localStorage.getItem('vf-user') || '{}');
+  if (user.role !== 'admin') return;
+
+  if (!document.getElementById('fapi-import-styles')) {
+    const s = document.createElement('style');
+    s.id = 'fapi-import-styles';
+    s.textContent = [
+      '.fapi-import-block { border-left: 1px solid var(--vfop-border,#dde1e8); padding-left: 14px; margin-left: 2px; }',
+      '.fapi-import-row { display: flex; align-items: center; gap: 6px; }',
+      '.fapi-import-input { font-size: 11.5px; color: var(--vfop-muted,#5a6578); max-width: 200px; }',
+      '.fapi-import-status { font-size: 11.5px; font-weight: 600; margin-top: 4px; padding: 3px 7px; border-radius: 4px; }',
+      '.fapi-import-status--info    { color: #2563eb; background: #eff6ff; }',
+      '.fapi-import-status--ok      { color: #1a7a45; background: #f4fbf7; }',
+      '.fapi-import-status--warn    { color: #855100; background: #fdf9f0; }',
+      '.fapi-import-status--danger  { color: #9b1c1c; background: #fdf4f3; }',
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  const wrap = document.createElement('div');
+  wrap.id = 'fapi-import-block';
+  wrap.className = 'fapi-field fapi-import-block';
+  wrap.innerHTML = `
+    <label for="fapi-import-file">Importar vendas</label>
+    <div class="fapi-import-row">
+      <input type="file" id="fapi-import-file" accept=".xlsx" class="fapi-import-input">
+      <button id="fapi-import-btn" class="fapi-btn fapi-btn-primary fapi-btn-sm" type="button">Importar</button>
+    </div>
+    <div id="fapi-import-status" class="fapi-import-status" hidden></div>`;
+  controls.appendChild(wrap);
+
+  document.getElementById('fapi-import-btn').addEventListener('click', executarImportacao);
+}
+
+function setImportStatus(msg, tipo) {
+  const el = document.getElementById('fapi-import-status');
+  if (!el) return;
+  el.hidden = !msg;
+  el.textContent = msg || '';
+  el.className = `fapi-import-status fapi-import-status--${tipo || 'info'}`;
+}
+
+async function executarImportacao() {
+  if (!TOKEN) return;
+  const btn = document.getElementById('fapi-import-btn');
+  const fileInput = document.getElementById('fapi-import-file');
+
+  if (!F.cliente) { setImportStatus('Selecione um cliente antes de importar.', 'warn'); return; }
+  if (!F.competencia) { setImportStatus('Selecione a competência antes de importar.', 'warn'); return; }
+
+  const arquivo = fileInput?.files?.[0];
+  if (!arquivo) { setImportStatus('Selecione a planilha de vendas (.xlsx).', 'warn'); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Importando…'; }
+  setImportStatus('Importando…', 'info');
+
+  try {
+    const form = new FormData();
+    form.append('sales', arquivo);
+    form.append('competencia', F.competencia);
+
+    const res = await fetch(
+      `${API_BASE}/operacao/central-vendas/${encodeURIComponent(F.cliente.slug)}/importar-vendas`,
+      { method: 'POST', headers: { Authorization: 'Bearer ' + TOKEN }, body: form }
+    );
+
+    if (res.status === 401) { window.location.replace('index.html'); return; }
+
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.erro || json.error || json.message || `HTTP ${res.status}`);
+
+    const pedidos = json.pedidosPersistidos ?? '?';
+    setImportStatus(`✓ Importado: ${pedidos} pedido(s). Recarregando…`, 'ok');
+    if (fileInput) fileInput.value = '';
+    await carregarTela();
+    setImportStatus(`✓ ${pedidos} pedido(s) importados com sucesso.`, 'ok');
+  } catch (err) {
+    setImportStatus(`Erro: ${err?.message || 'Falha na importação.'}`, 'danger');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Importar'; }
+  }
 }
 
 /* ── BOOT ─────────────────────────────────────────────────── */
