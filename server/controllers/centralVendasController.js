@@ -41,38 +41,25 @@ function slugParam(req) {
   return String(req.params.slug || "").trim().toLowerCase();
 }
 
-function rowsFromBody(value) {
-  if (Array.isArray(value)) return value;
-  if (typeof value === "string" && value.trim()) {
+function parseSalesRows(req) {
+  // Aceita salesRowsRaw como JSON no body (testes/integração) ou upload de arquivo .xlsx
+  const salesRowsBody = req.body?.salesRowsRaw;
+  if (Array.isArray(salesRowsBody)) return salesRowsBody;
+  if (typeof salesRowsBody === "string" && salesRowsBody.trim()) {
     try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed : null;
-    } catch (_) {
-      return null;
-    }
-  }
-  return null;
-}
-
-function parseImportRows(req) {
-  const salesRowsBody = rowsFromBody(req.body?.salesRowsRaw);
-  const costRowsBody = rowsFromBody(req.body?.costRowsRaw);
-  if (salesRowsBody && costRowsBody) {
-    return { salesRowsRaw: salesRowsBody, costRowsRaw: costRowsBody };
+      const parsed = JSON.parse(salesRowsBody);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (_) { /* ignora, tenta arquivo */ }
   }
 
   const salesFile = req.files?.sales?.[0];
-  const costsFile = req.files?.costs?.[0];
-  if (!salesFile?.buffer || !costsFile?.buffer) {
-    const err = new Error("Arquivos sales e costs sao obrigatorios.");
+  if (!salesFile?.buffer) {
+    const err = new Error("Arquivo de vendas (sales) e obrigatorio.");
     err.statusCode = 400;
     throw err;
   }
 
-  return {
-    salesRowsRaw: parseSpreadsheet(salesFile.buffer, detectMeliHeaderRow(salesFile.buffer)),
-    costRowsRaw: parseSpreadsheet(costsFile.buffer),
-  };
+  return parseSpreadsheet(salesFile.buffer, detectMeliHeaderRow(salesFile.buffer));
 }
 
 async function obterCentralVendas(req, res) {
@@ -95,10 +82,9 @@ async function importarVendas(req, res) {
     const slug = slugParam(req);
     if (!slug) return responder(res, 400, { ok: false, erro: "slug e obrigatorio." });
 
-    const { salesRowsRaw, costRowsRaw } = parseImportRows(req);
+    const salesRowsRaw = parseSalesRows(req);
     const data = await centralVendasImportService.importarVendasMeli({
       salesRowsRaw,
-      costRowsRaw,
       clienteSlug: slug,
       competencia: req.body?.competencia || req.query?.competencia,
       marketplace: req.body?.marketplace || "meli",
