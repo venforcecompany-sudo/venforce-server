@@ -11,6 +11,10 @@ const {
 } = require("../services/automacoes/precificacaoService");
 
 const {
+  gerarPreviewPromocoesRetorno,
+} = require("../services/automacoes/promocoesRetornoService");
+
+const {
   salvarRelatorioAutomacoes,
   listarRelatoriosAutomacoes,
   listarPastasRelatorios,
@@ -70,6 +74,25 @@ async function previewPrecificacaoMlController(req, res) {
       pageRaw: req.query.page,
       limitRaw: req.query.limit,
       margemAlvoRaw: req.query.margemAlvo,
+    });
+
+    return res.json(resultado);
+  } catch (err) {
+    return responderErroService(res, err);
+  }
+}
+
+async function previewPromocoesRetornoController(req, res) {
+  try {
+    const resultado = await gerarPreviewPromocoesRetorno({
+      clienteSlugRaw: req.query.clienteSlug,
+      baseSlugRaw: req.query.baseSlug,
+      margemAlvoRaw: req.query.margemAlvo,
+      toleranciaRaw: req.query.tolerancia,
+      pageRaw: req.query.page,
+      limitRaw: req.query.limit,
+      campanhaRaw: req.query.campanha,
+      statusRaw: req.query.status,
     });
 
     return res.json(resultado);
@@ -309,6 +332,7 @@ module.exports = {
   listarClientesAutomacoesController,
   previewPrecificacaoController,
   previewPrecificacaoMlController,
+  previewPromocoesRetornoController,
   salvarRelatorioAutomacoesController,
   listarRelatoriosAutomacoesController,
   listarPastasRelatoriosController,

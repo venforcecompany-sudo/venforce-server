@@ -10,6 +10,7 @@ const {
   listarClientesAutomacoesController,
   previewPrecificacaoController,
   previewPrecificacaoMlController,
+  previewPromocoesRetornoController,
   salvarRelatorioAutomacoesController,
   listarRelatoriosAutomacoesController,
   listarPastasRelatoriosController,
@@ -32,6 +33,8 @@ router.get("/automacoes/clientes", authMiddleware, requireAutomacoesAccess, list
 router.get("/automacoes/precificacao/preview", authMiddleware, requireAutomacoesAccess, previewPrecificacaoController);
 
 router.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAutomacoesAccess, previewPrecificacaoMlController);
+
+router.get("/automacoes/promocoes-retorno/preview", authMiddleware, requireAutomacoesAccess, previewPromocoesRetornoController);
 
 router.post("/automacoes/relatorios", authMiddleware, requireAutomacoesAccess, salvarRelatorioAutomacoesController);
 
