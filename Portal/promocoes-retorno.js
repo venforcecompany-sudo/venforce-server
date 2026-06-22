@@ -507,7 +507,7 @@ function abrirModalCalculo(l) {
       <strong>Fonte financeira:</strong> último relatório salvo
       ${relId ? `(Relatório #${escapeHTML(String(relId))} · ${escapeHTML(relDataFmt)})` : "— nenhum relatório encontrado"}<br>
       <strong>Fórmula (planilha):</strong>
-      LC com rebate = preço − preço×imposto − preço×comissão − frete − taxa fixa − custo + retorno ML
+      LC com retorno = preço − preço×imposto − preço×comissão − frete − taxa fixa − custo + taxa de retorno
     </div>
     <div class="vf-promo-calc-grid">
       ${row("Relatório usado", relId ? `#${escapeHTML(String(relId))}` : "—", true)}
@@ -520,11 +520,10 @@ function abrirModalCalculo(l) {
       ${row("Comissão % (relatório)", pctRaw(l.comissaoPercentual))}
       ${row("Comissão R$", brl(l.comissaoValor))}
       ${row("Taxa fixa (relatório)", brl(l.taxaFixa))}
-      ${row("Retorno ML", brl(l.retornoMl), true)}
-      ${row("LC sem rebate", brl(lcSemR), true, true)}
-      ${row("MC sem rebate", pctFrac(mcSemR))}
-      ${row("LC com rebate", brl(lcComR), true)}
-      ${row("MC com rebate", pctFrac(mcComR), true)}
+      ${row("LC sem retorno", brl(lcSemR), true, true)}
+      ${row("Taxa de retorno", brl(l.retornoMl), true)}
+      ${row("LC com retorno = LC sem retorno + taxa de retorno", brl(lcComR), true)}
+      ${row("MC com retorno = LC com retorno / preço promoção", pctFrac(mcComR), true)}
       ${row("Margem alvo", pctFrac(l.margemAlvo), false, true)}
       ${row("Diferença p.p. vs alvo", pp(l.diferencaPp))}
     </div>
