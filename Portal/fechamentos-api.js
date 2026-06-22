@@ -988,6 +988,7 @@ function montarBlocoImportacao(controls) {
       <label for="fapi-import-file" class="fapi-import-label">Escolher .xlsx</label>
       <span id="fapi-import-fname" class="fapi-import-fname"></span>
       <button id="fapi-import-btn" class="fapi-btn fapi-btn-primary fapi-btn-sm" type="button">Importar</button>
+      <button id="fapi-sync-btn" class="fapi-btn fapi-btn-ghost fapi-btn-sm" type="button" title="Busca os pedidos direto da API do Mercado Livre (sem planilha)">Sincronizar via API</button>
     </div>
     <div id="fapi-import-status" class="fapi-import-status" hidden></div>`;
   controls.appendChild(wrap);
@@ -1003,6 +1004,7 @@ function montarBlocoImportacao(controls) {
   });
 
   document.getElementById('fapi-import-btn').addEventListener('click', executarImportacao);
+  document.getElementById('fapi-sync-btn').addEventListener('click', executarSincronizacao);
 }
 
 function setImportStatus(msg, tipo) {
@@ -1057,6 +1059,46 @@ async function executarImportacao() {
     setImportStatus(`Erro: ${err?.message || 'Falha na importação.'}`, 'danger');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Importar'; }
+  }
+}
+
+/* Sincronização API-first: busca pedidos direto da Orders API do ML, sem planilha.
+   Custo continua vindo da base vinculada oficial do cliente. */
+async function executarSincronizacao() {
+  if (!TOKEN) return;
+  const btn = document.getElementById('fapi-sync-btn');
+
+  if (!F.cliente) { setImportStatus('Selecione um cliente antes de sincronizar.', 'warn'); return; }
+  if (!F.competencia) { setImportStatus('Selecione a competência antes de sincronizar.', 'warn'); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Sincronizando…'; }
+  setImportStatus('Sincronizando pedidos via API do Mercado Livre…', 'info');
+
+  try {
+    const res = await fetch(
+      `${API_BASE}/operacao/central-vendas/${encodeURIComponent(F.cliente.slug)}/sincronizar`,
+      {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ competencia: F.competencia }),
+      }
+    );
+
+    if (res.status === 401) { window.location.replace('index.html'); return; }
+
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.erro || json.error || json.message || `HTTP ${res.status}`);
+
+    const pedidos = json.pedidosPersistidos ?? '?';
+    const orders = json.ordersEncontrados ?? '?';
+    const baseTxt = json.baseVinculada ? `base "${json.baseVinculada.nome}"` : 'sem base vinculada';
+    setImportStatus(`✓ Sincronizado: ${pedidos} pedido(s) de ${orders} da API · ${baseTxt}. Recarregando…`, 'ok');
+    await carregarTela();
+    setImportStatus(`✓ ${pedidos} pedido(s) sincronizados via API (${baseTxt}).`, 'ok');
+  } catch (err) {
+    setImportStatus(`Erro: ${err?.message || 'Falha na sincronização.'}`, 'danger');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Sincronizar via API'; }
   }
 }
 

@@ -142,6 +142,10 @@ function buildPedidoContrato(pedido, itens, componentes) {
   );
   const firstItem = pedidoItens[0] || null;
   const confianca = rowValue(pedido, "confianca", "confianca");
+  // logistica/full so existem no fluxo API-first (Orders API); planilha = null.
+  const pedidoPayload = jsonValue(rowValue(pedido, "payload", "payload_json"), {});
+  const logistica = pedidoPayload.logistica ?? null;
+  const full = pedidoPayload.full ?? (logistica ? logistica === "full" : null);
   const frete = sumComponents(pedidoComponentes, "frete_seller");
   const taxas = sumComponents(pedidoComponentes, "tarifa_venda");
   const custo = sumComponents(pedidoComponentes, "custo_produto");
@@ -174,8 +178,8 @@ function buildPedidoContrato(pedido, itens, componentes) {
     resultadoStatus: confidenceToResultadoStatus(confianca),
     confianca,
     pendencias: jsonValue(rowValue(pedido, "pendencias", "pendencias_json"), []),
-    logistica: null,
-    full: null,
+    logistica,
+    full,
     adsStatus: "ausente",
     itens: pedidoItens.map((item) => ({
       id: rowValue(item, "itemId", "item_id"),

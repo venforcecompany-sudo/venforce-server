@@ -1,6 +1,7 @@
 const { parseSpreadsheet, detectMeliHeaderRow } = require("../utils/excelUtils");
 const centralVendasService = require("../services/centralVendas/centralVendasService");
 const centralVendasImportService = require("../services/centralVendas/centralVendasImportService");
+const centralVendasSyncService = require("../services/centralVendas/centralVendasSyncService");
 
 const CAMPOS_SENSIVEIS = new Set([
   "access_token", "refresh_token", "api_key", "apikey", "password",
@@ -104,8 +105,27 @@ async function importarVendas(req, res) {
   }
 }
 
+async function sincronizarVendas(req, res) {
+  try {
+    const slug = slugParam(req);
+    if (!slug) return responder(res, 400, { ok: false, erro: "slug e obrigatorio." });
+
+    const competencia = req.body?.competencia || req.query?.competencia;
+
+    const data = await centralVendasSyncService.sincronizarVendasMeli({
+      clienteSlug: slug,
+      competencia,
+      marketplace: req.body?.marketplace || "meli",
+    });
+    return responder(res, 201, data);
+  } catch (err) {
+    return tratarErro(res, err, "sincronizarVendas");
+  }
+}
+
 module.exports = {
   obterCentralVendas,
   importarVendas,
+  sincronizarVendas,
   maskSensitiveData,
 };

@@ -24,4 +24,13 @@ router.post(
   controller.importarVendas
 );
 
+// API-first: busca pedidos na Orders API do ML e persiste no banco.
+// Fluxo pesado (chama API ML); GET da Central continua lendo so do banco.
+router.post(
+  "/:slug/sincronizar",
+  authMiddleware,
+  requireAdmin,
+  controller.sincronizarVendas
+);
+
 module.exports = router;

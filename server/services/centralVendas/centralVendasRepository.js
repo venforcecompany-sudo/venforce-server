@@ -177,7 +177,7 @@ async function insertComponente({
   return result.rows[0];
 }
 
-async function persistCentralVendasImport({ cliente, marketplace, competencia, motorPayload, resumo }) {
+async function persistCentralVendasImport({ cliente, marketplace, competencia, motorPayload, resumo, fonte }) {
   return withTransaction(async (db) => {
     const importacao = await createImport({
       cliente,
@@ -185,6 +185,7 @@ async function persistCentralVendasImport({ cliente, marketplace, competencia, m
       competencia,
       resumo,
       payload: motorPayload,
+      fonte,
     }, db);
 
     const pedidoRowsById = new Map();
