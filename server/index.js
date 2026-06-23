@@ -1257,6 +1257,80 @@ app.delete("/usuarios/:id", authMiddleware, requireAdmin, async (req, res) => {
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
+function gerarExcelBase64Conversao(resultado) {
+  try {
+    const wb = XLSX.utils.book_new();
+
+    const pct2 = (v) => (v != null ? (v * 100).toFixed(2) + "%" : "0.00%");
+
+    if (Array.isArray(resultado.curvaAbcCompleta) && resultado.curvaAbcCompleta.length) {
+      const rows = resultado.curvaAbcCompleta.map((r) => ({
+        ID: r.id ?? "",
+        Produto: r.produto ?? "",
+        Faturamento: r.faturamento ?? 0,
+        "% Fat.": pct2(r.percentualFaturamento),
+        "Acum. Fat.": pct2(r.acumuladoFaturamento),
+        Unidades: r.unidades ?? 0,
+        "% Unid.": pct2(r.percentualUnidades),
+        "Acum. Unid.": pct2(r.acumuladoUnidades),
+        "Curva Fat": r.curvaFat ?? "",
+        "Curva Uni": r.curvaUni ?? "",
+        Final: r.curvaFinal ?? "",
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Curva ABC");
+    }
+
+    if (Array.isArray(resultado.sugestaoKits) && resultado.sugestaoKits.length) {
+      const rows = resultado.sugestaoKits.map((r) => ({
+        ID: r.id ?? "",
+        Produto: r.produto ?? "",
+        "Pedidos Pagos": r.pedidosPagos ?? 0,
+        "Unidades Pagas": r.unidadesPagas ?? 0,
+        "Unid./Pedido": r.unidadesPorPedido != null ? Number(r.unidadesPorPedido).toFixed(2) : "0.00",
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Kits");
+    }
+
+    for (const [key, label] of [
+      ["adsObrigatorios", "ADS Obrigatórios"],
+      ["adsPrioridade34", "ADS Prioridade 3-4"],
+      ["adsPrioridade24", "ADS Prioridade 2-4"],
+    ]) {
+      if (Array.isArray(resultado[key]) && resultado[key].length) {
+        const rows = resultado[key].map((r) => ({
+          ID: r.id ?? "",
+          Produto: r.produto ?? "",
+          Cliques: r.cliques ?? 0,
+          CTR: pct2(r.ctr),
+          Conversão: pct2(r.conversao),
+          Motivo: r.motivo ?? "",
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), label);
+      }
+    }
+
+    for (const [key, label, col] of [
+      ["produtosMaisImpressoes", "Impressões", "Impressões"],
+      ["produtosMaisCliques", "Cliques", "Cliques"],
+      ["produtosMaiorCtr", "CTR", "CTR"],
+      ["produtosMaiorConversao", "Conversão", "Conversão"],
+    ]) {
+      if (Array.isArray(resultado[key]) && resultado[key].length) {
+        const rows = resultado[key].map((r) => ({ ID: r.id ?? "", Produto: r.produto ?? "", [col]: r.valor ?? 0 }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), label);
+      }
+    }
+
+    if (!wb.SheetNames.length) return null;
+
+    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    return buf.toString("base64");
+  } catch (e) {
+    console.error("[gerarExcelBase64Conversao]", e);
+    return null;
+  }
+}
+
 app.post("/fechamentos/upload", authMiddleware, upload.single("file"), (req, res) => {
   const marketplace = String(req.body.marketplace || "shopee").trim().toLowerCase();
   const buffer = req.file && req.file.buffer;
@@ -1273,7 +1347,9 @@ app.post("/fechamentos/upload", authMiddleware, upload.single("file"), (req, res
     return res.status(400).json({ erro: resultado.error || resultado.erro });
   }
 
-  return res.json({ data: resultado });
+  const excelBase64 = gerarExcelBase64Conversao(resultado);
+
+  return res.json({ data: resultado, excelBase64: excelBase64 || null });
 });
 
 app.post("/fechamentos/compilar", authMiddleware, upload.array("files", 20), (req, res) => {
@@ -1292,7 +1368,9 @@ app.post("/fechamentos/compilar", authMiddleware, upload.array("files", 20), (re
     return res.status(400).json({ erro: resultado.error || resultado.erro });
   }
 
-  return res.json({ data: resultado });
+  const excelBase64 = gerarExcelBase64Conversao(resultado);
+
+  return res.json({ data: resultado, excelBase64: excelBase64 || null });
 });
 /* ========================= SHOPEE ========================= */
 // Lê uma planilha Order.all e retorna apenas pedidos cancelados

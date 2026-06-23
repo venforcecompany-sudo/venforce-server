@@ -26,7 +26,6 @@ let marketplaceAtivo = "shopee"; // "shopee" | "meli"
 // Estado do último resultado baixável
 let _convBlobUrl  = null;
 let _convFilename = null;
-let _convJsonData = null;
 
 /** Paginação / busca — só afeta exibição */
 let tablePage = 1;
@@ -250,7 +249,6 @@ function base64ToBlob(base64, mimeType) {
 function limparConvBlob() {
   if (_convBlobUrl) { URL.revokeObjectURL(_convBlobUrl); _convBlobUrl = null; }
   _convFilename = null;
-  _convJsonData = null;
   hideConvDownloadButton();
 }
 
@@ -291,89 +289,17 @@ function ensureConvDownloadButton() {
   return btn;
 }
 
-function domTabelaParaCSV() {
-  const table = document.querySelector("#fc-tab-content table.fc-table");
-  if (!table) return "";
-  function cell(el) {
-    const s = (el.textContent || "").replace(/\s+/g, " ").trim();
-    return s.includes(";") || s.includes('"') || s.includes("\n")
-      ? '"' + s.replace(/"/g, '""') + '"' : s;
-  }
-  const rows = [];
-  table.querySelectorAll("tr").forEach((tr) => {
-    const cells = Array.from(tr.querySelectorAll("th,td")).map(cell);
-    if (cells.length) rows.push(cells.join(";"));
-  });
-  return rows.join("\r\n");
-}
-
-function dadosParaCSV(data) {
-  function csvRow(cells) {
-    return cells.map((c) => {
-      const s = c == null ? "" : String(c);
-      return s.includes(";") || s.includes('"') || s.includes("\n")
-        ? '"' + s.replace(/"/g, '""') + '"' : s;
-    }).join(";");
-  }
-  const rows = [];
-  if (Array.isArray(data.curvaAbcCompleta) && data.curvaAbcCompleta.length) {
-    rows.push(csvRow(["ID", "Produto", "Faturamento", "% Fat.", "Acum. Fat.", "Unidades", "% Unid.", "Acum. Unid.", "Curva Fat", "Curva Uni", "Final"]));
-    data.curvaAbcCompleta.forEach((r) => {
-      rows.push(csvRow([
-        r.id ?? r.productId ?? r.produtoId ?? "",
-        r.produto ?? r.nome ?? r.titulo ?? "",
-        r.faturamento ?? r.fat ?? r.faturamentoTotalItem ?? 0,
-        ((r.percentualFaturamento ?? r.percFat ?? r.pctFat ?? r.percentualFat ?? 0) * 100).toFixed(2) + "%",
-        ((r.acumuladoFaturamento ?? r.acumFat ?? r.acumuladoFat ?? 0) * 100).toFixed(2) + "%",
-        r.unidadesTotais ?? r.unidades ?? r.unid ?? r.unidadesPagas ?? 0,
-        ((r.percentualUnidades ?? r.percUnid ?? r.pctUnid ?? r.percentualUnid ?? 0) * 100).toFixed(2) + "%",
-        ((r.acumuladoUnidades ?? r.acumUnid ?? r.acumuladoUnid ?? 0) * 100).toFixed(2) + "%",
-        r.curvaFat || r.curva_fat || r.curvaFaturamento || "",
-        r.curvaUni || r.curva_uni || r.curvaUnidades || "",
-        r.curvaFinal || r.curva_final || r.curva || "",
-      ]));
-    });
-  }
-  return rows.join("\r\n");
-}
-
 function exportConvResultado() {
-  // Caminho 1: blob/XLSX do backend
   if (_convBlobUrl) {
     const a = document.createElement("a");
     a.href = _convBlobUrl;
-    a.download = _convFilename || "conversao-resultado.xlsx";
+    a.download = _convFilename || "fechamento-conversao.xlsx";
     document.body.appendChild(a);
     a.click();
     a.remove();
     return;
   }
-  // Caminho 2: dados JSON em memória
-  const src = _convJsonData || dadosAtuais;
-  if (src && typeof src === "object") {
-    const csv = dadosParaCSV(src);
-    if (csv) {
-      _downloadCSV(csv, _convFilename || "conversao-resultado.csv");
-      return;
-    }
-  }
-  // Caminho 3: fallback — ler a tabela renderizada no DOM
-  const csv = domTabelaParaCSV();
-  if (csv) {
-    _downloadCSV(csv, "conversao-resultado.csv");
-  }
-}
-
-function _downloadCSV(csv, filename) {
-  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  setStatus("Não foi possível gerar XLSX para download.", "danger");
 }
 
 function limparStats() {
@@ -663,9 +589,9 @@ async function processarArquivo() {
       _convBlobUrl = URL.createObjectURL(
         base64ToBlob(b64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
       );
-      _convFilename = `conversao-${marketplaceAtivo}-resultado.xlsx`;
+      const hoje = new Date().toISOString().slice(0, 10);
+      _convFilename = `fechamento-conversao-${hoje}.xlsx`;
     }
-    _convJsonData = dadosAtuais;
     showConvDownloadButton();
   } catch (err) {
     setStatus("Erro: " + (err?.message || "Falha ao processar."), "danger");
@@ -721,9 +647,9 @@ async function compilarArquivos() {
       _convBlobUrl = URL.createObjectURL(
         base64ToBlob(b64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
       );
-      _convFilename = `conversao-${marketplaceAtivo}-compilado.xlsx`;
+      const hoje = new Date().toISOString().slice(0, 10);
+      _convFilename = `fechamento-conversao-${hoje}.xlsx`;
     }
-    _convJsonData = dadosAtuais;
     showConvDownloadButton();
   } catch (err) {
     setStatus("Erro: " + (err?.message || "Falha ao compilar."), "danger");
