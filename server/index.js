@@ -152,7 +152,36 @@ function obterValorColuna(row, nomes) {
   return "";
 }
 
-function parsePlanilha(buffer, originalName) {
+// Candidatos de cabeçalho para o ID de variação Shopee (id_model).
+const CANDIDATOS_ID_MODEL_HEADER = [
+  "model id", "model_id", "modelid", "id model", "id_model", "id do modelo",
+  "id da variacao", "id da variação", "variation id", "variante identificador",
+];
+
+function limparIdModel(valor) {
+  let limpo = String(valor == null ? "" : valor).replace(/^﻿/, "").trim();
+  if (!limpo) return null;
+  limpo = limpo.replace(/^['"]+|['"]+$/g, "").trim();
+  if (!limpo) return null;
+  if (/^\d+\.0+$/.test(limpo)) limpo = limpo.replace(/\.0+$/, "");
+  const sci = limpo.replace(",", ".");
+  if (/^\d+(\.\d+)?[eE]\+?\d+$/.test(sci)) {
+    const n = Number(sci);
+    if (Number.isFinite(n)) return Math.trunc(n).toString();
+  }
+  return limpo || null;
+}
+
+function extrairIdModel(row) {
+  for (const [k, v] of Object.entries(row)) {
+    if (CANDIDATOS_ID_MODEL_HEADER.includes(String(k).trim().toLowerCase())) {
+      return limparIdModel(v);
+    }
+  }
+  return null;
+}
+
+function parsePlanilha(buffer, originalName, marketplace) {
   const ext = path.extname(originalName).toLowerCase();
   if (![".xlsx", ".xls", ".csv"].includes(ext)) throw new Error("Formato inválido. Envie .xlsx, .xls ou .csv");
   const workbook = XLSX.read(buffer, { type: "buffer" });
@@ -161,13 +190,13 @@ function parsePlanilha(buffer, originalName) {
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets[primeiraAba], { defval: "" });
   if (!rows.length) throw new Error("A planilha está vazia");
 
-  // Detectar se é planilha Shopee (tem coluna "model id" ou variantes).
+  // Marketplace explícito (vindo do body) tem prioridade. Sem ele, mantém a
+  // detecção automática por cabeçalho ("model id" e variantes).
   // Em Shopee os IDs são numéricos do próprio Shopee — NÃO devem receber MLB.
+  const mktExplicito = ["meli", "shopee"].includes(marketplace) ? marketplace : null;
   const headers = Object.keys(rows[0] || {}).map((h) => h.trim().toLowerCase());
-  const isShopee = headers.some((h) =>
-    h === "model id" || h === "model_id" || h === "modelid" ||
-    h === "id da variacao" || h === "id da variação"
-  );
+  const headerShopee = headers.some((h) => CANDIDATOS_ID_MODEL_HEADER.includes(h));
+  const isShopee = mktExplicito ? mktExplicito === "shopee" : headerShopee;
 
   const resultado = [];
   for (const row of rows) {
@@ -197,7 +226,9 @@ function parsePlanilha(buffer, originalName) {
       produto_id: id,
       custo_produto: numeroSeguro(obterValorColuna(r, ["Custo", "custo_produto", "CUSTO_PRODUTO", "custo", "CUSTO", "Custo Produto"])),
       imposto_percentual: normalizarImposto(obterValorColuna(r, ["Imposto", "imposto_percentual", "IMPOSTO_PERCENTUAL", "imposto", "IMPOSTO", "Imposto Percentual"])),
-      taxa_fixa: numeroSeguro(obterValorColuna(r, ["Taxa", "taxa_fixa", "TAXA_FIXA", "taxa", "TAXA", "Taxa Fixa"]))
+      taxa_fixa: numeroSeguro(obterValorColuna(r, ["Taxa", "taxa_fixa", "TAXA_FIXA", "taxa", "TAXA", "Taxa Fixa"])),
+      // id_model só é preenchido para Shopee (ID de variação).
+      id_model: isShopee ? extrairIdModel(r) : null,
     });
   }
   if (!resultado.length) throw new Error("Nenhum ID válido encontrado na planilha");
@@ -376,8 +407,18 @@ CREATE TABLE IF NOT EXISTS callbacks (
     `);   
 
     await pool.query(`
-  ALTER TABLE bases 
+  ALTER TABLE bases
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+`);
+
+    await pool.query(`
+  ALTER TABLE bases
+  ADD COLUMN IF NOT EXISTS marketplace TEXT NOT NULL DEFAULT 'meli';
+`);
+
+    await pool.query(`
+  ALTER TABLE custos
+  ADD COLUMN IF NOT EXISTS id_model TEXT;
 `);
 
     await pool.query(`
@@ -526,7 +567,7 @@ app.get("/api/bases/:baseSlug", apiKeyMiddleware, async (req, res) => {
     const inicio = Date.now();
     const slug = normalizarSlug(req.params.baseSlug);
     const baseResult = await pool.query(
-      "SELECT id, nome, slug FROM bases WHERE slug = $1 AND ativo = true",
+      "SELECT id, nome, slug, marketplace FROM bases WHERE slug = $1 AND ativo = true",
       [slug]
     );
     if (!baseResult.rows.length) {
@@ -560,7 +601,7 @@ app.get("/api/bases/:baseSlug", apiKeyMiddleware, async (req, res) => {
        req.headers["x-forwarded-for"] || req.socket.remoteAddress]
     ).catch(() => {});
 
-    res.json({ ok: true, baseId: base.slug, nome: base.nome, total: custos.rows.length, dados });
+    res.json({ ok: true, baseId: base.slug, nome: base.nome, marketplace: base.marketplace || "meli", total: custos.rows.length, dados });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -570,7 +611,7 @@ app.get("/api/bases/:baseSlug", apiKeyMiddleware, async (req, res) => {
 app.get("/bases", authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, slug, nome, ativo, created_at, updated_at FROM bases ORDER BY created_at DESC"
+      "SELECT id, slug, nome, ativo, marketplace, created_at, updated_at FROM bases ORDER BY created_at DESC"
     );
     res.json({ ok: true, bases: result.rows });
   } catch (err) {
@@ -583,13 +624,13 @@ app.get("/bases/:baseId", authMiddleware, async (req, res) => {
   try {
     const slug = normalizarSlug(req.params.baseId);
     const acesso = await pool.query(
-      `SELECT id, nome, slug FROM bases WHERE slug = $1 AND ativo = true`,
+      `SELECT id, nome, slug, marketplace FROM bases WHERE slug = $1 AND ativo = true`,
       [slug]
     );
     if (!acesso.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada" });
     const base = acesso.rows[0];
     const custos = await pool.query(
-      "SELECT produto_id, custo_produto, imposto_percentual, taxa_fixa FROM custos WHERE base_id = $1",
+      "SELECT produto_id, custo_produto, imposto_percentual, taxa_fixa, id_model FROM custos WHERE base_id = $1",
       [base.id]
     );
     const dados = {};
@@ -597,10 +638,11 @@ app.get("/bases/:baseId", authMiddleware, async (req, res) => {
       dados[row.produto_id] = {
         custo_produto: parseFloat(row.custo_produto),
         imposto_percentual: parseFloat(row.imposto_percentual),
-        taxa_fixa: parseFloat(row.taxa_fixa)
+        taxa_fixa: parseFloat(row.taxa_fixa),
+        id_model: row.id_model || null
       };
     }
-    res.json({ ok: true, baseId: base.slug, nome: base.nome, total: custos.rows.length, dados });
+    res.json({ ok: true, baseId: base.slug, nome: base.nome, marketplace: base.marketplace || "meli", total: custos.rows.length, dados });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -613,13 +655,22 @@ app.post("/importar-base", authMiddleware, upload.single("arquivo"), async (req,
     const nomeBaseOriginal = String(req.body.nomeBase || "").trim();
     if (!nomeBaseOriginal) return res.status(400).json({ ok: false, erro: "Nome da base é obrigatório" });
     const slug = normalizarSlug(nomeBaseOriginal);
-    const linhas = parsePlanilha(req.file.buffer, req.file.originalname);
+
+    // marketplace: validado quando presente; ausente → 'meli' (não-regressão).
+    const marketplaceRaw = String(req.body.marketplace || "").trim().toLowerCase();
+    if (marketplaceRaw && !["meli", "shopee"].includes(marketplaceRaw)) {
+      return res.status(400).json({ ok: false, erro: "marketplace inválido. Use 'meli' ou 'shopee'." });
+    }
+    const marketplace = marketplaceRaw || "meli";
+
+    const linhas = parsePlanilha(req.file.buffer, req.file.originalname, marketplace);
 
     const confirmar = req.body.confirmar === "true";
     if (!confirmar) {
       return res.json({
         ok: true,
-        preview: linhas.slice(0, 10).map(l => ({ id: l.produto_id, custo_produto: l.custo_produto, imposto_percentual: l.imposto_percentual, taxa_fixa: l.taxa_fixa })),
+        marketplace,
+        preview: linhas.slice(0, 10).map(l => ({ id: l.produto_id, custo_produto: l.custo_produto, imposto_percentual: l.imposto_percentual, taxa_fixa: l.taxa_fixa, id_model: l.id_model || null })),
         total: linhas.length, idsDetectados: linhas.length, colunaId: "id / sku"
       });
     }
@@ -628,8 +679,8 @@ app.post("/importar-base", authMiddleware, upload.single("arquivo"), async (req,
     try {
       await client.query("BEGIN");
       const baseResult = await client.query(
-        `INSERT INTO bases (slug, nome) VALUES ($1, $2) ON CONFLICT (slug) DO UPDATE SET nome = EXCLUDED.nome, ativo = true, updated_at = CURRENT_TIMESTAMP RETURNING id`,
-        [slug, nomeBaseOriginal]
+        `INSERT INTO bases (slug, nome, marketplace) VALUES ($1, $2, $3) ON CONFLICT (slug) DO UPDATE SET nome = EXCLUDED.nome, marketplace = EXCLUDED.marketplace, ativo = true, updated_at = CURRENT_TIMESTAMP RETURNING id`,
+        [slug, nomeBaseOriginal, marketplace]
       );
       const baseId = baseResult.rows[0].id;
       // vincular base a TODOS usuários
@@ -646,17 +697,17 @@ for (const u of users.rows) {
       await client.query("DELETE FROM custos WHERE base_id = $1", [baseId]);
       for (const linha of linhas) {
         await client.query(
-          `INSERT INTO custos (base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa)
-           VALUES ($1, $2, $3, $4, $5) ON CONFLICT (base_id, produto_id) DO UPDATE SET
-           custo_produto = EXCLUDED.custo_produto, imposto_percentual = EXCLUDED.imposto_percentual, taxa_fixa = EXCLUDED.taxa_fixa`,
-          [baseId, linha.produto_id, linha.custo_produto, linha.imposto_percentual, linha.taxa_fixa]
+          `INSERT INTO custos (base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa, id_model)
+           VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (base_id, produto_id) DO UPDATE SET
+           custo_produto = EXCLUDED.custo_produto, imposto_percentual = EXCLUDED.imposto_percentual, taxa_fixa = EXCLUDED.taxa_fixa, id_model = EXCLUDED.id_model`,
+          [baseId, linha.produto_id, linha.custo_produto, linha.imposto_percentual, linha.taxa_fixa, linha.id_model || null]
         );
       }
       await client.query("COMMIT");
       registrarLog({
         ...dadosUsuarioDeReq(req),
         acao: "base.importar",
-        detalhes: { base_slug: slug, nome_base: nomeBaseOriginal, total_itens: linhas.length },
+        detalhes: { base_slug: slug, nome_base: nomeBaseOriginal, marketplace, total_itens: linhas.length },
         ip: extrairIp(req),
         status: "sucesso"
       });

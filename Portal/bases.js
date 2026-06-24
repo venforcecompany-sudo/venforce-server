@@ -30,23 +30,33 @@ function setImportStatus(msg, color) {
   el.style.display  = msg ? "block" : "none";
 }
 
+function getImportMarketplace() {
+  const el = document.getElementById("import-marketplace");
+  return el ? el.value : "";
+}
+
+function atualizarBotaoImportarDisabled() {
+  const btn = document.getElementById("btn-importar");
+  if (btn) btn.disabled = !getImportMarketplace();
+}
+
 function setImportLoading(on) {
-  document.getElementById("btn-importar").disabled             = on;
+  document.getElementById("btn-importar").disabled             = on ? true : !getImportMarketplace();
   document.getElementById("btn-importar-text").textContent     = on ? "Processando…" : "Pré-visualizar";
   document.getElementById("btn-importar-spinner").style.display = on ? "inline-block" : "none";
 }
 
 // ─── Estados da tabela de bases ───
-const stateLoading = document.getElementById("state-loading");
-const stateTable   = document.getElementById("state-table");
-const stateEmpty   = document.getElementById("state-empty");
-const stateError   = document.getElementById("state-error");
-const basesCount   = document.getElementById("bases-count");
-const basesTbody   = document.getElementById("bases-tbody");
+const stateLoading  = document.getElementById("state-loading");
+const stateSections = document.getElementById("state-sections");
+const stateEmpty    = document.getElementById("state-empty");
+const stateError    = document.getElementById("state-error");
+const basesCount    = document.getElementById("bases-count");
+const basesTbodyMeli   = document.getElementById("bases-tbody-meli");
+const basesTbodyShopee = document.getElementById("bases-tbody-shopee");
 
 // ─── Estado (filtros frontend) ───
 let TODAS_BASES = [];
-let BASES_FILTRO_MARKETPLACE = "todos";
 let BASES_BUSCA = "";
 let CLIENTES_DISPONIVEIS = [];
 let CLIENTES_CARREGADOS = false;
@@ -120,47 +130,18 @@ function getClienteTexto(base) {
   ].filter(Boolean).join(" ");
 }
 
+// Marketplace intrínseco da base (definido na importação). Default 'meli'.
+function getBaseMarketplaceKey(base) {
+  const raw = String(base?.marketplace || "").toLowerCase().trim();
+  return raw === "shopee" ? "shopee" : "meli";
+}
+
 function getBasesFiltradas() {
   const termo = String(BASES_BUSCA || "").toLowerCase().trim();
   return (Array.isArray(TODAS_BASES) ? TODAS_BASES : []).filter((b) => {
-    const mp = getMarketplaceDisplay(b);
-    const temVinculo = !!b?.vinculo;
-    const temSugestao = !temVinculo && !!b?.sugestao;
-
-    if (BASES_FILTRO_MARKETPLACE === "vinculados" && !temVinculo) return false;
-    if (BASES_FILTRO_MARKETPLACE === "sem_vinculo" && temVinculo) return false;
-    if (BASES_FILTRO_MARKETPLACE === "sugestoes" && !temSugestao) return false;
-    if (["meli", "shopee", "outro"].includes(BASES_FILTRO_MARKETPLACE) && mp.key !== BASES_FILTRO_MARKETPLACE) return false;
-
     if (!termo) return true;
     const hay = `${b?.nome || ""} ${b?.slug || ""} ${getClienteTexto(b)}`.toLowerCase();
     return hay.includes(termo);
-  });
-}
-
-function renderBasesChips() {
-  const wrap = document.getElementById("bases-filter-chips");
-  if (!wrap) return;
-  const chips = [
-    { key: "todos", label: "Todos" },
-    { key: "vinculados", label: "Com vínculo" },
-    { key: "sem_vinculo", label: "Sem vínculo" },
-    { key: "sugestoes", label: "Sugestões" },
-    { key: "meli", label: "Mercado Livre" },
-    { key: "shopee", label: "Shopee" },
-    { key: "outro", label: "Outro" },
-  ];
-  wrap.innerHTML = chips.map((c) => {
-    const active = c.key === BASES_FILTRO_MARKETPLACE ? "active" : "";
-    return `<button type="button" class="vf-ml-filter-btn ${active}" data-base-filter="${escapeHTML(c.key)}">${escapeHTML(c.label)}</button>`;
-  }).join("");
-  wrap.querySelectorAll("[data-base-filter]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      BASES_FILTRO_MARKETPLACE = btn.getAttribute("data-base-filter") || "todos";
-      renderBasesChips();
-      renderBasesSummary();
-      renderBases(getBasesFiltradas());
-    });
   });
 }
 
@@ -228,21 +209,21 @@ async function confirmarExclusaoBase() {
 }
 
 function showLoading() {
-  stateLoading.style.display = "flex";
-  stateTable.style.display   = stateEmpty.style.display = stateError.style.display = "none";
+  stateLoading.style.display  = "flex";
+  stateSections.style.display = stateEmpty.style.display = stateError.style.display = "none";
 }
-function showTable() {
-  stateTable.style.display   = "block";
-  stateLoading.style.display = stateEmpty.style.display = stateError.style.display = "none";
+function showSections() {
+  stateSections.style.display = "block";
+  stateLoading.style.display  = stateEmpty.style.display = stateError.style.display = "none";
 }
 function showEmpty() {
-  stateEmpty.style.display   = "block";
-  stateLoading.style.display = stateTable.style.display = stateError.style.display = "none";
-  basesCount.style.display   = "none";
+  stateEmpty.style.display    = "block";
+  stateLoading.style.display  = stateSections.style.display = stateError.style.display = "none";
+  basesCount.style.display    = "none";
 }
 function showError(msg) {
-  stateError.style.display   = "block";
-  stateLoading.style.display = stateTable.style.display = stateEmpty.style.display = "none";
+  stateError.style.display    = "block";
+  stateLoading.style.display  = stateSections.style.display = stateEmpty.style.display = "none";
   document.getElementById("error-message").textContent = msg;
 }
 
@@ -327,7 +308,6 @@ async function carregarVinculosComplementares() {
 }
 
 function renderBasesTela() {
-  renderBasesChips();
   renderBasesSummary();
   renderBases(getBasesFiltradas());
 }
@@ -418,58 +398,75 @@ function renderAcoesBase(base) {
   `;
 }
 
-function renderBases(bases) {
-  basesTbody.innerHTML = "";
-  if (!bases.length) { showEmpty(); return; }
+function buildBaseRow(base, i) {
+  const data  = formatDateTime(base.updated_at || base.created_at);
+  const ativo = base.ativo !== false;
+  const tr    = document.createElement("tr");
+  tr.classList.add("animate-fade-up");
+  tr.style.animationDelay = `${i * 0.04}s`;
+  tr.innerHTML = `
+    <td style="color:var(--vf-text-l);font-family:var(--vf-mono);font-size:.8rem;">${String(i+1).padStart(2,"0")}</td>
+    <td>
+      <strong>${escapeHTML(base.nome || "—")}</strong>
+      <div style="color:var(--vf-text-m);font-size:.78rem;font-family:var(--vf-mono);margin-top:3px;">${escapeHTML(base.slug || "—")}</div>
+    </td>
+    <td>${renderClienteCell(base)}</td>
+    <td style="text-align:center;">${renderMarketplaceCell(base)}</td>
+    <td style="font-size:.8rem;color:#888;">${escapeHTML(data)}</td>
+    <td style="text-align:center;">
+      <span class="vf-status-pill ${ativo ? "vf-status-pill-success" : "vf-status-pill-danger"}">${ativo ? "Ativa" : "Inativa"}</span>
+    </td>
+    <td style="text-align:center;">${renderAcoesBase(base)}</td>`;
+  return tr;
+}
 
-  basesCount.textContent   = String(bases.length);
-  basesCount.style.display = "inline-block";
-
-  bases.forEach((base, i) => {
-    const data = formatDateTime(base.updated_at || base.created_at);
-    const ativo = base.ativo !== false;
-    const tr    = document.createElement("tr");
-    tr.classList.add("animate-fade-up");
-    tr.style.animationDelay = `${i * 0.04}s`;
-    tr.innerHTML = `
-      <td style="color:var(--vf-text-l);font-family:var(--vf-mono);font-size:.8rem;">${String(i+1).padStart(2,"0")}</td>
-      <td>
-        <strong>${escapeHTML(base.nome || "—")}</strong>
-        <div style="color:var(--vf-text-m);font-size:.78rem;font-family:var(--vf-mono);margin-top:3px;">${escapeHTML(base.slug || "—")}</div>
-      </td>
-      <td>${renderClienteCell(base)}</td>
-      <td style="text-align:center;">${renderMarketplaceCell(base)}</td>
-      <td style="font-size:.8rem;color:#888;">${escapeHTML(data)}</td>
-      <td style="text-align:center;">
-        <span class="vf-status-pill ${ativo ? "vf-status-pill-success" : "vf-status-pill-danger"}">${ativo ? "Ativa" : "Inativa"}</span>
-      </td>
-      <td style="text-align:center;">${renderAcoesBase(base)}</td>`;
-    basesTbody.appendChild(tr);
-  });
-
-  basesTbody.querySelectorAll(".asst-btn-baixar-base").forEach(btn => {
+function bindBaseRowActions(tbody) {
+  tbody.querySelectorAll(".asst-btn-baixar-base").forEach(btn => {
     btn.addEventListener("click", () => {
       const { slug, nome } = btn.dataset;
       asstBaixarBase(slug, nome, btn);
     });
   });
-
-  basesTbody.querySelectorAll(".btn-excluir-base").forEach(btn => {
+  tbody.querySelectorAll(".btn-excluir-base").forEach(btn => {
     btn.addEventListener("click", () => {
       const { slug, nome } = btn.dataset;
       abrirModalExcluirBase({ slug, nome, btn });
     });
   });
-
-  basesTbody.querySelectorAll(".vf-btn-vincular-base").forEach(btn => {
+  tbody.querySelectorAll(".vf-btn-vincular-base").forEach(btn => {
     btn.addEventListener("click", () => abrirModalVinculo(btn.dataset.baseId));
   });
-
-  basesTbody.querySelectorAll(".vf-btn-remover-vinculo").forEach(btn => {
+  tbody.querySelectorAll(".vf-btn-remover-vinculo").forEach(btn => {
     btn.addEventListener("click", () => removerVinculoBase(btn.dataset.baseId, btn));
   });
+}
 
-  showTable();
+function renderBases(bases) {
+  basesTbodyMeli.innerHTML   = "";
+  basesTbodyShopee.innerHTML = "";
+
+  if (!bases.length) { showEmpty(); return; }
+
+  const meli   = bases.filter((b) => getBaseMarketplaceKey(b) === "meli");
+  const shopee = bases.filter((b) => getBaseMarketplaceKey(b) === "shopee");
+
+  meli.forEach((base, i)   => basesTbodyMeli.appendChild(buildBaseRow(base, i)));
+  shopee.forEach((base, i) => basesTbodyShopee.appendChild(buildBaseRow(base, i)));
+
+  document.getElementById("count-meli").textContent    = String(meli.length);
+  document.getElementById("count-shopee").textContent  = String(shopee.length);
+  document.getElementById("wrap-meli").style.display    = meli.length   ? "" : "none";
+  document.getElementById("wrap-shopee").style.display  = shopee.length ? "" : "none";
+  document.getElementById("empty-meli").style.display   = meli.length   ? "none" : "block";
+  document.getElementById("empty-shopee").style.display = shopee.length ? "none" : "block";
+
+  basesCount.textContent   = String(bases.length);
+  basesCount.style.display = "inline-block";
+
+  bindBaseRowActions(basesTbodyMeli);
+  bindBaseRowActions(basesTbodyShopee);
+
+  showSections();
 }
 
 async function deleteBase(slug, btn) {
@@ -669,6 +666,10 @@ document.getElementById("import-arquivo").addEventListener("change", (e) => {
   document.getElementById("file-label").classList.toggle("has-file", !!f);
 });
 
+// ─── Marketplace obrigatório: habilita "Pré-visualizar" só após seleção ───
+document.getElementById("import-marketplace")?.addEventListener("change", atualizarBotaoImportarDisabled);
+atualizarBotaoImportarDisabled();
+
 function validarArquivoImportacao(file) {
   const name = String(file?.name || "").toLowerCase();
   return name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv");
@@ -726,12 +727,20 @@ function openPreview(payload) {
   document.getElementById("preview-meta").textContent =
     `${payload.total} linhas · ${payload.idsDetectados} IDs válidos`;
 
+  const isShopee = String(payload.marketplace || "").toLowerCase() === "shopee";
+  const thIdModel = document.getElementById("preview-th-idmodel");
+  if (thIdModel) thIdModel.style.display = isShopee ? "" : "none";
+
   const tbody = document.getElementById("preview-tbody");
   tbody.innerHTML = "";
   (payload.preview || []).forEach(r => {
     const tr = document.createElement("tr");
+    const idModelCell = isShopee
+      ? `<td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.id_model ?? "—"))}</td>`
+      : "";
     tr.innerHTML = `
       <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.id ?? ""))}</td>
+      ${idModelCell}
       <td style="text-align:right;">${r.custo_produto ?? 0}</td>
       <td style="text-align:right;">${r.imposto_percentual ?? 0}</td>
       <td style="text-align:right;">${r.taxa_fixa ?? 0}</td>`;
@@ -759,7 +768,8 @@ document.getElementById("preview-overlay").addEventListener("click", (e) => {
 document.getElementById("preview-confirm").addEventListener("click", async () => {
   const arquivo = document.getElementById("import-arquivo").files?.[0];
   const nome    = document.getElementById("import-nome").value.trim();
-  if (!arquivo || !nome) { closePreview(); return; }
+  const marketplace = getImportMarketplace();
+  if (!arquivo || !nome || !marketplace) { closePreview(); return; }
 
   document.getElementById("preview-confirm").disabled                 = true;
   document.getElementById("preview-confirm-text").textContent        = "Importando…";
@@ -769,6 +779,7 @@ document.getElementById("preview-confirm").addEventListener("click", async () =>
     const fd = new FormData();
     fd.append("arquivo", arquivo);
     fd.append("nomeBase", nome);
+    fd.append("marketplace", marketplace);
     fd.append("confirmar", "true");
 
     const res  = await fetch(`${API_BASE}/importar-base`, {
@@ -787,6 +798,9 @@ document.getElementById("preview-confirm").addEventListener("click", async () =>
     document.getElementById("import-arquivo").value = "";
     document.getElementById("file-label-text").textContent = "Escolher arquivo…";
     document.getElementById("file-label").classList.remove("has-file");
+    const mpSel = document.getElementById("import-marketplace");
+    if (mpSel) mpSel.value = "";
+    atualizarBotaoImportarDisabled();
     loadBases();
 
   } catch (err) {
@@ -803,8 +817,10 @@ document.getElementById("preview-confirm").addEventListener("click", async () =>
 document.getElementById("btn-importar").addEventListener("click", async () => {
   const arquivo = document.getElementById("import-arquivo").files?.[0];
   const nome    = document.getElementById("import-nome").value.trim();
+  const marketplace = getImportMarketplace();
 
   setImportStatus("", "");
+  if (!marketplace) { setImportStatus("Selecione o marketplace.", "var(--vf-danger)"); return; }
   if (!nome)    { setImportStatus("Informe o nome da base.", "var(--vf-danger)"); return; }
   if (!arquivo) { setImportStatus("Selecione um arquivo .xlsx ou .csv.", "var(--vf-danger)"); return; }
 
@@ -814,6 +830,7 @@ document.getElementById("btn-importar").addEventListener("click", async () => {
     const fd = new FormData();
     fd.append("arquivo", arquivo);
     fd.append("nomeBase", nome);
+    fd.append("marketplace", marketplace);
     // sem "confirmar" → preview
 
     const res  = await fetch(`${API_BASE}/importar-base`, {
@@ -1393,6 +1410,7 @@ async function asstImportarBaseLimpa() {
     const fd = new FormData();
     fd.append("arquivo",   arquivo);
     fd.append("nomeBase",  nome);
+    fd.append("marketplace", "meli");
     fd.append("confirmar", "true");
 
     const res = await fetch(`${API_BASE}/importar-base`, {

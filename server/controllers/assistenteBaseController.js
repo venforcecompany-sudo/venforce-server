@@ -18,6 +18,10 @@ async function previewAssistenteBaseController(req, res) {
       }
     }
 
+    // marketplace pode vir no body (FormData) ou dentro do config; default 'meli'.
+    const marketplaceRaw = String(req.body?.marketplace || config.marketplace || "").trim().toLowerCase();
+    config.marketplace = ["meli", "shopee"].includes(marketplaceRaw) ? marketplaceRaw : "meli";
+
     const resultado = await analisarPlanilhaBase(
       req.file.buffer,
       req.file.originalname,

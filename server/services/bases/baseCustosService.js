@@ -41,6 +41,20 @@ function normalizarProdutoIdBase(valor) {
   return limpo;
 }
 
+function normalizarProdutoIdShopee(valor) {
+  let limpo = String(valor || "").replace(/^﻿/, "").trim();
+  if (!limpo) return "";
+  limpo = limpo.replace(/^['"]+|['"]+$/g, "").trim();
+  if (!limpo) return "";
+  if (/^\d+\.0+$/.test(limpo)) limpo = limpo.replace(/\.0+$/, "");
+  const sci = limpo.replace(",", ".");
+  if (/^\d+(\.\d+)?[eE]\+?\d+$/.test(sci)) {
+    const n = Number(sci);
+    if (Number.isFinite(n)) return Math.trunc(n).toString();
+  }
+  return limpo;  // sem prefixo MLB
+}
+
 function criarHttpErro(statusCode, payload) {
   const err = new Error(payload?.erro || "Erro");
   err.statusCode = statusCode;
@@ -55,13 +69,17 @@ async function obterBaseAtivaPorSlug(baseSlugRaw) {
   }
 
   const r = await pool.query(
-    "SELECT id, slug FROM bases WHERE slug = $1 AND ativo = true",
+    "SELECT id, slug, marketplace FROM bases WHERE slug = $1 AND ativo = true",
     [baseSlug]
   );
   if (!r.rows.length) {
     throw criarHttpErro(404, { ok: false, erro: "Base não encontrada." });
   }
-  return { id: r.rows[0].id, slug: r.rows[0].slug };
+  return {
+    id: r.rows[0].id,
+    slug: r.rows[0].slug,
+    marketplace: ["meli", "shopee"].includes(r.rows[0].marketplace) ? r.rows[0].marketplace : "meli",
+  };
 }
 
 async function obterPadraoCustoBase(baseId) {
@@ -106,9 +124,9 @@ function validarNumeroOpcional(valor, nomeCampo) {
   return { tem: true, numero: n };
 }
 
-async function upsertCustoBase({ baseId, produtoIdNorm, custoProduto, impostoPercentualOpt, taxaFixaOpt }) {
+async function upsertCustoBase({ baseId, produtoIdNorm, custoProduto, impostoPercentualOpt, taxaFixaOpt, idModel }) {
   const existente = await pool.query(
-    `SELECT base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa
+    `SELECT base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa, id_model
        FROM custos
       WHERE base_id = $1 AND produto_id = $2
       LIMIT 1`,
@@ -119,15 +137,17 @@ async function upsertCustoBase({ baseId, produtoIdNorm, custoProduto, impostoPer
     const atual = existente.rows[0];
     const impostoFinal = impostoPercentualOpt.tem ? impostoPercentualOpt.numero : Number(atual.imposto_percentual);
     const taxaFinal = taxaFixaOpt.tem ? taxaFixaOpt.numero : Number(atual.taxa_fixa);
+    const idModelFinal = idModel !== undefined ? (idModel || null) : (atual.id_model || null);
 
     const upd = await pool.query(
       `UPDATE custos
           SET custo_produto = $3,
               imposto_percentual = $4,
-              taxa_fixa = $5
+              taxa_fixa = $5,
+              id_model = $6
         WHERE base_id = $1 AND produto_id = $2
-        RETURNING base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa`,
-      [baseId, produtoIdNorm, custoProduto, impostoFinal, taxaFinal]
+        RETURNING base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa, id_model`,
+      [baseId, produtoIdNorm, custoProduto, impostoFinal, taxaFinal, idModelFinal]
     );
 
     return { acao: "atualizado", custo: upd.rows[0] };
@@ -138,10 +158,10 @@ async function upsertCustoBase({ baseId, produtoIdNorm, custoProduto, impostoPer
   const taxaFinal = taxaFixaOpt.tem ? taxaFixaOpt.numero : padrao.taxa_fixa;
 
   const ins = await pool.query(
-    `INSERT INTO custos (base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa`,
-    [baseId, produtoIdNorm, custoProduto, impostoFinal, taxaFinal]
+    `INSERT INTO custos (base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa, id_model)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING base_id, produto_id, custo_produto, imposto_percentual, taxa_fixa, id_model`,
+    [baseId, produtoIdNorm, custoProduto, impostoFinal, taxaFinal, idModel || null]
   );
 
   return { acao: "criado", custo: ins.rows[0] };
@@ -149,6 +169,7 @@ async function upsertCustoBase({ baseId, produtoIdNorm, custoProduto, impostoPer
 
 module.exports = {
   normalizarProdutoIdBase,
+  normalizarProdutoIdShopee,
   obterBaseAtivaPorSlug,
   obterPadraoCustoBase,
   upsertCustoBase,

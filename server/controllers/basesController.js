@@ -5,6 +5,7 @@ const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("../services/acti
 
 const {
   normalizarProdutoIdBase,
+  normalizarProdutoIdShopee,
   obterBaseAtivaPorSlug,
   obterPadraoCustoBase,
   upsertCustoBase,
@@ -46,7 +47,10 @@ async function upsertCustoBaseController(req, res) {
       return res.status(400).json({ ok: false, erro: "produto_id é obrigatório." });
     }
 
-    const produtoIdNorm = normalizarProdutoIdBase(produtoIdRaw);
+    const normalizarProdutoId = base.marketplace === "shopee"
+      ? normalizarProdutoIdShopee
+      : normalizarProdutoIdBase;
+    const produtoIdNorm = normalizarProdutoId(produtoIdRaw);
     if (!produtoIdNorm) {
       return res.status(400).json({ ok: false, erro: "produto_id inválido." });
     }
@@ -54,6 +58,7 @@ async function upsertCustoBaseController(req, res) {
     const custoProduto = validarNumeroObrigatorio(body.custo_produto, "custo_produto");
     const impostoPercentualOpt = validarNumeroOpcional(body.imposto_percentual, "imposto_percentual");
     const taxaFixaOpt = validarNumeroOpcional(body.taxa_fixa, "taxa_fixa");
+    const idModel = base.marketplace === "shopee" ? (body.id_model || null) : null;
 
     const resultado = await upsertCustoBase({
       baseId: base.id,
@@ -61,6 +66,7 @@ async function upsertCustoBaseController(req, res) {
       custoProduto,
       impostoPercentualOpt,
       taxaFixaOpt,
+      idModel,
     });
 
     try {
@@ -91,6 +97,7 @@ async function upsertCustoBaseController(req, res) {
         custo_produto: Number(resultado.custo.custo_produto),
         imposto_percentual: Number(resultado.custo.imposto_percentual),
         taxa_fixa: Number(resultado.custo.taxa_fixa),
+        id_model: resultado.custo.id_model ?? null,
       },
     });
   } catch (err) {
