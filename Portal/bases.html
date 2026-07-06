@@ -311,25 +311,41 @@
         <thead>
           <tr>
             <th>
-              <button type="button" class="b-th-filter" data-cost-filter-menu="produto" aria-haspopup="true" aria-expanded="false">
-                <span class="b-th-filter-label">Produto</span><span aria-hidden="true">▾</span>
-              </button>
+              <div class="b-th-filter-inline" id="cost-filter-wrap-produto">
+                <span>Produto</span>
+                <input type="search" id="cost-filter-produto" placeholder="Buscar..." autocomplete="off">
+              </div>
             </th>
             <th id="bases-costs-th-idmodel" style="display:none;">ID Model</th>
             <th class="num">
-              <button type="button" class="b-th-filter" data-cost-filter-menu="custo" aria-haspopup="true" aria-expanded="false">
-                <span class="b-th-filter-label">Custo</span><span aria-hidden="true">▾</span>
-              </button>
+              <div class="b-th-filter-inline" id="cost-filter-wrap-custo">
+                <span>Custo</span>
+                <select id="cost-filter-custo">
+                  <option value="todos">Todos</option>
+                  <option value="zerado">Zerado</option>
+                  <option value="preenchido">Preenchido</option>
+                </select>
+              </div>
             </th>
             <th class="num">
-              <button type="button" class="b-th-filter" data-cost-filter-menu="imposto" aria-haspopup="true" aria-expanded="false">
-                <span class="b-th-filter-label">Imposto</span><span aria-hidden="true">▾</span>
-              </button>
+              <div class="b-th-filter-inline" id="cost-filter-wrap-imposto">
+                <span>Imposto</span>
+                <select id="cost-filter-imposto">
+                  <option value="todos">Todos</option>
+                  <option value="zerado">Zerado</option>
+                  <option value="preenchido">Preenchido</option>
+                </select>
+              </div>
             </th>
             <th class="num">
-              <button type="button" class="b-th-filter" data-cost-filter-menu="taxa" aria-haspopup="true" aria-expanded="false">
-                <span class="b-th-filter-label">Taxa fixa</span><span aria-hidden="true">▾</span>
-              </button>
+              <div class="b-th-filter-inline" id="cost-filter-wrap-taxa">
+                <span>Taxa fixa</span>
+                <select id="cost-filter-taxa">
+                  <option value="todos">Todos</option>
+                  <option value="zerado">Zerada</option>
+                  <option value="preenchido">Preenchida</option>
+                </select>
+              </div>
             </th>
             <th class="b-cost-actions-th"></th>
           </tr>
@@ -338,8 +354,6 @@
       </table>
       <div class="b-state" id="bases-drawer-state" style="border:none;display:none;"></div>
     </div>
-    <!-- Menu flutuante estilo Excel para os filtros do cabeçalho da tabela de custos -->
-    <div class="b-filter-pop" id="bases-filter-pop" role="menu"></div>
     <div class="b-drawer-footer">
       <span id="bases-drawer-count">—</span>
       <div class="right">

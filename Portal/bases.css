@@ -417,48 +417,34 @@
 .vf-page-bases .b-costs-toolbar { justify-content: flex-end; }
 .vf-page-bases .b-drawer-actions { display: flex; gap: var(--b-sp-2); align-items: center; flex-wrap: wrap; }
 
-/* Filtro no cabeçalho da tabela de custos (estilo Excel) */
-.vf-page-bases .b-costs-table thead th { padding: 0; }
-.vf-page-bases .b-costs-table th.b-cost-actions-th { padding: 10px 10px 10px 4px; }
-.vf-page-bases .b-th-filter {
-  display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
-  font: inherit; font-family: var(--b-font); font-size: var(--b-fs-2xs);
-  text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
-  color: var(--b-text-l); background: none; border: none; cursor: pointer;
-  padding: 10px 14px; text-align: left;
+/* Filtro nativo (input/select) dentro do próprio cabeçalho da tabela de custos */
+.vf-page-bases .b-costs-table thead th { padding: 6px 10px; vertical-align: bottom; }
+.vf-page-bases .b-costs-table th.b-cost-actions-th { padding: 6px 10px 6px 4px; }
+.vf-page-bases .b-th-filter-inline {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%;
 }
-.vf-page-bases .b-costs-table th.num .b-th-filter { justify-content: flex-end; }
-.vf-page-bases .b-th-filter-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.vf-page-bases .b-th-filter > span:last-child { font-size: 9px; opacity: .7; flex-shrink: 0; }
-.vf-page-bases .b-th-filter:hover { color: var(--b-text); background: var(--b-bg); }
-.vf-page-bases .b-th-filter.is-filtered {
-  color: var(--b-primary); background: var(--b-primary-soft);
+.vf-page-bases .b-costs-table th.num .b-th-filter-inline { align-items: flex-end; }
+.vf-page-bases .b-th-filter-inline > span {
+  font-size: var(--b-fs-2xs); text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
+  color: var(--b-text-l); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
 }
-.vf-page-bases .b-th-filter.is-filtered span { opacity: 1; }
-
-/* Menu flutuante estilo Excel (aberto ao clicar num filtro do cabeçalho) */
-.vf-page-bases .b-filter-pop {
-  position: fixed; z-index: 1150; display: none;
-  min-width: 200px; max-width: 260px;
-  background: var(--b-surface); border: 1px solid var(--b-border-strong);
-  border-radius: var(--b-radius-sm); box-shadow: var(--b-shadow-pop); padding: 6px;
-}
-.vf-page-bases .b-filter-pop.is-open { display: block; }
-.vf-page-bases .b-filter-pop-inner { display: flex; flex-direction: column; gap: 6px; }
-.vf-page-bases .b-filter-search {
-  font: inherit; font-family: var(--b-font); font-size: var(--b-fs-sm); height: 34px; padding: 0 var(--b-sp-3);
+.vf-page-bases .b-th-filter-inline input,
+.vf-page-bases .b-th-filter-inline select {
+  font: inherit; font-family: var(--b-font); font-size: var(--b-fs-xs); font-weight: 500;
+  height: 26px; padding: 0 6px; width: 100%; max-width: 112px; min-width: 0;
   border: 1px solid var(--b-border-strong); border-radius: var(--b-radius-sm);
-  background: var(--b-surface); color: var(--b-text); width: 100%;
+  background: var(--b-surface-2); color: var(--b-text);
 }
-.vf-page-bases .b-filter-search:focus { outline: none; border-color: var(--b-primary); box-shadow: 0 0 0 3px var(--b-primary-soft); }
-.vf-page-bases .b-filter-pop-inner > .b-btn { align-self: flex-end; }
-.vf-page-bases .b-filter-option {
-  display: block; width: 100%; text-align: left; font: inherit; font-family: var(--b-font);
-  font-size: var(--b-fs-sm); color: var(--b-text); background: none; border: none;
-  padding: 7px 10px; border-radius: var(--b-radius-sm); cursor: pointer;
+.vf-page-bases .b-th-filter-inline input[type="search"] { max-width: 100%; }
+.vf-page-bases .b-th-filter-inline input:focus,
+.vf-page-bases .b-th-filter-inline select:focus {
+  outline: none; border-color: var(--b-primary); box-shadow: 0 0 0 2px var(--b-primary-soft);
 }
-.vf-page-bases .b-filter-option:hover { background: var(--b-bg-2); }
-.vf-page-bases .b-filter-option.is-active { background: var(--b-primary-soft); color: var(--b-primary); font-weight: 600; }
+.vf-page-bases .b-th-filter-inline.is-filtered > span { color: var(--b-primary); }
+.vf-page-bases .b-th-filter-inline.is-filtered input,
+.vf-page-bases .b-th-filter-inline.is-filtered select {
+  background: var(--b-primary-soft); border-color: var(--b-primary-border); color: var(--b-primary);
+}
 
 /* Inputs numéricos seguem o mesmo desenho dos inputs de texto */
 .vf-page-bases .b-field input[type="number"] {

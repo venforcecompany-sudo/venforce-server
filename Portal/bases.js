@@ -1163,9 +1163,8 @@ document.getElementById("btn-importar").addEventListener("click", async () => {
 //  (preview seguro — Opção B, sem fluxo destrutivo).
 // ══════════════════════════════════════════════════════════════════════════════
 let DRAWER_ITENS = [];
-// Filtros estilo Excel no cabeçalho da tabela de custos (client-side, sem API).
+// Filtros nativos no cabeçalho da tabela de custos (client-side, sem API).
 let DRAWER_FILTROS = { produto: "", custo: "todos", imposto: "todos", taxa: "todos" };
-let FILTRO_POP_ABERTO = null;        // "produto" | "custo" | "imposto" | "taxa" | null
 let DRAWER_IS_SHOPEE = false;
 let DRAWER_BTN_ORIGEM = null;
 let DRAWER_SLUG = "";
@@ -1178,7 +1177,6 @@ function abrirDrawer() {
   document.getElementById("bases-drawer")?.classList.add("is-open");
 }
 function fecharDrawer() {
-  fecharFiltroPop();
   fecharPainelCusto();
   document.getElementById("bases-drawer-backdrop")?.classList.remove("is-open");
   document.getElementById("bases-drawer")?.classList.remove("is-open");
@@ -1199,8 +1197,7 @@ function abrirDrawerCustos(slug, mp, btnOrigem) {
   DRAWER_IS_SHOPEE = mp === "shopee";
   DRAWER_BTN_ORIGEM = btnOrigem || null;
   DRAWER_ITENS = [];
-  DRAWER_FILTROS = { produto: "", custo: "todos", imposto: "todos", taxa: "todos" };
-  fecharFiltroPop();
+  resetarFiltrosDrawer();
   fecharPainelCusto();
   setDrawerHint("Clique no lápis de um item para editar, ou use “Adicionar item”.");
 
@@ -1263,13 +1260,16 @@ async function carregarCustosDrawer(slug) {
   }
 }
 
-// "todos": não filtra · "zero": valor 0 ou vazio · "preenchido": valor > 0
-function passaFiltroNumerico(estado, valor) {
-  if (estado !== "zero" && estado !== "preenchido") return true;
-  const vazio = valor == null || valor === "";
+function isValorPreenchido(valor) {
   const n = Number(valor);
-  if (estado === "zero") return vazio || (Number.isFinite(n) && n === 0);
-  return !vazio && Number.isFinite(n) && n > 0;
+  return Number.isFinite(n) && n > 0;
+}
+
+// "todos": não filtra · "zerado": 0, vazio, null ou inválido · "preenchido": > 0
+function passaFiltroNumerico(estado, valor) {
+  if (estado !== "zerado" && estado !== "preenchido") return true;
+  const preenchido = isValorPreenchido(valor);
+  return estado === "preenchido" ? preenchido : !preenchido;
 }
 
 function drawerFiltrarItens() {
@@ -1297,7 +1297,7 @@ function fmtPercentDrawer(v) {
   return String(pct).replace(".", ",") + "%";
 }
 
-// Reflete o estado dos filtros nos botões estáticos do cabeçalho (.is-filtered).
+// Reflete o estado dos filtros nos wrappers estáticos do cabeçalho (.is-filtered).
 function atualizarEstadoFiltrosHeader() {
   const estados = {
     produto: String(DRAWER_FILTROS.produto || "").trim() !== "",
@@ -1305,9 +1305,21 @@ function atualizarEstadoFiltrosHeader() {
     imposto: DRAWER_FILTROS.imposto !== "todos",
     taxa: DRAWER_FILTROS.taxa !== "todos",
   };
-  document.querySelectorAll("#bases-costs-table [data-cost-filter-menu]").forEach((btn) => {
-    btn.classList.toggle("is-filtered", !!estados[btn.dataset.costFilterMenu]);
+  Object.keys(estados).forEach((campo) => {
+    document.getElementById(`cost-filter-wrap-${campo}`)?.classList.toggle("is-filtered", estados[campo]);
   });
+}
+
+// Zera o estado e os controles nativos do cabeçalho ao abrir uma nova base no drawer.
+function resetarFiltrosDrawer() {
+  DRAWER_FILTROS = { produto: "", custo: "todos", imposto: "todos", taxa: "todos" };
+  const produtoEl = document.getElementById("cost-filter-produto");
+  if (produtoEl) produtoEl.value = "";
+  ["custo", "imposto", "taxa"].forEach((campo) => {
+    const el = document.getElementById(`cost-filter-${campo}`);
+    if (el) el.value = "todos";
+  });
+  atualizarEstadoFiltrosHeader();
 }
 
 function renderDrawerItens() {
@@ -1379,109 +1391,19 @@ function renderDrawerItens() {
   }
 }
 
-// ─── Menu de filtro estilo Excel (cabeçalho da tabela de custos) ───
-const FILTRO_ROTULOS = {
-  custo: ["Zerado", "Preenchido"],
-  imposto: ["Zerado", "Preenchido"],
-  taxa: ["Zerada", "Preenchida"],
-};
-
-function renderFiltroPopConteudo(tipo) {
-  if (tipo === "produto") {
-    const valor = escapeHTML(DRAWER_FILTROS.produto || "");
-    return `<div class="b-filter-pop-inner">
-      <input type="text" class="b-filter-search" id="filter-pop-busca" placeholder="Buscar produto, MLB ou SKU..." value="${valor}" autocomplete="off">
-      <button type="button" class="b-btn b-btn--ghost b-btn--sm" id="filter-pop-limpar">Limpar</button>
-    </div>`;
-  }
-  const [rotuloZero, rotuloPreenchido] = FILTRO_ROTULOS[tipo] || ["Zerado", "Preenchido"];
-  const atual = DRAWER_FILTROS[tipo] || "todos";
-  const opt = (valor, label) =>
-    `<button type="button" class="b-filter-option${atual === valor ? " is-active" : ""}" data-filter-value="${valor}">${escapeHTML(label)}</button>`;
-  return `<div class="b-filter-pop-inner">
-    ${opt("todos", "Todos")}
-    ${opt("zero", rotuloZero)}
-    ${opt("preenchido", rotuloPreenchido)}
-  </div>`;
-}
-
-function posicionarFiltroPop(btnEl, pop) {
-  const rect = btnEl.getBoundingClientRect();
-  const drawerEl = document.getElementById("bases-drawer");
-  const drawerRect = drawerEl?.getBoundingClientRect();
-  const margem = 12;
-  pop.style.top = `${rect.bottom + 4}px`;
-  pop.style.left = `${rect.left}px`;
-  const popRect = pop.getBoundingClientRect();
-  let left = rect.left;
-  if (drawerRect) {
-    if (popRect.right > drawerRect.right - margem) left = drawerRect.right - margem - popRect.width;
-    if (left < drawerRect.left + margem) left = drawerRect.left + margem;
-  }
-  pop.style.left = `${left}px`;
-}
-
-function bindFiltroPopEventos(tipo, pop) {
-  if (tipo === "produto") {
-    const input = pop.querySelector("#filter-pop-busca");
-    const limpar = pop.querySelector("#filter-pop-limpar");
-    input?.addEventListener("input", (e) => {
-      DRAWER_FILTROS.produto = e.target.value || "";
-      renderDrawerItens();
-    });
-    limpar?.addEventListener("click", () => {
-      DRAWER_FILTROS.produto = "";
-      if (input) input.value = "";
-      renderDrawerItens();
-      input?.focus();
-    });
-    return;
-  }
-  pop.querySelectorAll(".b-filter-option").forEach((b) => {
-    b.addEventListener("click", () => {
-      DRAWER_FILTROS[tipo] = b.dataset.filterValue || "todos";
-      renderDrawerItens();
-      fecharFiltroPop();
-    });
+// ─── Filtros nativos no cabeçalho da tabela de custos ───
+// Controles fixos no HTML (nunca recriados) — listeners diretos, sem popover
+// nem delegação: cada input/select já existe assim que a página carrega.
+document.getElementById("cost-filter-produto")?.addEventListener("input", (e) => {
+  DRAWER_FILTROS.produto = e.target.value || "";
+  renderDrawerItens();
+});
+["custo", "imposto", "taxa"].forEach((campo) => {
+  document.getElementById(`cost-filter-${campo}`)?.addEventListener("change", (e) => {
+    DRAWER_FILTROS[campo] = e.target.value || "todos";
+    renderDrawerItens();
   });
-}
-
-// event é opcional — aceito para permitir uso direto como handler delegado.
-function toggleFiltroPop(event, tipo, btnEl) {
-  const pop = document.getElementById("bases-filter-pop");
-  if (!pop || !tipo) return;
-  if (FILTRO_POP_ABERTO === tipo && pop.classList.contains("is-open")) {
-    fecharFiltroPop();
-    return;
-  }
-  FILTRO_POP_ABERTO = tipo;
-  pop.innerHTML = renderFiltroPopConteudo(tipo);
-  pop.classList.add("is-open");
-  posicionarFiltroPop(btnEl, pop);
-  bindFiltroPopEventos(tipo, pop);
-  document.querySelectorAll("[data-cost-filter-menu]").forEach((b) => {
-    b.setAttribute("aria-expanded", b === btnEl ? "true" : "false");
-  });
-  if (tipo === "produto") pop.querySelector("#filter-pop-busca")?.focus();
-}
-
-function fecharFiltroPop() {
-  const pop = document.getElementById("bases-filter-pop");
-  if (pop) { pop.classList.remove("is-open"); pop.innerHTML = ""; }
-  document.querySelectorAll("[data-cost-filter-menu]").forEach((b) => b.setAttribute("aria-expanded", "false"));
-  FILTRO_POP_ABERTO = null;
-}
-
-// Listener delegado (capture): funciona mesmo que o botão do header seja
-// estático — cobre cliques em qualquer [data-cost-filter-menu] na página.
-document.addEventListener("click", function (event) {
-  const btn = event.target.closest("[data-cost-filter-menu]");
-  if (!btn) return;
-  event.preventDefault();
-  event.stopPropagation();
-  const campo = btn.dataset.costFilterMenu;
-  toggleFiltroPop(event, campo, btn);
-}, true);
+});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ─── EDIÇÃO DE CUSTOS DENTRO DO DRAWER ─────────────────────────────────────────
@@ -1807,16 +1729,14 @@ document.getElementById("bases-drawer-backdrop")?.addEventListener("click", fech
 document.getElementById("bases-drawer-add")?.addEventListener("click", () => abrirFormularioItem(null));
 document.getElementById("bases-drawer-planilha")?.addEventListener("click", abrirPainelPlanilha);
 
-// Fechar menus "⋯" e o menu de filtro do cabeçalho ao clicar fora
+// Fechar menus "⋯" ao clicar fora
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".b-menu")) fecharTodosMenus();
-  if (!e.target.closest(".b-filter-pop") && !e.target.closest(".b-th-filter")) fecharFiltroPop();
 });
 // Esc fecha menus, painel de custo, drawer e modal de importação
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   fecharTodosMenus();
-  if (FILTRO_POP_ABERTO) { fecharFiltroPop(); return; }
   // Se um painel de edição/planilha está aberto no drawer, Esc fecha só o painel.
   const panel = document.getElementById("bases-cost-panel");
   if (panel && panel.style.display !== "none" && panel.innerHTML.trim()) { fecharPainelCusto(); return; }
