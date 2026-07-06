@@ -24,6 +24,7 @@ let ALL_CLIENTES = [];
 let ALL_BASES = [];
 let PROMO_ROWS = [];
 let PROMO_FILTER = "todos";
+let PROMO_CAMPANHA_FILTER = "todas";
 
 const PROMO_FILTERS = [
   { key: "todos", label: "Todos" },
@@ -243,6 +244,7 @@ async function analisar() {
 
     PROMO_ROWS = Array.isArray(data.linhas) ? data.linhas : [];
     PROMO_FILTER = "todos";
+    PROMO_CAMPANHA_FILTER = "todas";
     renderResumo(data);
     renderFiltros();
     renderTabela();
@@ -306,24 +308,112 @@ function renderResumo(data) {
 }
 
 // ─── Render: filtros rápidos ──────────────────────────────────────────────
+function getPromoCampanhaLabel(linha) {
+  return txt(
+    linha?.campanha ||
+    linha?.campaignName ||
+    linha?.nomeCampanha ||
+    linha?.promotionName ||
+    linha?.promocao ||
+    linha?.promotionId ||
+    linha?.campaignId ||
+    linha?.offerId
+  );
+}
+
+function getPromoCampanhaKey(linha) {
+  const label = String(getPromoCampanhaLabel(linha) || "—").trim();
+  return label || "—";
+}
+
+function getPromoCampanhasDisponiveis() {
+  const map = new Map();
+
+  (Array.isArray(PROMO_ROWS) ? PROMO_ROWS : []).forEach((linha) => {
+    const key = getPromoCampanhaKey(linha);
+    map.set(key, (map.get(key) || 0) + 1);
+  });
+
+  return Array.from(map.entries())
+    .map(([key, count]) => ({ key, label: key, count }))
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+}
+
 function contarPorDecisao(key) {
-  if (key === "todos") return PROMO_ROWS.length;
-  return PROMO_ROWS.filter((l) => l.decisao === key).length;
+  let rows = Array.isArray(PROMO_ROWS) ? PROMO_ROWS : [];
+
+  if (PROMO_CAMPANHA_FILTER !== "todas") {
+    rows = rows.filter((linha) => getPromoCampanhaKey(linha) === PROMO_CAMPANHA_FILTER);
+  }
+
+  if (key === "todos") return rows.length;
+  return rows.filter((linha) => linha.decisao === key).length;
 }
 
 function renderFiltros() {
   const box = document.getElementById("promo-filtros");
   if (!box) return;
-  box.innerHTML = PROMO_FILTERS.map((f) => {
+
+  if (!Array.isArray(PROMO_ROWS) || !PROMO_ROWS.length) {
+    PROMO_CAMPANHA_FILTER = "todas";
+    box.innerHTML = "";
+    box.style.display = "none";
+    return;
+  }
+
+  const campanhas = getPromoCampanhasDisponiveis();
+  const campanhaAindaExiste =
+    PROMO_CAMPANHA_FILTER === "todas" ||
+    campanhas.some((c) => c.key === PROMO_CAMPANHA_FILTER);
+
+  if (!campanhaAindaExiste) PROMO_CAMPANHA_FILTER = "todas";
+
+  const options = [
+    `<option value="todas">Todas as promoções/campanhas (${PROMO_ROWS.length})</option>`,
+    ...campanhas.map((c) => `
+      <option value="${escapeHTML(c.key)}"${c.key === PROMO_CAMPANHA_FILTER ? " selected" : ""}>
+        ${escapeHTML(c.label)} (${c.count})
+      </option>
+    `),
+  ].join("");
+
+  const decisionButtons = PROMO_FILTERS.map((f) => {
     const count = contarPorDecisao(f.key);
     const active = f.key === PROMO_FILTER ? " active" : "";
-    return `<button type="button" class="vf-ml-filter-btn${active}" data-filter="${f.key}">${escapeHTML(f.label)} (${count})</button>`;
+    return `<button type="button" class="vf-ml-filter-btn${active}" data-filter="${escapeHTML(f.key)}">${escapeHTML(f.label)} (${count})</button>`;
   }).join("");
-  box.style.display = "flex";
 
-  box.querySelectorAll(".vf-ml-filter-btn").forEach((b) => {
-    b.addEventListener("click", () => {
-      PROMO_FILTER = b.getAttribute("data-filter") || "todos";
+  box.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;width:100%;margin-bottom:10px;">
+      <div class="vf-form-group" style="margin:0;min-width:280px;max-width:460px;flex:1;">
+        <label for="promo-campanha-dinamica">Filtrar por promoção/campanha encontrada</label>
+        <select id="promo-campanha-dinamica" class="vf-input">
+          ${options}
+        </select>
+        <small style="display:block;margin-top:6px;color:var(--vf-text-m);font-size:.75rem;line-height:1.4;">
+          Esse filtro aparece depois da análise e mostra as promoções/campanhas retornadas na lista atual.
+        </small>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;">
+      ${decisionButtons}
+    </div>
+  `;
+
+  box.style.display = "flex";
+  box.style.flexDirection = "column";
+  box.style.alignItems = "stretch";
+
+  document.getElementById("promo-campanha-dinamica")?.addEventListener("change", (event) => {
+    PROMO_CAMPANHA_FILTER = event.target.value || "todas";
+    PROMO_FILTER = "todos";
+    renderFiltros();
+    renderTabela();
+  });
+
+  box.querySelectorAll(".vf-ml-filter-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      PROMO_FILTER = button.getAttribute("data-filter") || "todos";
       renderFiltros();
       renderTabela();
     });
@@ -332,8 +422,17 @@ function renderFiltros() {
 
 // ─── Render: tabela ───────────────────────────────────────────────────────
 function linhasFiltradas() {
-  if (PROMO_FILTER === "todos") return PROMO_ROWS;
-  return PROMO_ROWS.filter((l) => l.decisao === PROMO_FILTER);
+  let rows = Array.isArray(PROMO_ROWS) ? PROMO_ROWS : [];
+
+  if (PROMO_CAMPANHA_FILTER !== "todas") {
+    rows = rows.filter((linha) => getPromoCampanhaKey(linha) === PROMO_CAMPANHA_FILTER);
+  }
+
+  if (PROMO_FILTER !== "todos") {
+    rows = rows.filter((linha) => linha.decisao === PROMO_FILTER);
+  }
+
+  return rows;
 }
 
 function badgeDecisao(decisao) {
