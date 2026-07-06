@@ -305,7 +305,39 @@
     <!-- Painel de edição/adição de item ou atualização por planilha (render via JS) -->
     <div class="b-cost-panel" id="bases-cost-panel" style="display:none;"></div>
 
-    <div class="b-drawer-body" id="bases-drawer-body"></div>
+    <div class="b-drawer-body" id="bases-drawer-body">
+      <!-- Cabeçalho estático (sempre no DOM) — os filtros ficam nos próprios headers, estilo Excel -->
+      <table class="b-table b-costs-table" id="bases-costs-table" style="display:none;">
+        <thead>
+          <tr>
+            <th>
+              <button type="button" class="b-th-filter" data-cost-filter-menu="produto" aria-haspopup="true" aria-expanded="false">
+                <span class="b-th-filter-label">Produto</span><span aria-hidden="true">▾</span>
+              </button>
+            </th>
+            <th id="bases-costs-th-idmodel" style="display:none;">ID Model</th>
+            <th class="num">
+              <button type="button" class="b-th-filter" data-cost-filter-menu="custo" aria-haspopup="true" aria-expanded="false">
+                <span class="b-th-filter-label">Custo</span><span aria-hidden="true">▾</span>
+              </button>
+            </th>
+            <th class="num">
+              <button type="button" class="b-th-filter" data-cost-filter-menu="imposto" aria-haspopup="true" aria-expanded="false">
+                <span class="b-th-filter-label">Imposto</span><span aria-hidden="true">▾</span>
+              </button>
+            </th>
+            <th class="num">
+              <button type="button" class="b-th-filter" data-cost-filter-menu="taxa" aria-haspopup="true" aria-expanded="false">
+                <span class="b-th-filter-label">Taxa fixa</span><span aria-hidden="true">▾</span>
+              </button>
+            </th>
+            <th class="b-cost-actions-th"></th>
+          </tr>
+        </thead>
+        <tbody id="bases-costs-tbody"></tbody>
+      </table>
+      <div class="b-state" id="bases-drawer-state" style="border:none;display:none;"></div>
+    </div>
     <!-- Menu flutuante estilo Excel para os filtros do cabeçalho da tabela de custos -->
     <div class="b-filter-pop" id="bases-filter-pop" role="menu"></div>
     <div class="b-drawer-footer">

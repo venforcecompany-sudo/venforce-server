@@ -1220,15 +1220,24 @@ function abrirDrawerCustos(slug, mp, btnOrigem) {
   carregarCustosDrawer(slug);
 }
 
-function drawerBodyHtml(html) {
-  const el = document.getElementById("bases-drawer-body");
-  if (el) el.innerHTML = html;
+// O cabeçalho da tabela (com os botões de filtro) é estático no HTML e nunca é
+// recriado — só a mensagem de estado (loading/erro) ou o <tbody> são trocados.
+function mostrarEstadoDrawer(html) {
+  const table = document.getElementById("bases-costs-table");
+  const state = document.getElementById("bases-drawer-state");
+  if (table) table.style.display = "none";
+  if (state) { state.style.display = ""; state.innerHTML = html; }
+}
+function mostrarTabelaCustos() {
+  const table = document.getElementById("bases-costs-table");
+  const state = document.getElementById("bases-drawer-state");
+  if (table) table.style.display = "";
+  if (state) { state.style.display = "none"; state.innerHTML = ""; }
 }
 
 async function carregarCustosDrawer(slug) {
-  drawerBodyHtml(`<div class="b-state" style="border:none;">
-    <div class="loading-dots"><span></span><span></span><span></span></div>
-    <p>Carregando custos…</p></div>`);
+  mostrarEstadoDrawer(`<div class="loading-dots"><span></span><span></span><span></span></div>
+    <p>Carregando custos…</p>`);
   const countEl = document.getElementById("bases-drawer-count");
   if (countEl) countEl.textContent = "Carregando…";
   try {
@@ -1246,11 +1255,10 @@ async function carregarCustosDrawer(slug) {
     }));
     renderDrawerItens();
   } catch (err) {
-    drawerBodyHtml(`<div class="b-state" style="border:none;">
-      <p>Não foi possível carregar os custos desta base.</p>
-      <button type="button" class="b-btn b-drawer-retry">Tentar novamente</button></div>`);
+    mostrarEstadoDrawer(`<p>Não foi possível carregar os custos desta base.</p>
+      <button type="button" class="b-btn b-drawer-retry">Tentar novamente</button>`);
     if (countEl) countEl.textContent = "—";
-    const retry = document.querySelector("#bases-drawer-body .b-drawer-retry");
+    const retry = document.querySelector("#bases-drawer-state .b-drawer-retry");
     if (retry) retry.addEventListener("click", () => carregarCustosDrawer(slug));
   }
 }
@@ -1289,21 +1297,26 @@ function fmtPercentDrawer(v) {
   return String(pct).replace(".", ",") + "%";
 }
 
-function thFiltroHtml(tipo, label, ativo) {
-  return `<button type="button" class="b-th-filter${ativo ? " is-filtered" : ""}" data-cost-filter-menu="${tipo}">
-    <span class="b-th-filter-label">${escapeHTML(label)}</span><span>▾</span>
-  </button>`;
+// Reflete o estado dos filtros nos botões estáticos do cabeçalho (.is-filtered).
+function atualizarEstadoFiltrosHeader() {
+  const estados = {
+    produto: String(DRAWER_FILTROS.produto || "").trim() !== "",
+    custo: DRAWER_FILTROS.custo !== "todos",
+    imposto: DRAWER_FILTROS.imposto !== "todos",
+    taxa: DRAWER_FILTROS.taxa !== "todos",
+  };
+  document.querySelectorAll("#bases-costs-table [data-cost-filter-menu]").forEach((btn) => {
+    btn.classList.toggle("is-filtered", !!estados[btn.dataset.costFilterMenu]);
+  });
 }
 
 function renderDrawerItens() {
   const filtrados = drawerFiltrarItens();
   const totalFiltrado = filtrados.length;
   const exibidos = filtrados.slice(0, DRAWER_LIMITE);
-  const idModelTh = DRAWER_IS_SHOPEE ? `<th>ID Model</th>` : "";
-  const filtroAtivoProduto = String(DRAWER_FILTROS.produto || "").trim() !== "";
-  const filtroAtivoCusto = DRAWER_FILTROS.custo !== "todos";
-  const filtroAtivoImposto = DRAWER_FILTROS.imposto !== "todos";
-  const filtroAtivoTaxa = DRAWER_FILTROS.taxa !== "todos";
+
+  const thIdModel = document.getElementById("bases-costs-th-idmodel");
+  if (thIdModel) thIdModel.style.display = DRAWER_IS_SHOPEE ? "" : "none";
 
   const rows = exibidos.map((it, idx) => {
     const custoZero = Number(it.custo) === 0;
@@ -1329,36 +1342,19 @@ function renderDrawerItens() {
     ? rows
     : `<tr><td colspan="${colspan}" class="b-table-empty">Nenhum item para os filtros atuais.</td></tr>`;
 
-  drawerBodyHtml(`
-    <table class="b-table b-costs-table">
-      <thead>
-        <tr>
-          <th>${thFiltroHtml("produto", "Produto", filtroAtivoProduto)}</th>
-          ${idModelTh}
-          <th class="num">${thFiltroHtml("custo", "Custo", filtroAtivoCusto)}</th>
-          <th class="num">${thFiltroHtml("imposto", "Imposto", filtroAtivoImposto)}</th>
-          <th class="num">${thFiltroHtml("taxa", "Taxa fixa", filtroAtivoTaxa)}</th>
-          <th class="b-cost-actions-th"></th>
-        </tr>
-      </thead>
-      <tbody>${rowsOuVazio}</tbody>
-    </table>`);
+  const tbody = document.getElementById("bases-costs-tbody");
+  if (tbody) tbody.innerHTML = rowsOuVazio;
+  mostrarTabelaCustos();
+  atualizarEstadoFiltrosHeader();
 
-  const bodyEl = document.getElementById("bases-drawer-body");
-  bodyEl?.querySelectorAll(".b-th-filter").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleFiltroPop(btn.dataset.costFilterMenu, btn);
-    });
-  });
-  bodyEl?.querySelectorAll(".b-cost-edit").forEach((btn) => {
+  tbody?.querySelectorAll(".b-cost-edit").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const idx = Number(btn.dataset.costIdx);
       if (Number.isFinite(idx) && exibidos[idx]) abrirFormularioItem(exibidos[idx]);
     });
   });
-  bodyEl?.querySelectorAll(".b-cost-row").forEach((tr) => {
+  tbody?.querySelectorAll(".b-cost-row").forEach((tr) => {
     tr.addEventListener("click", () => {
       // Não dispara se o usuário está apenas selecionando texto da linha.
       const sel = window.getSelection && window.getSelection().toString();
@@ -1450,7 +1446,8 @@ function bindFiltroPopEventos(tipo, pop) {
   });
 }
 
-function toggleFiltroPop(tipo, btnEl) {
+// event é opcional — aceito para permitir uso direto como handler delegado.
+function toggleFiltroPop(event, tipo, btnEl) {
   const pop = document.getElementById("bases-filter-pop");
   if (!pop || !tipo) return;
   if (FILTRO_POP_ABERTO === tipo && pop.classList.contains("is-open")) {
@@ -1462,14 +1459,29 @@ function toggleFiltroPop(tipo, btnEl) {
   pop.classList.add("is-open");
   posicionarFiltroPop(btnEl, pop);
   bindFiltroPopEventos(tipo, pop);
+  document.querySelectorAll("[data-cost-filter-menu]").forEach((b) => {
+    b.setAttribute("aria-expanded", b === btnEl ? "true" : "false");
+  });
   if (tipo === "produto") pop.querySelector("#filter-pop-busca")?.focus();
 }
 
 function fecharFiltroPop() {
   const pop = document.getElementById("bases-filter-pop");
   if (pop) { pop.classList.remove("is-open"); pop.innerHTML = ""; }
+  document.querySelectorAll("[data-cost-filter-menu]").forEach((b) => b.setAttribute("aria-expanded", "false"));
   FILTRO_POP_ABERTO = null;
 }
+
+// Listener delegado (capture): funciona mesmo que o botão do header seja
+// estático — cobre cliques em qualquer [data-cost-filter-menu] na página.
+document.addEventListener("click", function (event) {
+  const btn = event.target.closest("[data-cost-filter-menu]");
+  if (!btn) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const campo = btn.dataset.costFilterMenu;
+  toggleFiltroPop(event, campo, btn);
+}, true);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ─── EDIÇÃO DE CUSTOS DENTRO DO DRAWER ─────────────────────────────────────────
