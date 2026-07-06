@@ -1163,8 +1163,9 @@ document.getElementById("btn-importar").addEventListener("click", async () => {
 //  (preview seguro — Opção B, sem fluxo destrutivo).
 // ══════════════════════════════════════════════════════════════════════════════
 let DRAWER_ITENS = [];
-let DRAWER_FILTRO = "todos";        // "todos" | "custo" | "imposto" | "taxa"
-let DRAWER_BUSCA = "";
+// Filtros estilo Excel no cabeçalho da tabela de custos (client-side, sem API).
+let DRAWER_FILTROS = { produto: "", custo: "todos", imposto: "todos", taxa: "todos" };
+let FILTRO_POP_ABERTO = null;        // "produto" | "custo" | "imposto" | "taxa" | null
 let DRAWER_IS_SHOPEE = false;
 let DRAWER_BTN_ORIGEM = null;
 let DRAWER_SLUG = "";
@@ -1177,6 +1178,7 @@ function abrirDrawer() {
   document.getElementById("bases-drawer")?.classList.add("is-open");
 }
 function fecharDrawer() {
+  fecharFiltroPop();
   fecharPainelCusto();
   document.getElementById("bases-drawer-backdrop")?.classList.remove("is-open");
   document.getElementById("bases-drawer")?.classList.remove("is-open");
@@ -1197,14 +1199,10 @@ function abrirDrawerCustos(slug, mp, btnOrigem) {
   DRAWER_IS_SHOPEE = mp === "shopee";
   DRAWER_BTN_ORIGEM = btnOrigem || null;
   DRAWER_ITENS = [];
-  DRAWER_FILTRO = "todos";
-  DRAWER_BUSCA = "";
+  DRAWER_FILTROS = { produto: "", custo: "todos", imposto: "todos", taxa: "todos" };
+  fecharFiltroPop();
   fecharPainelCusto();
   setDrawerHint("Clique no lápis de um item para editar, ou use “Adicionar item”.");
-  const buscaEl = document.getElementById("bases-drawer-busca");
-  if (buscaEl) buscaEl.value = "";
-  document.querySelectorAll("#bases-drawer .b-filter-chip").forEach((c) =>
-    c.classList.toggle("active", c.dataset.drawerFilter === "todos"));
 
   const base = (Array.isArray(TODAS_BASES) ? TODAS_BASES : []).find((b) => String(b.slug) === String(slug));
   DRAWER_BASE_ATUAL = base || null;
@@ -1257,12 +1255,21 @@ async function carregarCustosDrawer(slug) {
   }
 }
 
+// "todos": não filtra · "zero": valor 0 ou vazio · "preenchido": valor > 0
+function passaFiltroNumerico(estado, valor) {
+  if (estado !== "zero" && estado !== "preenchido") return true;
+  const vazio = valor == null || valor === "";
+  const n = Number(valor);
+  if (estado === "zero") return vazio || (Number.isFinite(n) && n === 0);
+  return !vazio && Number.isFinite(n) && n > 0;
+}
+
 function drawerFiltrarItens() {
-  const termo = String(DRAWER_BUSCA || "").toLowerCase().trim();
+  const termo = String(DRAWER_FILTROS.produto || "").toLowerCase().trim();
   return DRAWER_ITENS.filter((it) => {
-    if (DRAWER_FILTRO === "custo" && Number(it.custo) !== 0) return false;
-    if (DRAWER_FILTRO === "imposto" && Number(it.imposto) !== 0) return false;
-    if (DRAWER_FILTRO === "taxa" && Number(it.taxa) !== 0) return false;
+    if (!passaFiltroNumerico(DRAWER_FILTROS.custo, it.custo)) return false;
+    if (!passaFiltroNumerico(DRAWER_FILTROS.imposto, it.imposto)) return false;
+    if (!passaFiltroNumerico(DRAWER_FILTROS.taxa, it.taxa)) return false;
     if (termo) {
       const hay = `${it.id ?? ""} ${it.id_model ?? ""}`.toLowerCase();
       if (!hay.includes(termo)) return false;
@@ -1282,11 +1289,21 @@ function fmtPercentDrawer(v) {
   return String(pct).replace(".", ",") + "%";
 }
 
+function thFiltroHtml(tipo, label, ativo) {
+  return `<button type="button" class="b-th-filter${ativo ? " is-filtered" : ""}" data-cost-filter-menu="${tipo}">
+    <span class="b-th-filter-label">${escapeHTML(label)}</span><span>▾</span>
+  </button>`;
+}
+
 function renderDrawerItens() {
   const filtrados = drawerFiltrarItens();
   const totalFiltrado = filtrados.length;
   const exibidos = filtrados.slice(0, DRAWER_LIMITE);
   const idModelTh = DRAWER_IS_SHOPEE ? `<th>ID Model</th>` : "";
+  const filtroAtivoProduto = String(DRAWER_FILTROS.produto || "").trim() !== "";
+  const filtroAtivoCusto = DRAWER_FILTROS.custo !== "todos";
+  const filtroAtivoImposto = DRAWER_FILTROS.imposto !== "todos";
+  const filtroAtivoTaxa = DRAWER_FILTROS.taxa !== "todos";
 
   const rows = exibidos.map((it, idx) => {
     const custoZero = Number(it.custo) === 0;
@@ -1305,47 +1322,56 @@ function renderDrawerItens() {
     </tr>`;
   }).join("");
 
-  if (!totalFiltrado) {
-    drawerBodyHtml(`<div class="b-state" style="border:none;"><p>Nenhum item para os filtros atuais.</p></div>`);
-  } else {
-    drawerBodyHtml(`
-      <table class="b-table b-costs-table">
-        <thead>
-          <tr>
-            <th>Produto</th>
-            ${idModelTh}
-            <th class="num">Custo</th>
-            <th class="num">Imposto</th>
-            <th class="num">Taxa fixa</th>
-            <th class="b-cost-actions-th"></th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>`);
+  // Cabeçalho com filtros continua visível mesmo sem resultados, para o
+  // usuário conseguir trocar/limpar o filtro que zerou a lista.
+  const colspan = (DRAWER_IS_SHOPEE ? 6 : 5);
+  const rowsOuVazio = totalFiltrado
+    ? rows
+    : `<tr><td colspan="${colspan}" class="b-table-empty">Nenhum item para os filtros atuais.</td></tr>`;
 
-    const body = document.getElementById("bases-drawer-body");
-    body?.querySelectorAll(".b-cost-edit").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const idx = Number(btn.dataset.costIdx);
-        if (Number.isFinite(idx) && exibidos[idx]) abrirFormularioItem(exibidos[idx]);
-      });
+  drawerBodyHtml(`
+    <table class="b-table b-costs-table">
+      <thead>
+        <tr>
+          <th>${thFiltroHtml("produto", "Produto", filtroAtivoProduto)}</th>
+          ${idModelTh}
+          <th class="num">${thFiltroHtml("custo", "Custo", filtroAtivoCusto)}</th>
+          <th class="num">${thFiltroHtml("imposto", "Imposto", filtroAtivoImposto)}</th>
+          <th class="num">${thFiltroHtml("taxa", "Taxa fixa", filtroAtivoTaxa)}</th>
+          <th class="b-cost-actions-th"></th>
+        </tr>
+      </thead>
+      <tbody>${rowsOuVazio}</tbody>
+    </table>`);
+
+  const bodyEl = document.getElementById("bases-drawer-body");
+  bodyEl?.querySelectorAll(".b-th-filter").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleFiltroPop(btn.dataset.costFilterMenu, btn);
     });
-    body?.querySelectorAll(".b-cost-row").forEach((tr) => {
-      tr.addEventListener("click", () => {
-        // Não dispara se o usuário está apenas selecionando texto da linha.
-        const sel = window.getSelection && window.getSelection().toString();
-        if (sel) return;
-        const idx = Number(tr.dataset.costIdx);
-        if (Number.isFinite(idx) && exibidos[idx]) abrirFormularioItem(exibidos[idx]);
-      });
-      tr.addEventListener("keydown", (e) => {
-        if (e.key !== "Enter") return;
-        const idx = Number(tr.dataset.costIdx);
-        if (Number.isFinite(idx) && exibidos[idx]) abrirFormularioItem(exibidos[idx]);
-      });
+  });
+  bodyEl?.querySelectorAll(".b-cost-edit").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.dataset.costIdx);
+      if (Number.isFinite(idx) && exibidos[idx]) abrirFormularioItem(exibidos[idx]);
     });
-  }
+  });
+  bodyEl?.querySelectorAll(".b-cost-row").forEach((tr) => {
+    tr.addEventListener("click", () => {
+      // Não dispara se o usuário está apenas selecionando texto da linha.
+      const sel = window.getSelection && window.getSelection().toString();
+      if (sel) return;
+      const idx = Number(tr.dataset.costIdx);
+      if (Number.isFinite(idx) && exibidos[idx]) abrirFormularioItem(exibidos[idx]);
+    });
+    tr.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const idx = Number(tr.dataset.costIdx);
+      if (Number.isFinite(idx) && exibidos[idx]) abrirFormularioItem(exibidos[idx]);
+    });
+  });
 
   const totalBase = DRAWER_ITENS.length;
   const countEl = document.getElementById("bases-drawer-count");
@@ -1355,6 +1381,94 @@ function renderDrawerItens() {
   } else {
     countEl.textContent = `Mostrando ${totalFiltrado} de ${totalBase} itens`;
   }
+}
+
+// ─── Menu de filtro estilo Excel (cabeçalho da tabela de custos) ───
+const FILTRO_ROTULOS = {
+  custo: ["Zerado", "Preenchido"],
+  imposto: ["Zerado", "Preenchido"],
+  taxa: ["Zerada", "Preenchida"],
+};
+
+function renderFiltroPopConteudo(tipo) {
+  if (tipo === "produto") {
+    const valor = escapeHTML(DRAWER_FILTROS.produto || "");
+    return `<div class="b-filter-pop-inner">
+      <input type="text" class="b-filter-search" id="filter-pop-busca" placeholder="Buscar produto, MLB ou SKU..." value="${valor}" autocomplete="off">
+      <button type="button" class="b-btn b-btn--ghost b-btn--sm" id="filter-pop-limpar">Limpar</button>
+    </div>`;
+  }
+  const [rotuloZero, rotuloPreenchido] = FILTRO_ROTULOS[tipo] || ["Zerado", "Preenchido"];
+  const atual = DRAWER_FILTROS[tipo] || "todos";
+  const opt = (valor, label) =>
+    `<button type="button" class="b-filter-option${atual === valor ? " is-active" : ""}" data-filter-value="${valor}">${escapeHTML(label)}</button>`;
+  return `<div class="b-filter-pop-inner">
+    ${opt("todos", "Todos")}
+    ${opt("zero", rotuloZero)}
+    ${opt("preenchido", rotuloPreenchido)}
+  </div>`;
+}
+
+function posicionarFiltroPop(btnEl, pop) {
+  const rect = btnEl.getBoundingClientRect();
+  const drawerEl = document.getElementById("bases-drawer");
+  const drawerRect = drawerEl?.getBoundingClientRect();
+  const margem = 12;
+  pop.style.top = `${rect.bottom + 4}px`;
+  pop.style.left = `${rect.left}px`;
+  const popRect = pop.getBoundingClientRect();
+  let left = rect.left;
+  if (drawerRect) {
+    if (popRect.right > drawerRect.right - margem) left = drawerRect.right - margem - popRect.width;
+    if (left < drawerRect.left + margem) left = drawerRect.left + margem;
+  }
+  pop.style.left = `${left}px`;
+}
+
+function bindFiltroPopEventos(tipo, pop) {
+  if (tipo === "produto") {
+    const input = pop.querySelector("#filter-pop-busca");
+    const limpar = pop.querySelector("#filter-pop-limpar");
+    input?.addEventListener("input", (e) => {
+      DRAWER_FILTROS.produto = e.target.value || "";
+      renderDrawerItens();
+    });
+    limpar?.addEventListener("click", () => {
+      DRAWER_FILTROS.produto = "";
+      if (input) input.value = "";
+      renderDrawerItens();
+      input?.focus();
+    });
+    return;
+  }
+  pop.querySelectorAll(".b-filter-option").forEach((b) => {
+    b.addEventListener("click", () => {
+      DRAWER_FILTROS[tipo] = b.dataset.filterValue || "todos";
+      renderDrawerItens();
+      fecharFiltroPop();
+    });
+  });
+}
+
+function toggleFiltroPop(tipo, btnEl) {
+  const pop = document.getElementById("bases-filter-pop");
+  if (!pop || !tipo) return;
+  if (FILTRO_POP_ABERTO === tipo && pop.classList.contains("is-open")) {
+    fecharFiltroPop();
+    return;
+  }
+  FILTRO_POP_ABERTO = tipo;
+  pop.innerHTML = renderFiltroPopConteudo(tipo);
+  pop.classList.add("is-open");
+  posicionarFiltroPop(btnEl, pop);
+  bindFiltroPopEventos(tipo, pop);
+  if (tipo === "produto") pop.querySelector("#filter-pop-busca")?.focus();
+}
+
+function fecharFiltroPop() {
+  const pop = document.getElementById("bases-filter-pop");
+  if (pop) { pop.classList.remove("is-open"); pop.innerHTML = ""; }
+  FILTRO_POP_ABERTO = null;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1677,26 +1791,20 @@ document.getElementById("bases-assist-toggle")?.addEventListener("click", () => 
 // Drawer "Base de custos"
 document.getElementById("bases-drawer-close")?.addEventListener("click", fecharDrawer);
 document.getElementById("bases-drawer-backdrop")?.addEventListener("click", fecharDrawer);
-document.getElementById("bases-drawer-busca")?.addEventListener("input", (e) => { DRAWER_BUSCA = e.target.value || ""; renderDrawerItens(); });
-document.querySelectorAll("#bases-drawer .b-filter-chip").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    DRAWER_FILTRO = chip.dataset.drawerFilter || "todos";
-    document.querySelectorAll("#bases-drawer .b-filter-chip").forEach((c) => c.classList.toggle("active", c === chip));
-    renderDrawerItens();
-  });
-});
 // Ações do drawer: adicionar item / atualizar por planilha (dentro do drawer)
 document.getElementById("bases-drawer-add")?.addEventListener("click", () => abrirFormularioItem(null));
 document.getElementById("bases-drawer-planilha")?.addEventListener("click", abrirPainelPlanilha);
 
-// Fechar menus "⋯" ao clicar fora
+// Fechar menus "⋯" e o menu de filtro do cabeçalho ao clicar fora
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".b-menu")) fecharTodosMenus();
+  if (!e.target.closest(".b-filter-pop") && !e.target.closest(".b-th-filter")) fecharFiltroPop();
 });
 // Esc fecha menus, painel de custo, drawer e modal de importação
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   fecharTodosMenus();
+  if (FILTRO_POP_ABERTO) { fecharFiltroPop(); return; }
   // Se um painel de edição/planilha está aberto no drawer, Esc fecha só o painel.
   const panel = document.getElementById("bases-cost-panel");
   if (panel && panel.style.display !== "none" && panel.innerHTML.trim()) { fecharPainelCusto(); return; }

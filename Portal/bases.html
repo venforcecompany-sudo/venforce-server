@@ -296,15 +296,6 @@
       <button type="button" class="b-btn b-btn--ghost b-btn--sm" id="bases-drawer-close" aria-label="Fechar">✕</button>
     </div>
     <div class="b-drawer-toolbar b-costs-toolbar">
-      <div class="b-costs-toolbar__filters">
-        <div class="b-search" style="max-width:none;flex:1;min-width:180px;">
-          <input type="text" id="bases-drawer-busca" placeholder="Buscar produto, MLB, SKU ou id_model…" autocomplete="off">
-        </div>
-        <button type="button" class="b-filter-chip active" data-drawer-filter="todos">Todos</button>
-        <button type="button" class="b-filter-chip" data-drawer-filter="custo">Custo zerado</button>
-        <button type="button" class="b-filter-chip" data-drawer-filter="imposto">Imposto zerado</button>
-        <button type="button" class="b-filter-chip" data-drawer-filter="taxa">Taxa zerada</button>
-      </div>
       <div class="b-drawer-actions">
         <button type="button" class="b-btn b-btn--sm b-btn--primary" id="bases-drawer-add">+ Adicionar item</button>
         <button type="button" class="b-btn b-btn--sm" id="bases-drawer-planilha">Atualizar por planilha</button>
@@ -315,6 +306,8 @@
     <div class="b-cost-panel" id="bases-cost-panel" style="display:none;"></div>
 
     <div class="b-drawer-body" id="bases-drawer-body"></div>
+    <!-- Menu flutuante estilo Excel para os filtros do cabeçalho da tabela de custos -->
+    <div class="b-filter-pop" id="bases-filter-pop" role="menu"></div>
     <div class="b-drawer-footer">
       <span id="bases-drawer-count">—</span>
       <div class="right">
