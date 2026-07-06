@@ -32,13 +32,6 @@
           </div>
         </header>
 
-        <!-- 2. BARRA DE ESTADO DOS DADOS -->
-        <div class="b-data-state">
-          <span class="dot"></span>
-          <span id="bases-data-info">Fonte: banco VenForce</span>
-          <button type="button" class="b-btn b-btn--ghost b-btn--sm refresh" id="bases-refresh">Atualizar lista</button>
-        </div>
-
         <!-- Feedback (preserva id) -->
         <div id="bases-feedback" class="vf-alert" style="display:none;margin-bottom:14px;" aria-live="polite"></div>
 
@@ -52,18 +45,24 @@
             <div class="b-search">
               <input type="text" id="bases-busca" placeholder="Buscar por base, cliente/grant, slug ou loja…" autocomplete="off">
             </div>
-            <select class="b-select" id="bases-filtro-marketplace">
-              <option value="">Marketplace: todos</option>
-              <option value="meli">Mercado Livre</option>
-              <option value="shopee">Shopee</option>
-            </select>
-            <select class="b-select" id="bases-filtro-atualizacao">
-              <option value="">Atualização: todas</option>
-              <option value="atualizada">Atualizadas</option>
-              <option value="desatualizada">Desatualizadas +30d</option>
-            </select>
+            <button type="button" class="b-btn b-btn--icon b-btn--ghost" id="bases-refresh" title="Atualizar lista" aria-label="Atualizar lista">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"/>
+                <polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+            </button>
           </div>
           <div class="b-toolbar__actions">
+            <label class="b-sort">
+              Ordenar
+              <select class="b-select" id="bases-sort">
+                <option value="attention">Atenção primeiro</option>
+                <option value="oldest">Mais antigas</option>
+                <option value="newest">Mais recentes</option>
+                <option value="az">A-Z</option>
+              </select>
+            </label>
             <button type="button" class="b-btn b-btn--sm" id="bases-limpar-filtros" style="display:none;">Limpar filtros</button>
           </div>
         </section>
@@ -80,55 +79,53 @@
 
           <div id="state-sections" style="display:none;">
 
-            <!-- MERCADO LIVRE -->
-            <section class="b-mp-section">
-              <div class="b-mp-header">
-                <span class="b-mp-dot meli"></span>
-                <h2>Mercado Livre</h2>
-                <span class="count"><span id="count-meli">0</span> bases</span>
-                <button type="button" class="b-btn b-btn--sm mp-action" data-import-mp="meli">Importar base Meli</button>
-              </div>
-              <div class="b-table-scroll" id="wrap-meli">
-                <table class="b-table">
-                  <thead>
-                    <tr>
-                      <th>Cliente / Grant ML</th>
-                      <th>Base oficial</th>
-                      <th>Última atualização</th>
-                      <th>Status</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody id="bases-tbody-meli"></tbody>
-                </table>
-              </div>
-              <div id="empty-meli" class="b-table-empty" style="display:none;">Nenhuma base de Mercado Livre para os filtros atuais.</div>
-            </section>
+            <div class="b-market-grid">
+              <!-- MERCADO LIVRE -->
+              <section class="b-mp-section">
+                <div class="b-mp-header">
+                  <span class="b-mp-dot meli"></span>
+                  <h2>Mercado Livre</h2>
+                  <span class="count"><span id="count-meli">0</span> bases</span>
+                </div>
+                <div class="b-table-scroll" id="wrap-meli">
+                  <table class="b-table">
+                    <thead>
+                      <tr>
+                        <th>Cliente / Grant ML</th>
+                        <th>Base oficial</th>
+                        <th>Status</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="bases-tbody-meli"></tbody>
+                  </table>
+                </div>
+                <div id="empty-meli" class="b-table-empty" style="display:none;">Nenhuma base de Mercado Livre para os filtros atuais.</div>
+              </section>
 
-            <!-- SHOPEE -->
-            <section class="b-mp-section">
-              <div class="b-mp-header">
-                <span class="b-mp-dot shopee"></span>
-                <h2>Shopee</h2>
-                <span class="count"><span id="count-shopee">0</span> bases</span>
-                <button type="button" class="b-btn b-btn--sm mp-action" data-import-mp="shopee">Importar base Shopee</button>
-              </div>
-              <div class="b-table-scroll" id="wrap-shopee">
-                <table class="b-table">
-                  <thead>
-                    <tr>
-                      <th>Base</th>
-                      <th>Loja / apelido</th>
-                      <th>Última atualização</th>
-                      <th>Status</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody id="bases-tbody-shopee"></tbody>
-                </table>
-              </div>
-              <div id="empty-shopee" class="b-table-empty" style="display:none;">Nenhuma base de Shopee para os filtros atuais.</div>
-            </section>
+              <!-- SHOPEE -->
+              <section class="b-mp-section">
+                <div class="b-mp-header">
+                  <span class="b-mp-dot shopee"></span>
+                  <h2>Shopee</h2>
+                  <span class="count"><span id="count-shopee">0</span> bases</span>
+                </div>
+                <div class="b-table-scroll" id="wrap-shopee">
+                  <table class="b-table">
+                    <thead>
+                      <tr>
+                        <th>Base</th>
+                        <th>Loja / apelido</th>
+                        <th>Status</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="bases-tbody-shopee"></tbody>
+                  </table>
+                </div>
+                <div id="empty-shopee" class="b-table-empty" style="display:none;">Nenhuma base de Shopee para os filtros atuais.</div>
+              </section>
+            </div>
 
             <!-- Rodapé/status -->
             <div class="b-data-state" style="margin-bottom:0;">

@@ -69,6 +69,8 @@ let TODAS_BASES = [];
 let BASES_BUSCA = "";
 let BASES_FILTRO_MP = "";      // "", "meli", "shopee"
 let BASES_FILTRO_ATUAL = "";   // "", "atualizada", "desatualizada"
+let BASES_SORT = "attention";  // "attention", "oldest", "newest", "az"
+const BASES_ALERTAS_IGNORADOS = new Set(); // slugs com alerta de desatualização ignorado (visual/local, não persiste)
 let CLIENTES_DISPONIVEIS = [];
 let CLIENTES_CARREGADOS = false;
 let VINCULOS_EDITAVEIS = true;
@@ -160,6 +162,46 @@ function isBaseDesatualizada(base) {
   return (Date.now() - t) > DIAS_30_MS;
 }
 
+function diasDesdeAtualizacao(base) {
+  const t = getBaseTimestamp(base);
+  if (t == null) return null;
+  return Math.max(0, Math.floor((Date.now() - t) / (24 * 60 * 60 * 1000)));
+}
+
+function formatarIdadeBase(base) {
+  const dias = diasDesdeAtualizacao(base);
+  if (dias == null) return "Sem data";
+  if (dias === 0) return "Hoje";
+  if (dias === 1) return "1 dia";
+  return `${dias} dias`;
+}
+
+function ordenarBases(bases) {
+  const arr = Array.isArray(bases) ? [...bases] : [];
+  const nomeOf = (b) => String(b?.nome || b?.slug || "").toLowerCase();
+  const tsOf = (b) => {
+    const t = getBaseTimestamp(b);
+    return t == null ? -Infinity : t;
+  };
+  const emAtencao = (b) => isBaseDesatualizada(b) && !BASES_ALERTAS_IGNORADOS.has(b?.slug || "");
+
+  switch (BASES_SORT) {
+    case "oldest":
+      return arr.sort((a, b) => tsOf(a) - tsOf(b));
+    case "newest":
+      return arr.sort((a, b) => tsOf(b) - tsOf(a));
+    case "az":
+      return arr.sort((a, b) => nomeOf(a).localeCompare(nomeOf(b)));
+    case "attention":
+    default:
+      return arr.sort((a, b) => {
+        const ea = emAtencao(a), eb = emAtencao(b);
+        if (ea !== eb) return ea ? -1 : 1;
+        return tsOf(a) - tsOf(b);
+      });
+  }
+}
+
 function hasFiltrosAtivos() {
   return !!(String(BASES_BUSCA || "").trim() || BASES_FILTRO_MP || BASES_FILTRO_ATUAL);
 }
@@ -192,8 +234,8 @@ function renderBasesSummary() {
     { label: "Total de bases", value: String(total) },
     { label: "Mercado Livre", value: String(meli), filtro: { tipo: "mp", valor: "meli" } },
     { label: "Shopee", value: String(shopee), filtro: { tipo: "mp", valor: "shopee" } },
-    { label: "Atualizadas", value: String(atualizadas), foot: "últimos 30 dias", filtro: { tipo: "at", valor: "atualizada" } },
-    { label: "Desatualizadas +30d", value: String(desatualizadas), foot: "clique para filtrar", warning: true, filtro: { tipo: "at", valor: "desatualizada" } },
+    { label: "Atualizadas", value: String(atualizadas), filtro: { tipo: "at", valor: "atualizada" } },
+    { label: "Desatualizadas +30d", value: String(desatualizadas), warning: true, filtro: { tipo: "at", valor: "desatualizada" } },
   ];
 
   el.innerHTML = cards.map((c) => {
@@ -247,6 +289,8 @@ function sincronizarControlesFiltro() {
   const atSel = document.getElementById("bases-filtro-atualizacao");
   if (mpSel && mpSel.value !== BASES_FILTRO_MP) mpSel.value = BASES_FILTRO_MP;
   if (atSel && atSel.value !== BASES_FILTRO_ATUAL) atSel.value = BASES_FILTRO_ATUAL;
+  const sortSel = document.getElementById("bases-sort");
+  if (sortSel && sortSel.value !== BASES_SORT) sortSel.value = BASES_SORT;
   const limpar = document.getElementById("bases-limpar-filtros");
   if (limpar) limpar.style.display = hasFiltrosAtivos() ? "" : "none";
 }
@@ -422,7 +466,7 @@ function renderBasesTela() {
   sincronizarControlesFiltro();
   renderChipsFiltros();
   renderBasesSummary();
-  renderBases(getBasesFiltradas());
+  renderBases(ordenarBases(getBasesFiltradas()));
 }
 
 async function loadBases() {
@@ -456,11 +500,30 @@ async function loadBases() {
   }
 }
 
-// ─── Status de atualização (tag) ───
+// ─── Status de atualização (idade + alerta) ───
+const B_EYE_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const B_EDIT_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+
 function renderStatusTag(base) {
-  return isBaseDesatualizada(base)
-    ? `<span class="b-tag is-warning">Desatualizada +30d</span>`
-    : `<span class="b-tag is-success">Atualizada</span>`;
+  const idade = escapeHTML(formatarIdadeBase(base));
+  const slug = escapeHTML(base.slug || "");
+
+  if (!isBaseDesatualizada(base)) {
+    return `<div class="b-status">
+      <span class="b-age-line is-ok"><span class="b-age-dot"></span>${idade}</span>
+    </div>`;
+  }
+
+  const ignorada = BASES_ALERTAS_IGNORADOS.has(base.slug || "");
+  const cls = ignorada ? "is-ignored" : "is-attention";
+  const checked = ignorada ? "checked" : "";
+  return `<div class="b-status">
+    <span class="b-age-line ${cls}"><span class="b-age-dot"></span>${idade}</span>
+    <label class="b-ignore">
+      <input type="checkbox" class="b-ignore-alert" data-slug="${slug}" ${checked}>
+      Ignorar
+    </label>
+  </div>`;
 }
 
 // ─── Menu "⋯" de ações secundárias ───
@@ -474,11 +537,25 @@ function renderMenuBase(base) {
   ` : "";
   return `
     <div class="b-menu">
-      <button type="button" class="b-btn b-btn--sm b-btn--ghost b-menu-trigger" aria-haspopup="true" aria-expanded="false" title="Mais ações">⋯</button>
+      <button type="button" class="b-icon-btn b-icon-btn--ghost b-menu-trigger" aria-haspopup="true" aria-expanded="false" title="Mais ações" aria-label="Mais ações">⋯</button>
       <div class="b-menu-pop">
         ${vinculoItens}
         <button class="b-menu-item asst-btn-baixar-base" data-slug="${slug}" data-nome="${nome}">Baixar CSV</button>
         <button class="b-menu-item b-menu-item--danger btn-excluir-base" data-slug="${slug}" data-nome="${nome}">Excluir base</button>
+      </div>
+    </div>`;
+}
+
+// ─── Menu "Atualizar base" (placeholder seguro — sem API neste commit) ───
+function renderUpdateMenu(base) {
+  const slug = escapeHTML(base.slug || "");
+  const nome = escapeHTML(base.nome || base.slug || "");
+  return `
+    <div class="b-update-menu">
+      <button type="button" class="b-icon-btn b-icon-btn--ghost b-update-trigger" aria-haspopup="true" aria-expanded="false" title="Atualizar base" aria-label="Atualizar base">${B_EDIT_SVG}</button>
+      <div class="b-update-pop">
+        <button class="b-update-item b-update-manual" data-slug="${slug}" data-nome="${nome}">Atualizar manualmente</button>
+        <button class="b-update-item b-update-planilha" data-slug="${slug}" data-nome="${nome}">Atualizar por planilha</button>
       </div>
     </div>`;
 }
@@ -488,22 +565,18 @@ function buildMeliRow(base) {
   const tr = document.createElement("tr");
   const v = base?.vinculo;
   const clienteCell = v
-    ? `<div class="b-cliente"><strong>${escapeHTML(v.cliente_nome || v.cliente_slug || "—")}</strong></div>
-       <div class="b-grant-id">${escapeHTML(v.cliente_slug || "cliente vinculado")}</div>`
-    : `<div class="b-muted">Sem cliente vinculado</div>
-       <div class="b-grant-id">defina em ⋯</div>`;
-  const data = formatDateTime(base.updated_at || base.created_at);
+    ? `<div class="b-cliente"><strong>${escapeHTML(v.cliente_nome || v.cliente_slug || "—")}</strong></div>`
+    : `<div class="b-muted">Sem cliente vinculado</div>`;
   tr.innerHTML = `
     <td>${clienteCell}</td>
     <td>
-      <div class="b-base-name">${escapeHTML(base.nome || "—")}</div>
-      <div class="b-base-slug">${escapeHTML(base.slug || "—")}</div>
+      <div class="b-base-name"><span class="name-text">${escapeHTML(base.nome || "—")}</span></div>
     </td>
-    <td>${escapeHTML(data)}</td>
     <td>${renderStatusTag(base)}</td>
     <td>
       <div class="b-row-actions">
-        <button class="b-btn b-btn--sm b-btn-conferir" data-slug="${escapeHTML(base.slug || "")}" data-mp="meli">Conferir custos</button>
+        <button class="b-icon-btn b-icon-btn--ghost b-btn-conferir" data-slug="${escapeHTML(base.slug || "")}" data-mp="meli" title="Conferir custos" aria-label="Conferir custos">${B_EYE_SVG}</button>
+        ${renderUpdateMenu(base)}
         ${renderMenuBase(base)}
       </div>
     </td>`;
@@ -518,37 +591,36 @@ function buildShopeeRow(base) {
   const lojaCell = loja
     ? `<span class="b-cliente"><strong>${escapeHTML(loja)}</strong></span>`
     : `<span class="b-muted">—</span>`;
-  const data = formatDateTime(base.updated_at || base.created_at);
   tr.innerHTML = `
     <td>
-      <div class="b-base-name">${escapeHTML(base.nome || "—")}</div>
-      <div class="b-base-slug">${escapeHTML(base.slug || "—")}</div>
+      <div class="b-base-name"><span class="name-text">${escapeHTML(base.nome || "—")}</span></div>
     </td>
     <td>${lojaCell}</td>
-    <td>${escapeHTML(data)}</td>
     <td>${renderStatusTag(base)}</td>
     <td>
       <div class="b-row-actions">
-        <button class="b-btn b-btn--sm b-btn-conferir" data-slug="${escapeHTML(base.slug || "")}" data-mp="shopee">Conferir custos</button>
-        <button class="b-btn b-btn--sm b-btn-importar-linha" data-import-mp="shopee" data-nome="${escapeHTML(base.nome || "")}">Importar / atualizar</button>
+        <button class="b-icon-btn b-icon-btn--ghost b-btn-conferir" data-slug="${escapeHTML(base.slug || "")}" data-mp="shopee" title="Conferir custos" aria-label="Conferir custos">${B_EYE_SVG}</button>
+        ${renderUpdateMenu(base)}
         ${renderMenuBase(base)}
       </div>
     </td>`;
   return tr;
 }
 
-// ─── Menu dropdown ───
+// ─── Menu dropdown (⋯ e Atualizar base) ───
 function fecharTodosMenus() {
-  document.querySelectorAll(".vf-page-bases .b-menu-pop.is-open").forEach((p) => p.classList.remove("is-open"));
-  document.querySelectorAll(".vf-page-bases .b-menu-trigger[aria-expanded='true']").forEach((t) => t.setAttribute("aria-expanded", "false"));
+  document.querySelectorAll(".vf-page-bases .b-menu-pop.is-open, .vf-page-bases .b-update-pop.is-open").forEach((p) => p.classList.remove("is-open"));
+  document.querySelectorAll(".vf-page-bases .b-menu-trigger[aria-expanded='true'], .vf-page-bases .b-update-trigger[aria-expanded='true']").forEach((t) => t.setAttribute("aria-expanded", "false"));
 }
-function toggleRowMenu(trigger) {
-  const pop = trigger.parentElement.querySelector(".b-menu-pop");
+function togglePop(trigger, popSelector) {
+  const pop = trigger.parentElement.querySelector(popSelector);
   if (!pop) return;
   const aberto = pop.classList.contains("is-open");
   fecharTodosMenus();
   if (!aberto) { pop.classList.add("is-open"); trigger.setAttribute("aria-expanded", "true"); }
 }
+function toggleRowMenu(trigger) { togglePop(trigger, ".b-menu-pop"); }
+function toggleUpdateMenu(trigger) { togglePop(trigger, ".b-update-pop"); }
 
 function bindBaseRowActions(tbody) {
   tbody.querySelectorAll(".asst-btn-baixar-base").forEach(btn => {
@@ -566,14 +638,36 @@ function bindBaseRowActions(tbody) {
   tbody.querySelectorAll(".b-btn-conferir").forEach(btn => {
     btn.addEventListener("click", () => abrirDrawerCustos(btn.dataset.slug, btn.dataset.mp, btn));
   });
-  tbody.querySelectorAll(".b-btn-importar-linha").forEach(btn => {
-    btn.addEventListener("click", () => abrirModalImportar(btn.dataset.importMp, btn.dataset.nome));
-  });
   tbody.querySelectorAll(".b-menu-trigger").forEach(btn => {
     btn.addEventListener("click", (e) => { e.stopPropagation(); toggleRowMenu(btn); });
   });
   tbody.querySelectorAll(".b-menu-item").forEach(item => {
     item.addEventListener("click", () => fecharTodosMenus());
+  });
+  tbody.querySelectorAll(".b-update-trigger").forEach(btn => {
+    btn.addEventListener("click", (e) => { e.stopPropagation(); toggleUpdateMenu(btn); });
+  });
+  tbody.querySelectorAll(".b-update-item").forEach(item => {
+    item.addEventListener("click", () => fecharTodosMenus());
+  });
+  tbody.querySelectorAll(".b-update-manual").forEach(btn => {
+    btn.addEventListener("click", () => {
+      setDashboardFeedback("Ajuste manual será implementado na próxima etapa. Ele permitirá editar ou adicionar itens sem substituir a base.", "neutral");
+    });
+  });
+  tbody.querySelectorAll(".b-update-planilha").forEach(btn => {
+    btn.addEventListener("click", () => {
+      setDashboardFeedback("Atualização incremental por planilha será implementada na próxima etapa. Ela atualizará MLBs existentes e adicionará novos sem apagar ausentes.", "neutral");
+    });
+  });
+  tbody.querySelectorAll(".b-ignore-alert").forEach((input) => {
+    input.addEventListener("change", () => {
+      const slug = input.dataset.slug;
+      if (!slug) return;
+      if (input.checked) BASES_ALERTAS_IGNORADOS.add(slug);
+      else BASES_ALERTAS_IGNORADOS.delete(slug);
+      renderBasesTela();
+    });
   });
 }
 
@@ -1260,9 +1354,10 @@ if (basesBuscaInput) {
   });
 }
 
-// Filtros de toolbar
+// Filtros de toolbar (selects legados — mantidos como fallback caso reintroduzidos)
 document.getElementById("bases-filtro-marketplace")?.addEventListener("change", (e) => { BASES_FILTRO_MP = e.target.value || ""; aplicarFiltros(); });
 document.getElementById("bases-filtro-atualizacao")?.addEventListener("change", (e) => { BASES_FILTRO_ATUAL = e.target.value || ""; aplicarFiltros(); });
+document.getElementById("bases-sort")?.addEventListener("change", (e) => { BASES_SORT = e.target.value || "attention"; renderBasesTela(); });
 document.getElementById("bases-limpar-filtros")?.addEventListener("click", limparFiltros);
 document.getElementById("bases-refresh")?.addEventListener("click", loadBases);
 
@@ -1311,9 +1406,9 @@ document.querySelectorAll("#bases-drawer .b-filter-chip").forEach((chip) => {
   });
 });
 
-// Fechar menus "⋯" ao clicar fora
+// Fechar menus "⋯" e "Atualizar base" ao clicar fora
 document.addEventListener("click", (e) => {
-  if (!e.target.closest(".b-menu")) fecharTodosMenus();
+  if (!e.target.closest(".b-menu") && !e.target.closest(".b-update-menu")) fecharTodosMenus();
 });
 // Esc fecha menus, drawer e modal de importação
 document.addEventListener("keydown", (e) => {

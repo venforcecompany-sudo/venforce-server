@@ -81,6 +81,20 @@
 .vf-page-bases .b-btn--ghost:hover { background: var(--b-bg-2); color: var(--b-text); }
 .vf-page-bases .b-btn--sm { padding: 4px 10px; font-size: var(--b-fs-xs); }
 .vf-page-bases .b-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.vf-page-bases .b-btn--icon { width: 38px; height: 38px; padding: 0; justify-content: center; flex: none; }
+
+/* ---------- Botões ícone fantasma (olho, "⋯") ---------- */
+.vf-page-bases .b-icon-btn {
+  width: 32px; height: 32px; border-radius: var(--b-radius-sm);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; background: transparent; padding: 0;
+  cursor: pointer; font: inherit; line-height: 1;
+}
+.vf-page-bases .b-icon-btn--ghost { border-color: transparent; background: transparent; color: var(--b-text-l); }
+.vf-page-bases .b-icon-btn--ghost:hover,
+.vf-page-bases .b-icon-btn--ghost:focus-visible {
+  background: var(--b-bg-2); color: var(--b-primary); border-color: var(--b-primary-border); outline: none;
+}
 
 /* ---------- Barra de estado dos dados ---------- */
 .vf-page-bases .b-data-state {
@@ -145,6 +159,11 @@
   background-repeat: no-repeat; background-position: right 10px center;
 }
 .vf-page-bases .b-select:focus { outline: none; border-color: var(--b-primary); box-shadow: 0 0 0 3px var(--b-primary-soft); }
+.vf-page-bases .b-sort {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--b-fs-xs); font-weight: 600; color: var(--b-text-m);
+  white-space: nowrap;
+}
 
 /* Chips de filtro ativo */
 .vf-page-bases .b-active-filters { display: flex; gap: var(--b-sp-2); margin-bottom: var(--b-sp-5); flex-wrap: wrap; }
@@ -156,6 +175,17 @@
   background: var(--b-primary-soft); border: 1px solid var(--b-primary-border); color: var(--b-primary);
 }
 .vf-page-bases .b-chip button { border: none; background: none; color: inherit; cursor: pointer; font-size: .85em; padding: 0; line-height: 1; }
+
+/* ---------- Grid lado a lado (Mercado Livre + Shopee) ---------- */
+.vf-page-bases .b-market-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, .9fr);
+  gap: var(--b-sp-5);
+  align-items: start;
+}
+@media (max-width: 1120px) {
+  .vf-page-bases .b-market-grid { grid-template-columns: 1fr; }
+}
 
 /* ---------- Seções por marketplace ---------- */
 .vf-page-bases .b-mp-section { margin-bottom: var(--b-sp-8); }
@@ -173,6 +203,16 @@
   border-radius: var(--b-radius); overflow: auto; max-height: 520px;
 }
 .vf-page-bases .b-table { width: 100%; border-collapse: collapse; font-size: var(--b-fs-sm); }
+/* Só as tabelas de listagem (Meli/Shopee) usam layout fixo — a tabela do drawer fica de fora. */
+.vf-page-bases .b-table-scroll .b-table { table-layout: fixed; }
+.vf-page-bases .b-table-scroll .b-table th,
+.vf-page-bases .b-table-scroll .b-table td { overflow: hidden; }
+.vf-page-bases .b-table-scroll .b-table th:nth-child(3),
+.vf-page-bases .b-table-scroll .b-table td:nth-child(3) { width: 190px; }
+.vf-page-bases .b-table-scroll .b-table th:last-child,
+.vf-page-bases .b-table-scroll .b-table td:last-child {
+  width: 122px; overflow: visible; padding-left: 6px; padding-right: 10px;
+}
 .vf-page-bases .b-table thead th {
   position: sticky; top: 0; z-index: 1;
   text-align: left; font-size: var(--b-fs-2xs); text-transform: uppercase;
@@ -183,15 +223,24 @@
 .vf-page-bases .b-table tbody tr:last-child td { border-bottom: none; }
 .vf-page-bases .b-table tbody tr:hover { background: var(--b-bg); }
 .vf-page-bases .b-table .num, .vf-page-bases .b-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
-.vf-page-bases .b-base-name { font-weight: 600; }
-.vf-page-bases .b-base-slug { font-family: var(--b-mono); font-size: var(--b-fs-2xs); color: var(--b-text-l); margin-top: 1px; }
+.vf-page-bases .b-base-name {
+  position: relative; display: flex; align-items: center; gap: 6px;
+  max-width: 100%; min-width: 0; font-weight: 650;
+}
+.vf-page-bases .b-base-name .name-text {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1;
+}
+.vf-page-bases .b-cliente,
+.vf-page-bases .b-cliente strong,
+.vf-page-bases .b-muted {
+  display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .vf-page-bases .b-cliente { color: var(--b-text-m); }
 .vf-page-bases .b-cliente strong { color: var(--b-text); font-weight: 600; }
-.vf-page-bases .b-grant-id { font-family: var(--b-mono); font-size: var(--b-fs-2xs); color: var(--b-text-l); margin-top: 1px; }
 .vf-page-bases .b-muted { color: var(--b-text-l); }
 .vf-page-bases .b-table-empty { padding: 22px 16px; color: var(--b-text-l); font-size: var(--b-fs-sm); }
 
-/* ---------- Tags de status ---------- */
+/* ---------- Tags de status (legado, ainda usado em outros pontos) ---------- */
 .vf-page-bases .b-tag {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: var(--b-fs-xs); font-weight: 600; padding: 2px 8px; border-radius: var(--b-radius-sm);
@@ -202,7 +251,28 @@
 .vf-page-bases .b-tag.is-neutral { background: var(--b-bg-2); color: var(--b-text-m); }
 .vf-page-bases .b-tag.is-danger { background: var(--b-danger-bg); color: var(--b-danger); }
 
-.vf-page-bases .b-row-actions { display: flex; gap: var(--b-sp-1); justify-content: flex-end; align-items: center; }
+/* ---------- Status: idade da atualização + ignorar alerta ---------- */
+.vf-page-bases .b-status {
+  display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; max-width: 100%;
+}
+.vf-page-bases .b-age-line {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; width: fit-content;
+  padding: 4px 8px; border-radius: var(--b-radius-sm); font-size: var(--b-fs-xs); font-weight: 650; line-height: 1;
+}
+.vf-page-bases .b-age-line.is-ok { padding-left: 0; background: transparent; color: var(--b-text-m); }
+.vf-page-bases .b-age-line.is-attention { background: var(--b-warning-bg); color: var(--b-warning); border: 1px solid rgba(178, 94, 0, .22); }
+.vf-page-bases .b-age-line.is-ignored { background: var(--b-bg-2); color: var(--b-text-m); border: 1px solid var(--b-border); }
+.vf-page-bases .b-age-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; opacity: .75; }
+.vf-page-bases .b-ignore {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  color: var(--b-text-l); font-size: 11px; font-weight: 550; cursor: pointer;
+}
+.vf-page-bases .b-ignore input { width: 13px; height: 13px; margin: 0; accent-color: var(--b-primary); }
+
+.vf-page-bases .b-row-actions {
+  display: flex; gap: var(--b-sp-1); justify-content: flex-end; align-items: center;
+  flex-wrap: nowrap; white-space: nowrap;
+}
 
 /* ---------- Menu "⋯" (ações secundárias) ---------- */
 .vf-page-bases .b-menu { position: relative; }
@@ -221,6 +291,22 @@
 .vf-page-bases .b-menu-item:hover { background: var(--b-bg-2); }
 .vf-page-bases .b-menu-item--danger { color: var(--b-danger); }
 .vf-page-bases .b-menu-item--danger:hover { background: var(--b-danger-bg); }
+
+/* ---------- Menu "Atualizar base" (placeholder — mesmo padrão do "⋯") ---------- */
+.vf-page-bases .b-update-menu { position: relative; }
+.vf-page-bases .b-update-pop {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
+  min-width: 210px; background: var(--b-surface);
+  border: 1px solid var(--b-border-strong); border-radius: var(--b-radius-sm);
+  box-shadow: var(--b-shadow-pop); padding: 4px; display: none;
+}
+.vf-page-bases .b-update-pop.is-open { display: block; }
+.vf-page-bases .b-update-item {
+  display: block; width: 100%; text-align: left; font: inherit; font-family: var(--b-font);
+  font-size: var(--b-fs-sm); color: var(--b-text); background: none; border: none;
+  padding: 7px 10px; border-radius: var(--b-radius-sm); cursor: pointer;
+}
+.vf-page-bases .b-update-item:hover { background: var(--b-bg-2); }
 
 /* ---------- Estados (loading / empty / error) ---------- */
 .vf-page-bases .b-state {
@@ -350,8 +436,6 @@
 /* ---------- Responsivo / a11y ---------- */
 @media (max-width: 980px) {
   .vf-page-bases .b-kpi-grid { grid-template-columns: repeat(3, 1fr); }
-  .vf-page-bases .b-table thead th:nth-child(3),
-  .vf-page-bases .b-table tbody td:nth-child(3) { display: none; }
 }
 @media (max-width: 640px) {
   .vf-page-bases .b-kpi-grid { grid-template-columns: repeat(2, 1fr); }
