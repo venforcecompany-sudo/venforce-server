@@ -5,256 +5,317 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Venforce — Bases de Custo</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="bases.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
 </head>
-<body class="vf-page vf-page-dashboard">
+<body class="vf-page vf-page-dashboard vf-page-bases">
 
   <!-- CONTEÚDO -->
   <div class="vf-main-with-sidebar">
     <main class="vf-content">
+      <div class="b-central">
 
-    <div class="vf-page-header">
-      <h2>Bases de Custo</h2>
-      <p>Gerencie suas bases de custos por marketplace e importe planilhas de custo.</p>
-    </div>
+        <!-- 1. PAGE HEADER -->
+        <div class="b-kicker">Operação</div>
+        <header class="b-page-header">
+          <div>
+            <h1>Bases de Custo</h1>
+            <p class="b-desc">Gerencie custos por cliente, marketplace e produto.</p>
+          </div>
+          <div class="b-header-actions">
+            <button type="button" class="b-btn" id="btn-ajuste-manual" disabled
+                    title="Ajuste manual direto chega na próxima rodada">Ajuste manual</button>
+            <button type="button" class="b-btn b-btn--primary" id="btn-abrir-importar">Importar nova base</button>
+          </div>
+        </header>
 
-    <!-- ── IMPORTAR NOVA BASE ── -->
-    <div class="vf-card" style="margin-bottom:24px;">
-      <div class="vf-card-header">
-        <h5>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          Importar / Atualizar Base
-        </h5>
-      </div>
-      <div style="padding:1.5rem 1.75rem;">
-        <div style="margin:0 0 12px;color:var(--vf-text-m);font-size:.875rem;">
-          Envie uma planilha de custos para criar ou atualizar uma base. A pré-visualização será exibida antes da confirmação.
-          <span style="display:block;margin-top:4px;color:var(--vf-text-l);">
-            Use nomes claros, como <span style="font-family:var(--vf-mono);">cliente_meli</span> ou <span style="font-family:var(--vf-mono);">cliente_shopee</span>, para manter a organização por marketplace.
-          </span>
+        <!-- 2. BARRA DE ESTADO DOS DADOS -->
+        <div class="b-data-state">
+          <span class="dot"></span>
+          <span id="bases-data-info">Fonte: banco VenForce</span>
+          <button type="button" class="b-btn b-btn--ghost b-btn--sm refresh" id="bases-refresh">Atualizar lista</button>
         </div>
-        <div class="vf-form-group" style="margin:0 0 16px;max-width:360px;">
+
+        <!-- Feedback (preserva id) -->
+        <div id="bases-feedback" class="vf-alert" style="display:none;margin-bottom:14px;" aria-live="polite"></div>
+
+        <!-- 3. KPIs -->
+        <div class="b-kpi-head"><span class="scope" id="bases-kpi-scope">Totais gerais</span></div>
+        <section class="b-kpi-grid" id="bases-summary"></section>
+
+        <!-- 4. TOOLBAR -->
+        <section class="b-toolbar">
+          <div class="b-toolbar__filters">
+            <div class="b-search">
+              <input type="text" id="bases-busca" placeholder="Buscar por base, cliente/grant, slug ou loja…" autocomplete="off">
+            </div>
+            <select class="b-select" id="bases-filtro-marketplace">
+              <option value="">Marketplace: todos</option>
+              <option value="meli">Mercado Livre</option>
+              <option value="shopee">Shopee</option>
+            </select>
+            <select class="b-select" id="bases-filtro-atualizacao">
+              <option value="">Atualização: todas</option>
+              <option value="atualizada">Atualizadas</option>
+              <option value="desatualizada">Desatualizadas +30d</option>
+            </select>
+          </div>
+          <div class="b-toolbar__actions">
+            <button type="button" class="b-btn b-btn--sm" id="bases-limpar-filtros" style="display:none;">Limpar filtros</button>
+          </div>
+        </section>
+
+        <!-- Chips de filtros ativos -->
+        <div class="b-active-filters" id="bases-chips"></div>
+
+        <!-- 5+6. CONTEÚDO / SEÇÕES -->
+        <div id="bases-content">
+          <div id="state-loading" class="b-state">
+            <div class="loading-dots"><span></span><span></span><span></span></div>
+            <p>Carregando suas bases…</p>
+          </div>
+
+          <div id="state-sections" style="display:none;">
+
+            <!-- MERCADO LIVRE -->
+            <section class="b-mp-section">
+              <div class="b-mp-header">
+                <span class="b-mp-dot meli"></span>
+                <h2>Mercado Livre</h2>
+                <span class="count"><span id="count-meli">0</span> bases</span>
+                <button type="button" class="b-btn b-btn--sm mp-action" data-import-mp="meli">Importar base Meli</button>
+              </div>
+              <div class="b-table-scroll" id="wrap-meli">
+                <table class="b-table">
+                  <thead>
+                    <tr>
+                      <th>Cliente / Grant ML</th>
+                      <th>Base oficial</th>
+                      <th>Última atualização</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="bases-tbody-meli"></tbody>
+                </table>
+              </div>
+              <div id="empty-meli" class="b-table-empty" style="display:none;">Nenhuma base de Mercado Livre para os filtros atuais.</div>
+            </section>
+
+            <!-- SHOPEE -->
+            <section class="b-mp-section">
+              <div class="b-mp-header">
+                <span class="b-mp-dot shopee"></span>
+                <h2>Shopee</h2>
+                <span class="count"><span id="count-shopee">0</span> bases</span>
+                <button type="button" class="b-btn b-btn--sm mp-action" data-import-mp="shopee">Importar base Shopee</button>
+              </div>
+              <div class="b-table-scroll" id="wrap-shopee">
+                <table class="b-table">
+                  <thead>
+                    <tr>
+                      <th>Base</th>
+                      <th>Loja / apelido</th>
+                      <th>Última atualização</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="bases-tbody-shopee"></tbody>
+                </table>
+              </div>
+              <div id="empty-shopee" class="b-table-empty" style="display:none;">Nenhuma base de Shopee para os filtros atuais.</div>
+            </section>
+
+            <!-- Rodapé/status -->
+            <div class="b-data-state" style="margin-bottom:0;">
+              <span id="bases-count-footer"></span>
+              <span id="bases-count" class="vf-badge" style="display:none;">0</span>
+            </div>
+          </div>
+
+          <div id="state-empty" class="b-state" style="display:none;">
+            <p>Nenhuma base cadastrada ainda. Importe a primeira base.</p>
+            <button type="button" class="b-btn b-btn--primary" data-import-open>Importar nova base</button>
+          </div>
+
+          <div id="state-error" class="b-state" style="display:none;">
+            <p id="error-message">Erro ao carregar dados.</p>
+            <button type="button" id="btn-retry" class="b-btn">Tentar novamente</button>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ── MODAL "IMPORTAR NOVA BASE" ── -->
+  <div class="b-modal-backdrop" id="bases-import-backdrop">
+    <div class="b-modal" role="dialog" aria-modal="true" aria-label="Importar nova base">
+      <div class="b-modal-header">
+        <div>
+          <h3>Importar nova base</h3>
+          <p class="b-desc" id="bases-import-desc">Envie uma planilha de custos. A pré-visualização aparece antes de confirmar.</p>
+        </div>
+        <button type="button" class="b-btn b-btn--ghost b-btn--sm" id="bases-import-close" aria-label="Fechar">✕</button>
+      </div>
+
+      <div class="b-modal-body">
+        <div class="b-field">
           <label for="import-marketplace">Marketplace</label>
-          <select id="import-marketplace" class="vf-input">
+          <select id="import-marketplace">
             <option value="">Selecione o marketplace…</option>
             <option value="meli">Mercado Livre</option>
             <option value="shopee">Shopee</option>
           </select>
         </div>
-        <div class="import-grid">
-          <div class="vf-form-group" style="margin:0;">
-            <label for="import-nome">Nome da base</label>
-            <input type="text" id="import-nome" class="vf-input" placeholder="ex: cliente_xyz">
-          </div>
-          <div class="vf-form-group" style="margin:0;">
-            <label>Planilha (.xlsx, .csv)</label>
-            <label class="vf-file-label" id="file-label">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-              </svg>
-              <span id="file-label-text">Escolher arquivo…</span>
-              <input type="file" id="import-arquivo" accept=".xlsx,.xls,.csv" style="display:none;">
-            </label>
-          </div>
-          <div style="display:flex;align-items:flex-end;">
-            <button id="btn-importar" class="vf-btn-primary" style="width:100%;margin-top:0;" disabled>
-              <span id="btn-importar-text">Pré-visualizar</span>
-              <span id="btn-importar-spinner" class="btn-spinner" style="display:none;"></span>
-            </button>
-          </div>
-        </div>
-        <div id="import-status" style="margin-top:12px;font-size:.875rem;display:none;"></div>
-      </div>
-    </div>
 
-    <!-- ── ASSISTENTE DE BASE ── -->
-    <div class="vf-card vf-assistente-base-card" style="margin-bottom:24px;">
-      <div class="vf-card-header">
-        <h5>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
-          </svg>
-          Assistente de Base
-        </h5>
-        <span style="background:rgba(139,92,246,.12);color:#8b5cf6;border:1px solid rgba(139,92,246,.22);font-size:.68rem;font-weight:600;letter-spacing:.04em;padding:2px 8px;border-radius:99px;">BETA</span>
-      </div>
-      <div style="padding:1.5rem 1.75rem;">
-        <div style="margin:0 0 16px;color:var(--vf-text-m);font-size:.875rem;">
-          Envie uma planilha torta e o Assistente de Base identifica ID, custo e imposto antes de importar.
+        <!-- Cliente / Grant ML: obrigatório para Meli, opcional para Shopee -->
+        <div class="b-field" id="import-cliente-field" style="display:none;">
+          <label for="import-cliente">Cliente / Grant ML <span class="req" id="import-cliente-req">*</span></label>
+          <select id="import-cliente">
+            <option value="">Selecione o cliente/grant…</option>
+          </select>
+          <span class="b-field-hint" id="import-cliente-hint">Obrigatório para Mercado Livre — a base nasce vinculada a este cliente.</span>
         </div>
-        <input type="file" id="asst-arquivo" accept=".xlsx,.xls,.csv" style="display:none;">
-        <div class="asst-dropzone" id="asst-dropzone" role="button" tabindex="0" aria-label="Selecionar planilha">
-          <div id="asst-dz-idle" class="asst-dz-idle">
-            <svg class="asst-dz-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            <p class="asst-dz-main">Arraste sua planilha aqui</p>
-            <p class="asst-dz-sub">ou <span class="asst-dz-link">clique para selecionar</span></p>
-            <p class="asst-dz-formats">.xlsx · .xls · .csv · até 20 MB</p>
-          </div>
-          <div id="asst-dz-file" class="asst-dz-file" style="display:none;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+
+        <div class="b-field">
+          <label for="import-nome">Nome da base</label>
+          <input type="text" id="import-nome" placeholder="ex.: cliente_xyz">
+        </div>
+
+        <div class="b-field">
+          <label>Planilha de custos (.xlsx, .csv)</label>
+          <label class="b-file-label" id="file-label">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
             </svg>
-            <span id="asst-dz-filename" class="asst-dz-filename">—</span>
-            <button type="button" id="asst-dz-clear" class="asst-dz-clear" title="Remover arquivo" aria-label="Remover arquivo">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
+            <span id="file-label-text">Escolher arquivo…</span>
+            <input type="file" id="import-arquivo" accept=".xlsx,.xls,.csv" style="display:none;">
+          </label>
         </div>
-        <div style="margin-top:12px;display:flex;justify-content:flex-end;">
-          <button id="asst-btn-preview" class="vf-btn-primary" style="margin:0;white-space:nowrap;">
-            <span id="asst-btn-text">Analisar planilha</span>
-            <span id="asst-btn-spinner" class="btn-spinner" style="display:none;"></span>
-          </button>
-        </div>
-        <div id="asst-status" class="asst-status-msg" style="display:none;margin-top:12px;"></div>
-        <div id="asst-preview" style="display:none;margin-top:20px;"></div>
 
-        <!-- ── Importação da base limpa ── -->
-        <div id="asst-import-section" class="asst-import-section" style="display:none;margin-top:20px;">
-          <div class="asst-import-header">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            Importação da base limpa
+        <p class="b-assist-link">
+          Planilha fora do padrão?
+          <button type="button" id="bases-assist-toggle">Normalizar com assistente</button>
+        </p>
+
+        <div id="import-status" class="b-import-status" style="display:none;" aria-live="polite"></div>
+
+        <!-- ── ASSISTENTE DE BASE (colapsado) ── -->
+        <div class="b-assist-collapse" id="bases-assist-collapse">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <strong style="font-size:.9rem;">Assistente de importação</strong>
+            <span class="vf-bases-beta" style="font-size:.68rem;font-weight:600;letter-spacing:.04em;padding:2px 8px;border-radius:99px;">BETA</span>
           </div>
-          <p class="asst-import-desc">Usa os dados normalizados acima. Linhas sem ID serão ignoradas.</p>
-          <div class="asst-import-row">
-            <div style="flex:1;min-width:0;">
-              <label class="asst-import-label" for="asst-nome-base">Nome da base / cliente</label>
-              <input type="text" id="asst-nome-base" class="vf-input" placeholder="Ex: Cliente X Mercado Livre" autocomplete="off">
+          <div style="margin:0 0 14px;color:var(--b-text-m);font-size:.85rem;">
+            Envie uma planilha fora do padrão e o assistente identifica ID, custo e imposto antes de importar.
+          </div>
+
+          <input type="file" id="asst-arquivo" accept=".xlsx,.xls,.csv" style="display:none;">
+          <div class="asst-dropzone" id="asst-dropzone" role="button" tabindex="0" aria-label="Selecionar planilha">
+            <div id="asst-dz-idle" class="asst-dz-idle">
+              <svg class="asst-dz-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              <p class="asst-dz-main">Arraste sua planilha aqui</p>
+              <p class="asst-dz-sub">ou <span class="asst-dz-link">clique para selecionar</span></p>
+              <p class="asst-dz-formats">.xlsx · .xls · .csv · até 20 MB</p>
             </div>
-            <div class="asst-import-btn-wrap">
-              <button id="asst-btn-importar-limpa" class="vf-btn-primary" disabled style="margin:0;white-space:nowrap;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px;vertical-align:middle;flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>
-                <span id="asst-btn-importar-text">Importar base limpa</span>
-                <span id="asst-btn-importar-spinner" class="btn-spinner" style="display:none;"></span>
+            <div id="asst-dz-file" class="asst-dz-file" style="display:none;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span id="asst-dz-filename" class="asst-dz-filename">—</span>
+              <button type="button" id="asst-dz-clear" class="asst-dz-clear" title="Remover arquivo" aria-label="Remover arquivo">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
           </div>
-          <div id="asst-import-status" class="asst-status-msg" style="display:none;margin-top:10px;"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── BASES CADASTRADAS ── -->
-    <div class="vf-card">
-      <div class="vf-card-header">
-        <h5>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <ellipse cx="12" cy="5" rx="9" ry="3"/>
-            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-          </svg>
-          Bases cadastradas
-        </h5>
-        <span id="bases-count" class="vf-badge" style="display:none;">0</span>
-      </div>
-
-      <div style="padding:1rem 1.75rem;border-bottom:1px solid var(--vf-border);">
-        <div id="bases-feedback" class="vf-alert" style="margin:0 0 10px;display:none;"></div>
-        <div class="vf-bases-toolbar">
-          <input
-            type="text"
-            id="bases-busca"
-            class="vf-input"
-            placeholder="Buscar base por nome ou slug..."
-            autocomplete="off"
-            style="max-width:420px;"
-          >
-        </div>
-        <div id="bases-summary" class="vf-relatorios-summary-grid" style="margin-top:10px;"></div>
-      </div>
-
-      <div id="bases-content">
-        <div id="state-loading" class="vf-loading">
-          <div class="loading-dots"><span></span><span></span><span></span></div>
-          <p>Carregando suas bases…</p>
-        </div>
-        <div id="state-sections" style="display:none;">
-          <div class="vf-bases-section">
-            <div style="display:flex;align-items:center;gap:10px;padding:14px 1.75rem 6px;">
-              <h6 style="margin:0;font-size:.95rem;font-weight:700;">Bases Mercado Livre</h6>
-              <span id="count-meli" class="vf-badge">0</span>
-            </div>
-            <div id="wrap-meli" class="vf-table-wrapper">
-              <table class="vf-table">
-                <thead>
-                  <tr>
-                    <th style="width:50px;">#</th>
-                    <th>Base</th>
-                    <th style="min-width:220px;">Cliente vinculado</th>
-                    <th style="width:160px;text-align:center;">Marketplace</th>
-                    <th style="width:140px;">Atualização</th>
-                    <th style="width:100px;text-align:center;">Status</th>
-                    <th style="width:210px;text-align:center;">Ações</th>
-                  </tr>
-                </thead>
-                <tbody id="bases-tbody-meli"></tbody>
-              </table>
-            </div>
-            <div id="empty-meli" class="vf-empty-state" style="display:none;padding:24px;">
-              <p>Nenhuma base de Mercado Livre cadastrada.</p>
-            </div>
+          <div style="margin-top:12px;display:flex;justify-content:flex-end;">
+            <button id="asst-btn-preview" class="vf-btn-primary" style="margin:0;white-space:nowrap;">
+              <span id="asst-btn-text">Analisar planilha</span>
+              <span id="asst-btn-spinner" class="btn-spinner" style="display:none;"></span>
+            </button>
           </div>
+          <div id="asst-status" class="asst-status-msg" style="display:none;margin-top:12px;"></div>
+          <div id="asst-preview" style="display:none;margin-top:20px;"></div>
 
-          <div class="vf-bases-section" style="margin-top:24px;">
-            <div style="display:flex;align-items:center;gap:10px;padding:14px 1.75rem 6px;">
-              <h6 style="margin:0;font-size:.95rem;font-weight:700;">Bases Shopee</h6>
-              <span id="count-shopee" class="vf-badge">0</span>
+          <!-- ── Importação da base limpa ── -->
+          <div id="asst-import-section" class="asst-import-section" style="display:none;margin-top:20px;">
+            <div class="asst-import-header">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Importação da base limpa
             </div>
-            <div id="wrap-shopee" class="vf-table-wrapper">
-              <table class="vf-table">
-                <thead>
-                  <tr>
-                    <th style="width:50px;">#</th>
-                    <th>Base</th>
-                    <th style="min-width:220px;">Cliente vinculado</th>
-                    <th style="width:160px;text-align:center;">Marketplace</th>
-                    <th style="width:140px;">Atualização</th>
-                    <th style="width:100px;text-align:center;">Status</th>
-                    <th style="width:210px;text-align:center;">Ações</th>
-                  </tr>
-                </thead>
-                <tbody id="bases-tbody-shopee"></tbody>
-              </table>
+            <p class="asst-import-desc">Usa os dados normalizados acima. Linhas sem ID serão ignoradas.</p>
+            <div class="asst-import-row">
+              <div style="flex:1;min-width:0;">
+                <label class="asst-import-label" for="asst-nome-base">Nome da base / cliente</label>
+                <input type="text" id="asst-nome-base" class="vf-input" placeholder="Ex: Cliente X Mercado Livre" autocomplete="off">
+              </div>
+              <div class="asst-import-btn-wrap">
+                <button id="asst-btn-importar-limpa" class="vf-btn-primary" disabled style="margin:0;white-space:nowrap;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px;vertical-align:middle;flex-shrink:0;"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span id="asst-btn-importar-text">Importar base limpa</span>
+                  <span id="asst-btn-importar-spinner" class="btn-spinner" style="display:none;"></span>
+                </button>
+              </div>
             </div>
-            <div id="empty-shopee" class="vf-empty-state" style="display:none;padding:24px;">
-              <p>Nenhuma base de Shopee cadastrada.</p>
-            </div>
+            <div id="asst-import-status" class="asst-status-msg" style="display:none;margin-top:10px;"></div>
           </div>
         </div>
-        <div id="state-empty" class="vf-empty-state" style="display:none;">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <ellipse cx="12" cy="5" rx="9" ry="3"/>
-            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-          </svg>
-          <p>Nenhuma base encontrada. Importe uma planilha acima.</p>
-        </div>
-        <div id="state-error" class="vf-error-state" style="display:none;">
-          <p id="error-message">Erro ao carregar dados.</p>
-          <button id="btn-retry" class="vf-btn-retry">Tentar novamente</button>
-        </div>
+      </div>
+
+      <div class="b-modal-footer">
+        <button type="button" class="b-btn" id="bases-import-cancel">Cancelar</button>
+        <button type="button" class="b-btn b-btn--primary" id="btn-importar" disabled>
+          <span id="btn-importar-text">Pré-visualizar</span>
+          <span id="btn-importar-spinner" class="btn-spinner" style="display:none;"></span>
+        </button>
       </div>
     </div>
-
-    </main>
   </div>
 
-  <!-- ── MODAL PREVIEW ── -->
+  <!-- ── DRAWER "CONFERIR CUSTOS" ── -->
+  <div class="b-drawer-backdrop" id="bases-drawer-backdrop"></div>
+  <aside class="b-drawer" id="bases-drawer" role="dialog" aria-modal="true" aria-label="Conferir custos da base">
+    <div class="b-drawer-header">
+      <div>
+        <div class="b-kicker">Conferir custos</div>
+        <h3 id="bases-drawer-title">—</h3>
+        <div class="b-drawer-meta" id="bases-drawer-meta"></div>
+      </div>
+      <button type="button" class="b-btn b-btn--ghost b-btn--sm" id="bases-drawer-close" aria-label="Fechar">✕</button>
+    </div>
+    <div class="b-drawer-toolbar">
+      <div class="b-search" style="max-width:none;flex:1;min-width:180px;">
+        <input type="text" id="bases-drawer-busca" placeholder="Buscar produto, MLB, SKU ou id_model…" autocomplete="off">
+      </div>
+      <button type="button" class="b-filter-chip active" data-drawer-filter="todos">Todos</button>
+      <button type="button" class="b-filter-chip" data-drawer-filter="custo">Custo zerado</button>
+      <button type="button" class="b-filter-chip" data-drawer-filter="imposto">Imposto zerado</button>
+    </div>
+    <div class="b-drawer-body" id="bases-drawer-body"></div>
+    <div class="b-drawer-footer">
+      <span id="bases-drawer-count">—</span>
+      <div class="right">
+        <span class="b-hint">Ajuste manual e atualização por planilha chegam na próxima rodada</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── MODAL PREVIEW (preservado) ── -->
   <div id="preview-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.45);z-index:1000;display:none;align-items:center;justify-content:center;padding:1.5rem;">
     <div class="preview-modal">
       <div class="preview-modal-header">
@@ -292,6 +353,7 @@
     </div>
   </div>
 
+  <!-- ── MODAL EXCLUIR (preservado) ── -->
   <div id="vf-excluir-base-modal" class="vf-modal-overlay" style="display:none;">
     <div class="vf-modal-shell" role="dialog" aria-modal="true" aria-labelledby="vf-excluir-base-title">
       <div class="vf-modal-header">
@@ -312,7 +374,7 @@
     </div>
   </div>
 
-
+  <!-- ── MODAL VÍNCULO (preservado) ── -->
   <div id="vf-vinculo-base-modal" class="vf-modal-overlay" style="display:none;">
     <div class="vf-modal-shell" role="dialog" aria-modal="true" aria-labelledby="vf-vinculo-base-title">
       <div class="vf-modal-header">

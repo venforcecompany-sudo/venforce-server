@@ -37,13 +37,22 @@ function getImportMarketplace() {
 
 function atualizarBotaoImportarDisabled() {
   const btn = document.getElementById("btn-importar");
-  if (btn) btn.disabled = !getImportMarketplace();
+  if (!btn) return;
+  const mp = getImportMarketplace();
+  let ok = !!mp;
+  if (mp === "meli") {
+    const cli = document.getElementById("import-cliente");
+    ok = ok && !!(cli && cli.value);
+  }
+  btn.disabled = !ok;
 }
 
 function setImportLoading(on) {
-  document.getElementById("btn-importar").disabled             = on ? true : !getImportMarketplace();
+  const btn = document.getElementById("btn-importar");
+  if (btn) btn.disabled = on ? true : btn.disabled;
   document.getElementById("btn-importar-text").textContent     = on ? "Processando…" : "Pré-visualizar";
   document.getElementById("btn-importar-spinner").style.display = on ? "inline-block" : "none";
+  if (!on) atualizarBotaoImportarDisabled();
 }
 
 // ─── Estados da tabela de bases ───
@@ -58,6 +67,8 @@ const basesTbodyShopee = document.getElementById("bases-tbody-shopee");
 // ─── Estado (filtros frontend) ───
 let TODAS_BASES = [];
 let BASES_BUSCA = "";
+let BASES_FILTRO_MP = "";      // "", "meli", "shopee"
+let BASES_FILTRO_ATUAL = "";   // "", "atualizada", "desatualizada"
 let CLIENTES_DISPONIVEIS = [];
 let CLIENTES_CARREGADOS = false;
 let VINCULOS_EDITAVEIS = true;
@@ -136,12 +147,34 @@ function getBaseMarketplaceKey(base) {
   return raw === "shopee" ? "shopee" : "meli";
 }
 
+// ─── Desatualização (COALESCE(updated_at, created_at) < hoje − 30d) ───
+const DIAS_30_MS = 30 * 24 * 60 * 60 * 1000;
+function getBaseTimestamp(base) {
+  const v = base?.updated_at || base?.created_at;
+  const d = v ? new Date(v) : null;
+  return d && Number.isFinite(d.getTime()) ? d.getTime() : null;
+}
+function isBaseDesatualizada(base) {
+  const t = getBaseTimestamp(base);
+  if (t == null) return true; // sem data conhecida → tratar como desatualizada
+  return (Date.now() - t) > DIAS_30_MS;
+}
+
+function hasFiltrosAtivos() {
+  return !!(String(BASES_BUSCA || "").trim() || BASES_FILTRO_MP || BASES_FILTRO_ATUAL);
+}
+
 function getBasesFiltradas() {
   const termo = String(BASES_BUSCA || "").toLowerCase().trim();
   return (Array.isArray(TODAS_BASES) ? TODAS_BASES : []).filter((b) => {
-    if (!termo) return true;
-    const hay = `${b?.nome || ""} ${b?.slug || ""} ${getClienteTexto(b)}`.toLowerCase();
-    return hay.includes(termo);
+    if (BASES_FILTRO_MP && getBaseMarketplaceKey(b) !== BASES_FILTRO_MP) return false;
+    if (BASES_FILTRO_ATUAL === "atualizada" && isBaseDesatualizada(b)) return false;
+    if (BASES_FILTRO_ATUAL === "desatualizada" && !isBaseDesatualizada(b)) return false;
+    if (termo) {
+      const hay = `${b?.nome || ""} ${b?.slug || ""} ${getClienteTexto(b)}`.toLowerCase();
+      if (!hay.includes(termo)) return false;
+    }
+    return true;
   });
 }
 
@@ -150,21 +183,99 @@ function renderBasesSummary() {
   if (!el) return;
   const bases = Array.isArray(TODAS_BASES) ? TODAS_BASES : [];
   const total = bases.length;
-  const comVinculo = bases.filter((b) => !!b?.vinculo).length;
-  const semVinculo = bases.filter((b) => !b?.vinculo).length;
-  const sugestoes = bases.filter((b) => !b?.vinculo && !!b?.sugestao).length;
+  const meli = bases.filter((b) => getBaseMarketplaceKey(b) === "meli").length;
+  const shopee = bases.filter((b) => getBaseMarketplaceKey(b) === "shopee").length;
+  const desatualizadas = bases.filter((b) => isBaseDesatualizada(b)).length;
+  const atualizadas = total - desatualizadas;
+
   const cards = [
     { label: "Total de bases", value: String(total) },
-    { label: "Com vínculo oficial", value: String(comVinculo) },
-    { label: "Sem vínculo", value: String(semVinculo) },
-    { label: "Sugestões pendentes", value: String(sugestoes) },
+    { label: "Mercado Livre", value: String(meli), filtro: { tipo: "mp", valor: "meli" } },
+    { label: "Shopee", value: String(shopee), filtro: { tipo: "mp", valor: "shopee" } },
+    { label: "Atualizadas", value: String(atualizadas), foot: "últimos 30 dias", filtro: { tipo: "at", valor: "atualizada" } },
+    { label: "Desatualizadas +30d", value: String(desatualizadas), foot: "clique para filtrar", warning: true, filtro: { tipo: "at", valor: "desatualizada" } },
   ];
-  el.innerHTML = cards.map((c) => `
-    <div class="vf-relatorios-summary-card">
-      <div class="vf-relatorios-summary-label">${escapeHTML(c.label)}</div>
-      <div class="vf-relatorios-summary-value">${escapeHTML(c.value)}</div>
-    </div>
-  `).join("");
+
+  el.innerHTML = cards.map((c) => {
+    const isAction = !!c.filtro;
+    const active = isAction && (
+      (c.filtro.tipo === "mp" && BASES_FILTRO_MP === c.filtro.valor) ||
+      (c.filtro.tipo === "at" && BASES_FILTRO_ATUAL === c.filtro.valor)
+    );
+    const cls = ["b-kpi"];
+    if (c.warning) cls.push("is-warning");
+    if (isAction) cls.push("b-kpi--action");
+    if (active) cls.push("is-active");
+    const attrs = isAction
+      ? ` role="button" tabindex="0" data-kpi-tipo="${c.filtro.tipo}" data-kpi-valor="${c.filtro.valor}"`
+      : "";
+    const foot = c.foot ? `<div class="b-kpi__foot">${escapeHTML(c.foot)}</div>` : "";
+    return `<div class="${cls.join(" ")}"${attrs}>
+      <div class="b-kpi__label">${escapeHTML(c.label)}</div>
+      <div class="b-kpi__value">${escapeHTML(c.value)}</div>
+      ${foot}
+    </div>`;
+  }).join("");
+}
+
+function renderChipsFiltros() {
+  const el = document.getElementById("bases-chips");
+  if (!el) return;
+  const chips = [];
+  if (BASES_FILTRO_MP) chips.push({ label: `Marketplace: ${marketplaceLabel(BASES_FILTRO_MP)}`, tipo: "mp" });
+  if (BASES_FILTRO_ATUAL) chips.push({ label: BASES_FILTRO_ATUAL === "desatualizada" ? "Desatualizadas +30d" : "Atualizadas", tipo: "at" });
+  const termo = String(BASES_BUSCA || "").trim();
+  if (termo) chips.push({ label: `Busca: "${termo}"`, tipo: "busca" });
+
+  el.innerHTML = chips.map((c) =>
+    `<span class="b-chip">${escapeHTML(c.label)} <button type="button" data-chip-remove="${c.tipo}" aria-label="Remover filtro">✕</button></span>`
+  ).join("");
+
+  el.querySelectorAll("[data-chip-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const t = btn.dataset.chipRemove;
+      if (t === "mp") BASES_FILTRO_MP = "";
+      else if (t === "at") BASES_FILTRO_ATUAL = "";
+      else if (t === "busca") { BASES_BUSCA = ""; const bi = document.getElementById("bases-busca"); if (bi) bi.value = ""; }
+      aplicarFiltros();
+    });
+  });
+}
+
+function sincronizarControlesFiltro() {
+  const mpSel = document.getElementById("bases-filtro-marketplace");
+  const atSel = document.getElementById("bases-filtro-atualizacao");
+  if (mpSel && mpSel.value !== BASES_FILTRO_MP) mpSel.value = BASES_FILTRO_MP;
+  if (atSel && atSel.value !== BASES_FILTRO_ATUAL) atSel.value = BASES_FILTRO_ATUAL;
+  const limpar = document.getElementById("bases-limpar-filtros");
+  if (limpar) limpar.style.display = hasFiltrosAtivos() ? "" : "none";
+}
+
+function aplicarFiltros() {
+  renderBasesTela();
+}
+
+function limparFiltros() {
+  BASES_BUSCA = "";
+  BASES_FILTRO_MP = "";
+  BASES_FILTRO_ATUAL = "";
+  const busca = document.getElementById("bases-busca");
+  if (busca) busca.value = "";
+  aplicarFiltros();
+}
+
+function aplicarKpiFiltro(tipo, valor) {
+  if (tipo === "mp") BASES_FILTRO_MP = (BASES_FILTRO_MP === valor) ? "" : valor;
+  else if (tipo === "at") BASES_FILTRO_ATUAL = (BASES_FILTRO_ATUAL === valor) ? "" : valor;
+  aplicarFiltros();
+}
+
+function atualizarRodape(exibidas, total) {
+  const el = document.getElementById("bases-count-footer");
+  if (!el) return;
+  if (!total) { el.textContent = ""; return; }
+  const filtro = hasFiltrosAtivos() ? " · filtros ativos" : "";
+  el.textContent = `Exibindo ${exibidas} de ${total} base${total !== 1 ? "s" : ""}${filtro}`;
 }
 
 function abrirModalExcluirBase({ slug, nome, btn }) {
@@ -308,6 +419,8 @@ async function carregarVinculosComplementares() {
 }
 
 function renderBasesTela() {
+  sincronizarControlesFiltro();
+  renderChipsFiltros();
   renderBasesSummary();
   renderBases(getBasesFiltradas());
 }
@@ -343,95 +456,106 @@ async function loadBases() {
   }
 }
 
-function renderClienteCell(base) {
-  const v = base?.vinculo;
-  const s = base?.sugestao;
-  if (v) {
-    return `
-      <div><strong>${escapeHTML(v.cliente_nome || "—")}</strong></div>
-      <div style="color:var(--vf-text-m);font-family:var(--vf-mono);font-size:.78rem;">${escapeHTML(v.cliente_slug || "—")}</div>
-      <div style="margin-top:6px;"><span class="vf-status-pill vf-status-pill-success">Vínculo oficial</span></div>
-    `;
-  }
-  const sugestaoHtml = s ? `
-    <div style="margin-top:6px;color:var(--vf-text-m);font-size:.78rem;line-height:1.35;">
-      Sugestão:
-      <strong>${escapeHTML(s.cliente_nome || s.cliente_slug || "cliente sugerido")}</strong>
-      <span style="font-family:var(--vf-mono);">${escapeHTML(s.cliente_slug ? `(${s.cliente_slug})` : "")}</span> — confirmar para tornar oficial
-    </div>
-  ` : "";
-  return `
-    <div><strong style="color:var(--vf-text-m);">Sem vínculo</strong></div>
-    ${sugestaoHtml}
-  `;
+// ─── Status de atualização (tag) ───
+function renderStatusTag(base) {
+  return isBaseDesatualizada(base)
+    ? `<span class="b-tag is-warning">Desatualizada +30d</span>`
+    : `<span class="b-tag is-success">Atualizada</span>`;
 }
 
-function renderMarketplaceCell(base) {
-  const mp = getMarketplaceDisplay(base);
-  if (mp.origem === "oficial") {
-    const cls = mp.key === "meli" ? "vf-status-pill-success" : (mp.key === "shopee" ? "vf-status-pill-warning" : "vf-status-pill-neutral");
-    return `<span class="vf-status-pill ${cls}">${escapeHTML(mp.label)}</span>`;
-  }
-  if (mp.origem === "sugestao") {
-    return `
-      <span class="vf-status-pill vf-status-pill-neutral">${escapeHTML(mp.label)}</span>
-      <div style="margin-top:6px;color:var(--vf-text-m);font-size:.75rem;">Sugestão automática</div>
-    `;
-  }
-  return `<span class="vf-status-pill vf-status-pill-neutral">Não definido</span>`;
-}
-
-function renderAcoesBase(base) {
+// ─── Menu "⋯" de ações secundárias ───
+function renderMenuBase(base) {
   const id = escapeHTML(String(base.id || ""));
   const slug = escapeHTML(base.slug || "");
   const nome = escapeHTML(base.nome || base.slug || "");
-  const vinculoBtns = VINCULOS_EDITAVEIS ? `
-    <button class="vf-action-btn vf-action-btn-secondary vf-btn-vincular-base" data-base-id="${id}">${base.vinculo ? "Alterar vínculo" : "Vincular"}</button>
-    ${base.vinculo ? `<button class="vf-action-btn vf-action-btn-neutral vf-btn-remover-vinculo" data-base-id="${id}">Remover vínculo</button>` : ""}
+  const vinculoItens = VINCULOS_EDITAVEIS ? `
+    <button class="b-menu-item vf-btn-vincular-base" data-base-id="${id}">${base.vinculo ? "Alterar cliente/vínculo" : "Definir cliente/vínculo"}</button>
+    ${base.vinculo ? `<button class="b-menu-item vf-btn-remover-vinculo" data-base-id="${id}">Remover vínculo</button>` : ""}
   ` : "";
   return `
-    <div class="vf-table-actions" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">
-      ${vinculoBtns}
-      <button class="vf-action-btn vf-action-btn-neutral asst-btn-baixar-base" data-slug="${slug}" data-nome="${nome}">Baixar</button>
-      <button class="vf-action-btn vf-action-btn-danger btn-excluir-base" data-slug="${slug}" data-nome="${nome}">Excluir</button>
-    </div>
-  `;
+    <div class="b-menu">
+      <button type="button" class="b-btn b-btn--sm b-btn--ghost b-menu-trigger" aria-haspopup="true" aria-expanded="false" title="Mais ações">⋯</button>
+      <div class="b-menu-pop">
+        ${vinculoItens}
+        <button class="b-menu-item asst-btn-baixar-base" data-slug="${slug}" data-nome="${nome}">Baixar CSV</button>
+        <button class="b-menu-item b-menu-item--danger btn-excluir-base" data-slug="${slug}" data-nome="${nome}">Excluir base</button>
+      </div>
+    </div>`;
 }
 
-function buildBaseRow(base, i) {
-  const data  = formatDateTime(base.updated_at || base.created_at);
-  const ativo = base.ativo !== false;
-  const tr    = document.createElement("tr");
-  tr.classList.add("animate-fade-up");
-  tr.style.animationDelay = `${i * 0.04}s`;
+// ─── Linha: Mercado Livre (Cliente/Grant ML → Base oficial) ───
+function buildMeliRow(base) {
+  const tr = document.createElement("tr");
+  const v = base?.vinculo;
+  const clienteCell = v
+    ? `<div class="b-cliente"><strong>${escapeHTML(v.cliente_nome || v.cliente_slug || "—")}</strong></div>
+       <div class="b-grant-id">${escapeHTML(v.cliente_slug || "cliente vinculado")}</div>`
+    : `<div class="b-muted">Sem cliente vinculado</div>
+       <div class="b-grant-id">defina em ⋯</div>`;
+  const data = formatDateTime(base.updated_at || base.created_at);
   tr.innerHTML = `
-    <td style="color:var(--vf-text-l);font-family:var(--vf-mono);font-size:.8rem;">${String(i+1).padStart(2,"0")}</td>
+    <td>${clienteCell}</td>
     <td>
-      <strong>${escapeHTML(base.nome || "—")}</strong>
-      <div style="color:var(--vf-text-m);font-size:.78rem;font-family:var(--vf-mono);margin-top:3px;">${escapeHTML(base.slug || "—")}</div>
+      <div class="b-base-name">${escapeHTML(base.nome || "—")}</div>
+      <div class="b-base-slug">${escapeHTML(base.slug || "—")}</div>
     </td>
-    <td>${renderClienteCell(base)}</td>
-    <td style="text-align:center;">${renderMarketplaceCell(base)}</td>
-    <td style="font-size:.8rem;color:#888;">${escapeHTML(data)}</td>
-    <td style="text-align:center;">
-      <span class="vf-status-pill ${ativo ? "vf-status-pill-success" : "vf-status-pill-danger"}">${ativo ? "Ativa" : "Inativa"}</span>
-    </td>
-    <td style="text-align:center;">${renderAcoesBase(base)}</td>`;
+    <td>${escapeHTML(data)}</td>
+    <td>${renderStatusTag(base)}</td>
+    <td>
+      <div class="b-row-actions">
+        <button class="b-btn b-btn--sm b-btn-conferir" data-slug="${escapeHTML(base.slug || "")}" data-mp="meli">Conferir custos</button>
+        ${renderMenuBase(base)}
+      </div>
+    </td>`;
   return tr;
+}
+
+// ─── Linha: Shopee (Base + Loja/apelido) ───
+function buildShopeeRow(base) {
+  const tr = document.createElement("tr");
+  const v = base?.vinculo;
+  const loja = v ? (v.cliente_nome || v.cliente_slug) : "";
+  const lojaCell = loja
+    ? `<span class="b-cliente"><strong>${escapeHTML(loja)}</strong></span>`
+    : `<span class="b-muted">—</span>`;
+  const data = formatDateTime(base.updated_at || base.created_at);
+  tr.innerHTML = `
+    <td>
+      <div class="b-base-name">${escapeHTML(base.nome || "—")}</div>
+      <div class="b-base-slug">${escapeHTML(base.slug || "—")}</div>
+    </td>
+    <td>${lojaCell}</td>
+    <td>${escapeHTML(data)}</td>
+    <td>${renderStatusTag(base)}</td>
+    <td>
+      <div class="b-row-actions">
+        <button class="b-btn b-btn--sm b-btn-conferir" data-slug="${escapeHTML(base.slug || "")}" data-mp="shopee">Conferir custos</button>
+        <button class="b-btn b-btn--sm b-btn-importar-linha" data-import-mp="shopee" data-nome="${escapeHTML(base.nome || "")}">Importar / atualizar</button>
+        ${renderMenuBase(base)}
+      </div>
+    </td>`;
+  return tr;
+}
+
+// ─── Menu dropdown ───
+function fecharTodosMenus() {
+  document.querySelectorAll(".vf-page-bases .b-menu-pop.is-open").forEach((p) => p.classList.remove("is-open"));
+  document.querySelectorAll(".vf-page-bases .b-menu-trigger[aria-expanded='true']").forEach((t) => t.setAttribute("aria-expanded", "false"));
+}
+function toggleRowMenu(trigger) {
+  const pop = trigger.parentElement.querySelector(".b-menu-pop");
+  if (!pop) return;
+  const aberto = pop.classList.contains("is-open");
+  fecharTodosMenus();
+  if (!aberto) { pop.classList.add("is-open"); trigger.setAttribute("aria-expanded", "true"); }
 }
 
 function bindBaseRowActions(tbody) {
   tbody.querySelectorAll(".asst-btn-baixar-base").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const { slug, nome } = btn.dataset;
-      asstBaixarBase(slug, nome, btn);
-    });
+    btn.addEventListener("click", () => { const { slug, nome } = btn.dataset; asstBaixarBase(slug, nome, btn); });
   });
   tbody.querySelectorAll(".btn-excluir-base").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const { slug, nome } = btn.dataset;
-      abrirModalExcluirBase({ slug, nome, btn });
-    });
+    btn.addEventListener("click", () => { const { slug, nome } = btn.dataset; abrirModalExcluirBase({ slug, nome, btn }); });
   });
   tbody.querySelectorAll(".vf-btn-vincular-base").forEach(btn => {
     btn.addEventListener("click", () => abrirModalVinculo(btn.dataset.baseId));
@@ -439,19 +563,36 @@ function bindBaseRowActions(tbody) {
   tbody.querySelectorAll(".vf-btn-remover-vinculo").forEach(btn => {
     btn.addEventListener("click", () => removerVinculoBase(btn.dataset.baseId, btn));
   });
+  tbody.querySelectorAll(".b-btn-conferir").forEach(btn => {
+    btn.addEventListener("click", () => abrirDrawerCustos(btn.dataset.slug, btn.dataset.mp, btn));
+  });
+  tbody.querySelectorAll(".b-btn-importar-linha").forEach(btn => {
+    btn.addEventListener("click", () => abrirModalImportar(btn.dataset.importMp, btn.dataset.nome));
+  });
+  tbody.querySelectorAll(".b-menu-trigger").forEach(btn => {
+    btn.addEventListener("click", (e) => { e.stopPropagation(); toggleRowMenu(btn); });
+  });
+  tbody.querySelectorAll(".b-menu-item").forEach(item => {
+    item.addEventListener("click", () => fecharTodosMenus());
+  });
 }
 
 function renderBases(bases) {
   basesTbodyMeli.innerHTML   = "";
   basesTbodyShopee.innerHTML = "";
 
-  if (!bases.length) { showEmpty(); return; }
+  // Sem nenhuma base cadastrada (primeiro uso) → estado vazio dedicado
+  if (!(Array.isArray(TODAS_BASES) && TODAS_BASES.length)) {
+    atualizarRodape(0, 0);
+    showEmpty();
+    return;
+  }
 
   const meli   = bases.filter((b) => getBaseMarketplaceKey(b) === "meli");
   const shopee = bases.filter((b) => getBaseMarketplaceKey(b) === "shopee");
 
-  meli.forEach((base, i)   => basesTbodyMeli.appendChild(buildBaseRow(base, i)));
-  shopee.forEach((base, i) => basesTbodyShopee.appendChild(buildBaseRow(base, i)));
+  meli.forEach((base)   => basesTbodyMeli.appendChild(buildMeliRow(base)));
+  shopee.forEach((base) => basesTbodyShopee.appendChild(buildShopeeRow(base)));
 
   document.getElementById("count-meli").textContent    = String(meli.length);
   document.getElementById("count-shopee").textContent  = String(shopee.length);
@@ -460,12 +601,12 @@ function renderBases(bases) {
   document.getElementById("empty-meli").style.display   = meli.length   ? "none" : "block";
   document.getElementById("empty-shopee").style.display = shopee.length ? "none" : "block";
 
-  basesCount.textContent   = String(bases.length);
-  basesCount.style.display = "inline-block";
+  basesCount.textContent = String(bases.length);
 
   bindBaseRowActions(basesTbodyMeli);
   bindBaseRowActions(basesTbodyShopee);
 
+  atualizarRodape(bases.length, TODAS_BASES.length);
   showSections();
 }
 
@@ -666,9 +807,97 @@ document.getElementById("import-arquivo").addEventListener("change", (e) => {
   document.getElementById("file-label").classList.toggle("has-file", !!f);
 });
 
-// ─── Marketplace obrigatório: habilita "Pré-visualizar" só após seleção ───
-document.getElementById("import-marketplace")?.addEventListener("change", atualizarBotaoImportarDisabled);
-atualizarBotaoImportarDisabled();
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── MODAL "IMPORTAR NOVA BASE" ────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+function abrirModalImportar(mp, nomePrefill) {
+  const backdrop = document.getElementById("bases-import-backdrop");
+  if (!backdrop) return;
+  const collapse = document.getElementById("bases-assist-collapse");
+  if (collapse) collapse.classList.remove("is-open");
+  setImportStatus("", "");
+  if (mp) {
+    const sel = document.getElementById("import-marketplace");
+    if (sel) sel.value = mp;
+  }
+  if (nomePrefill != null && nomePrefill !== "") {
+    const nomeEl = document.getElementById("import-nome");
+    if (nomeEl) nomeEl.value = nomePrefill;
+  }
+  onImportMarketplaceChange();
+  popularClientesImport();
+  backdrop.classList.add("is-open");
+}
+
+function fecharModalImportar() {
+  const backdrop = document.getElementById("bases-import-backdrop");
+  if (backdrop) backdrop.classList.remove("is-open");
+}
+
+function onImportMarketplaceChange() {
+  const mp = getImportMarketplace();
+  const field = document.getElementById("import-cliente-field");
+  const req = document.getElementById("import-cliente-req");
+  const hint = document.getElementById("import-cliente-hint");
+  const desc = document.getElementById("bases-import-desc");
+  if (mp === "meli") {
+    if (field) field.style.display = "";
+    if (req) req.style.display = "";
+    if (hint) hint.textContent = "Obrigatório para Mercado Livre — a base nasce vinculada a este cliente.";
+    if (desc) desc.textContent = "A base de Mercado Livre nasce associada ao cliente/grant escolhido.";
+  } else if (mp === "shopee") {
+    if (field) field.style.display = "";
+    if (req) req.style.display = "none";
+    if (hint) hint.textContent = "Opcional para Shopee — pode ser criada sem cliente por enquanto.";
+    if (desc) desc.textContent = "Base Shopee: informe a loja/cliente se já houver (opcional).";
+  } else {
+    if (field) field.style.display = "none";
+    if (desc) desc.textContent = "Envie uma planilha de custos. A pré-visualização aparece antes de confirmar.";
+  }
+  atualizarBotaoImportarDisabled();
+}
+
+async function popularClientesImport() {
+  const sel = document.getElementById("import-cliente");
+  if (!sel) return;
+  await carregarClientesParaVinculos(true);
+  const clientes = Array.isArray(CLIENTES_DISPONIVEIS) ? CLIENTES_DISPONIVEIS : [];
+  const atual = sel.value;
+  sel.innerHTML = `<option value="">Selecione o cliente/grant…</option>` + clientes.map((c) => {
+    const id = String(c.id || "");
+    const nome = c.nome || c.slug || "Cliente";
+    const slug = c.slug ? ` · ${c.slug}` : "";
+    return `<option value="${escapeHTML(id)}">${escapeHTML(nome + slug)}</option>`;
+  }).join("");
+  if (atual) sel.value = atual;
+  atualizarBotaoImportarDisabled();
+}
+
+// Best-effort: vincula a base recém-importada ao cliente/grant escolhido
+// usando o endpoint existente POST /base-vinculos. Falha silenciosa: a base
+// já foi importada; o vínculo pode ser feito depois pelo menu "⋯".
+async function tentarAutovinculoImport(nome, marketplace, clienteId) {
+  try {
+    if (!VINCULOS_EDITAVEIS || !clienteId) return;
+    const mpKey = normalizarMarketplaceKey(marketplace);
+    const alvo = (Array.isArray(TODAS_BASES) ? TODAS_BASES : []).find((b) =>
+      String(b.nome || "").trim().toLowerCase() === String(nome).trim().toLowerCase() &&
+      getBaseMarketplaceKey(b) === mpKey && !b.vinculo
+    );
+    if (!alvo || alvo.id == null) return;
+    const res = await fetch(`${API_BASE}/base-vinculos`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ base_id: alvo.id, cliente_id: Number(clienteId), marketplace: mpKey }),
+    });
+    if (res.ok) await loadBases();
+  } catch (_) { /* best-effort */ }
+}
+
+// ─── Marketplace / cliente: habilita "Pré-visualizar" e alterna campo cliente ───
+document.getElementById("import-marketplace")?.addEventListener("change", onImportMarketplaceChange);
+document.getElementById("import-cliente")?.addEventListener("change", atualizarBotaoImportarDisabled);
+onImportMarketplaceChange();
 
 function validarArquivoImportacao(file) {
   const name = String(file?.name || "").toLowerCase();
@@ -792,16 +1021,25 @@ document.getElementById("preview-confirm").addEventListener("click", async () =>
     if (res.status === 401) { clearSession(); return; }
     if (!res.ok) throw new Error(data.erro || `HTTP ${res.status}`);
 
+    const clienteIdSel = (document.getElementById("import-cliente") || {}).value || "";
+
     closePreview();
-    setImportStatus(`✓ ${data.mensagem || "Importado com sucesso!"} (${data.total ?? 0} produtos)`, "var(--vf-success)");
+    fecharModalImportar();
+    setDashboardFeedback(`✓ ${data.mensagem || "Base importada com sucesso."} (${data.total ?? 0} produtos)`, "success");
+
+    // reset do formulário
     document.getElementById("import-nome").value    = "";
     document.getElementById("import-arquivo").value = "";
     document.getElementById("file-label-text").textContent = "Escolher arquivo…";
     document.getElementById("file-label").classList.remove("has-file");
     const mpSel = document.getElementById("import-marketplace");
     if (mpSel) mpSel.value = "";
-    atualizarBotaoImportarDisabled();
-    loadBases();
+    const cliSel = document.getElementById("import-cliente");
+    if (cliSel) cliSel.value = "";
+    onImportMarketplaceChange();
+
+    await loadBases();
+    await tentarAutovinculoImport(nome, marketplace, clienteIdSel);
 
   } catch (err) {
     closePreview();
@@ -821,6 +1059,10 @@ document.getElementById("btn-importar").addEventListener("click", async () => {
 
   setImportStatus("", "");
   if (!marketplace) { setImportStatus("Selecione o marketplace.", "var(--vf-danger)"); return; }
+  if (marketplace === "meli") {
+    const cli = document.getElementById("import-cliente");
+    if (!cli || !cli.value) { setImportStatus("Selecione o cliente / grant ML (obrigatório para Mercado Livre).", "var(--vf-danger)"); return; }
+  }
   if (!nome)    { setImportStatus("Informe o nome da base.", "var(--vf-danger)"); return; }
   if (!arquivo) { setImportStatus("Selecione um arquivo .xlsx ou .csv.", "var(--vf-danger)"); return; }
 
@@ -852,17 +1094,238 @@ document.getElementById("btn-importar").addEventListener("click", async () => {
   }
 });
 
-// Busca + chips
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── DRAWER "CONFERIR CUSTOS" (somente leitura · GET /bases/:slug) ─────────────
+// ══════════════════════════════════════════════════════════════════════════════
+let DRAWER_ITENS = [];
+let DRAWER_FILTRO = "todos";        // "todos" | "custo" | "imposto"
+let DRAWER_BUSCA = "";
+let DRAWER_IS_SHOPEE = false;
+let DRAWER_BTN_ORIGEM = null;
+let DRAWER_SLUG = "";
+const DRAWER_LIMITE = 500;
+
+function abrirDrawer() {
+  document.getElementById("bases-drawer-backdrop")?.classList.add("is-open");
+  document.getElementById("bases-drawer")?.classList.add("is-open");
+}
+function fecharDrawer() {
+  document.getElementById("bases-drawer-backdrop")?.classList.remove("is-open");
+  document.getElementById("bases-drawer")?.classList.remove("is-open");
+  if (DRAWER_BTN_ORIGEM && typeof DRAWER_BTN_ORIGEM.focus === "function") DRAWER_BTN_ORIGEM.focus();
+  DRAWER_BTN_ORIGEM = null;
+}
+
+function abrirDrawerCustos(slug, mp, btnOrigem) {
+  DRAWER_SLUG = slug || "";
+  DRAWER_IS_SHOPEE = mp === "shopee";
+  DRAWER_BTN_ORIGEM = btnOrigem || null;
+  DRAWER_ITENS = [];
+  DRAWER_FILTRO = "todos";
+  DRAWER_BUSCA = "";
+  const buscaEl = document.getElementById("bases-drawer-busca");
+  if (buscaEl) buscaEl.value = "";
+  document.querySelectorAll("#bases-drawer .b-filter-chip").forEach((c) =>
+    c.classList.toggle("active", c.dataset.drawerFilter === "todos"));
+
+  const base = (Array.isArray(TODAS_BASES) ? TODAS_BASES : []).find((b) => String(b.slug) === String(slug));
+  document.getElementById("bases-drawer-title").textContent = base?.nome || slug || "Base";
+  const meta = document.getElementById("bases-drawer-meta");
+  const mpLabel = DRAWER_IS_SHOPEE ? "Shopee" : "Mercado Livre";
+  const donoLabel = DRAWER_IS_SHOPEE ? "Loja / apelido" : "Cliente / Grant ML";
+  const dono = base?.vinculo ? (base.vinculo.cliente_nome || base.vinculo.cliente_slug || "—") : "—";
+  if (meta) meta.innerHTML = `
+    <span>Marketplace: <b>${escapeHTML(mpLabel)}</b></span>
+    <span>${escapeHTML(donoLabel)}: <b>${escapeHTML(dono)}</b></span>
+    <span>Atualizada: <b>${escapeHTML(formatDateTime(base?.updated_at || base?.created_at))}</b></span>`;
+
+  abrirDrawer();
+  carregarCustosDrawer(slug);
+}
+
+function drawerBodyHtml(html) {
+  const el = document.getElementById("bases-drawer-body");
+  if (el) el.innerHTML = html;
+}
+
+async function carregarCustosDrawer(slug) {
+  drawerBodyHtml(`<div class="b-state" style="border:none;">
+    <div class="loading-dots"><span></span><span></span><span></span></div>
+    <p>Carregando custos…</p></div>`);
+  const countEl = document.getElementById("bases-drawer-count");
+  if (countEl) countEl.textContent = "Carregando…";
+  try {
+    const res = await fetch(`${API_BASE}/bases/${encodeURIComponent(slug)}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    if (res.status === 401) { clearSession(); return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.erro || `HTTP ${res.status}`);
+    const dados = data.dados || {};
+    DRAWER_ITENS = Object.entries(dados).map(([produtoId, v]) => ({
+      id: produtoId,
+      id_model: v.id_model ?? v.idModel ?? null,
+      custo: v.custo_produto ?? v.custo ?? null,
+      imposto: v.imposto_percentual ?? v.imposto ?? null,
+      taxa: v.taxa_fixa ?? v.taxa ?? null,
+    }));
+    renderDrawerItens();
+  } catch (err) {
+    drawerBodyHtml(`<div class="b-state" style="border:none;">
+      <p>Não foi possível carregar os custos desta base.</p>
+      <button type="button" class="b-btn b-drawer-retry">Tentar novamente</button></div>`);
+    if (countEl) countEl.textContent = "—";
+    const retry = document.querySelector("#bases-drawer-body .b-drawer-retry");
+    if (retry) retry.addEventListener("click", () => carregarCustosDrawer(slug));
+  }
+}
+
+function drawerFiltrarItens() {
+  const termo = String(DRAWER_BUSCA || "").toLowerCase().trim();
+  return DRAWER_ITENS.filter((it) => {
+    if (DRAWER_FILTRO === "custo" && Number(it.custo) !== 0) return false;
+    if (DRAWER_FILTRO === "imposto" && Number(it.imposto) !== 0) return false;
+    if (termo) {
+      const hay = `${it.id ?? ""} ${it.id_model ?? ""}`.toLowerCase();
+      if (!hay.includes(termo)) return false;
+    }
+    return true;
+  });
+}
+
+function fmtMoedaDrawer(v) {
+  if (v == null || v === "" || !Number.isFinite(Number(v))) return "—";
+  return "R$ " + Number(v).toFixed(2).replace(".", ",");
+}
+function fmtNumDrawer(v) {
+  if (v == null || v === "" || !Number.isFinite(Number(v))) return "—";
+  return String(v);
+}
+
+function renderDrawerItens() {
+  const filtrados = drawerFiltrarItens();
+  const totalFiltrado = filtrados.length;
+  const exibidos = filtrados.slice(0, DRAWER_LIMITE);
+  const idModelTh = DRAWER_IS_SHOPEE ? `<th>ID Model</th>` : "";
+
+  const rows = exibidos.map((it) => {
+    const custoZero = Number(it.custo) === 0;
+    const impostoZero = Number(it.imposto) === 0;
+    const idModelTd = DRAWER_IS_SHOPEE ? `<td class="b-mono">${escapeHTML(String(it.id_model ?? "—"))}</td>` : "";
+    return `<tr>
+      <td class="b-mono">${escapeHTML(String(it.id ?? "—"))}</td>
+      ${idModelTd}
+      <td class="num b-mono ${custoZero ? "zero" : ""}">${escapeHTML(fmtMoedaDrawer(it.custo))}</td>
+      <td class="num b-mono ${impostoZero ? "zero" : ""}">${escapeHTML(fmtNumDrawer(it.imposto))}</td>
+      <td class="num b-mono">${escapeHTML(fmtMoedaDrawer(it.taxa))}</td>
+    </tr>`;
+  }).join("");
+
+  if (!totalFiltrado) {
+    drawerBodyHtml(`<div class="b-state" style="border:none;"><p>Nenhum item para os filtros atuais.</p></div>`);
+  } else {
+    drawerBodyHtml(`
+      <table class="b-table">
+        <thead>
+          <tr>
+            <th>Produto</th>
+            ${idModelTh}
+            <th class="num">Custo</th>
+            <th class="num">Imposto</th>
+            <th class="num">Taxa fixa</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`);
+  }
+
+  const totalBase = DRAWER_ITENS.length;
+  const countEl = document.getElementById("bases-drawer-count");
+  if (!countEl) return;
+  if (exibidos.length < totalFiltrado) {
+    countEl.textContent = `Mostrando ${exibidos.length} de ${totalFiltrado} itens (limite ${DRAWER_LIMITE}) · refine a busca`;
+  } else {
+    countEl.textContent = `Mostrando ${totalFiltrado} de ${totalBase} itens`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ─── WIRING (toolbar, KPIs, chips, modal importar, drawer, menus) ─────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Busca
 const basesBuscaInput = document.getElementById("bases-busca");
 if (basesBuscaInput) {
   basesBuscaInput.addEventListener("input", (e) => {
     BASES_BUSCA = e.target.value || "";
-    renderBasesSummary();
-    renderBases(getBasesFiltradas());
+    aplicarFiltros();
   });
 }
 
-// ─── Logout + Retry ───
+// Filtros de toolbar
+document.getElementById("bases-filtro-marketplace")?.addEventListener("change", (e) => { BASES_FILTRO_MP = e.target.value || ""; aplicarFiltros(); });
+document.getElementById("bases-filtro-atualizacao")?.addEventListener("change", (e) => { BASES_FILTRO_ATUAL = e.target.value || ""; aplicarFiltros(); });
+document.getElementById("bases-limpar-filtros")?.addEventListener("click", limparFiltros);
+document.getElementById("bases-refresh")?.addEventListener("click", loadBases);
+
+// KPIs clicáveis (marketplace / atualização)
+const kpiGrid = document.getElementById("bases-summary");
+if (kpiGrid) {
+  kpiGrid.addEventListener("click", (e) => {
+    const card = e.target.closest("[data-kpi-tipo]");
+    if (!card) return;
+    aplicarKpiFiltro(card.dataset.kpiTipo, card.dataset.kpiValor);
+  });
+  kpiGrid.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const card = e.target.closest("[data-kpi-tipo]");
+    if (!card) return;
+    e.preventDefault();
+    aplicarKpiFiltro(card.dataset.kpiTipo, card.dataset.kpiValor);
+  });
+}
+
+// Abrir modal de importação
+document.getElementById("btn-abrir-importar")?.addEventListener("click", () => abrirModalImportar());
+document.querySelectorAll("[data-import-open]").forEach((b) => b.addEventListener("click", () => abrirModalImportar()));
+document.querySelectorAll(".mp-action[data-import-mp]").forEach((b) => b.addEventListener("click", () => abrirModalImportar(b.dataset.importMp)));
+document.getElementById("bases-import-close")?.addEventListener("click", fecharModalImportar);
+document.getElementById("bases-import-cancel")?.addEventListener("click", fecharModalImportar);
+document.getElementById("bases-import-backdrop")?.addEventListener("click", (e) => {
+  if (e.target?.id === "bases-import-backdrop") fecharModalImportar();
+});
+
+// Toggle do assistente dentro do modal
+document.getElementById("bases-assist-toggle")?.addEventListener("click", () => {
+  const c = document.getElementById("bases-assist-collapse");
+  if (c) c.classList.toggle("is-open");
+});
+
+// Drawer
+document.getElementById("bases-drawer-close")?.addEventListener("click", fecharDrawer);
+document.getElementById("bases-drawer-backdrop")?.addEventListener("click", fecharDrawer);
+document.getElementById("bases-drawer-busca")?.addEventListener("input", (e) => { DRAWER_BUSCA = e.target.value || ""; renderDrawerItens(); });
+document.querySelectorAll("#bases-drawer .b-filter-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    DRAWER_FILTRO = chip.dataset.drawerFilter || "todos";
+    document.querySelectorAll("#bases-drawer .b-filter-chip").forEach((c) => c.classList.toggle("active", c === chip));
+    renderDrawerItens();
+  });
+});
+
+// Fechar menus "⋯" ao clicar fora
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".b-menu")) fecharTodosMenus();
+});
+// Esc fecha menus, drawer e modal de importação
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  fecharTodosMenus();
+  const drawer = document.getElementById("bases-drawer");
+  if (drawer && drawer.classList.contains("is-open")) fecharDrawer();
+  const importBackdrop = document.getElementById("bases-import-backdrop");
+  if (importBackdrop && importBackdrop.classList.contains("is-open")) fecharModalImportar();
+});
+
+// ─── Retry ───
 document.getElementById("btn-retry").addEventListener("click", loadBases);
 
 // Modal excluir base
