@@ -15,8 +15,11 @@ const {
 const {
   processFechamentoFinanceiro,
 } = require("../services/fechamentoFinanceiro");
+const {
+  buildCostRowsFromBase,
+} = require("../services/bases/baseCustosService");
 
-function processarFechamentoFinanceiroController(req, res) {
+async function processarFechamentoFinanceiroController(req, res) {
   try {
     const salesFile = req.files && req.files["sales"] && req.files["sales"][0];
     const costsFile = req.files && req.files["costs"] && req.files["costs"][0];
@@ -29,20 +32,27 @@ function processarFechamentoFinanceiroController(req, res) {
     const venforce = toNumber(req.body.venforce);
     const affiliates = toNumber(req.body.affiliates);
 
+    // Origem alternativa dos custos: base vinculada ao cliente (sem upload).
+    const costsBaseId = req.body.costsBaseId || req.body.baseId || null;
+    const clienteSlug = req.body.cliente_slug || req.body.clienteSlug || null;
+
     if (!salesFile || !salesFile.buffer) {
       return res.status(400).json({ ok: false, error: "Arquivo de vendas não enviado." });
-    }
-
-    if (!costsFile || !costsFile.buffer) {
-      return res.status(400).json({ ok: false, error: "Arquivo de custos não enviado." });
     }
 
     if (marketplace !== "meli" && marketplace !== "shopee") {
       return res.status(400).json({ ok: false, error: "Marketplace inválido. Envie exatamente 'meli' ou 'shopee'." });
     }
 
+    // Resolve a origem dos custos: arquivo enviado OU base vinculada (só MELI).
+    const podeUsarBaseVinculada =
+      marketplace === "meli" && (costsBaseId || clienteSlug);
+
+    if ((!costsFile || !costsFile.buffer) && !podeUsarBaseVinculada) {
+      return res.status(400).json({ ok: false, error: "Arquivo de custos não enviado." });
+    }
+
     const salesBuffer = salesFile.buffer;
-    const costsBuffer = costsFile.buffer;
     const ordersAllFile = req.files?.ordersAll?.[0];
 
     const salesRowsRaw =
@@ -50,7 +60,23 @@ function processarFechamentoFinanceiroController(req, res) {
         ? parseSpreadsheet(salesBuffer, 5)
         : parseSpreadsheet(salesBuffer, detectShopeeHeaderRow(salesBuffer));
 
-    const costRowsRaw = parseSpreadsheet(costsBuffer);
+    let costRowsRaw;
+    let costsSource = "upload";
+    let costsBase = null;
+    if (costsFile && costsFile.buffer) {
+      costRowsRaw = parseSpreadsheet(costsFile.buffer);
+    } else {
+      // MELI usando base vinculada: monta as linhas de custo a partir do banco.
+      const resolved = await buildCostRowsFromBase({
+        baseId: costsBaseId,
+        clienteSlug,
+        marketplace,
+      });
+      costRowsRaw = resolved.costRows;
+      costsSource = "base";
+      costsBase = resolved.base;
+    }
+
     let ordersAllRowsRaw = null;
     if (ordersAllFile && marketplace === "shopee") {
       try {
@@ -111,7 +137,9 @@ function processarFechamentoFinanceiroController(req, res) {
       unmatchedCancelled: result.unmatchedCancelled,
       ignoredRowsWithoutCost: result.ignoredRowsWithoutCost,
       ignoredRevenue: result.ignoredRevenue,
-      message: result.message
+      message: result.message,
+      costsSource,
+      costsBase
     });
   } catch (error) {
     console.error("Erro em /fechamentos/financeiro:", error);

@@ -20,6 +20,20 @@ let ultimoFechamentoFinanceiro = null;
 let _xlsBlobUrl  = null;
 let _xlsFilename = null;
 
+// Persistência do fechamento (reuso de entregas_cliente)
+let _entregaIdSalvo   = null;   // id da entrega criada como rascunho
+let _entregaPublicada = false;  // se já foi publicada (link gerado)
+
+// Estado da base vinculada ao cliente + marketplace
+const baseVinculadaState = {
+  loading: false,
+  hasLink: false,
+  baseId: null,
+  baseNome: null,
+  clienteSlug: "",
+  marketplace: "",
+};
+
 function escapeHTML(s) {
   const d = document.createElement("div");
   d.textContent = s == null ? "" : String(s);
@@ -29,14 +43,14 @@ function escapeHTML(s) {
 function setStatus(msg, tipo) {
   const el = document.getElementById("fin-status");
   if (!el) return;
-  if (!msg) { el.style.display = "none"; return; }
+  el.classList.remove("is-success", "is-danger", "is-info", "is-warn");
+  if (!msg) { el.style.display = "none"; el.textContent = ""; return; }
   el.textContent = msg;
   el.style.display = "block";
-
-  if (tipo === "success") el.style.color = "#047857";
-  else if (tipo === "danger") el.style.color = "var(--vf-danger)";
-  else if (tipo === "info") el.style.color = "var(--vf-text-m)";
-  else el.style.color = "var(--vf-text-m)";
+  if (tipo === "success") el.classList.add("is-success");
+  else if (tipo === "danger") el.classList.add("is-danger");
+  else if (tipo === "warn") el.classList.add("is-warn");
+  else el.classList.add("is-info");
 }
 
 function setStatusLinkCliente(msg, tipo) {
@@ -45,10 +59,59 @@ function setStatusLinkCliente(msg, tipo) {
   if (!msg) { el.style.display = "none"; return; }
   el.textContent = msg;
   el.style.display = "block";
-  if (tipo === "success") el.style.color = "#86efac";
-  else if (tipo === "danger") el.style.color = "#f87171";
-  else if (tipo === "info") el.style.color = "#a1a1aa";
-  else el.style.color = "#a1a1aa";
+  if (tipo === "success") el.style.color = "var(--vf-success, #0f7a52)";
+  else if (tipo === "danger") el.style.color = "var(--vf-danger, #c62828)";
+  else el.style.color = "var(--vf-text-m, #5a6072)";
+}
+
+// ── Chips informativos do cabeçalho ────────────────────────────────────────
+function setChip(id, label, value, variant) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = "fc-chip" + (variant ? " fc-chip-" + variant : "");
+  el.style.display = "";
+  el.innerHTML = `${escapeHTML(label)}: <b>${escapeHTML(value)}</b>`;
+}
+
+function marketplaceLabel(mk) {
+  if (mk === "meli") return "Mercado Livre";
+  if (mk === "shopee") return "Shopee";
+  return "—";
+}
+
+function atualizarChips() {
+  const sel = document.getElementById("fin-cliente");
+  const clienteNome = sel?.value ? (sel.options?.[sel.selectedIndex]?.textContent || "—") : "—";
+  const marketplace = document.getElementById("fin-marketplace")?.value || "";
+
+  setChip("fin-chip-cliente", "Cliente", clienteNome, sel?.value ? "info" : null);
+  setChip("fin-chip-marketplace", "Marketplace", marketplaceLabel(marketplace), marketplace ? "info" : null);
+
+  // Chip da base
+  if (!sel?.value || !marketplace) {
+    setChip("fin-chip-base", "Base", "—", null);
+  } else if (baseVinculadaState.loading) {
+    setChip("fin-chip-base", "Base", "verificando…", null);
+  } else if (baseVinculadaState.hasLink) {
+    setChip("fin-chip-base", "Base", "vinculada", "ok");
+  } else if (marketplace === "shopee") {
+    setChip("fin-chip-base", "Base", "upload manual", "info");
+  } else {
+    setChip("fin-chip-base", "Base", "não vinculada", "warn");
+  }
+}
+
+function setChipProcessamento(texto, variant) {
+  setChip("fin-chip-processamento", "Processamento", texto, variant || null);
+}
+
+function setChipSalvo(texto, variant) {
+  const el = document.getElementById("fin-chip-salvo");
+  if (!el) return;
+  if (!texto) { el.style.display = "none"; return; }
+  el.className = "fc-chip" + (variant ? " fc-chip-" + variant : "");
+  el.style.display = "";
+  el.innerHTML = `Fechamento: <b>${escapeHTML(texto)}</b>`;
 }
 
 function showLinkClienteActions(show) {
@@ -82,6 +145,176 @@ function atualizarHintClienteFinanceiro() {
   }
 }
 
+// ── Base vinculada (cliente + marketplace) ─────────────────────────────────
+async function detectarBaseVinculada() {
+  const clienteSlug = document.getElementById("fin-cliente")?.value || "";
+  const marketplace = document.getElementById("fin-marketplace")?.value || "";
+
+  baseVinculadaState.clienteSlug = clienteSlug;
+  baseVinculadaState.marketplace = marketplace;
+  baseVinculadaState.hasLink = false;
+  baseVinculadaState.baseId = null;
+  baseVinculadaState.baseNome = null;
+
+  if (!clienteSlug || !marketplace) {
+    baseVinculadaState.loading = false;
+    aplicarEstadoBase();
+    return;
+  }
+
+  baseVinculadaState.loading = true;
+  aplicarEstadoBase();
+
+  try {
+    const res = await fetch(`${API_BASE}/base-vinculos`, {
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+    if (res.status === 401) { window.location.replace("index.html"); return; }
+    const data = await res.json();
+    const bases = Array.isArray(data) ? data : (data?.bases || data?.data || []);
+
+    const match = bases.find((b) => {
+      const v = b?.vinculo;
+      return v
+        && String(v.cliente_slug || "").toLowerCase() === clienteSlug.toLowerCase()
+        && String(v.marketplace || "").toLowerCase() === marketplace.toLowerCase();
+    });
+
+    // Evita condição de corrida: só aplica se a seleção não mudou.
+    if (baseVinculadaState.clienteSlug !== clienteSlug ||
+        baseVinculadaState.marketplace !== marketplace) return;
+
+    if (match) {
+      baseVinculadaState.hasLink = true;
+      baseVinculadaState.baseId = match.id;
+      baseVinculadaState.baseNome = match.nome || match.slug || ("Base #" + match.id);
+    }
+  } catch (_) {
+    // Silencioso: cai no fluxo de upload manual.
+  } finally {
+    baseVinculadaState.loading = false;
+    aplicarEstadoBase();
+  }
+}
+
+// Aplica o estado da base à UI (chips, card de custos, status, hint, mini-resumo).
+function aplicarEstadoBase() {
+  atualizarChips();
+
+  const marketplace = document.getElementById("fin-marketplace")?.value || "";
+  const clienteSlug = document.getElementById("fin-cliente")?.value || "";
+  const statusEl = document.getElementById("fin-base-status");
+  const costsCard = document.getElementById("fin-costs-card");
+  const costsBadge = document.getElementById("fin-costs-badge");
+  const costsTitle = document.getElementById("fin-costs-title");
+  const costsHint = document.getElementById("fin-costs-hint");
+  const costsInput = document.getElementById("fin-costs");
+  const arquivosHint = document.getElementById("fin-arquivos-hint");
+
+  const usandoBase = marketplace === "meli" && baseVinculadaState.hasLink;
+
+  // Card de custos
+  if (costsInput) costsInput.disabled = usandoBase;
+  if (costsCard) {
+    costsCard.classList.toggle("is-linked", usandoBase);
+    if (usandoBase) {
+      if (costsBadge) { costsBadge.textContent = "Base vinculada"; costsBadge.className = "fc-upload-badge fc-upload-badge-linked"; }
+      if (costsTitle) costsTitle.textContent = "Usando base vinculada do cliente";
+      if (costsHint) costsHint.textContent = baseVinculadaState.baseNome || "Custos resolvidos automaticamente";
+      // Limpa qualquer upload manual anterior para não conflitar
+      if (costsInput && costsInput.files?.length) {
+        costsInput.value = "";
+        costsInput.dispatchEvent(new Event("change"));
+      }
+      costsCard.classList.remove("has-file");
+      // Nota explicativa
+      let note = costsCard.querySelector(".fc-linked-note");
+      if (!note) {
+        note = document.createElement("div");
+        note.className = "fc-linked-note";
+        costsCard.appendChild(note);
+      }
+      note.textContent = "Os custos serão resolvidos no servidor a partir da base vinculada. Não é preciso enviar planilha de custos.";
+    } else {
+      if (costsBadge) { costsBadge.textContent = "Obrigatório"; costsBadge.className = "fc-upload-badge fc-upload-badge-req"; }
+      if (costsTitle) costsTitle.textContent = "Planilha de custos";
+      if (costsHint) costsHint.textContent = ".xlsx · Clique ou arraste o arquivo";
+      costsCard.querySelector(".fc-linked-note")?.remove();
+    }
+  }
+
+  // Status da base
+  if (statusEl) {
+    statusEl.classList.remove("is-info", "is-success", "is-warn", "is-danger");
+    if (!clienteSlug || !marketplace) {
+      statusEl.style.display = "none";
+    } else if (baseVinculadaState.loading) {
+      statusEl.style.display = "block";
+      statusEl.classList.add("is-info");
+      statusEl.textContent = "Verificando base vinculada do cliente…";
+    } else if (baseVinculadaState.hasLink) {
+      statusEl.style.display = "block";
+      statusEl.classList.add("is-success");
+      statusEl.textContent = marketplace === "meli"
+        ? `Base vinculada encontrada: "${baseVinculadaState.baseNome}". O upload de custos não é necessário.`
+        : `Base vinculada encontrada: "${baseVinculadaState.baseNome}".`;
+    } else if (marketplace === "meli") {
+      statusEl.style.display = "block";
+      statusEl.classList.add("is-warn");
+      statusEl.textContent = "Nenhuma base vinculada para este cliente/marketplace. Envie a planilha de custos manualmente.";
+    } else {
+      statusEl.style.display = "none";
+    }
+  }
+
+  // Hint dos arquivos
+  if (arquivosHint) {
+    if (usandoBase) arquivosHint.textContent = "Envie apenas a planilha de vendas — os custos vêm da base vinculada.";
+    else if (marketplace === "shopee") arquivosHint.textContent = "Envie as planilhas de vendas e custos da Shopee.";
+    else arquivosHint.textContent = "Envie a planilha de vendas e a planilha de custos.";
+  }
+
+  atualizarMiniResumo();
+}
+
+// ── Mini resumo antes de processar ─────────────────────────────────────────
+function atualizarMiniResumo() {
+  const sel = document.getElementById("fin-cliente");
+  const clienteNome = sel?.value ? (sel.options?.[sel.selectedIndex]?.textContent || "—") : "—";
+  const marketplace = document.getElementById("fin-marketplace")?.value || "";
+  const usandoBase = marketplace === "meli" && baseVinculadaState.hasLink;
+
+  const salesFile = document.getElementById("fin-sales")?.files?.[0];
+  const costsFile = document.getElementById("fin-costs")?.files?.[0];
+  const ordersAll = document.getElementById("fin-orders-all")?.files?.[0];
+
+  const arquivos = [];
+  if (salesFile) arquivos.push("vendas");
+  if (costsFile) arquivos.push("custos");
+  if (ordersAll) arquivos.push("Order.all");
+
+  const ads = parseMoneyInput(document.getElementById("fin-ads")?.value);
+  const venforce = parseMoneyInput(document.getElementById("fin-venforce")?.value);
+  const afiliados = parseMoneyInput(document.getElementById("fin-affiliates")?.value);
+
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set("fin-res-cliente", clienteNome);
+  set("fin-res-marketplace", marketplaceLabel(marketplace));
+  set("fin-res-base", usandoBase ? `Vinculada (${baseVinculadaState.baseNome})` : (marketplace ? "Upload manual" : "—"));
+  set("fin-res-arquivos", arquivos.length ? arquivos.join(", ") : "nenhum selecionado");
+  set("fin-res-ajustes", `ADS ${brl(ads)} · Venforce ${brl(venforce)} · Afiliados ${brl(afiliados)}`);
+}
+
+// Aceita "1.234,56" e "1234.56"
+function parseMoneyInput(raw) {
+  if (raw == null) return 0;
+  let s = String(raw).trim();
+  if (!s) return 0;
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
 async function carregarClientesFinanceiro() {
   const sel = document.getElementById("fin-cliente");
   if (!sel) return;
@@ -98,9 +331,11 @@ async function carregarClientesFinanceiro() {
       '<option value="">Selecione o cliente...</option>' +
       ativos
         .sort((a, b) => (a.nome || "").localeCompare(b.nome || ""))
-        .map((c) => `<option value="${c.slug}">${c.nome}</option>`)
+        .map((c) => `<option value="${escapeHTML(c.slug)}">${escapeHTML(c.nome)}</option>`)
         .join("");
     atualizarHintClienteFinanceiro();
+    atualizarChips();
+    atualizarMiniResumo();
   } catch {
     sel.innerHTML = '<option value="">Erro ao carregar clientes</option>';
     atualizarHintClienteFinanceiro();
@@ -405,6 +640,65 @@ function montarPayloadFechamentoCliente(data) {
   };
 }
 
+// Cria (rascunho) ou atualiza a entrega salva. Retorna o id.
+async function criarOuAtualizarEntregaFechamento(payload, periodo) {
+  const clienteSlug = document.getElementById("fin-cliente")?.value || null;
+
+  if (_entregaIdSalvo) {
+    const patchResp = await fetch(`${API_BASE}/entregas-cliente/${encodeURIComponent(_entregaIdSalvo)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + TOKEN },
+      body: JSON.stringify({ periodo: periodo || "", payload_json: payload }),
+    });
+    if (patchResp.status === 401) { window.location.replace("index.html"); throw new Error("401"); }
+    // Se o PATCH falhar (ex.: entrega removida), recria abaixo.
+    if (patchResp.ok) return _entregaIdSalvo;
+    _entregaIdSalvo = null;
+  }
+
+  const criarResp = await fetch(`${API_BASE}/entregas-cliente`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + TOKEN },
+    body: JSON.stringify({
+      tipo: "fechamento_mensal",
+      titulo: payload.titulo || "Relatório de Fechamento Financeiro",
+      periodo: periodo || "",
+      cliente_slug: clienteSlug,
+      status: "rascunho",
+      payload_json: payload,
+      origem_tipo: "fechamento_financeiro",
+      origem_id: null,
+    }),
+  });
+  if (criarResp.status === 401) { window.location.replace("index.html"); throw new Error("401"); }
+  const criarJson = await criarResp.json();
+  if (!criarResp.ok) throw new Error(criarJson?.erro || criarJson?.error || "Falha ao criar entrega.");
+  const entregaId = criarJson?.entrega?.id;
+  if (!entregaId) throw new Error("Entrega criada sem id.");
+  _entregaIdSalvo = entregaId;
+  return entregaId;
+}
+
+// Publica a entrega e retorna a URL pública.
+async function publicarEntregaFechamento(entregaId) {
+  const pubResp = await fetch(`${API_BASE}/entregas-cliente/${encodeURIComponent(entregaId)}/publicar`, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + TOKEN },
+  });
+  if (pubResp.status === 401) { window.location.replace("index.html"); throw new Error("401"); }
+  const pubJson = await pubResp.json();
+  if (!pubResp.ok) throw new Error(pubJson?.erro || pubJson?.error || "Falha ao publicar entrega.");
+  const token = pubJson?.entrega?.token_publico;
+  if (!token) throw new Error("Entrega publicada sem token_publico.");
+
+  _entregaPublicada = true;
+  setChipSalvo("publicado para cliente", "ok");
+  const btnSalvar = document.getElementById("btn-fin-salvar");
+  if (btnSalvar) btnSalvar.textContent = "Salvar fechamento";
+
+  return `${window.location.origin}/relatorio-publico.html?token=${encodeURIComponent(token)}`;
+}
+
 async function gerarLinkClienteFinanceiro() {
   if (!TOKEN) return;
   if (!ultimoFechamentoFinanceiro?.data) {
@@ -420,42 +714,11 @@ async function gerarLinkClienteFinanceiro() {
   try {
     const data = ultimoFechamentoFinanceiro.data;
     const payload = montarPayloadFechamentoCliente(data);
+    const periodo = document.getElementById("fin-periodo")?.value?.trim() || payload.periodo || "";
 
-    const criarResp = await fetch(`${API_BASE}/entregas-cliente`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + TOKEN },
-      body: JSON.stringify({
-        tipo: "fechamento_mensal",
-        titulo: payload.titulo || "Relatório de Fechamento Financeiro",
-        periodo: payload.periodo || "",
-        cliente_slug: document.getElementById("fin-cliente")?.value || null,
-        status: "rascunho",
-        payload_json: payload,
-        origem_tipo: "fechamento_financeiro",
-        origem_id: null,
-      }),
-    });
+    const entregaId = await criarOuAtualizarEntregaFechamento(payload, periodo);
+    const publicUrl = await publicarEntregaFechamento(entregaId);
 
-    if (criarResp.status === 401) { window.location.replace("index.html"); return; }
-    const criarJson = await criarResp.json();
-    if (!criarResp.ok) throw new Error(criarJson?.erro || criarJson?.error || "Falha ao criar entrega.");
-
-    const entregaId = criarJson?.entrega?.id;
-    if (!entregaId) throw new Error("Entrega criada sem id.");
-
-    const pubResp = await fetch(`${API_BASE}/entregas-cliente/${encodeURIComponent(entregaId)}/publicar`, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + TOKEN },
-    });
-
-    if (pubResp.status === 401) { window.location.replace("index.html"); return; }
-    const pubJson = await pubResp.json();
-    if (!pubResp.ok) throw new Error(pubJson?.erro || pubJson?.error || "Falha ao publicar entrega.");
-
-    const token = pubJson?.entrega?.token_publico;
-    if (!token) throw new Error("Entrega publicada sem token_publico.");
-
-    const publicUrl = `${window.location.origin}/relatorio-publico.html?token=${encodeURIComponent(token)}`;
     setLinkClienteOutput(publicUrl);
     setStatusLinkCliente("✓ Link público gerado. Você pode copiar e enviar ao cliente.", "success");
   } catch (err) {
@@ -557,10 +820,10 @@ function renderFinResumo(data) {
     const el = document.getElementById(id)?.querySelector(".fc-stat-value");
     if (!el) return;
     el.textContent = formattedValue;
-
+    el.classList.remove("fc-val-pos", "fc-val-neg", "fc-val-warn");
     const n = Number(rawValue);
-    if (!Number.isFinite(n) || n === 0) { el.style.color = ""; return; }
-    el.style.color = n > 0 ? "#86efac" : "#f87171";
+    if (!Number.isFinite(n) || n === 0) return;
+    el.classList.add(n > 0 ? "fc-val-pos" : "fc-val-neg");
   }
 
   setCard("fin-bruto", s.grossRevenueTotal, brl(s.grossRevenueTotal));
@@ -579,13 +842,19 @@ function renderFinResumo(data) {
   setCard("fin-faturamento-perdido", lostNegative, brl(lostNegative));
 
   // Cards Shopee — só populam se vieram no summary.
+  const setCountColor = (el, on, cls) => {
+    if (!el) return;
+    el.classList.remove("fc-val-pos", "fc-val-neg", "fc-val-warn");
+    if (on) el.classList.add(cls);
+  };
+
   const shopeeCancCount = Number(s.cancelledCount || 0);
   const elShopeeCancCount = document
     .getElementById("fin-shopee-cancelados-count")
     ?.querySelector(".fc-stat-value");
   if (elShopeeCancCount) {
     elShopeeCancCount.textContent = num(shopeeCancCount);
-    elShopeeCancCount.style.color = shopeeCancCount > 0 ? "#f87171" : "";
+    setCountColor(elShopeeCancCount, shopeeCancCount > 0, "fc-val-neg");
   }
 
   const shopeeLost = -Number(s.cancelledLostRevenue || 0);
@@ -600,18 +869,56 @@ function renderFinResumo(data) {
     elUnpaid.textContent = unpaidCount > 0
       ? `${num(unpaidCount)} (${brl(unpaidVal)})`
       : "—";
-    elUnpaid.style.color = unpaidCount > 0 ? "#fbbf24" : "";
+    setCountColor(elUnpaid, unpaidCount > 0, "fc-val-warn");
   }
 
-  // Pedidos cancelados: contagem; coloração customizada (não é financeiro)
+  // Pedidos cancelados: contagem; coloração semântica (não é financeiro)
   const elCount = document
     .getElementById("fin-cancelados-count")
     ?.querySelector(".fc-stat-value");
   if (elCount) {
     const count = Number(s.refundsCount || 0);
     elCount.textContent = num(count);
-    elCount.style.color = count > 0 ? "#f87171" : "";
+    setCountColor(elCount, count > 0, "fc-val-neg");
   }
+
+  // Leitura executiva do fechamento
+  renderLeituraFechamento(data);
+}
+
+// ── "Leitura do fechamento" — resumo executivo objetivo (sem inventar números)
+function renderLeituraFechamento(data) {
+  const host = document.getElementById("fin-leitura");
+  if (!host) return;
+  const s = data?.summary || {};
+  const finalResult = Number(s.finalResult || 0);
+  const lcTotal = Number(s.contributionProfitTotal || 0);
+  const mcMedia = Number(s.averageContributionMargin || 0);
+  const tacos = Number(s.tacos || 0);
+  const unmatched = Array.isArray(data?.unmatchedIds) ? data.unmatchedIds.length : 0;
+  const refundsCount = Number(s.refundsCount || 0);
+  const lost = Number(s.lostRevenueTotal || 0);
+
+  const positivo = finalResult >= 0;
+  const bullets = [];
+  bullets.push(`Resultado final ${positivo ? "positivo" : "negativo"} de <b>${brl(finalResult)}</b> (LC total ${brl(lcTotal)}, MC média ${pct(mcMedia)}).`);
+  if (tacos > 0) bullets.push(`TACoS de <b>${pct(tacos)}</b> — ADS como percentual da receita.`);
+  if (mcMedia < 0.15) bullets.push(`Margem de contribuição média <b>abaixo de 15%</b> — atenção a custos, comissões e frete.`);
+  if (unmatched > 0) bullets.push(`<b>${num(unmatched)}</b> produto(s) sem custo/base cadastrado — os cálculos podem estar incompletos.`);
+  if (refundsCount > 0) bullets.push(`<b>${num(refundsCount)}</b> cancelamento(s)/reembolso(s) no período.`);
+  if (lost > 0) bullets.push(`Faturamento perdido estimado de <b>${brl(lost)}</b> em pedidos cancelados.`);
+
+  const tone = !positivo || mcMedia < 0 ? "danger" : (mcMedia < 0.15 || unmatched > 0 ? "warn" : "success");
+  const toneClass = tone === "danger" ? "is-danger" : tone === "warn" ? "is-warn" : "is-success";
+
+  host.innerHTML = `
+    <div class="fc-status ${toneClass}" style="margin:0 0 20px;">
+      <div style="font-weight:800;margin-bottom:6px;">Leitura do fechamento</div>
+      <ul style="margin:0;padding-left:18px;line-height:1.65;">
+        ${bullets.map((b) => `<li>${b}</li>`).join("")}
+      </ul>
+    </div>`;
+  host.style.display = "block";
 }
 
 function finColumnKey(col) {
@@ -733,18 +1040,11 @@ function renderShopeeReconciliacao(data) {
     },
   ].filter((item) => item.count > 0);
 
-  const toneStyle = {
-    positive: { bg: "rgba(134,239,172,0.07)", border: "rgba(134,239,172,0.2)", color: "#86efac" },
-    warning:  { bg: "rgba(251,191,36,0.07)",  border: "rgba(251,191,36,0.2)",  color: "#fbbf24" },
-    danger:   { bg: "rgba(248,113,113,0.07)", border: "rgba(248,113,113,0.18)", color: "#f87171" },
-  };
-
   const cardsHtml = statusItems.map((item) => {
-    const c = toneStyle[item.tone];
-    return `<div class="fc-recon-card" style="background:${c.bg};border-color:${c.border};">
+    return `<div class="fc-recon-card tone-${item.tone}">
       <div class="fc-recon-card-label">${escapeHTML(item.label)}</div>
       <div class="fc-recon-card-support">${escapeHTML(item.support)}</div>
-      <div class="fc-recon-card-value" style="color:${c.color};">${brl(item.revenue)}</div>
+      <div class="fc-recon-card-value">${brl(item.revenue)}</div>
       <div class="fc-recon-card-count">${num(item.count)} pedido${item.count !== 1 ? "s" : ""}</div>
     </div>`;
   }).join("");
@@ -838,11 +1138,63 @@ function renderFinTabela(data) {
     let currentPage = 1;
     let pageSize = 25;
     let searchQuery = "";
+    let activeFilter = "";
+
+    // Detecção de colunas semânticas para os filtros rápidos.
+    const findCol = (re) => columns.find((c) => re.test(finColumnKey(c)));
+    const colLc   = findCol(/(^lc$)|lucro|contrib/);
+    const colMc   = findCol(/(^mc$)|margem/);
+    const colDiag = findCol(/diagn|status/);
+    const colFat  = findCol(/faturamento|receita|total.*brl|valor.*total|preco.*total|vendas/);
+    const colId   = findCol(/(^id$)|item_id|produto_id|anuncio|mlb|sku/);
+    const unmatchedSet = new Set((Array.isArray(data?.unmatchedIds) ? data.unmatchedIds : []).map((x) => String(x)));
+
+    function cellNum(v) {
+      if (typeof v === "number") return v;
+      let s = String(v ?? "").replace(/[^\d,.\-]/g, "");
+      if (!s) return NaN;
+      if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
+      else if (s.includes(",")) s = s.replace(",", ".");
+      const n = Number(s);
+      return Number.isFinite(n) ? n : NaN;
+    }
+    // MC pode vir como fração (0.12) ou pontos percentuais (12,5). Meta = 15%.
+    function mcAbaixoMeta(v) {
+      const n = cellNum(v);
+      if (!Number.isFinite(n)) return false;
+      const frac = Math.abs(n) > 1 ? n / 100 : n;
+      return frac >= 0 && frac < 0.15;
+    }
+    const diagInclui = (r, re) => colDiag && re.test(finColumnKey(String(r?.[colDiag] ?? "")));
+
+    // Definição dos filtros disponíveis (só entram os que fazem sentido nos dados).
+    const FILTERS = [
+      { key: "sem-custo",   label: "Produto sem custo", enabled: !!(colDiag || (colId && unmatchedSet.size)),
+        test: (r) => diagInclui(r, /sem custo|sem base|nao encontrad|nao localizad/) || (colId && unmatchedSet.has(String(r?.[colId] ?? ""))) },
+      { key: "mc-neg",      label: "Margem negativa", enabled: !!colMc,
+        test: (r) => cellNum(r?.[colMc]) < 0 },
+      { key: "mc-meta",     label: "Abaixo da meta (15%)", enabled: !!colMc,
+        test: (r) => mcAbaixoMeta(r?.[colMc]) },
+      { key: "cancelados",  label: "Cancelados", enabled: !!colDiag,
+        test: (r) => diagInclui(r, /cancel|reembols|devolu/) },
+      { key: "maior-fat",   label: "Maior faturamento", enabled: !!colFat, sort: true,
+        cmp: (a, b) => (cellNum(b?.[colFat]) || -Infinity) - (cellNum(a?.[colFat]) || -Infinity) },
+      { key: "maior-prej",  label: "Maior prejuízo", enabled: !!colLc, sort: true,
+        cmp: (a, b) => (cellNum(a?.[colLc]) || Infinity) - (cellNum(b?.[colLc]) || Infinity) },
+    ].filter((f) => f.enabled);
 
     function getFiltered() {
-      if (!searchQuery) return rows;
-      const q = searchQuery.toLowerCase();
-      return rows.filter((r) => columns.some((c) => String(r?.[c] ?? "").toLowerCase().includes(q)));
+      let out = rows;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        out = out.filter((r) => columns.some((c) => String(r?.[c] ?? "").toLowerCase().includes(q)));
+      }
+      const f = FILTERS.find((x) => x.key === activeFilter);
+      if (f) {
+        if (f.sort) out = out.slice().sort(f.cmp);
+        else out = out.filter(f.test);
+      }
+      return out;
     }
 
     const panelEl = document.createElement("div");
@@ -858,6 +1210,7 @@ function renderFinTabela(data) {
         </select>
         <span class="fc-table-counter"></span>
       </div>
+      <div class="fc-filter-chips"></div>
       <div class="fc-table-scroll"></div>
       <div class="fc-pagination">
         <span class="fc-pagination-info"></span>
@@ -869,10 +1222,28 @@ function renderFinTabela(data) {
     const searchInputEl  = panelEl.querySelector(".fc-table-search");
     const pageSelectEl   = panelEl.querySelector(".fc-table-page-select");
     const counterEl      = panelEl.querySelector(".fc-table-counter");
+    const filterChipsEl  = panelEl.querySelector(".fc-filter-chips");
     const tableScrollEl  = panelEl.querySelector(".fc-table-scroll");
     const prevBtn        = panelEl.querySelector(".fc-pagination-prev");
     const nextBtn        = panelEl.querySelector(".fc-pagination-next");
     const pageInfoEl     = panelEl.querySelector(".fc-pagination-info");
+
+    function renderFilterChips() {
+      if (!filterChipsEl) return;
+      if (!FILTERS.length) { filterChipsEl.style.display = "none"; return; }
+      filterChipsEl.innerHTML = FILTERS.map((f) =>
+        `<button type="button" class="fc-filter-chip${activeFilter === f.key ? " active" : ""}" data-filter="${escapeHTML(f.key)}">${escapeHTML(f.label)}</button>`
+      ).join("");
+      filterChipsEl.querySelectorAll(".fc-filter-chip").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const k = btn.getAttribute("data-filter");
+          activeFilter = activeFilter === k ? "" : k;
+          currentPage = 1;
+          renderFilterChips();
+          renderPage();
+        });
+      });
+    }
 
     function renderPage() {
       const filtered   = getFiltered();
@@ -904,7 +1275,15 @@ function renderFinTabela(data) {
 
       const tbodyHtml = pageRows.map((r) => {
         const tds = columns.map((c) => {
-          return `<td${finColumnCellClassAttr(c, numericCols)}>${escapeHTML(String(r?.[c] ?? ""))}</td>`;
+          let attr = finColumnCellClassAttr(c, numericCols);
+          if (c === colLc || c === colMc) {
+            const n = cellNum(r?.[c]);
+            if (Number.isFinite(n) && n !== 0) {
+              const cls = n > 0 ? "fc-td-pos" : "fc-td-neg";
+              attr = attr ? attr.replace('class="', `class="${cls} `) : ` class="${cls}"`;
+            }
+          }
+          return `<td${attr}>${escapeHTML(String(r?.[c] ?? ""))}</td>`;
         }).join("");
         return `<tr>${tds}</tr>`;
       }).join("");
@@ -929,6 +1308,7 @@ function renderFinTabela(data) {
     });
 
     host.appendChild(panelEl);
+    renderFilterChips();
     renderPage();
   }
 
@@ -936,21 +1316,17 @@ function renderFinTabela(data) {
   const unmatched = Array.isArray(data?.unmatchedIds) ? data.unmatchedIds : [];
   if (unmatched.length > 0) {
     const panel = document.createElement("div");
-    panel.className = "fc-content-panel";
-    panel.style.marginTop = "14px";
-    panel.style.background = "rgba(9,9,11,0.86)";
-    panel.style.border = "1px solid rgba(248,113,113,0.28)";
-    panel.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace";
+    panel.className = "fc-alert-panel fc-alert-danger";
 
     const idsHtml = unmatched
-      .map((id) => `<div style="padding:6px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:10px;user-select:text;">${escapeHTML(String(id))}</div>`)
+      .map((id) => `<div>${escapeHTML(String(id))}</div>`)
       .join("");
 
     panel.innerHTML = `
-      <div style="font-weight:900;color:#f87171;margin:0 0 10px;">⚠ ${unmatched.length} ID(s) não encontrados na planilha de custos</div>
-      <div style="color:#e5e7eb;margin:0 0 10px;">Receita ignorada: ${escapeHTML(brl(data?.ignoredRevenue || 0))}</div>
-      <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:#f4f4f5;line-height:1.45;">${idsHtml}</div>
-      <div style="color:#a1a1aa;margin:12px 0 0;font-size:12px;">Cadastre esses IDs na planilha de custos e processe novamente.</div>
+      <p class="fc-alert-title">⚠ ${unmatched.length} ID(s) não encontrados na planilha de custos</p>
+      <p class="fc-alert-sub">Receita ignorada: ${escapeHTML(brl(data?.ignoredRevenue || 0))}</p>
+      <div class="fc-alert-chips">${idsHtml}</div>
+      <p class="fc-alert-foot">Cadastre esses IDs na base de custos e processe novamente.</p>
     `;
     host.appendChild(panel);
   }
@@ -959,20 +1335,16 @@ function renderFinTabela(data) {
   const unmatchedCancelled = Array.isArray(data?.unmatchedCancelled) ? data.unmatchedCancelled : [];
   if (unmatchedCancelled.length > 0) {
     const panel = document.createElement("div");
-    panel.className = "fc-content-panel";
-    panel.style.marginTop = "14px";
-    panel.style.background = "rgba(9,9,11,0.86)";
-    panel.style.border = "1px solid rgba(251,191,36,0.28)";
-    panel.style.fontFamily = "ui-monospace, monospace";
+    panel.className = "fc-alert-panel fc-alert-warn";
 
     const itemsHtml = unmatchedCancelled
-      .map((c) => `<div style="padding:6px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:10px;user-select:text;">${escapeHTML(c.productName || "—")} <span style="color:#a1a1aa;">| SKU: ${escapeHTML(c.skuPrincipal || "—")} | ${escapeHTML(brl(c.subtotal || 0))}</span></div>`)
+      .map((c) => `<div>${escapeHTML(c.productName || "—")} <span class="muted">| SKU: ${escapeHTML(c.skuPrincipal || "—")} | ${escapeHTML(brl(c.subtotal || 0))}</span></div>`)
       .join("");
 
     panel.innerHTML = `
-      <div style="font-weight:900;color:#fbbf24;margin:0 0 10px;">⚠ ${unmatchedCancelled.length} pedido(s) cancelado(s) sem custo identificado</div>
-      <div style="color:#e5e7eb;margin:0 0 10px;">Esses pedidos cancelados não foram encontrados na sua base de custos via SKU. Cadastre o produto na base e processe novamente para incluir nos cálculos.</div>
-      <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:#f4f4f5;line-height:1.45;">${itemsHtml}</div>
+      <p class="fc-alert-title">⚠ ${unmatchedCancelled.length} pedido(s) cancelado(s) sem custo identificado</p>
+      <p class="fc-alert-sub">Esses pedidos cancelados não foram encontrados na base de custos via SKU. Cadastre o produto na base e processe novamente para incluir nos cálculos.</p>
+      <div class="fc-alert-chips">${itemsHtml}</div>
     `;
     host.appendChild(panel);
   }
@@ -1015,37 +1387,54 @@ async function processarFechamentoFinanceiro() {
   const marketplace = document.getElementById("fin-marketplace")?.value || "";
   if (!marketplace) { setStatus("Selecione o marketplace.", "danger"); return; }
 
+  const clienteSlug = document.getElementById("fin-cliente")?.value || "";
+
   const sales = document.getElementById("fin-sales")?.files?.[0];
   if (!sales) { setStatus("Selecione a planilha de vendas (.xlsx).", "danger"); return; }
 
   const costs = document.getElementById("fin-costs")?.files?.[0];
-  if (!costs) { setStatus("Selecione a planilha de custos (.xlsx).", "danger"); return; }
+  const usandoBase = marketplace === "meli" && baseVinculadaState.hasLink && !costs;
 
-  const btn = document.getElementById("btn-fin-processar");
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Processando...";
+  // Custos: arquivo manual OU base vinculada (só MELI).
+  if (!costs && !usandoBase) {
+    if (marketplace === "meli") {
+      setStatus("Selecione a planilha de custos ou vincule uma base ao cliente na tela de Bases.", "danger");
+    } else {
+      setStatus("Selecione a planilha de custos (.xlsx).", "danger");
+    }
+    return;
   }
 
-  setStatus("Processando...", "info");
+  const btn = document.getElementById("btn-fin-processar");
+  setBtnLoading(btn, true, "Processando…");
+  setChipProcessamento("processando…", "info");
+  setStatus("Processando…", "info");
 
   try {
-    const ads = document.getElementById("fin-ads")?.value || "0";
-    const venforce = document.getElementById("fin-venforce")?.value || "0";
-    const affiliates = document.getElementById("fin-affiliates")?.value || "0";
+    const ads = parseMoneyInput(document.getElementById("fin-ads")?.value);
+    const venforce = parseMoneyInput(document.getElementById("fin-venforce")?.value);
+    const affiliates = parseMoneyInput(document.getElementById("fin-affiliates")?.value);
 
     const formData = new FormData();
     formData.append("sales", sales);
-    formData.append("costs", costs);
     formData.append("marketplace", marketplace);
+    if (clienteSlug) formData.append("cliente_slug", clienteSlug);
+
+    if (usandoBase) {
+      // MELI com base vinculada — custos resolvidos no servidor.
+      if (baseVinculadaState.baseId != null) formData.append("costsBaseId", baseVinculadaState.baseId);
+    } else {
+      formData.append("costs", costs);
+    }
+
     // Order.all opcional, só Shopee
     if (marketplace === "shopee") {
       const ordersAll = document.getElementById("fin-orders-all")?.files?.[0];
       if (ordersAll) formData.append("ordersAll", ordersAll);
     }
-    formData.append("ads", ads);
-    formData.append("venforce", venforce);
-    formData.append("affiliates", affiliates);
+    formData.append("ads", String(ads));
+    formData.append("venforce", String(venforce));
+    formData.append("affiliates", String(affiliates));
 
     const res = await fetch(`${API_BASE}/fechamentos/financeiro`, {
       method: "POST",
@@ -1059,12 +1448,23 @@ async function processarFechamentoFinanceiro() {
     if (!res.ok) throw new Error(json.erro || json.error || json.message || "HTTP " + res.status);
 
     // Snapshot do fechamento para gerar entrega ao cliente (não altera cálculo)
-    const adsNum = Number(document.getElementById("fin-ads")?.value || 0);
-    const venforceNum = Number(document.getElementById("fin-venforce")?.value || 0);
-    const affiliatesNum = Number(document.getElementById("fin-affiliates")?.value || 0);
+    const clienteSel = document.getElementById("fin-cliente");
+    const clienteNome = clienteSel?.value ? (clienteSel.options?.[clienteSel.selectedIndex]?.textContent || "") : "";
+    const periodo = document.getElementById("fin-periodo")?.value?.trim() || "";
     const dataGeracao = new Date().toISOString();
-    json._vf_meta = { marketplace, ads: adsNum, venforce: venforceNum, affiliates: affiliatesNum, dataGeracao };
-    ultimoFechamentoFinanceiro = { data: json, marketplace, ads: adsNum, venforce: venforceNum, affiliates: affiliatesNum, dataGeracao };
+    json._vf_meta = {
+      marketplace,
+      ads, venforce, affiliates,
+      dataGeracao,
+      periodo,
+      cliente: clienteSlug ? { slug: clienteSlug, nome: clienteNome } : {},
+    };
+    ultimoFechamentoFinanceiro = { data: json, marketplace, ads, venforce, affiliates, dataGeracao };
+
+    // Novo processamento invalida a entrega salva anterior.
+    _entregaIdSalvo = null;
+    _entregaPublicada = false;
+
     showLinkClienteActions(true);
     setStatusLinkCliente("Pronto para gerar a entrega do cliente.", "info");
     setLinkClienteOutput("");
@@ -1075,19 +1475,100 @@ async function processarFechamentoFinanceiro() {
     renderFinTabela(json);
     document.getElementById("fc-wrap")?.setAttribute("data-processed", "");
     initEntregaTabs();
-    setStatus("✓ Processado com sucesso.", "success");
+
+    // Ações pós-processamento
+    const btnSalvar = document.getElementById("btn-fin-salvar");
+    if (btnSalvar) { btnSalvar.style.display = ""; btnSalvar.disabled = false; btnSalvar.textContent = "Salvar fechamento"; }
+    setChipProcessamento("processado", "ok");
+    setChipSalvo("processado, ainda não salvo", "warn");
+
+    const origemTxt = json.costsSource === "base"
+      ? ` Custos: base vinculada${json.costsBase?.nome ? ` "${json.costsBase.nome}"` : ""}.`
+      : "";
+    setStatus("✓ Processado com sucesso." + origemTxt, "success");
 
     if (json.excelBase64) {
       const blob = base64ToBlob(json.excelBase64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       setXlsBlob(blob, `fechamento-${marketplace}-${todayISO()}.xlsx`);
     }
   } catch (err) {
+    setChipProcessamento("erro", "bad");
     setStatus("Erro: " + (err?.message || "Falha ao processar."), "danger");
   } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Processar";
+    setBtnLoading(btn, false, "Processar fechamento");
+  }
+}
+
+// Helper: estado de loading em botões (mantém rótulo original).
+function setBtnLoading(btn, loading, labelWhileLoading) {
+  if (!btn) return;
+  if (loading) {
+    if (!btn.dataset.originalHtml) btn.dataset.originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add("is-loading");
+    btn.innerHTML = `<span class="fc-spinner"></span>${escapeHTML(labelWhileLoading || "Aguarde…")}`;
+  } else {
+    btn.disabled = false;
+    btn.classList.remove("is-loading");
+    if (btn.dataset.originalHtml) { btn.innerHTML = btn.dataset.originalHtml; delete btn.dataset.originalHtml; }
+    else if (labelWhileLoading) { btn.textContent = labelWhileLoading; }
+  }
+}
+
+// ── Salvar fechamento (reuso de entregas_cliente como rascunho) ─────────────
+async function salvarFechamentoFinanceiro() {
+  if (!TOKEN) return;
+  if (!ultimoFechamentoFinanceiro?.data) {
+    setStatus("Processe um fechamento antes de salvar.", "danger");
+    return;
+  }
+
+  const btn = document.getElementById("btn-fin-salvar");
+  setBtnLoading(btn, true, "Salvando…");
+  setStatus("Salvando fechamento…", "info");
+
+  try {
+    const data = ultimoFechamentoFinanceiro.data;
+    const payload = montarPayloadFechamentoCliente(data);
+    const clienteSlug = document.getElementById("fin-cliente")?.value || null;
+    const periodo = document.getElementById("fin-periodo")?.value?.trim() || payload.periodo || "";
+
+    let resp;
+    if (_entregaIdSalvo) {
+      // Já salvo antes: atualiza o payload/período em vez de duplicar.
+      resp = await fetch(`${API_BASE}/entregas-cliente/${encodeURIComponent(_entregaIdSalvo)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + TOKEN },
+        body: JSON.stringify({ periodo, payload_json: payload }),
+      });
+    } else {
+      resp = await fetch(`${API_BASE}/entregas-cliente`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + TOKEN },
+        body: JSON.stringify({
+          tipo: "fechamento_mensal",
+          titulo: payload.titulo || "Fechamento Financeiro",
+          periodo,
+          cliente_slug: clienteSlug,
+          status: "rascunho",
+          payload_json: payload,
+          origem_tipo: "fechamento_financeiro",
+          origem_id: null,
+        }),
+      });
     }
+
+    if (resp.status === 401) { window.location.replace("index.html"); return; }
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json?.erro || json?.error || "Falha ao salvar fechamento.");
+
+    _entregaIdSalvo = json?.entrega?.id || _entregaIdSalvo;
+    setChipSalvo(_entregaPublicada ? "publicado para cliente" : "fechamento salvo", _entregaPublicada ? "ok" : "ok");
+    setStatus("✓ Fechamento salvo.", "success");
+  } catch (err) {
+    setStatus("Erro ao salvar: " + (err?.message || "Falha."), "danger");
+  } finally {
+    setBtnLoading(btn, false, "Salvar fechamento");
   }
 }
 
@@ -1100,13 +1581,42 @@ function ensureFileLabelSpan(inputEl) {
   if (!span) {
     span = document.createElement("div");
     span.className = "fc-file-name";
-    span.style.margin = "8px 0 0";
-    span.style.color = "#a1a1aa";
-    span.style.fontSize = "12.5px";
-    span.textContent = "Escolher arquivo…";
+    span.style.display = "none";
     inputEl.insertAdjacentElement("afterend", span);
   }
   return span;
+}
+
+function formatFileSize(bytes) {
+  const b = Number(bytes) || 0;
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Atualiza o card de upload: nome + tamanho + botão remover, e estado has-file.
+function updateFileCard(inputEl, labelSpan) {
+  if (!inputEl || !labelSpan) return;
+  const card = inputEl.closest(".fc-upload-card");
+  const f = inputEl.files?.[0];
+  if (f) {
+    labelSpan.style.display = "flex";
+    labelSpan.innerHTML =
+      `<span style="overflow:hidden;text-overflow:ellipsis;">${escapeHTML(f.name)} · ${escapeHTML(formatFileSize(f.size))}</span>` +
+      `<button type="button" class="fc-file-remove" title="Remover" aria-label="Remover arquivo">&times;</button>`;
+    card?.classList.add("has-file");
+    labelSpan.querySelector(".fc-file-remove")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      inputEl.value = "";
+      inputEl.dispatchEvent(new Event("change"));
+    });
+  } else {
+    labelSpan.style.display = "none";
+    labelSpan.innerHTML = "";
+    card?.classList.remove("has-file");
+  }
+  atualizarMiniResumo();
 }
 
 function initUploadDragDrop(inputId) {
@@ -1160,18 +1670,28 @@ function initUploadDragDrop(inputId) {
 const btnFinProcessar = document.getElementById("btn-fin-processar");
 if (btnFinProcessar) btnFinProcessar.addEventListener("click", processarFechamentoFinanceiro);
 
+// Há resultado processado que ainda não foi salvo?
+function temResultadoNaoSalvo() {
+  return !!ultimoFechamentoFinanceiro?.data && !_entregaIdSalvo;
+}
+
 const btnFinLimpar = document.getElementById("btn-fin-limpar");
 if (btnFinLimpar) {
   btnFinLimpar.addEventListener("click", () => {
+    if (temResultadoNaoSalvo() &&
+        !window.confirm("Há um fechamento processado que ainda não foi salvo. Limpar mesmo assim?")) {
+      return;
+    }
+
     const sales = document.getElementById("fin-sales");
     const costs = document.getElementById("fin-costs");
     const ordersAll = document.getElementById("fin-orders-all");
-    if (sales) sales.value = "";
-    if (costs) costs.value = "";
-    if (ordersAll) ordersAll.value = "";
-    [sales, costs, ordersAll].forEach((inp) =>
-      inp?.closest(".fc-upload-card")?.classList.remove("has-file", "drag-over")
-    );
+    [sales, costs, ordersAll].forEach((inp) => {
+      if (!inp) return;
+      inp.value = "";
+      inp.dispatchEvent(new Event("change"));
+      inp.closest(".fc-upload-card")?.classList.remove("has-file", "drag-over");
+    });
 
     const finAds = document.getElementById("fin-ads");
     const finVenforce = document.getElementById("fin-venforce");
@@ -1182,6 +1702,8 @@ if (btnFinLimpar) {
 
     const marketplace = document.getElementById("fin-marketplace");
     if (marketplace) marketplace.value = "";
+    const periodo = document.getElementById("fin-periodo");
+    if (periodo) periodo.value = "";
 
     limparXlsBlob();
     limparFinStats();
@@ -1191,12 +1713,31 @@ if (btnFinLimpar) {
 
     const tabela = document.getElementById("fin-tabela");
     if (tabela) tabela.innerHTML = "";
+    const leitura = document.getElementById("fin-leitura");
+    if (leitura) { leitura.innerHTML = ""; leitura.style.display = "none"; }
 
     ultimoFechamentoFinanceiro = null;
+    _entregaIdSalvo = null;
+    _entregaPublicada = false;
+
+    const btnSalvar = document.getElementById("btn-fin-salvar");
+    if (btnSalvar) btnSalvar.style.display = "none";
+
     showLinkClienteActions(false);
     setLinkClienteOutput("");
     setStatusLinkCliente("", "");
     setStatus("", "");
+
+    // Reset de estado de base/chips
+    baseVinculadaState.hasLink = false;
+    baseVinculadaState.baseId = null;
+    baseVinculadaState.baseNome = null;
+    baseVinculadaState.clienteSlug = "";
+    baseVinculadaState.marketplace = "";
+    updateOrdersAllVisibility();
+    aplicarEstadoBase();
+    setChipProcessamento("não iniciado", null);
+    setChipSalvo("", null);
   });
 }
 
@@ -1250,46 +1791,54 @@ if (btnAbrirLinkCliente) {
 const finSalesInput = document.getElementById("fin-sales");
 const finSalesLabel = ensureFileLabelSpan(finSalesInput);
 if (finSalesInput) {
-  finSalesInput.addEventListener("change", () => {
-    const f = finSalesInput.files?.[0];
-    if (finSalesLabel) finSalesLabel.textContent = f ? f.name : "Escolher arquivo…";
-  });
+  finSalesInput.addEventListener("change", () => updateFileCard(finSalesInput, finSalesLabel));
 }
 
 const finCostsInput = document.getElementById("fin-costs");
 const finCostsLabel = ensureFileLabelSpan(finCostsInput);
 if (finCostsInput) {
-  finCostsInput.addEventListener("change", () => {
-    const f = finCostsInput.files?.[0];
-    if (finCostsLabel) finCostsLabel.textContent = f ? f.name : "Escolher arquivo…";
-  });
+  finCostsInput.addEventListener("change", () => updateFileCard(finCostsInput, finCostsLabel));
 }
 
 const finOrdersAllInput = document.getElementById("fin-orders-all");
 const finOrdersAllLabel = ensureFileLabelSpan(finOrdersAllInput);
 if (finOrdersAllInput) {
-  finOrdersAllInput.addEventListener("change", () => {
-    const f = finOrdersAllInput.files?.[0];
-    if (finOrdersAllLabel) finOrdersAllLabel.textContent = f ? f.name : "Escolher arquivo…";
-  });
+  finOrdersAllInput.addEventListener("change", () => updateFileCard(finOrdersAllInput, finOrdersAllLabel));
 }
 
+// Bloco Order.all (Reconciliação Shopee) — visível só para Shopee.
 const marketplaceSelect = document.getElementById("fin-marketplace");
-const ordersAllWrapper = document.getElementById("fin-orders-all-wrapper");
-if (marketplaceSelect && ordersAllWrapper) {
-  const updateOrdersAllVisibility = () => {
-    ordersAllWrapper.style.display =
-      marketplaceSelect.value === "shopee" ? "" : "none";
-  };
-  marketplaceSelect.addEventListener("change", updateOrdersAllVisibility);
-  updateOrdersAllVisibility();
+const ordersAllBlock = document.getElementById("fin-orders-all-block");
+function updateOrdersAllVisibility() {
+  if (ordersAllBlock) ordersAllBlock.style.display = marketplaceSelect?.value === "shopee" ? "" : "none";
 }
+
+// Alteração de cliente/marketplace redetecta base vinculada e atualiza a UI.
+function onClienteOuMarketplaceChange() {
+  updateOrdersAllVisibility();
+  detectarBaseVinculada();
+}
+if (marketplaceSelect) marketplaceSelect.addEventListener("change", onClienteOuMarketplaceChange);
 
 const clienteSelectFinanceiro = document.getElementById("fin-cliente");
 if (clienteSelectFinanceiro) {
-  clienteSelectFinanceiro.addEventListener("change", atualizarHintClienteFinanceiro);
+  clienteSelectFinanceiro.addEventListener("change", () => {
+    atualizarHintClienteFinanceiro();
+    onClienteOuMarketplaceChange();
+  });
 }
 
+// Botão salvar fechamento
+const btnFinSalvar = document.getElementById("btn-fin-salvar");
+if (btnFinSalvar) btnFinSalvar.addEventListener("click", salvarFechamentoFinanceiro);
+
+// Ajustes financeiros e período atualizam o mini-resumo ao vivo.
+["fin-ads", "fin-venforce", "fin-affiliates", "fin-periodo"].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("input", atualizarMiniResumo);
+});
+
+updateOrdersAllVisibility();
 carregarClientesFinanceiro();
 
 initUploadDragDrop("fin-sales");
@@ -1507,20 +2056,20 @@ function initEntregaTabs() {
     /* Tab bar */
     .vft-bar {
       display: flex;
-      border-bottom: 1.5px solid rgba(255,255,255,0.08);
+      border-bottom: 1.5px solid var(--vf-border, #e7e9f0);
       margin-bottom: 20px;
     }
     .vft-tab-btn {
       padding: 12px 26px;
       background: none; border: none; cursor: pointer;
-      font-size: 13px; font-weight: 600; color: #71717a;
+      font-size: 13px; font-weight: 600; color: var(--vf-text-m, #5a6072);
       border-bottom: 2px solid transparent;
       margin-bottom: -1.5px;
       transition: color .15s, border-color .15s;
       display: flex; align-items: center; gap: 6px;
     }
-    .vft-tab-btn:hover { color: #c084fc; }
-    .vft-tab-btn.vft-active { color: #c084fc; border-bottom-color: #c084fc; }
+    .vft-tab-btn:hover { color: var(--vf-primary, #5a2a8f); }
+    .vft-tab-btn.vft-active { color: var(--vf-primary, #5a2a8f); border-bottom-color: var(--vf-primary, #5a2a8f); }
     .vft-tab-btn .vft-tab-icon { font-size: 15px; }
 
     /* Entrega panel */
@@ -1528,8 +2077,8 @@ function initEntregaTabs() {
 
     /* Seções do form */
     .vft-form-section {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.07);
+      background: var(--vf-surface, #fff);
+      border: 1px solid var(--vf-border, #e7e9f0);
       border-radius: 16px;
       padding: 22px 24px;
       margin-bottom: 14px;
@@ -1537,10 +2086,10 @@ function initEntregaTabs() {
     .vft-form-section-label {
       font-size: 10px; font-weight: 800;
       letter-spacing: .08em; text-transform: uppercase;
-      color: #c084fc; margin-bottom: 6px;
+      color: var(--vf-primary-strong, #4a2178); margin-bottom: 6px;
     }
     .vft-form-section-sub {
-      font-size: 12.5px; color: #71717a; margin-bottom: 14px; line-height: 1.6;
+      font-size: 12.5px; color: var(--vf-text-m, #5a6072); margin-bottom: 14px; line-height: 1.6;
     }
     .vft-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     @media (max-width: 640px) { .vft-row-2 { grid-template-columns: 1fr; } }
@@ -1548,20 +2097,20 @@ function initEntregaTabs() {
     /* Inputs */
     .vft-label {
       display: block; font-size: 11px; font-weight: 700;
-      color: #71717a; margin: 6px 0 4px; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--vf-text-m, #5a6072); margin: 6px 0 4px; text-transform: uppercase; letter-spacing: .04em;
     }
     .vft-input {
       display: block; width: 100%;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
+      background: var(--vf-surface, #fff);
+      border: 1px solid var(--vf-border-strong, #d6d9e4);
       border-radius: 9px; padding: 9px 13px;
-      font-size: 13px; color: #f4f4f5;
+      font-size: 13px; color: var(--vf-text, #1b1d28);
       margin-bottom: 6px;
-      transition: border-color .15s;
+      transition: border-color .15s, box-shadow .15s;
       box-sizing: border-box;
     }
-    .vft-input:focus { outline: none; border-color: #7c3aed; background: rgba(124,58,237,0.06); }
-    .vft-input::placeholder { color: #52525b; }
+    .vft-input:focus { outline: none; border-color: var(--vf-primary, #5a2a8f); box-shadow: 0 0 0 3px var(--vf-primary-l, #f3eefb); }
+    .vft-input::placeholder { color: var(--vf-text-l, #969cad); }
     .vft-textarea { resize: vertical; min-height: 72px; }
 
     /* Prioridades */
@@ -1572,26 +2121,27 @@ function initEntregaTabs() {
     @media (max-width: 860px) { .vft-prio-grid { grid-template-columns: 1fr; } }
     .vft-prio-col {
       border-radius: 12px; overflow: hidden;
-      border: 1px solid rgba(255,255,255,0.07);
+      border: 1px solid var(--vf-border, #e7e9f0);
+      background: var(--vf-surface, #fff);
     }
-    .vft-prio-alta  { border-top: 3px solid #f87171; }
-    .vft-prio-media { border-top: 3px solid #fbbf24; }
-    .vft-prio-baixa { border-top: 3px solid #60a5fa; }
+    .vft-prio-alta  { border-top: 3px solid var(--vf-danger, #c62828); }
+    .vft-prio-media { border-top: 3px solid var(--vf-warning, #b25e00); }
+    .vft-prio-baixa { border-top: 3px solid var(--vf-info, #1d5fb8); }
     .vft-prio-head {
       display: flex; align-items: center; gap: 7px;
       padding: 12px 14px;
-      font-size: 12px; font-weight: 700; color: #a1a1aa;
-      background: rgba(255,255,255,0.03);
-      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 12px; font-weight: 700; color: var(--vf-text-m, #5a6072);
+      background: var(--vf-bg, #f7f8fb);
+      border-bottom: 1px solid var(--vf-border, #e7e9f0);
     }
     .vft-prio-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
     .vft-action-group {
       padding: 12px 12px 6px;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
+      border-bottom: 1px solid var(--vf-border, #e7e9f0);
     }
     .vft-action-group:last-child { border-bottom: none; }
     .vft-action-title {
-      font-size: 11px; font-weight: 700; color: #52525b;
+      font-size: 11px; font-weight: 700; color: var(--vf-text-l, #969cad);
       text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px;
     }
 
@@ -1605,8 +2155,9 @@ function initEntregaTabs() {
     }
     .vft-link-input {
       flex: 1; min-width: 200px;
-      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 9px; padding: 9px 13px; font-size: 13px; color: #a1a1aa;
+      background: var(--vf-surface, #fff); border: 1px solid var(--vf-border-strong, #d6d9e4);
+      border-radius: 9px; padding: 9px 13px; font-size: 13px; color: var(--vf-text-m, #5a6072);
+      font-family: var(--vf-mono, ui-monospace, monospace);
     }
     .vft-link-btns { display: flex; gap: 8px; }
   `;
@@ -1676,7 +2227,7 @@ function _setEntStatus(msg, type) {
   if (!msg) { el.style.display = "none"; return; }
   el.textContent = msg;
   el.style.display = "block";
-  el.style.color = type === "ok" ? "#4ade80" : type === "err" ? "#f87171" : "#fbbf24";
+  el.style.color = type === "ok" ? "var(--vf-success, #0f7a52)" : type === "err" ? "var(--vf-danger, #c62828)" : "var(--vf-warning, #b25e00)";
 }
 
 // Gerar link incluindo os dados do formulário de entrega
@@ -1709,41 +2260,8 @@ async function _gerarLinkComEntrega() {
     };
     payload.periodo = _entregaState.periodo || payload.periodo;
 
-    const criarResp = await fetch(`${API_BASE}/entregas-cliente`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + TOKEN },
-      body: JSON.stringify({
-        tipo: "fechamento_mensal",
-        titulo: payload.titulo || "Fechamento Financeiro",
-        periodo: payload.periodo || "",
-        cliente_slug: document.getElementById("fin-cliente")?.value || null,
-        status: "rascunho",
-        payload_json: payload,
-        origem_tipo: "fechamento_financeiro",
-        origem_id: null,
-      }),
-    });
-
-    if (criarResp.status === 401) { window.location.replace("index.html"); return; }
-    const criarJson = await criarResp.json();
-    if (!criarResp.ok) throw new Error(criarJson?.erro || criarJson?.error || "Falha ao criar entrega.");
-
-    const entregaId = criarJson?.entrega?.id;
-    if (!entregaId) throw new Error("Entrega criada sem ID.");
-
-    const pubResp = await fetch(`${API_BASE}/entregas-cliente/${encodeURIComponent(entregaId)}/publicar`, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + TOKEN },
-    });
-
-    if (pubResp.status === 401) { window.location.replace("index.html"); return; }
-    const pubJson = await pubResp.json();
-    if (!pubResp.ok) throw new Error(pubJson?.erro || pubJson?.error || "Falha ao publicar entrega.");
-
-    const token = pubJson?.entrega?.token_publico;
-    if (!token) throw new Error("Token público não gerado.");
-
-    const publicUrl = `${window.location.origin}/relatorio-publico.html?token=${encodeURIComponent(token)}`;
+    const entregaId = await criarOuAtualizarEntregaFechamento(payload, payload.periodo);
+    const publicUrl = await publicarEntregaFechamento(entregaId);
 
     const outputEl = document.getElementById("vft-link-output");
     if (outputEl) outputEl.value = publicUrl;

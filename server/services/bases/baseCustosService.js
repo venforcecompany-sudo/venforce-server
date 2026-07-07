@@ -167,6 +167,83 @@ async function upsertCustoBase({ baseId, produtoIdNorm, custoProduto, impostoPer
   return { acao: "criado", custo: ins.rows[0] };
 }
 
+// ---------------------------------------------------------------------------
+// Base vinculada para fechamento financeiro (MELI).
+// Resolve a base (por id explícito OU pelo vínculo cliente+marketplace) e
+// converte os custos do banco no MESMO formato de linha que o parser de custos
+// do MELI já entende (ver parseMeliCostRows em meliFinanceiroService.js).
+// Objetivo: mudar a ORIGEM dos custos sem tocar na fórmula de LC/MC.
+// ---------------------------------------------------------------------------
+async function resolverBaseVinculada({ baseId, clienteSlug, marketplace }) {
+  const idNum = Number(baseId);
+  if (Number.isInteger(idNum) && idNum > 0) {
+    const r = await pool.query(
+      "SELECT id, slug, nome FROM bases WHERE id = $1 AND ativo = true",
+      [idNum]
+    );
+    if (r.rows.length) return r.rows[0];
+  }
+
+  const slug = String(clienteSlug || "").trim().toLowerCase();
+  const mkt = String(marketplace || "").trim().toLowerCase();
+  if (slug && mkt) {
+    const r = await pool.query(
+      `SELECT b.id, b.slug, b.nome
+         FROM bases b
+         JOIN base_cliente_vinculos v
+           ON v.base_id = b.id AND v.ativo = true
+         JOIN clientes c
+           ON c.id = v.cliente_id
+        WHERE LOWER(c.slug) = $1
+          AND v.marketplace = $2
+          AND b.ativo = true
+        ORDER BY v.updated_at DESC
+        LIMIT 1`,
+      [slug, mkt]
+    );
+    if (r.rows.length) return r.rows[0];
+  }
+
+  return null;
+}
+
+async function buildCostRowsFromBase({ baseId, clienteSlug, marketplace }) {
+  const base = await resolverBaseVinculada({ baseId, clienteSlug, marketplace });
+  if (!base) {
+    throw criarHttpErro(404, {
+      ok: false,
+      erro: "Nenhuma base vinculada encontrada para este cliente/marketplace.",
+    });
+  }
+
+  const custos = await pool.query(
+    `SELECT produto_id, custo_produto, imposto_percentual, id_model
+       FROM custos
+      WHERE base_id = $1`,
+    [base.id]
+  );
+
+  if (!custos.rows.length) {
+    throw criarHttpErro(422, {
+      ok: false,
+      erro: `A base vinculada "${base.nome || base.slug}" não possui custos cadastrados.`,
+    });
+  }
+
+  // Chaves reconhecidas por findField/parseMeliCostRows (normalização por acento/caixa).
+  const costRows = custos.rows.map((row) => ({
+    "# de anúncio": row.produto_id,
+    "preço de custo": row.custo_produto,
+    imposto: row.imposto_percentual,
+    model_id: row.id_model || "",
+  }));
+
+  return {
+    base: { id: base.id, slug: base.slug, nome: base.nome },
+    costRows,
+  };
+}
+
 module.exports = {
   normalizarProdutoIdBase,
   normalizarProdutoIdShopee,
@@ -176,5 +253,7 @@ module.exports = {
   validarNumeroObrigatorio,
   validarNumeroOpcional,
   criarHttpErro,
+  resolverBaseVinculada,
+  buildCostRowsFromBase,
 };
 
