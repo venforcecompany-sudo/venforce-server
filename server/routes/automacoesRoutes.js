@@ -11,6 +11,9 @@ const {
   previewPrecificacaoController,
   previewPrecificacaoMlController,
   previewPromocoesRetornoController,
+  iniciarDiagnosticoPromocoesController,
+  statusDiagnosticoPromocoesController,
+  buscarSnapshotPromocoesController,
   salvarRelatorioAutomacoesController,
   listarRelatoriosAutomacoesController,
   listarPastasRelatoriosController,
@@ -35,6 +38,12 @@ router.get("/automacoes/precificacao/preview", authMiddleware, requireAutomacoes
 router.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAutomacoesAccess, previewPrecificacaoMlController);
 
 router.get("/automacoes/promocoes-retorno/preview", authMiddleware, requireAutomacoesAccess, previewPromocoesRetornoController);
+
+router.post("/automacoes/promocoes-retorno/diagnostico/start", authMiddleware, requireAutomacoesAccess, iniciarDiagnosticoPromocoesController);
+
+router.get("/automacoes/promocoes-retorno/diagnostico/:id", authMiddleware, requireAutomacoesAccess, statusDiagnosticoPromocoesController);
+
+router.get("/automacoes/promocoes-retorno/snapshot", authMiddleware, requireAutomacoesAccess, buscarSnapshotPromocoesController);
 
 router.post("/automacoes/relatorios", authMiddleware, requireAutomacoesAccess, salvarRelatorioAutomacoesController);
 

@@ -32,6 +32,13 @@ const {
   executarDiagnosticoCompleto,
 } = require("../services/automacoes/diagnosticoService");
 
+const {
+  criarJobDiagnostico,
+  executarDiagnosticoPromocoes,
+  buscarStatusDiagnostico,
+  buscarUltimoSnapshotPromocoes,
+} = require("../services/automacoes/promocoesDiagnosticoService");
+
 function responderErroService(res, err) {
   if (err.payload && err.statusCode) {
     return res.status(err.statusCode).json(err.payload);
@@ -96,6 +103,76 @@ async function previewPromocoesRetornoController(req, res) {
       apenasComRetornoRaw: req.query.apenasComRetorno,
     });
 
+    return res.json(resultado);
+  } catch (err) {
+    return responderErroService(res, err);
+  }
+}
+
+// ─── Diagnóstico assíncrono de promoções (start / status / snapshot) ─────────
+async function iniciarDiagnosticoPromocoesController(req, res) {
+  try {
+    const resultado = await criarJobDiagnostico({ userId: req.user?.id, body: req.body });
+
+    // Se já havia um job em andamento, apenas devolve-o para polling (200).
+    if (resultado.jaEmAndamento) {
+      return res.status(200).json({
+        ok: true,
+        diagnostico_id: resultado.id,
+        status: "processando",
+        jaEmAndamento: true,
+        cliente: resultado.cliente,
+        base: resultado.base,
+      });
+    }
+
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "automacoes.promocoes.diagnostico.start",
+      detalhes: {
+        diagnostico_id: resultado.id,
+        cliente_slug: resultado?.cliente?.slug,
+        base_slug: resultado?.base?.slug,
+      },
+      ip: extrairIp(req),
+      status: "sucesso",
+    });
+
+    // Dispara o worker em background (mesmo padrão do diagnóstico completo).
+    setImmediate(() => {
+      executarDiagnosticoPromocoes(resultado.id).catch((err) => {
+        console.error(`[promo-diag ${resultado.id}] falha não tratada:`, err);
+      });
+    });
+
+    return res.status(202).json({
+      ok: true,
+      diagnostico_id: resultado.id,
+      status: "processando",
+      created_at: resultado.created_at,
+      cliente: resultado.cliente,
+      base: resultado.base,
+    });
+  } catch (err) {
+    return responderErroService(res, err);
+  }
+}
+
+async function statusDiagnosticoPromocoesController(req, res) {
+  try {
+    const resultado = await buscarStatusDiagnostico({ idRaw: req.params.id });
+    return res.json(resultado);
+  } catch (err) {
+    return responderErroService(res, err);
+  }
+}
+
+async function buscarSnapshotPromocoesController(req, res) {
+  try {
+    const resultado = await buscarUltimoSnapshotPromocoes({
+      clienteSlugRaw: req.query.clienteSlug,
+      baseSlugRaw: req.query.baseSlug,
+    });
     return res.json(resultado);
   } catch (err) {
     return responderErroService(res, err);
@@ -334,6 +411,9 @@ module.exports = {
   previewPrecificacaoController,
   previewPrecificacaoMlController,
   previewPromocoesRetornoController,
+  iniciarDiagnosticoPromocoesController,
+  statusDiagnosticoPromocoesController,
+  buscarSnapshotPromocoesController,
   salvarRelatorioAutomacoesController,
   listarRelatoriosAutomacoesController,
   listarPastasRelatoriosController,

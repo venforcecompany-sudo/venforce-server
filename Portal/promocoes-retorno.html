@@ -101,11 +101,26 @@
             </div>
           </div>
           <div id="promo-status" style="margin-top:8px;font-size:.875rem;display:none;"></div>
-          <div class="vf-auto-actions">
+          <div class="vf-auto-actions" style="flex-wrap:wrap;gap:10px;">
             <button type="button" id="btn-promo-analisar" class="vf-btn-primary vf-auto-btn-main" style="margin:0;">
               Analisar promoções disponíveis
             </button>
+            <button type="button" id="btn-promo-diagnostico" class="vf-btn-primary" style="margin:0;">
+              Gerar diagnóstico de promoções
+            </button>
+            <button type="button" id="btn-promo-snapshot-usar" class="vf-btn-secondary" style="margin:0;" disabled>
+              Usar último snapshot
+            </button>
+            <button type="button" id="btn-promo-snapshot-atualizar" class="vf-btn-secondary" style="margin:0;" disabled>
+              Atualizar snapshot
+            </button>
           </div>
+          <small style="display:block;margin-top:8px;color:var(--vf-text-m);font-size:.75rem;line-height:1.4;">
+            <strong>Diagnóstico</strong> varre as promoções da conta em segundo plano e salva um snapshot
+            automaticamente ao concluir — assim você não precisa varrer tudo toda vez. A tabela mostra no
+            máximo 50 linhas por filtro. Use <strong>Atualizar snapshot</strong> para varrer de novo e
+            <strong>Usar último snapshot</strong> para reabrir sem varrer.
+          </small>
         </div>
       </div>
 
@@ -150,7 +165,11 @@
             Esta análise não altera anúncios, preços, estoque, campanhas ou promoções do cliente.
           </div>
 
+          <div id="promo-diagnostico-info" style="display:none;margin-bottom:12px;padding:.6rem .85rem;border-radius:8px;font-size:.82rem;line-height:1.5;border:1px solid var(--vf-border);"></div>
+
           <div id="promo-filtros" class="vf-ml-filter-buttons" style="margin-bottom:14px;display:none;"></div>
+
+          <div id="promo-diagnostico-aviso" style="display:none;margin-bottom:12px;padding:.5rem .75rem;border-radius:8px;font-size:.8rem;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fde68a;"></div>
 
           <div id="promo-tabela-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
             <p>Nenhuma análise carregada ainda.</p>

@@ -110,6 +110,55 @@ function extrairSkuMl(body) {
 
 const PROMO_ENRICH_CONCURRENCY = 4; // chamadas ML por item em paralelo controlado
 
+// Classifica a ORIGEM da promoção (quem a criou) a partir do objeto de oferta
+// retornado por /seller-promotions/items/{MLB}. Nunca "inventa": quando não há
+// sinal confiável, devolve criadaPorMim=null e origem "Origem não identificada".
+//
+// Prioridade (documentada no produto):
+//   1) type/campaign_type/promotion_type === SELLER_CAMPAIGN → criada pelo seller.
+//   2) created_by/owner/source/creator/promotion_source/campaign_owner indicando
+//      seller/user (ou meli/marketplace) → usa esse sinal.
+//   3) Tipos claramente do Mercado Livre (DEAL, DOD, MARKETPLACE_CAMPAIGN, …).
+//   4) Sem sinal confiável → "Origem não identificada".
+function classificarOrigemPromocao(promo) {
+  const tipoRaw = String(
+    promo?.type || promo?.campaign_type || promo?.promotion_type || ""
+  ).trim();
+  const tipoUpper = tipoRaw.toUpperCase();
+
+  if (tipoUpper === "SELLER_CAMPAIGN") {
+    return { criadaPorMim: true, origemPromocao: "Criada por mim (SELLER_CAMPAIGN)" };
+  }
+
+  // 2) Campos alternativos de autoria (usados só quando existirem).
+  const candidatos = [
+    promo?.created_by, promo?.owner, promo?.source, promo?.creator,
+    promo?.promotion_source, promo?.campaign_owner,
+  ];
+  for (const c of candidatos) {
+    const v = String(c || "").trim().toLowerCase();
+    if (!v) continue;
+    if (v.includes("seller") || v.includes("user")) {
+      return { criadaPorMim: true, origemPromocao: `Criada por mim (${String(c).trim()})` };
+    }
+    if (v.includes("meli") || v.includes("marketplace") || v.includes("mercado")) {
+      return { criadaPorMim: false, origemPromocao: `Mercado Livre (${String(c).trim()})` };
+    }
+  }
+
+  // 3) Tipos reconhecidamente do Mercado Livre.
+  const TIPOS_ML = ["MARKETPLACE_CAMPAIGN", "DEAL", "DOD", "LIGHTNING", "SMART", "PRICE_MATCHING", "MELI"];
+  if (tipoUpper && TIPOS_ML.some((t) => tipoUpper.includes(t))) {
+    return { criadaPorMim: false, origemPromocao: `Mercado Livre (${tipoRaw})` };
+  }
+
+  // 4) Sem sinal confiável — não inventar.
+  return {
+    criadaPorMim: null,
+    origemPromocao: tipoRaw ? `Origem não identificada (${tipoRaw})` : "Origem não identificada",
+  };
+}
+
 // Seleciona a promoção relevante para o item, aplicando filtros opcionais.
 function escolherPromocao(lista, { campanha, status }) {
   if (!Array.isArray(lista) || !lista.length) return null;
@@ -226,6 +275,11 @@ async function enriquecerItem({
   const promotionType = promo?.type || null;
   const promotionStatus = promo?.status || null;
   const offerRefId = promo?.ref_id || null;
+
+  // Origem da promoção (quem criou) — ver classificarOrigemPromocao.
+  const { criadaPorMim, origemPromocao } = classificarOrigemPromocao(promo);
+  // Retorno ML numérico > 0 marca a oferta como "com retorno ML".
+  const temRetornoMl = Number(meliPercentage) > 0;
 
   const descontoTotal =
     precoOriginal !== null && precoPromocao !== null
@@ -372,6 +426,9 @@ async function enriquecerItem({
     promotionType,
     promotionStatus,
     offerRefId,
+    criadaPorMim,
+    origemPromocao,
+    temRetornoMl,
     precoOriginal: round2OrNull(precoOriginal),
     precoPromocao: round2OrNull(precoPromocao),
     descontoTotal: round2OrNull(descontoTotal),
@@ -436,6 +493,132 @@ async function enriquecerItem({
     },
    },
   };
+}
+
+// ─── Contexto financeiro (custos + snapshot de relatorio_itens) ──────────────
+// Monta os mapas de match de custo (base) e de snapshot financeiro (último
+// relatório concluído por item) e devolve as funções de casamento matchBase /
+// matchSnapshot. Usado tanto pelo preview paginado quanto pelo diagnóstico.
+async function carregarContextoFinanceiro({ clienteId, baseId }) {
+  const numOrNull = (v) =>
+    v != null && Number.isFinite(Number(v)) ? Number(v) : null;
+
+  // Custos da base → mapas de match (exato, normalizado, numérico).
+  const custosMapExact = new Map();
+  const custosMapNorm = new Map();
+  const custosMapNumeric = new Map();
+  const custosRes = await pool.query(
+    "SELECT produto_id, custo_produto, imposto_percentual, taxa_fixa FROM custos WHERE base_id = $1",
+    [baseId]
+  );
+  custosRes.rows.forEach((row) => {
+    const key = String(row.produto_id || "").trim();
+    if (!key) return;
+    // comissão/frete: lidos de forma defensiva (a tabela `custos` atual não tem
+    // essas colunas → ficam null; se a base passar a fornecê-las, são aproveitadas).
+    const comissaoRaw = row.comissao_percentual ?? row.comissao_marketplace ?? row.comissao;
+    const freteRaw = row.frete ?? row.frete_valor;
+    const payload = {
+      produtoId: key,
+      custoProduto: Number(row.custo_produto),
+      impostoPercentual: Number(row.imposto_percentual),
+      taxaFixa: Number(row.taxa_fixa),
+      comissaoPercentual: numOrNull(comissaoRaw),
+      frete: numOrNull(freteRaw),
+    };
+    custosMapExact.set(key, payload);
+    custosMapNorm.set(key.toUpperCase(), payload);
+    if (/^\d+$/.test(key)) custosMapNumeric.set(key, payload);
+  });
+
+  // Retorna { row, matchedBy } expondo COMO o custo foi casado (para auditoria/debug).
+  function matchBase(itemId, sku) {
+    const id = String(itemId || "").trim();
+    const upper = id.toUpperCase();
+    let row = custosMapExact.get(id) || custosMapNorm.get(upper) || null;
+    if (row) return { row, matchedBy: "mlb_exato" };
+
+    if (upper.startsWith("MLB") && !upper.startsWith("MLBU")) {
+      const num = upper.slice(3).match(/^\d+/)?.[0] || "";
+      if (num && custosMapNumeric.has(num)) {
+        return { row: custosMapNumeric.get(num), matchedBy: "mlb_numero" };
+      }
+    }
+    if (sku) {
+      const sk = String(sku).trim();
+      row = custosMapExact.get(sk) || custosMapNorm.get(sk.toUpperCase()) || null;
+      if (row) return { row, matchedBy: "sku" };
+    }
+    return { row: null, matchedBy: null };
+  }
+
+  // FONTE PRINCIPAL DA MARGEM: último snapshot financeiro salvo em relatorio_itens.
+  const snapExact = new Map();   // item_id (e UPPER) -> snapshot
+  const snapNumeric = new Map(); // número do MLB -> snapshot
+  const snapSku = new Map();     // sku -> snapshot
+  try {
+    const snapRes = await pool.query(
+      `SELECT DISTINCT ON (ri.item_id)
+              ri.item_id, ri.sku, ri.preco_efetivo, ri.custo, ri.imposto_percentual,
+              ri.taxa_fixa, ri.frete, ri.comissao, ri.comissao_percentual,
+              r.id AS relatorio_id, r.created_at AS relatorio_created_at
+         FROM relatorio_itens ri
+         JOIN relatorios r ON r.id = ri.relatorio_id
+        WHERE r.status = 'concluido'
+          AND r.cliente_id = $1
+          AND r.base_id = $2
+        ORDER BY ri.item_id, r.created_at DESC, ri.id DESC`,
+      [clienteId, baseId]
+    );
+    snapRes.rows.forEach((row) => {
+      const itemId = String(row.item_id || "").trim();
+      const snap = {
+        itemId,
+        sku: row.sku ? String(row.sku).trim() : null,
+        precoEfetivo: numOrNull(row.preco_efetivo),
+        custo: numOrNull(row.custo),
+        impostoPercentual: numOrNull(row.imposto_percentual),
+        taxaFixa: numOrNull(row.taxa_fixa),
+        frete: numOrNull(row.frete),
+        comissao: numOrNull(row.comissao),
+        comissaoPercentual: numOrNull(row.comissao_percentual),
+        relatorioId: row.relatorio_id,
+        relatorioCreatedAt: row.relatorio_created_at,
+      };
+      if (itemId) {
+        snapExact.set(itemId, snap);
+        const up = itemId.toUpperCase();
+        snapExact.set(up, snap);
+        if (up.startsWith("MLB") && !up.startsWith("MLBU")) {
+          const num = up.slice(3).match(/^\d+/)?.[0];
+          if (num) snapNumeric.set(num, snap);
+        } else if (/^\d+$/.test(itemId)) {
+          snapNumeric.set(itemId, snap);
+        }
+      }
+      if (snap.sku) snapSku.set(snap.sku, snap);
+    });
+  } catch (err) {
+    console.warn(`[promocoes-retorno] falha ao carregar snapshots de relatorio_itens: ${err.message}`);
+  }
+
+  function matchSnapshot(itemId, sku) {
+    const id = String(itemId || "").trim();
+    const up = id.toUpperCase();
+    let snap = snapExact.get(id) || snapExact.get(up) || null;
+    if (snap) return { snap, by: "item_id" };
+    if (up.startsWith("MLB") && !up.startsWith("MLBU")) {
+      const num = up.slice(3).match(/^\d+/)?.[0];
+      if (num && snapNumeric.has(num)) return { snap: snapNumeric.get(num), by: "item_id_numerico" };
+    }
+    if (sku) {
+      const sk = String(sku).trim();
+      if (snapSku.has(sk)) return { snap: snapSku.get(sk), by: "sku" };
+    }
+    return { snap: null, by: null };
+  }
+
+  return { matchBase, matchSnapshot };
 }
 
 // ─── Entrada principal ───────────────────────────────────────────────────────
@@ -503,125 +686,12 @@ async function gerarPreviewPromocoesRetorno({
   if (!b.rows.length) throw criarErroHttp(404, { ok: false, erro: "Base não encontrada." });
   const base = b.rows[0];
 
-  // 4) Custos da base → mapas de match (exato, normalizado, numérico)
-  const custosRes = await pool.query(
-    "SELECT produto_id, custo_produto, imposto_percentual, taxa_fixa FROM custos WHERE base_id = $1",
-    [base.id]
-  );
-  const custosMapExact = new Map();
-  const custosMapNorm = new Map();
-  const custosMapNumeric = new Map();
-  custosRes.rows.forEach((row) => {
-    const key = String(row.produto_id || "").trim();
-    if (!key) return;
-    // comissão/frete: lidos de forma defensiva (a tabela `custos` atual não tem
-    // essas colunas → ficam null; se a base passar a fornecê-las, são aproveitadas).
-    const comissaoRaw = row.comissao_percentual ?? row.comissao_marketplace ?? row.comissao;
-    const freteRaw = row.frete ?? row.frete_valor;
-    const numOrNull = (v) =>
-      v != null && Number.isFinite(Number(v)) ? Number(v) : null;
-    const payload = {
-      produtoId: key,
-      custoProduto: Number(row.custo_produto),
-      impostoPercentual: Number(row.imposto_percentual),
-      taxaFixa: Number(row.taxa_fixa),
-      comissaoPercentual: numOrNull(comissaoRaw),
-      frete: numOrNull(freteRaw),
-    };
-    custosMapExact.set(key, payload);
-    custosMapNorm.set(key.toUpperCase(), payload);
-    if (/^\d+$/.test(key)) custosMapNumeric.set(key, payload);
+  // 4) Contexto financeiro (custos da base + último snapshot de relatorio_itens).
+  // Extraído para carregarContextoFinanceiro para ser reutilizado pelo diagnóstico.
+  const { matchBase, matchSnapshot } = await carregarContextoFinanceiro({
+    clienteId: cliente.id,
+    baseId: base.id,
   });
-
-  // Retorna { row, matchedBy } expondo COMO o custo foi casado (para auditoria/debug).
-  function matchBase(itemId, sku) {
-    const id = String(itemId || "").trim();
-    const upper = id.toUpperCase();
-    let row = custosMapExact.get(id) || custosMapNorm.get(upper) || null;
-    if (row) return { row, matchedBy: "mlb_exato" };
-
-    if (upper.startsWith("MLB") && !upper.startsWith("MLBU")) {
-      const num = upper.slice(3).match(/^\d+/)?.[0] || "";
-      if (num && custosMapNumeric.has(num)) {
-        return { row: custosMapNumeric.get(num), matchedBy: "mlb_numero" };
-      }
-    }
-    if (sku) {
-      const sk = String(sku).trim();
-      row = custosMapExact.get(sk) || custosMapNorm.get(sk.toUpperCase()) || null;
-      if (row) return { row, matchedBy: "sku" };
-    }
-    return { row: null, matchedBy: null };
-  }
-
-  // 4b) FONTE PRINCIPAL DA MARGEM: último snapshot financeiro salvo em relatorio_itens.
-  // Prefetch único (último relatório concluído por item, deste cliente+base).
-  const numOrNull = (v) =>
-    v != null && Number.isFinite(Number(v)) ? Number(v) : null;
-  const snapExact = new Map();   // item_id (e UPPER) -> snapshot
-  const snapNumeric = new Map(); // número do MLB -> snapshot
-  const snapSku = new Map();     // sku -> snapshot
-  try {
-    const snapRes = await pool.query(
-      `SELECT DISTINCT ON (ri.item_id)
-              ri.item_id, ri.sku, ri.preco_efetivo, ri.custo, ri.imposto_percentual,
-              ri.taxa_fixa, ri.frete, ri.comissao, ri.comissao_percentual,
-              r.id AS relatorio_id, r.created_at AS relatorio_created_at
-         FROM relatorio_itens ri
-         JOIN relatorios r ON r.id = ri.relatorio_id
-        WHERE r.status = 'concluido'
-          AND r.cliente_id = $1
-          AND r.base_id = $2
-        ORDER BY ri.item_id, r.created_at DESC, ri.id DESC`,
-      [cliente.id, base.id]
-    );
-    snapRes.rows.forEach((row) => {
-      const itemId = String(row.item_id || "").trim();
-      const snap = {
-        itemId,
-        sku: row.sku ? String(row.sku).trim() : null,
-        precoEfetivo: numOrNull(row.preco_efetivo),
-        custo: numOrNull(row.custo),
-        impostoPercentual: numOrNull(row.imposto_percentual),
-        taxaFixa: numOrNull(row.taxa_fixa),
-        frete: numOrNull(row.frete),
-        comissao: numOrNull(row.comissao),
-        comissaoPercentual: numOrNull(row.comissao_percentual),
-        relatorioId: row.relatorio_id,
-        relatorioCreatedAt: row.relatorio_created_at,
-      };
-      if (itemId) {
-        snapExact.set(itemId, snap);
-        const up = itemId.toUpperCase();
-        snapExact.set(up, snap);
-        if (up.startsWith("MLB") && !up.startsWith("MLBU")) {
-          const num = up.slice(3).match(/^\d+/)?.[0];
-          if (num) snapNumeric.set(num, snap);
-        } else if (/^\d+$/.test(itemId)) {
-          snapNumeric.set(itemId, snap);
-        }
-      }
-      if (snap.sku) snapSku.set(snap.sku, snap);
-    });
-  } catch (err) {
-    console.warn(`[promocoes-retorno] falha ao carregar snapshots de relatorio_itens: ${err.message}`);
-  }
-
-  function matchSnapshot(itemId, sku) {
-    const id = String(itemId || "").trim();
-    const up = id.toUpperCase();
-    let snap = snapExact.get(id) || snapExact.get(up) || null;
-    if (snap) return { snap, by: "item_id" };
-    if (up.startsWith("MLB") && !up.startsWith("MLBU")) {
-      const num = up.slice(3).match(/^\d+/)?.[0];
-      if (num && snapNumeric.has(num)) return { snap: snapNumeric.get(num), by: "item_id_numerico" };
-    }
-    if (sku) {
-      const sk = String(sku).trim();
-      if (snapSku.has(sk)) return { snap: snapSku.get(sk), by: "sku" };
-    }
-    return { snap: null, by: null };
-  }
 
   // 5) Anúncios ativos do seller (paginado)
   const search = await mlFetch(
@@ -737,4 +807,17 @@ async function gerarPreviewPromocoesRetorno({
 
 module.exports = {
   gerarPreviewPromocoesRetorno,
+  // Reutilizados pelo diagnóstico/snapshot de promoções:
+  carregarContextoFinanceiro,
+  enriquecerItem,
+  escolherPromocao,
+  classificarOrigemPromocao,
+  extrairSkuMl,
+  toAliquota,
+  normalizarSlug,
+  criarErroHttp,
+  pLimit,
+  chunk,
+  round2OrNull,
+  round4OrNull,
 };

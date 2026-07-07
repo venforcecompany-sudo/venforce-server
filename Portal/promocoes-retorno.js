@@ -26,6 +26,22 @@ let PROMO_ROWS = [];
 let PROMO_FILTER = "todos";
 let PROMO_CAMPANHA_FILTER = "todas";
 
+// ─── Estado do diagnóstico / snapshot ───────────────────────────────────────
+// "preview"    = fluxo antigo de análise paginada (botão Analisar).
+// "diagnostico" = fluxo novo (varredura + snapshot), renderiza na mesma tabela.
+let PROMO_MODE = "preview";
+let PROMO_DIAGNOSTICO_ROWS = [];
+let PROMO_DIAGNOSTICO_META = null;
+let PROMO_SNAPSHOT_ID = null;
+let PROMO_SNAPSHOT_EXISTE = false;
+let PROMO_ORIGEM_FILTER = "todas";
+let PROMO_SNAPSHOT_CHECK_KEY = "";
+// Job assíncrono em andamento (polling).
+let PROMO_JOB_ID = null;
+let PROMO_POLL_TIMER = null;
+const PROMO_POLL_INTERVAL = 2500;
+const PROMO_RENDER_LIMIT = 50;
+
 const PROMO_FILTERS = [
   { key: "todos", label: "Todos" },
   { key: "entrar_seguro", label: "Entrar seguro" },
@@ -34,6 +50,14 @@ const PROMO_FILTERS = [
   { key: "nao_entrar", label: "Não entrar" },
   { key: "sem_relatorio", label: "Sem relatório" },
   { key: "dados_incompletos", label: "Dados incompletos" },
+];
+
+// Filtro de origem (exclusivo do diagnóstico).
+const PROMO_ORIGEM_FILTERS = [
+  { key: "todas", label: "Todas as promoções" },
+  { key: "criadas_por_mim", label: "Criadas por mim" },
+  { key: "com_retorno_ml", label: "Com retorno ML" },
+  { key: "sem_retorno_ml", label: "Sem retorno ML" },
 ];
 
 const DECISAO_BADGE = {
@@ -242,6 +266,8 @@ async function analisar() {
       return;
     }
 
+    PROMO_MODE = "preview";
+    hideDiagnosticoUI();
     PROMO_ROWS = Array.isArray(data.linhas) ? data.linhas : [];
     PROMO_FILTER = "todos";
     PROMO_CAMPANHA_FILTER = "todas";
@@ -468,6 +494,56 @@ function abrirGerenciarNoMl(itemId) {
   if (url) window.open(url, "_blank", "noopener,noreferrer");
 }
 
+// Monta o innerHTML de uma <tr> da tabela de promoções. Compartilhado entre o
+// fluxo de análise paginada e o de diagnóstico (mesmas colunas).
+function promoRowInnerHtml(l) {
+  return [
+    `<td style="font-family:var(--vf-mono);font-size:.78rem;">${escapeHTML(txt(l.itemId))}</td>`,
+    `<td class="vf-promo-titulo">${escapeHTML(txt(l.titulo))}</td>`,
+    `<td>${escapeHTML(txt(l.campanha))}${l.origemPromocao ? `<br><small style="color:var(--vf-text-m);">${escapeHTML(l.origemPromocao)}</small>` : ""}</td>`,
+    numCell(l.precoOriginal, { money: true }),
+    numCell(l.precoPromocao, { money: true }),
+    numCell(l.descontoTotal, { money: true }),
+    numCell(l.sellerPercentage, { raw: true }),
+    numCell(l.meliPercentage, { raw: true }),
+    numCell(l.retornoMl, { money: true }),
+    numCell(l.comissaoPercentual, { raw: true }),
+    numCell(l.comissaoValor, { money: true }),
+    numCell(l.frete, { money: true }),
+    numCell(l.custo, { money: true }),
+    numCell(l.impostoPercentual, { raw: true }),
+    numCell(l.lcComRetorno, { money: true, signColor: true }),
+    numCell(l.mcComRetorno, { frac: true, signColor: true }),
+    numCell(l.margemAlvo, { frac: true }),
+    numCell(l.diferencaPp, { points: true, signColor: true }),
+    `<td>${badgeDecisao(l.decisao)}</td>`,
+    `<td class="vf-promo-motivo">${escapeHTML(txt(l.motivo))}</td>`,
+    `<td>
+      <div class="vf-promo-actions">
+        <button type="button" class="vf-action-btn" data-act="calc" title="Ver cálculo">Cálculo</button>
+        <button type="button" class="vf-action-btn vf-action-btn-secondary" data-act="copy" title="Copiar MLB">Copiar</button>
+        ${getMlPromosUrl(l.itemId)
+          ? `<button type="button" class="vf-action-btn vf-action-btn-neutral" data-act="ml" title="Gerenciar promoção no Mercado Livre">Gerenciar no ML</button>`
+          : `<button type="button" class="vf-action-btn vf-action-btn-neutral" disabled title="MLB inválido">MLB inválido</button>`}
+      </div>
+    </td>`,
+  ].join("");
+}
+
+// Preenche o tbody com as linhas fornecidas e liga os handlers por linha
+// (o modal recebe o objeto da linha diretamente, sem depender de índice global).
+function preencherTbody(tbody, rows) {
+  tbody.innerHTML = "";
+  rows.forEach((l) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = promoRowInnerHtml(l);
+    tr.querySelector('[data-act="calc"]')?.addEventListener("click", () => abrirModalCalculo(l));
+    tr.querySelector('[data-act="copy"]')?.addEventListener("click", (e) => copiarMlb(l.itemId, e.currentTarget));
+    tr.querySelector('[data-act="ml"]')?.addEventListener("click", () => abrirGerenciarNoMl(l.itemId));
+    tbody.appendChild(tr);
+  });
+}
+
 function renderTabela() {
   const empty = document.getElementById("promo-tabela-empty");
   const wrapper = document.getElementById("promo-tabela-wrapper");
@@ -494,54 +570,470 @@ function renderTabela() {
     return;
   }
 
-  tbody.innerHTML = "";
-  rows.forEach((l, idx) => {
-    // índice real no array completo, para o modal pegar a linha certa
-    const realIdx = PROMO_ROWS.indexOf(l);
-    const tr = document.createElement("tr");
-    tr.innerHTML = [
-      `<td style="font-family:var(--vf-mono);font-size:.78rem;">${escapeHTML(txt(l.itemId))}</td>`,
-      `<td class="vf-promo-titulo">${escapeHTML(txt(l.titulo))}</td>`,
-      `<td>${escapeHTML(txt(l.campanha))}</td>`,
-      numCell(l.precoOriginal, { money: true }),
-      numCell(l.precoPromocao, { money: true }),
-      numCell(l.descontoTotal, { money: true }),
-      numCell(l.sellerPercentage, { raw: true }),
-      numCell(l.meliPercentage, { raw: true }),
-      numCell(l.retornoMl, { money: true }),
-      numCell(l.comissaoPercentual, { raw: true }),
-      numCell(l.comissaoValor, { money: true }),
-      numCell(l.frete, { money: true }),
-      numCell(l.custo, { money: true }),
-      numCell(l.impostoPercentual, { raw: true }),
-      numCell(l.lcComRetorno, { money: true, signColor: true }),
-      numCell(l.mcComRetorno, { frac: true, signColor: true }),
-      numCell(l.margemAlvo, { frac: true }),
-      numCell(l.diferencaPp, { points: true, signColor: true }),
-      `<td>${badgeDecisao(l.decisao)}</td>`,
-      `<td class="vf-promo-motivo">${escapeHTML(txt(l.motivo))}</td>`,
-      `<td>
-        <div class="vf-promo-actions">
-          <button type="button" class="vf-action-btn" data-act="calc" data-idx="${realIdx}" title="Ver cálculo">Cálculo</button>
-          <button type="button" class="vf-action-btn vf-action-btn-secondary" data-act="copy" data-mlb="${escapeHTML(txt(l.itemId))}" title="Copiar MLB">Copiar</button>
-          ${getMlPromosUrl(l.itemId)
-            ? `<button type="button" class="vf-action-btn vf-action-btn-neutral" data-act="ml" data-mlb="${escapeHTML(txt(l.itemId))}" title="Gerenciar promoção no Mercado Livre">Gerenciar no ML</button>`
-            : `<button type="button" class="vf-action-btn vf-action-btn-neutral" disabled title="MLB inválido">MLB inválido</button>`}
-        </div>
-      </td>`,
-    ].join("");
-    tbody.appendChild(tr);
+  preencherTbody(tbody, rows);
+}
+
+// ─── Diagnóstico de promoções (varredura + snapshot) ────────────────────────
+function hideDiagnosticoUI() {
+  const info = document.getElementById("promo-diagnostico-info");
+  const aviso = document.getElementById("promo-diagnostico-aviso");
+  if (info) info.style.display = "none";
+  if (aviso) aviso.style.display = "none";
+}
+
+function diagQsBase() {
+  return {
+    clienteSlug: document.getElementById("promo-cliente")?.value || "",
+    baseSlug: document.getElementById("promo-base")?.value || "",
+  };
+}
+
+function setBtnDisabled(id, disabled) {
+  const b = document.getElementById(id);
+  if (b) b.disabled = !!disabled;
+}
+
+function updateSnapshotButtons() {
+  const { clienteSlug, baseSlug } = diagQsBase();
+  const both = !!clienteSlug && !!baseSlug;
+  const busy = !!PROMO_JOB_ID; // job de varredura em andamento
+  setBtnDisabled("btn-promo-diagnostico", busy);
+  setBtnDisabled("btn-promo-snapshot-atualizar", busy || !both);
+  setBtnDisabled("btn-promo-snapshot-usar", busy || !PROMO_SNAPSHOT_EXISTE);
+}
+
+// Predicados de filtro do diagnóstico.
+function matchOrigem(l, key) {
+  if (key === "todas") return true;
+  const comRetorno = l.temRetornoMl || Number(l.meliPercentage) > 0;
+  if (key === "criadas_por_mim") return l.criadaPorMim === true;
+  if (key === "com_retorno_ml") return comRetorno;
+  if (key === "sem_retorno_ml") return !comRetorno;
+  return true;
+}
+
+function matchCampanha(l, key) {
+  return key === "todas" || getPromoCampanhaKey(l) === key;
+}
+
+function linhasDiagnosticoFiltradas() {
+  return (Array.isArray(PROMO_DIAGNOSTICO_ROWS) ? PROMO_DIAGNOSTICO_ROWS : []).filter(
+    (l) =>
+      matchOrigem(l, PROMO_ORIGEM_FILTER) &&
+      matchCampanha(l, PROMO_CAMPANHA_FILTER) &&
+      (PROMO_FILTER === "todos" || l.decisao === PROMO_FILTER)
+  );
+}
+
+// Campanhas presentes no diagnóstico (respeitando o filtro de origem atual).
+function getCampanhasDoDiagnostico() {
+  const map = new Map();
+  (Array.isArray(PROMO_DIAGNOSTICO_ROWS) ? PROMO_DIAGNOSTICO_ROWS : [])
+    .filter((l) => matchOrigem(l, PROMO_ORIGEM_FILTER))
+    .forEach((l) => {
+      const key = getPromoCampanhaKey(l);
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+  return Array.from(map.entries())
+    .map(([key, count]) => ({ key, label: key, count }))
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }));
+}
+
+function contarDiagnosticoPorDecisao(key) {
+  const rows = (Array.isArray(PROMO_DIAGNOSTICO_ROWS) ? PROMO_DIAGNOSTICO_ROWS : []).filter(
+    (l) => matchOrigem(l, PROMO_ORIGEM_FILTER) && matchCampanha(l, PROMO_CAMPANHA_FILTER)
+  );
+  if (key === "todos") return rows.length;
+  return rows.filter((l) => l.decisao === key).length;
+}
+
+function renderDiagnosticoInfo() {
+  const el = document.getElementById("promo-diagnostico-info");
+  if (!el) return;
+  if (PROMO_MODE !== "diagnostico" || !PROMO_DIAGNOSTICO_META) { el.style.display = "none"; return; }
+  const m = PROMO_DIAGNOSTICO_META;
+  const ehSnapshot = m.origem === "snapshot";
+  const dataFmt = m.geradoEm ? new Date(m.geradoEm).toLocaleString("pt-BR") : "—";
+  const tag = ehSnapshot
+    ? `<strong>📦 Dados de snapshot salvo</strong>`
+    : `<strong>🔄 Dados recém-varridos no Mercado Livre</strong>`;
+  const seller = m.sellerId ? ` · seller ${escapeHTML(String(m.sellerId))}` : "";
+  const parcial = m.parcial
+    ? ` · <span style="color:#92400e;font-weight:700;">parcial — varredura limitada a ${escapeHTML(String(m.itensScaneados || 0))} anúncios</span>`
+    : "";
+  const avisos = Array.isArray(m.avisos) && m.avisos.length
+    ? `<br><span style="color:#92400e;">${m.avisos.map(escapeHTML).join(" · ")}</span>`
+    : "";
+  el.style.background = ehSnapshot ? "var(--vf-bg)" : "#ecfdf5";
+  el.innerHTML = `${tag} · gerado em ${escapeHTML(dataFmt)}${seller}${parcial}${avisos}`;
+  el.style.display = "block";
+}
+
+function renderDiagnosticoResumo() {
+  const empty = document.getElementById("promo-resumo-empty");
+  const bar = document.getElementById("promo-resumo-bar");
+  const badge = document.getElementById("promo-total-ml");
+  const nota = document.getElementById("promo-resumo-nota");
+  const r = (PROMO_DIAGNOSTICO_META && PROMO_DIAGNOSTICO_META.resumo) || {};
+  const m = PROMO_DIAGNOSTICO_META || {};
+
+  if (badge) { badge.style.display = "inline-block"; badge.textContent = String(r.totalPromocoes ?? 0); }
+  if (empty) empty.style.display = "none";
+  if (nota) nota.style.display = "none";
+  if (!bar) return;
+
+  const pill = (label, value, cls = "") =>
+    `<span class="vf-resumo-pill ${cls}">${escapeHTML(label)} <strong>${escapeHTML(String(value))}</strong></span>`;
+  const n = (v) => (Number.isFinite(Number(v)) ? String(Number(v)) : "0");
+
+  const pills = [
+    pill("Promoções encontradas", n(r.totalPromocoes)),
+    pill("Com retorno ML", n(r.totalComRetorno), "vf-resumo-success"),
+    pill("Sem retorno ML", n(r.totalSemRetorno)),
+    pill("Criadas por mim", n(r.totalCriadasPorMim), "vf-resumo-success"),
+  ];
+  if (Number(r.totalOrigemNaoIdentificada) > 0) {
+    pills.push(pill("Origem não identificada", n(r.totalOrigemNaoIdentificada)));
+  }
+  pills.push(
+    pill("Entrar seguro", n(r.entrarSeguro), "vf-resumo-success"),
+    pill("Entrar com tolerância", n(r.entrarComTolerancia), "vf-resumo-success"),
+    pill("Baixo mesmo com rebate", n(r.baixoMesmoComRebate), "vf-resumo-warning"),
+    pill("Não entrar", n(r.naoEntrar), "vf-resumo-danger"),
+    pill("Sem relatório / incompletos", n((Number(r.semRelatorio) || 0) + (Number(r.dadosIncompletos) || 0))),
+    pill("Anúncios varridos", n(m.itensScaneados))
+  );
+  bar.innerHTML = pills.join("");
+  bar.style.display = "flex";
+}
+
+function renderDiagnosticoFiltros() {
+  const box = document.getElementById("promo-filtros");
+  if (!box) return;
+
+  if (!Array.isArray(PROMO_DIAGNOSTICO_ROWS) || !PROMO_DIAGNOSTICO_ROWS.length) {
+    box.innerHTML = "";
+    box.style.display = "none";
+    return;
+  }
+
+  // Origem: contagem respeita a campanha selecionada.
+  const rowsCampanha = PROMO_DIAGNOSTICO_ROWS.filter((l) => matchCampanha(l, PROMO_CAMPANHA_FILTER));
+  const origemButtons = PROMO_ORIGEM_FILTERS.map((f) => {
+    const count = rowsCampanha.filter((l) => matchOrigem(l, f.key)).length;
+    const active = f.key === PROMO_ORIGEM_FILTER ? " active" : "";
+    return `<button type="button" class="vf-ml-filter-btn${active}" data-origem="${escapeHTML(f.key)}">${escapeHTML(f.label)} (${count})</button>`;
+  }).join("");
+
+  // Campanha: opções respeitam a origem selecionada.
+  const campanhas = getCampanhasDoDiagnostico();
+  const campanhaAindaExiste =
+    PROMO_CAMPANHA_FILTER === "todas" || campanhas.some((c) => c.key === PROMO_CAMPANHA_FILTER);
+  if (!campanhaAindaExiste) PROMO_CAMPANHA_FILTER = "todas";
+  const totalOrigem = PROMO_DIAGNOSTICO_ROWS.filter((l) => matchOrigem(l, PROMO_ORIGEM_FILTER)).length;
+  const options = [
+    `<option value="todas">Todas as promoções/campanhas (${totalOrigem})</option>`,
+    ...campanhas.map((c) => `
+      <option value="${escapeHTML(c.key)}"${c.key === PROMO_CAMPANHA_FILTER ? " selected" : ""}>
+        ${escapeHTML(c.label)} (${c.count})
+      </option>
+    `),
+  ].join("");
+
+  const decisionButtons = PROMO_FILTERS.map((f) => {
+    const count = contarDiagnosticoPorDecisao(f.key);
+    const active = f.key === PROMO_FILTER ? " active" : "";
+    return `<button type="button" class="vf-ml-filter-btn${active}" data-filter="${escapeHTML(f.key)}">${escapeHTML(f.label)} (${count})</button>`;
+  }).join("");
+
+  box.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px;width:100%;">
+      <div>
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.02em;color:var(--vf-text-m);margin-bottom:6px;">Origem / retorno</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">${origemButtons}</div>
+      </div>
+      <div class="vf-form-group" style="margin:0;min-width:280px;max-width:460px;">
+        <label for="promo-campanha-dinamica">Filtrar por promoção/campanha encontrada</label>
+        <select id="promo-campanha-dinamica" class="vf-input">${options}</select>
+        <small style="display:block;margin-top:6px;color:var(--vf-text-m);font-size:.75rem;line-height:1.4;">
+          Lista todas as promoções/campanhas do snapshot, mesmo que a tabela mostre só 50 linhas.
+        </small>
+      </div>
+      <div>
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.02em;color:var(--vf-text-m);margin-bottom:6px;">Decisão</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">${decisionButtons}</div>
+      </div>
+    </div>
+  `;
+
+  box.style.display = "flex";
+  box.style.flexDirection = "column";
+  box.style.alignItems = "stretch";
+
+  box.querySelectorAll("[data-origem]").forEach((b) => {
+    b.addEventListener("click", () => {
+      PROMO_ORIGEM_FILTER = b.getAttribute("data-origem") || "todas";
+      PROMO_CAMPANHA_FILTER = "todas";
+      PROMO_FILTER = "todos";
+      renderDiagnosticoFiltros();
+      renderDiagnosticoTabela();
+    });
   });
 
-  tbody.querySelectorAll('[data-act="calc"]').forEach((b) => {
-    b.addEventListener("click", () => abrirModalCalculo(PROMO_ROWS[Number(b.getAttribute("data-idx"))]));
+  document.getElementById("promo-campanha-dinamica")?.addEventListener("change", (event) => {
+    PROMO_CAMPANHA_FILTER = event.target.value || "todas";
+    PROMO_FILTER = "todos";
+    renderDiagnosticoFiltros();
+    renderDiagnosticoTabela();
   });
-  tbody.querySelectorAll('[data-act="copy"]').forEach((b) => {
-    b.addEventListener("click", () => copiarMlb(b.getAttribute("data-mlb"), b));
+
+  box.querySelectorAll("[data-filter]").forEach((b) => {
+    b.addEventListener("click", () => {
+      PROMO_FILTER = b.getAttribute("data-filter") || "todos";
+      renderDiagnosticoFiltros();
+      renderDiagnosticoTabela();
+    });
   });
-  tbody.querySelectorAll('[data-act="ml"]').forEach((b) => {
-    b.addEventListener("click", () => abrirGerenciarNoMl(b.getAttribute("data-mlb")));
+}
+
+function renderDiagnosticoTabela() {
+  const empty = document.getElementById("promo-tabela-empty");
+  const wrapper = document.getElementById("promo-tabela-wrapper");
+  const badge = document.getElementById("promo-tabela-total");
+  const aviso = document.getElementById("promo-diagnostico-aviso");
+  const tbody = document.getElementById("promo-tbody");
+  if (!tbody) return;
+
+  if (!Array.isArray(PROMO_DIAGNOSTICO_ROWS) || !PROMO_DIAGNOSTICO_ROWS.length) {
+    if (empty) { empty.style.display = "block"; const p = empty.querySelector("p"); if (p) p.textContent = "Nenhuma promoção encontrada no diagnóstico."; }
+    if (wrapper) wrapper.style.display = "none";
+    if (aviso) aviso.style.display = "none";
+    if (badge) { badge.style.display = "inline-block"; badge.textContent = "0"; }
+    tbody.innerHTML = "";
+    return;
+  }
+
+  const all = linhasDiagnosticoFiltradas();
+  const rowsToRender = all.slice(0, PROMO_RENDER_LIMIT);
+
+  if (badge) { badge.style.display = "inline-block"; badge.textContent = String(rowsToRender.length); }
+  if (empty) empty.style.display = "none";
+  if (wrapper) wrapper.style.display = "block";
+
+  if (aviso) {
+    if (all.length > PROMO_RENDER_LIMIT) {
+      aviso.textContent = `Mostrando ${PROMO_RENDER_LIMIT} de ${all.length} itens. Refine os filtros para ver menos itens.`;
+      aviso.style.display = "block";
+    } else {
+      aviso.style.display = "none";
+    }
+  }
+
+  if (!all.length) {
+    tbody.innerHTML = `<tr><td colspan="21" style="color:var(--vf-text-m);text-align:center;padding:1rem;">Nenhuma linha neste filtro.</td></tr>`;
+    return;
+  }
+
+  preencherTbody(tbody, rowsToRender);
+}
+
+// Aplica um payload de diagnóstico (varredura, atualização ou snapshot) à tela.
+function aplicarDiagnostico(payload) {
+  PROMO_MODE = "diagnostico";
+  PROMO_DIAGNOSTICO_ROWS = Array.isArray(payload.linhas) ? payload.linhas : [];
+  PROMO_DIAGNOSTICO_META = {
+    ...(payload.meta || {}),
+    origem: payload.origem || (payload.meta && payload.meta.origem) || "scan",
+    resumo: payload.resumo || {},
+    cliente: payload.cliente || null,
+    base: payload.base || null,
+  };
+  PROMO_SNAPSHOT_ID = payload.snapshot_id || null;
+  PROMO_ORIGEM_FILTER = "todas";
+  PROMO_CAMPANHA_FILTER = "todas";
+  PROMO_FILTER = "todos";
+  renderDiagnosticoInfo();
+  renderDiagnosticoResumo();
+  renderDiagnosticoFiltros();
+  renderDiagnosticoTabela();
+  updateSnapshotButtons();
+}
+
+function pararPolling() {
+  if (PROMO_POLL_TIMER) { clearTimeout(PROMO_POLL_TIMER); PROMO_POLL_TIMER = null; }
+}
+
+// Inicia um job de diagnóstico (start) e passa a fazer polling do progresso.
+// Usado por "Gerar diagnóstico" e "Atualizar snapshot" (mesma varredura).
+async function iniciarDiagnosticoJob() {
+  const { clienteSlug, baseSlug } = diagQsBase();
+  if (!clienteSlug) { setStatus("Selecione um cliente.", "var(--vf-danger)"); return; }
+  if (!baseSlug) { setStatus("Selecione uma base.", "var(--vf-danger)"); return; }
+
+  const margem = lerPercentInput("promo-margem");
+  const tolerancia = lerPercentInput("promo-tolerancia");
+
+  pararPolling();
+  setStatus("Iniciando diagnóstico… varrendo as promoções da conta em segundo plano.", "var(--vf-text-m)");
+
+  try {
+    const res = await fetch(`${API_BASE}/automacoes/promocoes-retorno/diagnostico/start`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({ clienteSlug, baseSlug, margemAlvo: margem, tolerancia }),
+    });
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) {
+      setStatus(data?.erro || `Erro ao iniciar diagnóstico (HTTP ${res.status}).`, "var(--vf-danger)");
+      return;
+    }
+    PROMO_JOB_ID = data.diagnostico_id;
+    updateSnapshotButtons();
+    if (data.jaEmAndamento) {
+      setStatus("Já havia um diagnóstico em andamento para este cliente/base — acompanhando o progresso…", "var(--vf-text-m)");
+    }
+    pollDiagnosticoStatus();
+  } catch (_) {
+    setStatus("Falha de rede ao iniciar diagnóstico. Tente novamente.", "var(--vf-danger)");
+  }
+}
+
+// Consulta o status do job atual e reagenda enquanto estiver "processando".
+async function pollDiagnosticoStatus() {
+  if (!PROMO_JOB_ID) return;
+  const jobId = PROMO_JOB_ID;
+  try {
+    const res = await fetch(`${API_BASE}/automacoes/promocoes-retorno/diagnostico/${encodeURIComponent(jobId)}`, {
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+    const data = await res.json().catch(() => ({}));
+    if (PROMO_JOB_ID !== jobId) return; // outro job assumiu
+
+    if (!res.ok || !data?.ok) {
+      PROMO_JOB_ID = null;
+      updateSnapshotButtons();
+      setStatus(data?.erro || `Erro ao consultar diagnóstico (HTTP ${res.status}).`, "var(--vf-danger)");
+      return;
+    }
+
+    const d = data.diagnostico || {};
+
+    if (d.status === "processando") {
+      const proc = Number(d.itensProcessados) || 0;
+      const tot = Number(d.totalEstimado);
+      const prog = Number.isFinite(tot) && tot > 0 ? `${proc}/${tot}` : `${proc}`;
+      setStatus(`Processando diagnóstico… ${prog} anúncios varridos.`, "var(--vf-text-m)");
+      PROMO_POLL_TIMER = setTimeout(pollDiagnosticoStatus, PROMO_POLL_INTERVAL);
+      return;
+    }
+
+    // Estado terminal.
+    PROMO_JOB_ID = null;
+
+    if (d.status === "erro") {
+      updateSnapshotButtons();
+      setStatus(`Diagnóstico falhou: ${d.aviso || "erro desconhecido"}.`, "var(--vf-danger)");
+      return;
+    }
+
+    // Concluído (possivelmente parcial). Worker já salvou o snapshot → carrega.
+    PROMO_SNAPSHOT_EXISTE = true;
+    const ok = await carregarSnapshotComoResultado("scan");
+    updateSnapshotButtons();
+    const parcial = d.parcial ? ` (parcial — ${d.aviso || ""})` : "";
+    if (ok) {
+      setStatus(
+        `Diagnóstico concluído${parcial}: ${d.totalPromocoes || 0} promoção(ões) em ${d.itensScaneados || 0} anúncios. Snapshot salvo.`,
+        d.parcial ? "var(--vf-danger)" : "var(--vf-primary)"
+      );
+    } else {
+      setStatus(`Diagnóstico concluído${parcial}, mas não foi possível carregar o snapshot. Tente "Usar último snapshot".`, "var(--vf-danger)");
+    }
+  } catch (_) {
+    // Erro de rede transitório: reagenda mais devagar sem perder o job.
+    if (PROMO_JOB_ID === jobId) PROMO_POLL_TIMER = setTimeout(pollDiagnosticoStatus, PROMO_POLL_INTERVAL * 2);
+  }
+}
+
+// Carrega o último snapshot concluído e o exibe. `origemLabel` controla o banner
+// ("scan" = recém-varrido, "snapshot" = snapshot salvo reaberto).
+async function carregarSnapshotComoResultado(origemLabel) {
+  const { clienteSlug, baseSlug } = diagQsBase();
+  if (!clienteSlug || !baseSlug) return false;
+  const qs = new URLSearchParams({ clienteSlug, baseSlug });
+  const res = await fetch(`${API_BASE}/automacoes/promocoes-retorno/snapshot?${qs.toString()}`, {
+    headers: { Authorization: "Bearer " + TOKEN },
   });
+  if (res.status === 401) { clearSession(); return false; }
+  if (res.status === 403) { window.location.replace("dashboard.html"); return false; }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok || !data.existe) return false;
+  aplicarDiagnostico({ ...data, origem: origemLabel || data.origem || "snapshot" });
+  PROMO_SNAPSHOT_ID = data.snapshot_id;
+  return true;
+}
+
+// Botão "Gerar diagnóstico de promoções" — inicia a varredura assíncrona.
+async function gerarDiagnosticoPromocoes() {
+  return iniciarDiagnosticoJob();
+}
+
+// Botão "Atualizar snapshot" — mesma varredura assíncrona (regera o snapshot).
+async function atualizarSnapshotPromocoes() {
+  return iniciarDiagnosticoJob();
+}
+
+// Botão "Usar último snapshot" — reabre o último snapshot concluído, sem varrer.
+async function carregarUltimoSnapshotPromocoes() {
+  const { clienteSlug, baseSlug } = diagQsBase();
+  if (!clienteSlug || !baseSlug) { setStatus("Selecione cliente e base.", "var(--vf-danger)"); return; }
+
+  const btn = document.getElementById("btn-promo-snapshot-usar");
+  const orig = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Carregando…"; }
+  setStatus("Carregando último snapshot salvo…", "var(--vf-text-m)");
+
+  try {
+    const ok = await carregarSnapshotComoResultado("snapshot");
+    if (!ok) {
+      PROMO_SNAPSHOT_EXISTE = false;
+      updateSnapshotButtons();
+      setStatus("Nenhum snapshot concluído para este cliente/base. Gere um diagnóstico primeiro.", "var(--vf-text-m)");
+      return;
+    }
+    PROMO_SNAPSHOT_EXISTE = true;
+    setStatus(`Snapshot #${PROMO_SNAPSHOT_ID} carregado (${PROMO_DIAGNOSTICO_ROWS.length} promoções).`, "var(--vf-text-m)");
+  } catch (_) {
+    setStatus("Falha de rede ao carregar snapshot.", "var(--vf-danger)");
+  } finally {
+    if (btn) { btn.textContent = orig || "Usar último snapshot"; }
+    updateSnapshotButtons();
+  }
+}
+
+// Verifica (silenciosamente) se há snapshot salvo para o cliente/base atual,
+// habilitando/desabilitando os botões dependentes.
+async function verificarSnapshotDisponivel() {
+  updateSnapshotButtons();
+  const { clienteSlug, baseSlug } = diagQsBase();
+  if (!clienteSlug || !baseSlug) { PROMO_SNAPSHOT_EXISTE = false; updateSnapshotButtons(); return; }
+  const key = clienteSlug + "|" + baseSlug;
+  PROMO_SNAPSHOT_CHECK_KEY = key;
+  try {
+    const qs = new URLSearchParams({ clienteSlug, baseSlug });
+    const res = await fetch(`${API_BASE}/automacoes/promocoes-retorno/snapshot?${qs.toString()}`, {
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+    if (!res.ok) return;
+    const data = await res.json().catch(() => ({}));
+    if (PROMO_SNAPSHOT_CHECK_KEY !== key) return; // resposta obsoleta
+    PROMO_SNAPSHOT_EXISTE = !!data.existe;
+    updateSnapshotButtons();
+  } catch (_) { /* silencioso */ }
 }
 
 // ─── Copiar MLB ───────────────────────────────────────────────────────────
@@ -648,8 +1140,14 @@ function fecharModal() {
 
 // ─── Eventos ──────────────────────────────────────────────────────────────
 document.getElementById("btn-promo-analisar")?.addEventListener("click", analisar);
+document.getElementById("btn-promo-diagnostico")?.addEventListener("click", gerarDiagnosticoPromocoes);
+document.getElementById("btn-promo-snapshot-atualizar")?.addEventListener("click", atualizarSnapshotPromocoes);
+document.getElementById("btn-promo-snapshot-usar")?.addEventListener("click", carregarUltimoSnapshotPromocoes);
 document.getElementById("promo-cliente-search")?.addEventListener("input", applyClienteSearchFilter);
 document.getElementById("promo-base-search")?.addEventListener("input", applyBaseSearchFilter);
+// Ao trocar cliente/base, reavalia botões de snapshot (habilita "Usar último snapshot").
+document.getElementById("promo-cliente")?.addEventListener("change", verificarSnapshotDisponivel);
+document.getElementById("promo-base")?.addEventListener("change", verificarSnapshotDisponivel);
 document.getElementById("promo-calc-modal-close")?.addEventListener("click", fecharModal);
 document.getElementById("promo-calc-modal")?.addEventListener("click", (e) => {
   if (e.target.id === "promo-calc-modal") fecharModal();
