@@ -204,48 +204,29 @@
                 <div class="vf-fin-step__number" aria-hidden="true">3</div>
                 <div class="vf-fin-step__body">
                   <p class="vf-fin-step__title">Ajustes financeiros</p>
-                  <div class="vf-form-grid">
-                    <div class="vf-field">
-                      <label class="vf-field__label" for="fin-ads">ADS (R$)<span class="vf-fin-help" title="Investimento total em anúncios/ADS no período. Entra no cálculo do resultado final e do TACoS.">?</span></label>
-                      <div class="vf-input-group"><span class="vf-input-prefix">R$</span><input type="number" id="fin-ads" class="vf-input num" min="0" step="0.01" value="0" placeholder="0,00" inputmode="decimal"></div>
+                  <div class="vf-fin-adjust-grid">
+                    <div class="vf-form-grid">
+                      <div class="vf-field">
+                        <label class="vf-field__label" for="fin-ads">ADS (R$)<span class="vf-fin-help" title="Investimento total em anúncios/ADS no período. Entra no cálculo do resultado final e do TACoS.">?</span></label>
+                        <div class="vf-input-group"><span class="vf-input-prefix">R$</span><input type="number" id="fin-ads" class="vf-input num" min="0" step="0.01" value="0" placeholder="0,00" inputmode="decimal"></div>
+                      </div>
+                      <div class="vf-field">
+                        <label class="vf-field__label" for="fin-venforce">Venforce (R$)<span class="vf-fin-help" title="Valor cobrado pela Venforce no período. Deduzido no resultado final.">?</span></label>
+                        <div class="vf-input-group"><span class="vf-input-prefix">R$</span><input type="number" id="fin-venforce" class="vf-input num" min="0" step="0.01" value="0" placeholder="0,00" inputmode="decimal"></div>
+                      </div>
+                      <div class="vf-field">
+                        <label class="vf-field__label" for="fin-affiliates">Afiliados (R$)<span class="vf-fin-help" title="Custos com afiliados no período. Deduzido no resultado final.">?</span></label>
+                        <div class="vf-input-group"><span class="vf-input-prefix">R$</span><input type="number" id="fin-affiliates" class="vf-input num" min="0" step="0.01" value="0" placeholder="0,00" inputmode="decimal"></div>
+                      </div>
                     </div>
-                    <div class="vf-field">
-                      <label class="vf-field__label" for="fin-venforce">Venforce (R$)<span class="vf-fin-help" title="Valor cobrado pela Venforce no período. Deduzido no resultado final.">?</span></label>
-                      <div class="vf-input-group"><span class="vf-input-prefix">R$</span><input type="number" id="fin-venforce" class="vf-input num" min="0" step="0.01" value="0" placeholder="0,00" inputmode="decimal"></div>
-                    </div>
-                    <div class="vf-field">
-                      <label class="vf-field__label" for="fin-affiliates">Afiliados (R$)<span class="vf-fin-help" title="Custos com afiliados no período. Deduzido no resultado final.">?</span></label>
-                      <div class="vf-input-group"><span class="vf-input-prefix">R$</span><input type="number" id="fin-affiliates" class="vf-input num" min="0" step="0.01" value="0" placeholder="0,00" inputmode="decimal"></div>
-                    </div>
-                  </div>
-                  <div class="vf-form-grid" id="fin-meli-extra-costs" hidden>
-                    <div class="vf-field">
-                      <label class="vf-field__label" for="fin-full-cost">FULL (R$)<span class="vf-fin-help" title="Custo de armazenagem/logística FULL no período (Mercado Livre). Deduzido no resultado final.">?</span></label>
-                      <div class="vf-input-group"><span class="vf-input-prefix">R$</span><input type="number" id="fin-full-cost" class="vf-input num" min="0" step="0.01" value="0" placeholder="0,00" inputmode="decimal"></div>
-                    </div>
-                    <div class="vf-field">
-                      <label class="vf-field__label" for="fin-additional-costs">Custos adicionais (R$)<span class="vf-fin-help" title="Outros custos adicionais do período (Mercado Livre). Deduzido no resultado final.">?</span></label>
-                      <div class="vf-input-group"><span class="vf-input-prefix">R$</span><input type="number" id="fin-additional-costs" class="vf-input num" min="0" step="0.01" value="0" placeholder="0,00" inputmode="decimal"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <hr class="vf-divider">
-
-              <!-- ── Etapa 4 · Conferência antes de processar ── -->
-              <div class="vf-fin-step">
-                <div class="vf-fin-step__number" aria-hidden="true">4</div>
-                <div class="vf-fin-step__body">
-                  <p class="vf-fin-step__title">Conferência antes de processar</p>
-                  <div class="vf-card vf-card--compact">
-                    <div class="vf-card__body">
-                      <div class="vf-fin-review" id="fin-mini-resumo-grid">
-                        <div class="vf-fin-review__item"><span class="vf-fin-review__k">Cliente</span><span class="vf-fin-review__v" id="fin-res-cliente">—</span></div>
-                        <div class="vf-fin-review__item"><span class="vf-fin-review__k">Marketplace</span><span class="vf-fin-review__v" id="fin-res-marketplace">—</span></div>
-                        <div class="vf-fin-review__item"><span class="vf-fin-review__k">Base usada</span><span class="vf-fin-review__v" id="fin-res-base">—</span></div>
-                        <div class="vf-fin-review__item"><span class="vf-fin-review__k">Arquivos</span><span class="vf-fin-review__v" id="fin-res-arquivos">—</span></div>
-                        <div class="vf-fin-review__item"><span class="vf-fin-review__k">Ajustes</span><span class="vf-fin-review__v vf-fin-review__v--money" id="fin-res-ajustes">—</span></div>
+                    <div class="vf-form-grid" id="fin-meli-extra-costs" hidden>
+                      <div class="vf-field">
+                        <label class="vf-field__label" for="fin-full-cost">FULL (R$)<span class="vf-fin-help" title="Custo de armazenagem/logística FULL no período (Mercado Livre). Deduzido no resultado final.">?</span></label>
+                        <div class="vf-input-group"><span class="vf-input-prefix">R$</span><input type="number" id="fin-full-cost" class="vf-input num" min="0" step="0.01" value="0" placeholder="0,00" inputmode="decimal"></div>
+                      </div>
+                      <div class="vf-field">
+                        <label class="vf-field__label" for="fin-additional-costs">Custos adicionais (R$)<span class="vf-fin-help" title="Outros custos adicionais do período (Mercado Livre). Deduzido no resultado final.">?</span></label>
+                        <div class="vf-input-group"><span class="vf-input-prefix">R$</span><input type="number" id="fin-additional-costs" class="vf-input num" min="0" step="0.01" value="0" placeholder="0,00" inputmode="decimal"></div>
                       </div>
                     </div>
                   </div>

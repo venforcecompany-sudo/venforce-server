@@ -1104,8 +1104,28 @@ function renderShopeeReconciliacao(data) {
     },
   ].filter((item) => item.count > 0);
 
+  // Maiores impactos de cancelamento confirmado — consolidados em um popover
+  // ancorado no card "Cancelados confirmados" (antes eram um bloco longo).
+  const topCancelled = Array.isArray(s.orderAllTopCancelledItems) ? s.orderAllTopCancelledItems : [];
+  const impactItems = topCancelled.filter((i) => i && i.productName);
+  const impactsPopId = "fin-recon-impacts-pop";
+  const impactsPopHtml = impactItems.length
+    ? `<button type="button" class="vf-fin-recon-info" aria-label="Ver maiores impactos de cancelamento confirmado" aria-expanded="false" aria-controls="${impactsPopId}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </button>
+      <div class="vf-fin-recon-pop" id="${impactsPopId}" role="dialog" aria-label="Maiores impactos de cancelamento confirmado" hidden>
+        <p class="vf-fin-recon-pop__title">Maiores impactos</p>
+        <p class="vf-fin-recon-pop__desc">Produtos mais afetados por cancelamento confirmado.</p>
+        <ul class="vf-fin-recon-pop__list">${impactItems.map((i) => `<li class="vf-fin-recon-pop__row"><span class="vf-fin-recon-pop__name">${escapeHTML(i.productName)}</span><span class="vf-fin-recon-pop__meta">${num(i.count || 0)} pedido${(i.count || 0) !== 1 ? "s" : ""} · ${brl(i.revenue || 0)}</span></li>`).join("")}</ul>
+      </div>`
+    : "";
+
   const cardsHtml = statusItems.map((item) => {
-    return `<div class="vf-fin-reconciliation__item is-${item.tone}">
+    const isCancelled = item.label === "Cancelados confirmados";
+    const infoHtml = isCancelled ? impactsPopHtml : "";
+    const extraClass = isCancelled && infoHtml ? " has-info" : "";
+    return `<div class="vf-fin-reconciliation__item is-${item.tone}${extraClass}">
+      ${infoHtml}
       <div class="vf-fin-reconciliation__item-label">${escapeHTML(item.label)}</div>
       <div class="vf-fin-reconciliation__item-support">${escapeHTML(item.support)}</div>
       <div class="vf-fin-reconciliation__item-value">${brl(item.revenue)}</div>
@@ -1113,44 +1133,15 @@ function renderShopeeReconciliacao(data) {
     </div>`;
   }).join("");
 
-  // Texto narrativo dinâmico
-  const reconcParts = [];
-  if (Number(s.orderAllCompletedRevenue || 0) > 0)
-    reconcParts.push(`${brl(s.orderAllCompletedRevenue)} concluídos`);
-  if (Number(s.orderAllDeliveredRevenue || 0) > 0)
-    reconcParts.push(`${brl(s.orderAllDeliveredRevenue)} entregues`);
-  if (Number(s.orderAllShippedRevenue || 0) > 0)
-    reconcParts.push(`${brl(s.orderAllShippedRevenue)} enviados`);
-  if (Number(s.orderAllIntermediateRevenue || 0) > 0)
-    reconcParts.push(`${brl(s.orderAllIntermediateRevenue)} em status intermediário`);
-  if (Number(s.orderAllCancelledConfirmedRevenue || 0) > 0)
-    reconcParts.push(`${brl(s.orderAllCancelledConfirmedRevenue)} cancelados confirmados`);
-  if (Number(s.orderAllUnpaidRevenue || 0) > 0)
-    reconcParts.push(`${brl(s.orderAllUnpaidRevenue)} não pagos`);
-  if (Number(s.orderAllReturnRefundRevenue || 0) > 0)
-    reconcParts.push(`${brl(s.orderAllReturnRefundRevenue)} em devolução/reembolso`);
-
-  const mainText = `Os ${brl(perfRevenue)} são as vendas pagas no mês segundo a Performance Shopee.` +
-    (reconcParts.length
-      ? ` A Reconciliação Shopee mostra o cenário operacional completo: ${reconcParts.join(", ")}. O total da Reconciliação foi de ${brl(reconcRevenue)}.`
-      : "");
-
+  // Explicação curta mantida abaixo dos KPIs (diferença Performance × Reconciliação).
   const diffHtml = reconcRevenue > perfRevenue
     ? `<p class="vf-fin-reconciliation__note">A diferença entre Performance e Reconciliação acontece porque a Performance considera apenas pedidos pagos usados no cálculo financeiro. A Reconciliação inclui também cancelados, não pagos, devoluções e status operacionais.</p>`
-    : "";
-
-  const topCancelled = Array.isArray(s.orderAllTopCancelledItems) ? s.orderAllTopCancelledItems : [];
-  const topNames = topCancelled.map((i) => i.productName).filter(Boolean);
-  const topHtml = topNames.length
-    ? `<p>Os maiores impactos de cancelamento confirmado estão concentrados em: ${escapeHTML(topNames.join(", "))}.</p>`
     : "";
 
   el.innerHTML = `<section class="vf-card">
     <div class="vf-card__header">
       <div>
         <h2 class="vf-card__title">Reconciliação Shopee</h2>
-        <p class="vf-card__description">Visão operacional dos pedidos do período, baseada no arquivo completo de pedidos da Shopee.</p>
-        <p class="vf-fin-reconciliation__source">Fonte: arquivo completo de pedidos da Shopee.</p>
       </div>
     </div>
     <div class="vf-card__body vf-fin-reconciliation">
@@ -1169,13 +1160,47 @@ function renderShopeeReconciliacao(data) {
       </div>
       <div class="vf-fin-reconciliation__grid">${cardsHtml}</div>
       <div class="vf-fin-reconciliation__text">
-        <p>${mainText}</p>
         ${diffHtml}
-        ${topHtml}
       </div>
     </div>
   </section>`;
   el.hidden = false;
+
+  wireReconInfoPopover(el);
+}
+
+// Fiação do popover de "Maiores impactos" ancorado no card
+// "Cancelados confirmados". Apenas apresentação — não altera cálculos.
+function wireReconInfoPopover(root) {
+  const btn = root.querySelector(".vf-fin-recon-info");
+  const pop = root.querySelector(".vf-fin-recon-pop");
+  if (!btn || !pop) return;
+
+  const close = () => {
+    if (pop.hidden) return;
+    pop.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+    document.removeEventListener("click", onDocClick, true);
+    document.removeEventListener("keydown", onKeydown, true);
+  };
+  const open = () => {
+    if (!pop.hidden) return;
+    pop.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    document.addEventListener("click", onDocClick, true);
+    document.addEventListener("keydown", onKeydown, true);
+  };
+  function onDocClick(ev) {
+    if (!pop.contains(ev.target) && !btn.contains(ev.target)) close();
+  }
+  function onKeydown(ev) {
+    if (ev.key === "Escape") { close(); btn.focus(); }
+  }
+
+  btn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    pop.hidden ? open() : close();
+  });
 }
 
 function renderFinTabela(data) {
