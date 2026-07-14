@@ -1,0 +1,157 @@
+/* ============================================================
+ * VenForce — Otimizador de Precificação ML · CSS específico (V2)
+ *
+ * Ordem de carga (em automacoes.html):
+ *   style.css (layout/sidebar/topbar) →
+ *   css/vf-tokens-v2.css → css/vf-components-v2.css →
+ *   css/pages/automacoes-v2.css (este arquivo, sempre por último)
+ *
+ * REGRAS DESTE ARQUIVO
+ *  - Só o que é REALMENTE específico desta página: enquadramento
+ *    do shell, grade de prontidão, layout do bloco de progresso,
+ *    ajustes locais da tabela de prioridades e da linha de ações.
+ *  - Componentes globais (botão, card, input, select, KPI, tabela,
+ *    status, banner, badge, progress, spinner, loading) vêm de
+ *    vf-components-v2.css e NÃO são recriados aqui.
+ *  - Só tokens V2. Sem !important, sem Bootstrap, sem cores soltas,
+ *    sem radius/sombras próprios, sem tokens paralelos.
+ * ============================================================ */
+
+/* ------------------------------------------------------------
+ * 1. Shell da página
+ * A tela vive dentro do layout existente (.vf-main-with-sidebar >
+ * .vf-content). Neutralizamos largura/padding herdados do style.css
+ * e deixamos vf-page-shell + vf-page-container cuidarem do enquadramento.
+ * ------------------------------------------------------------ */
+.vf-page-automacoes .vf-content {
+  max-width: none;
+  padding: 0;
+}
+
+.vf-page-automacoes .vf-page-container {
+  max-width: 1120px;
+}
+
+/* A página herda .vf-page-dashboard, que no style.css força
+   min-width em .vf-page-dashboard .vf-table. A tabela de prioridades
+   é fluida: zeramos esse mínimo para caber sem rolagem horizontal. */
+.vf-page-automacoes .vf-table {
+  min-width: 0;
+}
+
+/* O atributo [hidden] deve vencer o display dos componentes/blocos abaixo,
+   que têm especificidade maior que a regra [hidden] do navegador. */
+.vf-page-automacoes .vf-banner[hidden],
+.vf-page-automacoes .vf-auto-readiness[hidden],
+.vf-page-automacoes .vf-auto-results[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------
+ * 2. Configuração da análise
+ * ------------------------------------------------------------ */
+.vf-page-automacoes .vf-auto-config__grid {
+  /* cliente-busca | cliente | margem — margem ocupa menos espaço */
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(160px, 0.6fr);
+}
+
+/* ------------------------------------------------------------
+ * 3. Prontidão (grant + base + atualização + status)
+ * ------------------------------------------------------------ */
+.vf-page-automacoes .vf-auto-readiness {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--vf-sp-3);
+  margin-top: var(--vf-sp-4);
+  padding: var(--vf-sp-4);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  background: var(--vf-surface-2);
+}
+
+.vf-page-automacoes .vf-auto-readiness__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-1);
+  min-width: 0;
+}
+
+.vf-page-automacoes .vf-auto-readiness__label {
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: var(--vf-ls-caps);
+  text-transform: uppercase;
+  color: var(--vf-text-muted);
+}
+
+.vf-page-automacoes .vf-auto-readiness__value {
+  font-size: var(--vf-fs-sm);
+  font-weight: var(--vf-fw-medium);
+  color: var(--vf-text);
+  overflow-wrap: anywhere;
+}
+
+/* Banner de bloqueio abaixo da prontidão */
+.vf-page-automacoes #auto-state-banner {
+  margin-top: var(--vf-sp-4);
+}
+
+/* ------------------------------------------------------------
+ * 4. Processando
+ * ------------------------------------------------------------ */
+.vf-page-automacoes .vf-auto-progress .vf-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-4);
+}
+
+.vf-page-automacoes .vf-auto-progress__status {
+  font-size: var(--vf-fs-md);
+  font-weight: var(--vf-fw-medium);
+  color: var(--vf-text);
+}
+
+.vf-page-automacoes .vf-auto-progress__meta {
+  font-size: var(--vf-fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--vf-text-secondary);
+  text-align: center;
+}
+
+/* ------------------------------------------------------------
+ * 5. Resultado (KPIs + prioridades + ações)
+ * ------------------------------------------------------------ */
+.vf-page-automacoes .vf-auto-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-section-gap);
+}
+
+.vf-page-automacoes .vf-auto-priorities__table td.vf-truncate {
+  max-width: 320px;
+}
+
+.vf-page-automacoes .vf-auto-priorities__empty {
+  color: var(--vf-text-secondary);
+  text-align: center;
+  padding: var(--vf-sp-6) var(--vf-sp-4);
+}
+
+/* ------------------------------------------------------------
+ * 6. Ações finais
+ * ------------------------------------------------------------ */
+.vf-page-automacoes .vf-auto-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------
+ * 7. Responsivo
+ * ------------------------------------------------------------ */
+@media (max-width: 720px) {
+  .vf-page-automacoes .vf-auto-config__grid {
+    grid-template-columns: 1fr;
+  }
+}

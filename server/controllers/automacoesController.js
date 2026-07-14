@@ -33,6 +33,10 @@ const {
 } = require("../services/automacoes/diagnosticoService");
 
 const {
+  exigirContextoPronto,
+} = require("../services/automacoes/contextoPrecificacaoService");
+
+const {
   criarJobDiagnostico,
   enfileirarDiagnostico,
   buscarStatusDiagnostico,
@@ -48,13 +52,63 @@ function responderErroService(res, err) {
 
 async function listarClientesAutomacoesController(req, res) {
   try {
+    // Clientes ativos + grant ML + bases MELI vinculadas (ativas), resolvidos
+    // numa única consulta sem fan-out (LATERAL). O frontend usa estes campos
+    // para decidir prontidão sem exigir baseSlug manual.
     const result = await pool.query(
-      `SELECT id, nome, slug, ativo, created_at
-       FROM clientes
-       WHERE ativo = true
-       ORDER BY nome ASC`
+      `SELECT
+         c.id, c.nome, c.slug, c.ativo, c.created_at,
+         tok.ml_user_id,
+         COALESCE(bm.bases, '[]'::jsonb) AS bases_meli
+       FROM clientes c
+       LEFT JOIN LATERAL (
+         SELECT ml_user_id FROM ml_tokens WHERE cliente_id = c.id LIMIT 1
+       ) tok ON true
+       LEFT JOIN LATERAL (
+         SELECT jsonb_agg(
+                  jsonb_build_object(
+                    'id', b.id, 'slug', b.slug, 'nome', b.nome, 'updated_at', b.updated_at
+                  ) ORDER BY b.updated_at DESC NULLS LAST, b.id ASC
+                ) AS bases
+           FROM base_cliente_vinculos v
+           JOIN bases b ON b.id = v.base_id AND b.ativo = true
+          WHERE v.cliente_id = c.id
+            AND v.ativo = true
+            AND v.marketplace = 'meli'
+       ) bm ON true
+       WHERE c.ativo = true
+       ORDER BY c.nome ASC`
     );
-    res.json({ ok: true, clientes: result.rows });
+
+    const clientes = result.rows.map((row) => {
+      const basesMeli = Array.isArray(row.bases_meli) ? row.bases_meli : [];
+      const hasGrantMl = Boolean(row.ml_user_id);
+      let baseStatus;
+      if (basesMeli.length === 0) baseStatus = "ausente";
+      else if (basesMeli.length === 1) baseStatus = "ok";
+      else baseStatus = "multiplas";
+      const baseUnica = basesMeli.length === 1 ? basesMeli[0] : null;
+
+      return {
+        // Campos originais (compatibilidade)
+        id: row.id,
+        nome: row.nome,
+        slug: row.slug,
+        ativo: row.ativo,
+        created_at: row.created_at,
+        // Contexto de prontidão
+        hasGrantMl,
+        mlUserId: row.ml_user_id || null,
+        baseMeli: baseUnica ? baseUnica.slug : null,
+        baseMeliNome: baseUnica ? baseUnica.nome : null,
+        baseMeliUpdatedAt: baseUnica ? baseUnica.updated_at : null,
+        baseStatus,
+        basesMeliCount: basesMeli.length,
+        prontoParaAnalise: hasGrantMl && basesMeli.length === 1,
+      };
+    });
+
+    res.json({ ok: true, clientes });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -304,25 +358,21 @@ async function iniciarDiagnosticoCompletoController(req, res) {
   try {
     const { clienteSlug, baseSlug, margemAlvo, observacoes } = req.body || {};
     if (!clienteSlug) return res.status(400).json({ ok: false, erro: "clienteSlug é obrigatório." });
-    if (!baseSlug) return res.status(400).json({ ok: false, erro: "baseSlug é obrigatório." });
 
-    const clienteSlugNorm = normalizarSlug(clienteSlug);
-    const baseSlugNorm = normalizarSlug(baseSlug);
-
-    const c = await pool.query("SELECT id, slug FROM clientes WHERE slug = $1", [clienteSlugNorm]);
-    if (!c.rows.length) return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
-
-    const b = await pool.query("SELECT id, slug FROM bases WHERE slug = $1", [baseSlugNorm]);
-    if (!b.rows.length) return res.status(404).json({ ok: false, erro: "Base não encontrada." });
-
-    const t = await pool.query("SELECT 1 FROM ml_tokens WHERE cliente_id = $1", [c.rows[0].id]);
-    if (!t.rows.length) return res.status(400).json({ ok: false, erro: "Cliente sem conta ML vinculada." });
+    // baseSlug é opcional: resolve automaticamente a base MELI vinculada ao
+    // cliente (e valida grant + baseSlug informado, quando houver).
+    const contexto = await exigirContextoPronto({
+      clienteSlugRaw: clienteSlug,
+      baseSlugRaw: baseSlug,
+    });
+    const cliente = contexto.cliente;
+    const base = contexto.base;
 
     const emAndamento = await pool.query(
       `SELECT id FROM relatorios
         WHERE cliente_id = $1 AND escopo = 'loja_completa' AND status = 'processando'
         ORDER BY id DESC LIMIT 1`,
-      [c.rows[0].id]
+      [cliente.id]
     );
     if (emAndamento.rows.length) {
       return res.status(409).json({
@@ -343,10 +393,10 @@ async function iniciarDiagnosticoCompletoController(req, res) {
        RETURNING id, created_at`,
       [
         req.user.id,
-        c.rows[0].id,
-        c.rows[0].slug,
-        b.rows[0].id,
-        b.rows[0].slug,
+        cliente.id,
+        cliente.slug,
+        base.id,
+        base.slug,
         margem,
         observacoes || null,
       ]
@@ -356,7 +406,7 @@ async function iniciarDiagnosticoCompletoController(req, res) {
     registrarLog({
       ...dadosUsuarioDeReq(req),
       acao: "automacoes.diagnostico_completo.start",
-      detalhes: { relatorio_id: relatorioId, cliente_slug: clienteSlugNorm, base_slug: baseSlugNorm },
+      detalhes: { relatorio_id: relatorioId, cliente_slug: cliente.slug, base_slug: base.slug },
       ip: extrairIp(req),
       status: "sucesso",
     });
@@ -374,7 +424,7 @@ async function iniciarDiagnosticoCompletoController(req, res) {
       created_at: ins.rows[0].created_at,
     });
   } catch (err) {
-    return res.status(500).json({ ok: false, erro: err.message });
+    return responderErroService(res, err);
   }
 }
 
@@ -397,12 +447,6 @@ async function buscarDiagnosticoCompletoController(req, res) {
   } catch (err) {
     return res.status(500).json({ ok: false, erro: err.message });
   }
-}
-
-function normalizarSlug(nome) {
-  return String(nome || "").trim().toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\w\-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
 }
 
 module.exports = {

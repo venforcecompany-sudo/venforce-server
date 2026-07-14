@@ -1527,4 +1527,11 @@ if (TOKEN) {
   carregarClientesParaFiltro();
   carregarPastas();
   carregarRelatorios();
+
+  // Deep-link: abrir direto o detalhe quando chegar de ?relatorio=<id>
+  // (usado pelo botão "Ver relatório completo" do Otimizador de Precificação ML).
+  const relatorioQuery = new URLSearchParams(window.location.search).get("relatorio");
+  if (relatorioQuery && /^\d+$/.test(relatorioQuery)) {
+    abrirDetalheRelatorio(relatorioQuery);
+  }
 }

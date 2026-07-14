@@ -3,355 +3,158 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Venforce — Automações</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <title>Venforce — Otimizador de Precificação ML</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Fundação Global V2: Hanken Grotesk (corpo) · Manrope (display) · IBM Plex Mono (códigos) -->
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- 1. Layout compartilhado (sidebar/topbar/estados globais indispensáveis) -->
   <link rel="stylesheet" href="style.css">
+  <!-- 2. Fundação Global V2 (tokens → componentes → página) -->
+  <link rel="stylesheet" href="css/vf-tokens-v2.css">
+  <link rel="stylesheet" href="css/vf-components-v2.css">
+  <link rel="stylesheet" href="css/pages/automacoes-v2.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
 </head>
-<body class="vf-page vf-page-automacoes">
+<body class="vf-page vf-page-dashboard vf-page-automacoes">
 
   <div class="vf-main-with-sidebar">
     <main class="vf-content">
+      <div class="vf-page-shell">
+        <div class="vf-page-container">
 
-      <div class="vf-page-header">
-        <h2>Automações</h2>
-        <p>Analise preços, margens e diagnósticos por cliente e base de custo.</p>
-      </div>
+          <!-- 1. PAGE HEADER -->
+          <header class="vf-page-header">
+            <div class="vf-page-header__main">
+              <p class="vf-page-header__eyebrow">Automações · Mercado Livre</p>
+              <h1 class="vf-page-header__title">Otimizador de Precificação ML</h1>
+              <p class="vf-page-header__description">Analise margem, custo, frete e preço-alvo dos anúncios ativos do Mercado Livre.</p>
+            </div>
+          </header>
 
-      <!-- Seção 1: Configuração da análise -->
-      <div class="vf-card vf-auto-section" style="margin-bottom:24px;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="4" y1="21" x2="4" y2="14"></line>
-              <line x1="4" y1="10" x2="4" y2="3"></line>
-              <line x1="12" y1="21" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12" y2="3"></line>
-              <line x1="20" y1="21" x2="20" y2="16"></line>
-              <line x1="20" y1="12" x2="20" y2="3"></line>
-              <line x1="1" y1="14" x2="7" y2="14"></line>
-              <line x1="9" y1="8" x2="15" y2="8"></line>
-              <line x1="17" y1="16" x2="23" y2="16"></line>
-            </svg>
-            Configuração da análise
-          </h5>
-        </div>
-        <div class="vf-auto-config-body">
-          <div class="vf-auto-config-grid">
-            <div class="vf-form-group" style="margin:0;">
-              <label for="automacoes-cliente-search">Buscar cliente</label>
-              <input id="automacoes-cliente-search" class="vf-input" type="search" placeholder="Digite nome ou slug" autocomplete="off" />
-              <div class="vf-form-group" style="margin:10px 0 0 0;">
-                <label for="automacoes-cliente">Selecionar cliente</label>
-                <select id="automacoes-cliente" class="vf-input">
-                  <option value="">Carregando...</option>
-                </select>
+          <!-- Feedback global da página -->
+          <div id="auto-feedback" class="vf-banner" role="status" aria-live="polite" hidden></div>
+
+          <!-- 2. CONFIGURAÇÃO DA ANÁLISE -->
+          <section class="vf-card vf-auto-config" id="auto-config-card">
+            <div class="vf-card__header">
+              <h2 class="vf-card__title">Configuração da análise</h2>
+            </div>
+            <div class="vf-card__body">
+              <div class="vf-form-grid vf-auto-config__grid">
+                <div class="vf-field">
+                  <label class="vf-field__label" for="auto-cliente-search">Buscar cliente</label>
+                  <input id="auto-cliente-search" class="vf-input vf-search" type="search" placeholder="Nome ou slug do cliente" autocomplete="off">
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="auto-cliente">Cliente</label>
+                  <select id="auto-cliente" class="vf-select">
+                    <option value="">Carregando…</option>
+                  </select>
+                  <p class="vf-field__hint">Clientes sem grant ML aparecem desabilitados.</p>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="auto-margem">Margem-alvo</label>
+                  <div class="vf-input-group">
+                    <input id="auto-margem" class="vf-input" type="number" min="1" max="99" step="0.5" placeholder="30" autocomplete="off">
+                    <span class="vf-input-suffix">%</span>
+                  </div>
+                  <p class="vf-field__hint">Margem de contribuição desejada para o preço-alvo.</p>
+                </div>
+              </div>
+
+              <!-- Prontidão do cliente (grant + base) -->
+              <div class="vf-auto-readiness" id="auto-readiness" hidden>
+                <div class="vf-auto-readiness__item">
+                  <span class="vf-auto-readiness__label">Grant ML</span>
+                  <span class="vf-status" id="rd-grant">—</span>
+                </div>
+                <div class="vf-auto-readiness__item">
+                  <span class="vf-auto-readiness__label">Base de custos</span>
+                  <span class="vf-auto-readiness__value" id="rd-base">—</span>
+                </div>
+                <div class="vf-auto-readiness__item">
+                  <span class="vf-auto-readiness__label">Atualização</span>
+                  <span class="vf-auto-readiness__value" id="rd-updated">—</span>
+                </div>
+                <div class="vf-auto-readiness__item">
+                  <span class="vf-auto-readiness__label">Status</span>
+                  <span class="vf-status" id="rd-status">—</span>
+                </div>
+              </div>
+
+              <!-- Banner de bloqueio (sem grant / sem base / múltiplas bases / erro) -->
+              <div id="auto-state-banner" class="vf-banner" role="status" aria-live="polite" hidden></div>
+            </div>
+            <div class="vf-card__footer">
+              <button type="button" id="btn-otimizador-analisar" class="vf-btn vf-btn--primary" disabled>
+                Analisar loja
+              </button>
+            </div>
+          </section>
+
+          <!-- 3. PROCESSANDO -->
+          <section class="vf-card vf-auto-progress" id="auto-progress-card" hidden aria-live="polite">
+            <div class="vf-card__body">
+              <div class="vf-loading-state">
+                <span class="vf-spinner vf-spinner--lg" aria-hidden="true"></span>
+                <div class="vf-auto-progress__status" id="auto-progress-status">Iniciando análise da loja…</div>
+              </div>
+              <div class="vf-progress vf-auto-progress__bar-track">
+                <div class="vf-progress__bar" id="auto-progress-bar"></div>
+              </div>
+              <div class="vf-auto-progress__meta" id="auto-progress-meta"></div>
+            </div>
+          </section>
+
+          <!-- 4. RESULTADO -->
+          <section class="vf-auto-results" id="auto-results" hidden>
+            <div class="vf-section">
+              <div class="vf-section__header">
+                <div>
+                  <h2 class="vf-section__title">Resultado da análise</h2>
+                  <p class="vf-section__description" id="auto-results-sub">—</p>
+                </div>
+              </div>
+              <div class="vf-kpi-grid" id="auto-kpis"></div>
+            </div>
+
+            <div class="vf-section vf-auto-priorities">
+              <div class="vf-section__header">
+                <div>
+                  <h3 class="vf-section__title">Prioridades encontradas</h3>
+                  <p class="vf-section__description">Até 10 itens que mais exigem atenção. Detalhes completos em Relatórios.</p>
+                </div>
+                <span class="vf-badge" id="auto-priorities-count" hidden>0</span>
+              </div>
+              <div class="vf-table-wrap">
+                <table class="vf-table vf-auto-priorities__table">
+                  <thead>
+                    <tr>
+                      <th>MLB</th>
+                      <th>Título</th>
+                      <th class="num">Preço atual</th>
+                      <th class="num">MC</th>
+                      <th class="num">Preço-alvo</th>
+                      <th>Diagnóstico</th>
+                      <th>Ação recomendada</th>
+                    </tr>
+                  </thead>
+                  <tbody id="auto-priorities-tbody"></tbody>
+                </table>
               </div>
             </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="automacoes-base-search">Buscar base</label>
-              <input id="automacoes-base-search" class="vf-input" type="search" placeholder="Digite nome ou slug da base" autocomplete="off" />
-              <div class="vf-form-group" style="margin:10px 0 0 0;">
-                <label for="automacoes-base">Selecionar base</label>
-                <select id="automacoes-base" class="vf-input">
-                  <option value="">Carregando...</option>
-                </select>
-              </div>
+
+            <div class="vf-auto-actions">
+              <button type="button" id="btn-ver-relatorio-completo" class="vf-btn vf-btn--primary">Ver relatório completo</button>
+              <button type="button" id="btn-baixar-xlsx" class="vf-btn vf-btn--secondary">Baixar XLSX</button>
+              <button type="button" id="btn-nova-analise" class="vf-btn vf-btn--secondary">Nova análise</button>
             </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="automacoes-margem">Margem alvo (%)</label>
-              <input id="automacoes-margem" class="vf-input" type="number" min="1" max="99" step="0.5" placeholder="Ex: 30" />
-            </div>
-          </div>
-          <div id="automacoes-status" style="margin-top:8px;font-size:.875rem;display:none;"></div>
-          <div class="vf-auto-actions">
-            <button type="button" id="btn-precificacao-preview" class="vf-btn-primary vf-auto-btn-main" style="margin:0;">
-              Analisar base
-            </button>
-            <button type="button" id="btn-precificacao-preview-ml" class="vf-btn-secondary" style="margin:0;">
-              Prévia com dados ML
-            </button>
-          </div>
+          </section>
+
         </div>
       </div>
-
-      <!-- Seção 2: Preview da base de custo -->
-      <div class="vf-card" style="margin-bottom:24px;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="3" y1="9" x2="21" y2="9"></line>
-              <line x1="3" y1="15" x2="21" y2="15"></line>
-              <line x1="9" y1="3" x2="9" y2="21"></line>
-            </svg>
-            Preview da base de custo
-            <span class="vf-auto-section-tag">somente leitura</span>
-          </h5>
-          <span class="vf-badge" id="precificacao-total" style="display:none;">0</span>
-        </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div id="precificacao-preview-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
-            <p>Selecione um cliente e uma base, e clique em "Analisar base".</p>
-          </div>
-          <div id="precificacao-preview-box" class="vf-table-wrapper" style="display:none;">
-            <div style="margin-bottom:10px;color:var(--vf-text-m);font-size:.875rem;">
-              <div><strong>Cliente:</strong> <span id="precificacao-cliente">—</span></div>
-              <div><strong>Base:</strong> <span id="precificacao-base">—</span></div>
-            </div>
-            <table class="vf-table">
-              <thead>
-                <tr>
-                  <th>Produto</th>
-                  <th style="text-align:right;">Custo</th>
-                  <th style="text-align:right;">Imposto (%)</th>
-                  <th style="text-align:right;">Taxa fixa</th>
-                </tr>
-              </thead>
-              <tbody id="precificacao-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- Seção 3: Preview Mercado Livre -->
-      <div class="vf-card vf-ml-preview" style="margin-bottom:24px;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="20" x2="12" y2="10"></line>
-              <line x1="18" y1="20" x2="18" y2="4"></line>
-              <line x1="6" y1="20" x2="6" y2="16"></line>
-            </svg>
-            Preview Mercado Livre
-            <span class="vf-auto-section-tag">somente leitura</span>
-          </h5>
-          <span class="vf-badge" id="precificacao-ml-total" style="display:none;">0</span>
-        </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div style="margin-bottom:12px;color:var(--vf-text-m);font-size:.875rem;">
-            Esta prévia não altera anúncios, preços, estoque, campanhas ou integrações do cliente.
-          </div>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
-            <button type="button" id="btn-precificacao-ml-salvar" class="vf-btn-secondary" style="margin:0;" disabled>
-              Salvar relatório
-            </button>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <button type="button" id="btn-precificacao-ml-prev" class="vf-btn-secondary" style="margin:0;padding:.4rem .7rem;" disabled>Anterior</button>
-              <button type="button" id="btn-precificacao-ml-next" class="vf-btn-secondary" style="margin:0;padding:.4rem .7rem;" disabled>Próxima</button>
-              <span id="precificacao-ml-page" style="color:var(--vf-text-m);font-size:.875rem;">Página 1</span>
-            </div>
-          </div>
-
-          <!-- Pós-salvar relatório -->
-          <div id="vf-pos-salvar-relatorio" class="vf-pos-salvar-card" style="display:none;">
-            <div class="vf-pos-salvar-top">
-              <div>
-                <div id="vf-pos-salvar-relatorio-titulo" class="vf-pos-salvar-title">Relatório pronto para uso</div>
-                <div id="vf-pos-salvar-relatorio-resumo" class="vf-pos-salvar-sub">—</div>
-              </div>
-              <div class="vf-pos-salvar-actions">
-                <button type="button" id="vf-pos-salvar-baixar-xlsx" class="vf-btn-primary" style="margin:0;">Baixar XLSX</button>
-                <button type="button" id="vf-pos-salvar-ver-detalhes" class="vf-btn-secondary" style="margin:0;">Ver detalhes</button>
-                <button type="button" id="vf-pos-salvar-abrir-relatorios" class="vf-btn-secondary" style="margin:0;">Abrir em Relatórios</button>
-                <button type="button" id="vf-pos-salvar-nova-analise" class="vf-btn-secondary" style="margin:0;">Nova análise</button>
-              </div>
-            </div>
-          </div>
-
-          <div id="precificacao-ml-insights" class="vf-ml-insights" style="display:none;"></div>
-          <div id="precificacao-ml-controls" class="vf-ml-controls" style="display:none;">
-            <div class="vf-form-group" style="margin:0;max-width:360px;">
-              <label for="precificacao-ml-search">Buscar na página atual</label>
-              <input id="precificacao-ml-search" class="vf-input" type="search" placeholder="Digite título ou MLB..." autocomplete="off" />
-            </div>
-            <div id="precificacao-ml-filter-buttons" class="vf-ml-filter-buttons"></div>
-          </div>
-          <div id="precificacao-ml-preview-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
-            <p>Selecione um cliente e uma base, e clique em "Prévia com dados ML".</p>
-          </div>
-          <div id="precificacao-ml-preview-box" class="vf-table-wrapper" style="display:none;">
-            <table class="vf-table vf-table-ml">
-              <thead>
-                <tr>
-                  <th>Item (MLB)</th>
-                  <th>Título</th>
-                  <th>Status</th>
-                  <th style="text-align:right;">Preço original</th>
-                  <th style="text-align:right;">Promocional</th>
-                  <th>Tipo anúncio</th>
-                  <th style="text-align:right;">Custo</th>
-                  <th style="text-align:right;">Imposto (%)</th>
-                  <th style="text-align:right;">Frete (R$)</th>
-                  <th>Tem base</th>
-                  <th>Diagnóstico</th>
-                  <th style="text-align:right;">Comissão (%)</th>
-                  <th style="text-align:right;">LC (R$)</th>
-                  <th style="text-align:right;">MC (%)</th>
-                  <th style="text-align:right;">Preço Alvo (R$)</th>
-                  <th style="text-align:right;">Ajuste sugerido</th>
-                </tr>
-              </thead>
-              <tbody id="precificacao-ml-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- Seção 4: Diagnóstico completo -->
-      <div class="vf-card" id="vf-diagnostico-card" style="margin-bottom:24px;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-            </svg>
-            Diagnóstico completo da loja
-          </h5>
-          <span id="vf-diagnostico-status-badge" class="vf-ml-badge vf-ml-badge-neutral">Aguardando</span>
-        </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div style="color:var(--vf-text-m);font-size:.875rem;line-height:1.5;margin-bottom:12px;">
-            Percorre todos os anúncios ativos da loja e gera um relatório consolidado com diagnóstico, contadores e MC média.
-          </div>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
-            <button type="button" id="btn-diagnostico-completo-start" class="vf-btn-secondary" style="margin:0;" disabled>
-              Gerar diagnóstico completo
-            </button>
-            <span id="vf-diagnostico-status-text" style="color:var(--vf-text-m);font-size:.875rem;">Selecione cliente e base para habilitar.</span>
-          </div>
-          <div id="vf-diagnostico-progress" style="display:none;margin-bottom:12px;">
-            <div style="height:8px;background:var(--vf-border);border-radius:999px;overflow:hidden;">
-              <div id="vf-diagnostico-progress-bar" style="height:100%;width:0%;background:var(--vf-primary);transition:width .25s ease;"></div>
-            </div>
-          </div>
-          <div id="vf-diagnostico-resumo" class="vf-ml-insights" style="display:none;"></div>
-          <div id="vf-diagnostico-final" class="vf-empty-state" style="display:none;padding:1rem 1rem;margin-top:10px;"></div>
-
-          <!-- Relatório pronto (pós-diagnóstico / pós-salvar) -->
-          <div id="vf-relatorio-pronto-panel" class="vf-pos-salvar-card vf-relatorio-pronto-card" style="display:none;">
-            <div class="vf-pos-salvar-top">
-              <div>
-                <div id="vf-relatorio-pronto-titulo" class="vf-pos-salvar-title">Relatório pronto para uso</div>
-                <div id="vf-relatorio-pronto-resumo" class="vf-pos-salvar-sub">—</div>
-              </div>
-              <div class="vf-pos-salvar-actions">
-                <button type="button" id="vf-relatorio-pronto-baixar-xlsx" class="vf-btn-primary" style="margin:0;">Baixar XLSX</button>
-                <button type="button" id="vf-relatorio-pronto-ver-detalhes" class="vf-btn-secondary" style="margin:0;">Ver detalhes</button>
-                <button type="button" id="vf-relatorio-pronto-abrir-relatorios" class="vf-btn-secondary" style="margin:0;">Abrir em Relatórios</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Seção 5: Relatórios salvos do cliente -->
-      <div class="vf-card" id="vf-relatorios-card" style="margin-bottom:24px;display:none;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-            </svg>
-            Relatórios salvos do cliente
-          </h5>
-          <span class="vf-badge" id="vf-relatorios-total" style="display:none;">0</span>
-        </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div style="display:flex;justify-content:flex-end;align-items:center;margin-bottom:10px;">
-            <button type="button" id="btn-relatorios-refresh" class="vf-btn-secondary" style="margin:0;padding:.4rem .7rem;">Atualizar</button>
-          </div>
-          <div id="vf-relatorios-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
-            <p>Selecione um cliente para ver os relatórios salvos.</p>
-          </div>
-          <div id="vf-relatorios-wrapper" class="vf-table-wrapper" style="display:none;">
-            <table class="vf-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Data</th>
-                  <th>Base</th>
-                  <th>Escopo</th>
-                  <th style="text-align:right;">Margem alvo</th>
-                  <th style="text-align:right;">Itens</th>
-                  <th style="text-align:right;">Críticos</th>
-                  <th style="text-align:right;">Atenção</th>
-                  <th style="text-align:right;">Saudáveis</th>
-                  <th style="text-align:right;">Sem base</th>
-                  <th style="text-align:right;">MC média</th>
-                  <th>Status</th>
-                  <th>Detalhes</th>
-                  <th>Excluir</th>
-                  <th>Exportar</th>
-                </tr>
-              </thead>
-              <tbody id="vf-relatorios-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
     </main>
-  </div>
-
-  <div id="vf-calc-modal" class="vf-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;">
-    <div style="background:var(--vf-surface);border-radius:14px;max-width:520px;width:90%;padding:1.5rem;box-shadow:var(--vf-shadow-card);">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <h5 style="margin:0;">Como o cálculo foi feito</h5>
-        <button id="vf-calc-modal-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;">×</button>
-      </div>
-      <div id="vf-calc-modal-body"></div>
-    </div>
-  </div>
-
-  <div id="vf-relatorio-detalhe-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;padding:20px;">
-    <div style="background:var(--vf-surface);border-radius:14px;max-width:1280px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:var(--vf-shadow-card);overflow:hidden;">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:1.25rem 1.5rem;border-bottom:1px solid var(--vf-border);">
-        <h5 style="margin:0;display:flex;align-items:center;gap:8px;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-          </svg>
-          <span id="vf-relatorio-detalhe-titulo">Detalhe do relatório</span>
-        </h5>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <button id="btn-relatorio-detalhe-csv" type="button" class="vf-btn-secondary" style="margin:0;padding:.35rem .65rem;" disabled>CSV</button>
-          <button id="btn-relatorio-detalhe-xlsx" type="button" class="vf-btn-secondary" style="margin:0;padding:.35rem .65rem;" disabled>XLSX</button>
-          <button id="vf-relatorio-detalhe-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;color:var(--vf-text-m);" aria-label="Fechar">×</button>
-        </div>
-      </div>
-      <div id="vf-relatorio-detalhe-body" style="padding:1.25rem 1.5rem;overflow:auto;flex:1;">
-        <div id="vf-relatorio-detalhe-loading" style="color:var(--vf-text-m);">Carregando...</div>
-        <div id="vf-relatorio-detalhe-content" style="display:none;">
-          <div id="vf-relatorio-detalhe-resumo" class="vf-ml-insights" style="display:grid;"></div>
-          <div id="vf-relatorio-detalhe-meta" style="margin:14px 0;color:var(--vf-text-m);font-size:.875rem;"></div>
-          <div class="vf-table-wrapper">
-            <table class="vf-table">
-              <thead>
-                <tr>
-                  <th>Item (MLB)</th>
-                  <th>Título</th>
-                  <th style="text-align:right;">Preço original</th>
-                  <th style="text-align:right;">Promocional</th>
-                  <th style="text-align:right;">Efetivo</th>
-                  <th style="text-align:right;">Custo</th>
-                  <th style="text-align:right;">Imposto (%)</th>
-                  <th style="text-align:right;">Frete (R$)</th>
-                  <th style="text-align:right;">Comissão (%)</th>
-                  <th>Tem base</th>
-                  <th>Diagnóstico</th>
-                  <th style="text-align:right;">LC (R$)</th>
-                  <th style="text-align:right;">MC (%)</th>
-                  <th style="text-align:right;">Preço Alvo (R$)</th>
-                </tr>
-              </thead>
-              <tbody id="vf-relatorio-detalhe-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <script src="layout.js"></script>

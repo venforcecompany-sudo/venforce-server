@@ -1,3 +1,13 @@
+// Portal/automacoes.js
+// Otimizador de Precificação ML — fluxo único:
+//   selecionar cliente → margem-alvo → prontidão automática (grant + base MELI)
+//   → Analisar loja → diagnóstico completo assíncrono → KPIs + prioridades
+//   → encaminhar detalhes para a página Relatórios.
+//
+// A base NÃO é escolhida manualmente: o backend resolve a base MELI vinculada
+// ao cliente (custo/imposto/taxa fixa). O grant fornece anúncios/preço/comissão/frete.
+// Nenhuma fórmula é calculada aqui.
+
 const STORAGE_KEY = "vf-token";
 const API_BASE = "https://venforce-server.onrender.com";
 
@@ -15,80 +25,20 @@ const canAccessAutomacoes =
 if (!canAccessAutomacoes) window.location.replace("dashboard.html");
 initLayout();
 
-let ALL_CLIENTES = [];
-let ALL_BASES = [];
-let PREVIEW_ML_PAGE = 1;
-const PREVIEW_ML_LIMIT = 20;
-let PREVIEW_ML_ROWS = [];
-let PREVIEW_ML_FILTER = "todos";
-let PREVIEW_ML_SEARCH = "";
+// ─── Estado ──────────────────────────────────────────────────────────────
+let ALL_CLIENTES = [];               // contexto de prontidão vindo do backend
 let DIAG_POLL_TIMER = null;
 let DIAG_RELATORIO_ID = null;
-let DIAG_ULTIMO_RELATORIO = null;
-let RELATORIO_DETALHE_ATUAL_ID = null;
-let ULTIMO_RELATORIO_SALVO_ID = null;
-let ULTIMO_RELATORIO_SALVO_META = null;
-let ULTIMO_RELATORIO_PRONTO_ID = null;
-let ULTIMO_RELATORIO_PRONTO_META = null;
-const PREVIEW_ML_FILTERS = [
-  { key: "todos", label: "Todos" },
-  { key: "critico", label: "Críticos" },
-  { key: "atencao", label: "Atenção" },
-  { key: "saudavel", label: "Saudáveis" },
-  { key: "sem_base", label: "Sem base" },
-  { key: "sem_frete", label: "Sem frete" },
-  { key: "sem_comissao", label: "Sem comissão" },
-];
+let DIAG_ULTIMO_STATUS = "";
+let RELATORIO_CONCLUIDO_ID = null;
 
-function abrirModalCalculo(r) {
-  const modal = document.getElementById("vf-calc-modal");
-  const body = document.getElementById("vf-calc-modal-body");
-  if (!modal || !body) return;
-  const brl = (n) => Number.isFinite(Number(n)) ? new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(Number(n)) : "—";
-  const pct = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const fmtPct = (n) => Number.isFinite(Number(n)) ? `${(Number(n) * 100).toFixed(2)}%` : "—";
-  const preco = Number(r.precoEfetivo);
-  const imp = Number(r.impostoPercentual);
-  const impAliq = Number.isFinite(imp) ? (imp > 1 ? imp/100 : imp) : 0;
-  const valorImposto = Number.isFinite(preco) ? preco * impAliq : null;
-  body.innerHTML = `
-    <div style="font-family:var(--vf-mono);font-size:.85rem;line-height:1.8;">
-      <div><strong>Item:</strong> ${escapeHTML(r.item_id || "—")}</div>
-      <hr style="margin:.75rem 0;opacity:.3;">
-      <div>Preço efetivo: <strong>${brl(r.precoEfetivo)}</strong></div>
-      <div>(−) Imposto (${fmtPct(impAliq)}): ${brl(valorImposto)}</div>
-      <div>(−) Comissão ML: ${Number.isFinite(Number(r.comissaoPercentual)) ? pct.format(Number(r.comissaoPercentual)) + "%" : "—"}</div>
-      <div>(−) Frete: ${brl(r.frete)}</div>
-      <div>(−) Taxa fixa: ${brl(r.taxaFixa)}</div>
-      <div>(−) Custo produto: ${brl(r.custoProduto)}</div>
-      <hr style="margin:.75rem 0;opacity:.3;">
-      <div><strong>= Lucro de Contribuição: ${brl(r.lucroContribuicao)}</strong></div>
-      <div><strong>Margem de Contribuição: ${fmtPct(r.margemContribuicao)}</strong></div>
-      ${r.precoAlvo != null ? `<hr style="margin:.75rem 0;opacity:.3;"><div><strong>Preço Alvo (margem desejada): ${brl(r.precoAlvo)}</strong></div>` : ""}
-    </div>
-  `;
-  modal.style.display = "flex";
-}
+const POLL_INTERVAL_MS = 3000;
 
-document.getElementById("vf-calc-modal-close")?.addEventListener("click", () => {
-  document.getElementById("vf-calc-modal").style.display = "none";
-});
-document.getElementById("vf-calc-modal")?.addEventListener("click", (e) => {
-  if (e.target.id === "vf-calc-modal") e.target.style.display = "none";
-});
-
+// ─── Utilidades ──────────────────────────────────────────────────────────
 function clearSession() {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem("vf-user");
   window.location.replace("index.html");
-}
-
-function setStatus(msg, color) {
-  const el = document.getElementById("automacoes-status");
-  if (!el) return;
-  el.textContent = msg || "";
-  el.style.color = color || "var(--vf-text-m)";
-  el.style.display = msg ? "block" : "none";
 }
 
 function escapeHTML(s) {
@@ -97,1619 +47,537 @@ function escapeHTML(s) {
   return d.innerHTML;
 }
 
-function setClientesOptions(select, clientes) {
+const brlFmt = new Intl.NumberFormat("pt-BR", {
+  style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
+const pctFmt = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function fmtMoney(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? brlFmt.format(n) : "—";
+}
+function fmtMcFraction(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? `${pctFmt.format(n * 100)}%` : "—";
+}
+function fmtInt(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? String(n) : "0";
+}
+
+function formatarDataHora(iso) {
+  if (!iso) return "—";
+  try { return new Date(iso).toLocaleString("pt-BR"); }
+  catch (_) { return String(iso); }
+}
+
+// "Atualização": data curta + idade relativa da base.
+function formatarIdadeBase(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  const dataCurta = d.toLocaleDateString("pt-BR");
+  const dias = Math.floor((Date.now() - d.getTime()) / 86400000);
+  let idade;
+  if (dias <= 0) idade = "hoje";
+  else if (dias === 1) idade = "ontem";
+  else if (dias < 30) idade = `há ${dias} dias`;
+  else if (dias < 365) idade = `há ${Math.floor(dias / 30)} meses`;
+  else idade = `há ${Math.floor(dias / 365)} ano(s)`;
+  return `${dataCurta} · ${idade}`;
+}
+
+function getMargemDecimal() {
+  const raw = Number(document.getElementById("auto-margem")?.value);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  return raw / 100;
+}
+
+// ─── Feedback / banners ──────────────────────────────────────────────────
+function setFeedback(msg, tone) {
+  const el = document.getElementById("auto-feedback");
+  if (!el) return;
+  if (!msg) { el.hidden = true; el.innerHTML = ""; return; }
+  el.className = `vf-banner${tone ? " is-" + tone : ""}`;
+  el.innerHTML = `<div class="vf-banner__content"><p class="vf-banner__description">${escapeHTML(msg)}</p></div>`;
+  el.hidden = false;
+}
+
+function setStateBanner({ tone, titulo, descricao } = {}) {
+  const el = document.getElementById("auto-state-banner");
+  if (!el) return;
+  if (!titulo && !descricao) { el.hidden = true; el.innerHTML = ""; return; }
+  el.className = `vf-banner${tone ? " is-" + tone : ""}`;
+  el.innerHTML = `
+    <div class="vf-banner__content">
+      ${titulo ? `<p class="vf-banner__title">${escapeHTML(titulo)}</p>` : ""}
+      ${descricao ? `<p class="vf-banner__description">${escapeHTML(descricao)}</p>` : ""}
+    </div>`;
+  el.hidden = false;
+}
+
+// ─── Carregamento de clientes ────────────────────────────────────────────
+async function loadClientes() {
+  if (!TOKEN) return;
+  const select = document.getElementById("auto-cliente");
+  if (select) { select.disabled = true; select.innerHTML = `<option value="">Carregando…</option>`; }
+
+  try {
+    const res = await fetch(`${API_BASE}/automacoes/clientes`, {
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json().catch(() => ({}));
+    ALL_CLIENTES = Array.isArray(data.clientes) ? data.clientes : [];
+    renderClienteOptions(ALL_CLIENTES);
+    if (select) select.disabled = false;
+
+    if (!ALL_CLIENTES.length) {
+      setFeedback("Nenhum cliente ativo encontrado.", "warning");
+    }
+  } catch (err) {
+    ALL_CLIENTES = [];
+    if (select) { select.disabled = true; select.innerHTML = `<option value="">Erro ao carregar clientes</option>`; }
+    setFeedback("Não foi possível carregar os clientes. Tente novamente.", "danger");
+  }
+}
+
+function renderClienteOptions(clientes) {
+  const select = document.getElementById("auto-cliente");
   if (!select) return;
+  const currentValue = select.value || "";
   select.innerHTML = "";
   select.appendChild(new Option("Selecione um cliente…", ""));
 
   (Array.isArray(clientes) ? clientes : []).forEach((c) => {
     const slug = c.slug || "";
     const nome = c.nome || slug || "—";
-    const opt = new Option(`${nome} (${slug})`, slug);
+    const semGrant = !c.hasGrantMl;
+    const rotulo = semGrant ? `${nome} (${slug}) — sem grant ML` : `${nome} (${slug})`;
+    const opt = new Option(rotulo, slug);
+    // Clientes sem grant ML aparecem visíveis porém desabilitados.
+    if (semGrant) opt.disabled = true;
     select.appendChild(opt);
   });
-}
 
-function esconderPainelPosSalvar() {
-  const box = document.getElementById("vf-pos-salvar-relatorio");
-  if (box) box.style.display = "none";
-}
-
-function esconderPainelRelatorioPronto() {
-  const box = document.getElementById("vf-relatorio-pronto-panel");
-  if (box) box.style.display = "none";
-}
-
-function buildResumoRelatorioPronto(meta = {}) {
-  const idTxt = meta?.relatorioId ? `#${meta.relatorioId}` : "—";
-  const bits = [];
-  bits.push(`<span style="font-family:var(--vf-mono);">${escapeHTML(idTxt)}</span>`);
-
-  const addSep = () => bits.push(`<span class="vf-meta-sep">·</span>`);
-  const add = (label, valueHtml) => {
-    addSep();
-    bits.push(`${escapeHTML(label)} ${valueHtml}`);
-  };
-
-  const n = (v) => (Number.isFinite(Number(v)) ? String(Number(v)) : null);
-  const mcMedia = meta?.mcMedia != null && typeof formatarMcMedia === "function"
-    ? formatarMcMedia(meta.mcMedia)
-    : null;
-
-  if (meta?.clienteSlug) add("Cliente", `<strong>${escapeHTML(meta.clienteSlug)}</strong>`);
-  if (meta?.baseSlug) add("Base", `<strong>${escapeHTML(meta.baseSlug)}</strong>`);
-
-  if (n(meta?.total) != null) add("Total", `<strong>${escapeHTML(n(meta.total))}</strong>`);
-  if (n(meta?.comBase) != null) add("Com base", `<strong>${escapeHTML(n(meta.comBase))}</strong>`);
-  if (n(meta?.semBase) != null) add("Sem base", `<strong>${escapeHTML(n(meta.semBase))}</strong>`);
-  if (n(meta?.criticos) != null) add("Críticos", `<strong>${escapeHTML(n(meta.criticos))}</strong>`);
-  if (n(meta?.atencao) != null) add("Atenção", `<strong>${escapeHTML(n(meta.atencao))}</strong>`);
-  if (n(meta?.saudaveis) != null) add("Saudáveis", `<strong>${escapeHTML(n(meta.saudaveis))}</strong>`);
-  if (mcMedia != null && mcMedia !== "—") add("MC média", `<strong>${escapeHTML(mcMedia)}</strong>`);
-
-  // fallback do fluxo manual
-  if (n(meta?.itensSalvos) != null) add("Itens salvos", `<strong>${escapeHTML(n(meta.itensSalvos))}</strong>`);
-  if (meta?.margemAlvo != null && typeof formatarMargemAlvo === "function") {
-    const margemTxt = formatarMargemAlvo(meta.margemAlvo);
-    if (margemTxt && margemTxt !== "—") add("Margem alvo", `<strong>${escapeHTML(margemTxt)}</strong>`);
-  }
-
-  return bits.join(" ");
-}
-
-function mostrarRelatorioPronto(meta = {}) {
-  const relatorioId = meta?.relatorioId ?? meta?.id ?? null;
-  if (!relatorioId) return;
-
-  ULTIMO_RELATORIO_PRONTO_ID = relatorioId;
-  ULTIMO_RELATORIO_PRONTO_META = { ...meta, relatorioId };
-
-  // Painel do diagnóstico
-  const diagBox = document.getElementById("vf-relatorio-pronto-panel");
-  const diagResumo = document.getElementById("vf-relatorio-pronto-resumo");
-  if (diagBox && diagResumo) {
-    diagResumo.innerHTML = buildResumoRelatorioPronto(ULTIMO_RELATORIO_PRONTO_META);
-    diagBox.style.display = "block";
-  }
-
-  // Painel pós-salvar (já existente) — reaproveita a mesma meta
-  const saveBox = document.getElementById("vf-pos-salvar-relatorio");
-  const saveResumo = document.getElementById("vf-pos-salvar-relatorio-resumo");
-  const saveTitulo = document.getElementById("vf-pos-salvar-relatorio-titulo");
-  if (saveBox && saveResumo) {
-    if (saveTitulo) saveTitulo.textContent = "Relatório pronto para uso";
-    saveResumo.innerHTML = buildResumoRelatorioPronto(ULTIMO_RELATORIO_PRONTO_META);
-    saveBox.style.display = "block";
+  // Preserva a seleção atual quando ainda existe no filtro.
+  if (currentValue && clientes.some((c) => (c.slug || "") === currentValue && c.hasGrantMl)) {
+    select.value = currentValue;
   }
 }
 
-function mostrarPainelPosSalvar({ relatorioId, clienteSlug, baseSlug, itensSalvos, margemAlvo } = {}) {
-  const box = document.getElementById("vf-pos-salvar-relatorio");
-  const titulo = document.getElementById("vf-pos-salvar-relatorio-titulo");
-  const resumo = document.getElementById("vf-pos-salvar-relatorio-resumo");
-  if (!box || !resumo) return;
-
-  const idTxt = relatorioId ? `#${relatorioId}` : "—";
-  const clienteTxt = clienteSlug || "—";
-  const baseTxt = baseSlug || "—";
-  const itensTxt = Number.isFinite(Number(itensSalvos)) ? String(Number(itensSalvos)) : "—";
-  const margemTxt = typeof formatarMargemAlvo === "function" ? formatarMargemAlvo(margemAlvo) : "—";
-
-  if (titulo) titulo.textContent = "Relatório pronto para uso";
-  resumo.innerHTML = `
-    <span style="font-family:var(--vf-mono);">${escapeHTML(idTxt)}</span>
-    <span class="vf-meta-sep">·</span>
-    Cliente <strong>${escapeHTML(clienteTxt)}</strong>
-    <span class="vf-meta-sep">·</span>
-    Base <strong>${escapeHTML(baseTxt)}</strong>
-    <span class="vf-meta-sep">·</span>
-    ${escapeHTML(itensTxt)} itens salvos
-    <span class="vf-meta-sep">·</span>
-    Margem alvo <strong>${escapeHTML(margemTxt)}</strong>
-  `;
-
-  box.style.display = "block";
-}
-
-function applyClienteSearchFilter({ keepValueIfPossible = true } = {}) {
-  const input = document.getElementById("automacoes-cliente-search");
-  const select = document.getElementById("automacoes-cliente");
-  if (!select) return;
-
-  const q = (input?.value || "").trim().toLowerCase();
-  const filtered = !q
+function applyClienteSearch() {
+  const q = (document.getElementById("auto-cliente-search")?.value || "").trim().toLowerCase();
+  const filtrados = !q
     ? ALL_CLIENTES
     : ALL_CLIENTES.filter((c) => {
-        const nome = (c?.nome || "").toString().toLowerCase();
-        const slug = (c?.slug || "").toString().toLowerCase();
+        const nome = String(c.nome || "").toLowerCase();
+        const slug = String(c.slug || "").toLowerCase();
         return nome.includes(q) || slug.includes(q);
       });
-
-  const currentValue = select.value || "";
-  setClientesOptions(select, filtered);
-
-  if (keepValueIfPossible && currentValue) {
-    const stillThere = filtered.some((c) => (c?.slug || "") === currentValue);
-    if (stillThere) {
-      select.value = currentValue;
-    } else {
-      select.value = "";
-      setStatus("Cliente atual não está no filtro. Selecione um cliente.", "var(--vf-text-m)");
-    }
-  }
+  renderClienteOptions(filtrados);
+  onClienteChange();
 }
 
-function setBasesOptions(select, bases) {
-  if (!select) return;
-  select.innerHTML = "";
-  select.appendChild(new Option("Selecione uma base…", ""));
-
-  (Array.isArray(bases) ? bases : []).forEach((b) => {
-    const slug = b.slug || "";
-    const nome = b.nome || slug || "—";
-    const opt = new Option(`${nome} (${slug})`, slug);
-    select.appendChild(opt);
-  });
+function getClienteAtual() {
+  const slug = document.getElementById("auto-cliente")?.value || "";
+  if (!slug) return null;
+  return ALL_CLIENTES.find((c) => (c.slug || "") === slug) || null;
 }
 
-function applyBaseSearchFilter({ keepValueIfPossible = true } = {}) {
-  const input = document.getElementById("automacoes-base-search");
-  const select = document.getElementById("automacoes-base");
-  if (!select) return;
+// ─── Prontidão (grant + base) ────────────────────────────────────────────
+function onClienteChange() {
+  // Trocar de cliente encerra qualquer resultado/processamento visível.
+  resetResultadoEProcessamento();
+  setFeedback("");
 
-  const q = (input?.value || "").trim().toLowerCase();
-  const filtered = !q
-    ? ALL_BASES
-    : ALL_BASES.filter((b) => {
-        const nome = (b?.nome || "").toString().toLowerCase();
-        const slug = (b?.slug || "").toString().toLowerCase();
-        return nome.includes(q) || slug.includes(q);
-      });
+  const ctx = getClienteAtual();
+  const readiness = document.getElementById("auto-readiness");
+  const btn = document.getElementById("btn-otimizador-analisar");
 
-  const currentValue = select.value || "";
-  setBasesOptions(select, filtered);
-
-  if (keepValueIfPossible && currentValue) {
-    const stillThere = filtered.some((b) => (b?.slug || "") === currentValue);
-    if (stillThere) {
-      select.value = currentValue;
-    } else {
-      select.value = "";
-      setStatus("Base atual não está no filtro. Selecione uma base.", "var(--vf-text-m)");
-    }
-  }
-}
-
-async function loadClientes() {
-  if (!TOKEN) return;
-
-  const select = document.getElementById("automacoes-cliente");
-  if (select) {
-    select.disabled = true;
-    select.innerHTML = `<option value="">Carregando...</option>`;
-  }
-
-  setStatus("", "");
-
-  try {
-    const res = await fetch(`${API_BASE}/automacoes/clientes`, {
-      headers: { Authorization: "Bearer " + TOKEN }
-    });
-
-    if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json().catch(() => ({}));
-    const clientes = Array.isArray(data.clientes) ? data.clientes : (Array.isArray(data) ? data : []);
-
-    ALL_CLIENTES = clientes;
-    applyClienteSearchFilter({ keepValueIfPossible: false });
-    if (select) select.disabled = false;
-
-    if (!clientes.length) {
-      setStatus("Nenhum cliente encontrado.", "var(--vf-text-m)");
-    }
-  } catch (err) {
-    ALL_CLIENTES = [];
-    if (select) {
-      select.disabled = true;
-      select.innerHTML = `<option value="">Erro ao carregar clientes</option>`;
-    }
-    setStatus("Não foi possível carregar os clientes. Tente novamente.", "var(--vf-danger)");
-  }
-}
-
-async function loadBases() {
-  if (!TOKEN) return;
-
-  const select = document.getElementById("automacoes-base");
-  if (select) {
-    select.disabled = true;
-    select.innerHTML = `<option value="">Carregando...</option>`;
-  }
-
-  try {
-    const res = await fetch(`${API_BASE}/bases`, {
-      headers: { Authorization: "Bearer " + TOKEN }
-    });
-
-    if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json().catch(() => ({}));
-    const bases = Array.isArray(data.bases) ? data.bases : (Array.isArray(data) ? data : []);
-
-    ALL_BASES = bases;
-    applyBaseSearchFilter({ keepValueIfPossible: false });
-    if (select) select.disabled = false;
-  } catch (err) {
-    ALL_BASES = [];
-    if (select) {
-      select.disabled = true;
-      select.innerHTML = `<option value="">Erro ao carregar bases</option>`;
-    }
-    setStatus("Não foi possível carregar as bases. Tente novamente.", "var(--vf-danger)");
-  }
-}
-
-function setPreviewState({ clienteLabel, baseLabel, totalItens, itensPreview }) {
-  const empty = document.getElementById("precificacao-preview-empty");
-  const box = document.getElementById("precificacao-preview-box");
-  const badge = document.getElementById("precificacao-total");
-
-  if (empty) empty.style.display = "none";
-  if (box) box.style.display = "block";
-  if (badge) {
-    badge.style.display = "inline-block";
-    badge.textContent = String(totalItens ?? 0);
-  }
-
-  const clienteEl = document.getElementById("precificacao-cliente");
-  const baseEl = document.getElementById("precificacao-base");
-  if (clienteEl) clienteEl.textContent = clienteLabel || "—";
-  if (baseEl) baseEl.textContent = baseLabel || "—";
-
-  const tbody = document.getElementById("precificacao-tbody");
-  if (!tbody) return;
-  tbody.innerHTML = "";
-
-  const rows = Array.isArray(itensPreview) ? itensPreview : [];
-  if (rows.length === 0) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="4" style="color:var(--vf-text-m);">Base sem itens de custo.</td>`;
-    tbody.appendChild(tr);
+  if (!ctx) {
+    if (readiness) readiness.hidden = true;
+    setStateBanner({});
+    if (btn) btn.disabled = true;
     return;
   }
 
-  rows.forEach((r) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.produto_id ?? r.id ?? "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.custo_produto ?? 0))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.imposto_percentual ?? 0))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.taxa_fixa ?? 0))}</td>
-    `;
-    tbody.appendChild(tr);
-  });
+  renderReadiness(ctx);
+  if (btn) btn.disabled = !ctx.prontoParaAnalise;
 }
 
-function getMargemAlvoDecimalAtual() {
-  const input = document.getElementById("automacoes-margem");
-  const raw = Number(input?.value);
-  if (!Number.isFinite(raw) || raw <= 0) return null;
-  return raw / 100;
+function setStatusChip(id, tone, texto) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = `vf-status${tone ? " is-" + tone : ""}`;
+  el.textContent = texto;
 }
 
-function diagnosticarLinhaMl(r) {
-  const mc = Number(r?.margemContribuicao);
-  const margemAlvo = getMargemAlvoDecimalAtual();
-
-  if (!r?.temBase) {
-    return { key: "sem_base", label: "Sem base", tone: "neutral" };
-  }
-  if (r?.frete == null || !Number.isFinite(Number(r.frete))) {
-    return { key: "sem_frete", label: "Sem frete", tone: "warning" };
-  }
-  if (r?.comissaoMarketplace == null || !Number.isFinite(Number(r.comissaoMarketplace))) {
-    return { key: "sem_comissao", label: "Sem comissão", tone: "warning" };
-  }
-  if (!Number.isFinite(mc)) {
-    return { key: "sem_dados", label: "Sem dados", tone: "neutral" };
-  }
-  if (mc < 0) {
-    return { key: "critico", label: "Crítico", tone: "danger" };
-  }
-  if (margemAlvo !== null && mc < margemAlvo) {
-    return { key: "atencao", label: "Atenção", tone: "warning" };
-  }
-  return { key: "saudavel", label: "Saudável", tone: "success" };
-}
-
-function renderDiagnosticoBadge(diag) {
-  const cls = `vf-ml-badge vf-ml-badge-${diag?.tone || "neutral"}`;
-  return `<span class="${cls}">${escapeHTML(diag?.label || "—")}</span>`;
-}
-
-function getPreviewMlFilteredRows() {
-  const rows = Array.isArray(PREVIEW_ML_ROWS) ? PREVIEW_ML_ROWS : [];
-  const q = PREVIEW_ML_SEARCH.trim().toLowerCase();
-
-  return rows.filter((r) => {
-    const diag = diagnosticarLinhaMl(r);
-    if (PREVIEW_ML_FILTER !== "todos" && diag.key !== PREVIEW_ML_FILTER) {
-      return false;
-    }
-
-    if (q) {
-      const haystack = [
-        r?.item_id,
-        r?.titulo,
-        r?.status,
-        r?.tipoAnuncio,
-        r?.listing_type_id,
-      ].join(" ").toLowerCase();
-
-      if (!haystack.includes(q)) return false;
-    }
-
-    return true;
-  });
-}
-
-function renderPreviewMlInsights() {
-  const container = document.getElementById("precificacao-ml-insights");
-  if (!container) return;
-
-  const rows = Array.isArray(PREVIEW_ML_ROWS) ? PREVIEW_ML_ROWS : [];
-  if (!rows.length) {
-    container.style.display = "none";
-    container.innerHTML = "";
-    return;
-  }
-
-  let comBase = 0;
-  let semBase = 0;
-  let criticos = 0;
-  let atencao = 0;
-  let saudaveis = 0;
-  let semFrete = 0;
-  let semComissao = 0;
-  let mcCount = 0;
-  let mcSum = 0;
-
-  rows.forEach((r) => {
-    if (r?.temBase) comBase += 1;
-    else semBase += 1;
-
-    const diag = diagnosticarLinhaMl(r);
-    if (diag.key === "critico") criticos += 1;
-    if (diag.key === "atencao") atencao += 1;
-    if (diag.key === "saudavel") saudaveis += 1;
-    if (diag.key === "sem_frete") semFrete += 1;
-    if (diag.key === "sem_comissao") semComissao += 1;
-
-    const mc = Number(r?.margemContribuicao);
-    if (Number.isFinite(mc)) {
-      mcSum += mc;
-      mcCount += 1;
-    }
-  });
-
-  const mcMedia = mcCount > 0 ? (mcSum / mcCount) * 100 : null;
-  const mcMediaTxt = mcMedia == null ? "—" : `${mcMedia.toFixed(2)}%`;
-
-  container.style.display = "grid";
-  container.innerHTML = `
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Página atual</div><div class="vf-ml-insight-value">${rows.length}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Com base</div><div class="vf-ml-insight-value">${comBase}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Sem base</div><div class="vf-ml-insight-value">${semBase}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Críticos</div><div class="vf-ml-insight-value">${criticos}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Atenção</div><div class="vf-ml-insight-value">${atencao}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Saudáveis</div><div class="vf-ml-insight-value">${saudaveis}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">MC média</div><div class="vf-ml-insight-value">${mcMediaTxt}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Sem frete</div><div class="vf-ml-insight-value">${semFrete}</div></div>
-  `;
-}
-
-function renderPreviewMlControls() {
-  const container = document.getElementById("precificacao-ml-controls");
-  const buttonsWrap = document.getElementById("precificacao-ml-filter-buttons");
-  if (!container || !buttonsWrap) return;
-
-  const hasRows = Array.isArray(PREVIEW_ML_ROWS) && PREVIEW_ML_ROWS.length > 0;
-  if (!hasRows) {
-    container.style.display = "none";
-    buttonsWrap.innerHTML = "";
-    return;
-  }
-
-  container.style.display = "flex";
-  buttonsWrap.innerHTML = PREVIEW_ML_FILTERS.map((f) => {
-    const active = f.key === PREVIEW_ML_FILTER ? "active" : "";
-    return `<button type="button" class="vf-ml-filter-btn ${active}" data-filter="${escapeHTML(f.key)}">${escapeHTML(f.label)}</button>`;
-  }).join("");
-
-  buttonsWrap.querySelectorAll("[data-filter]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      PREVIEW_ML_FILTER = btn.getAttribute("data-filter") || "todos";
-      renderPreviewMlControls();
-      renderPreviewMlTable();
-    });
-  });
-}
-
-function renderPreviewMlTable() {
-  const tbody = document.getElementById("precificacao-ml-tbody");
-  if (!tbody) return;
-  tbody.innerHTML = "";
-
-  const rows = getPreviewMlFilteredRows();
-  if (rows.length === 0) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="16" style="color:var(--vf-text-m);">Nenhum item encontrado com os filtros atuais.</td>`;
-    tbody.appendChild(tr);
-    return;
-  }
-
-  const brlFormatter = new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-  const pctFormatter = new Intl.NumberFormat("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
-  rows.forEach((r) => {
-    const diag = diagnosticarLinhaMl(r);
-    const comissaoFmt =
-      r.comissaoPercentual == null || !Number.isFinite(Number(r.comissaoPercentual))
-        ? "—"
-        : `${pctFormatter.format(Number(r.comissaoPercentual))}%`;
-    const lcNumber = Number(r.lucroContribuicao);
-    const lcFmt =
-      r.lucroContribuicao == null || !Number.isFinite(lcNumber)
-        ? "—"
-        : brlFormatter.format(lcNumber);
-    const mcNumber = Number(r.margemContribuicao);
-    const mcFmt =
-      r.margemContribuicao == null || !Number.isFinite(mcNumber)
-        ? "—"
-        : `${pctFormatter.format(mcNumber * 100)}%`;
-    const precoAlvoFmt =
-      r.precoAlvo == null || !Number.isFinite(Number(r.precoAlvo))
-        ? "—"
-        : brlFormatter.format(Number(r.precoAlvo));
-    const precoOriginalFmt = r.precoOriginal == null || !Number.isFinite(Number(r.precoOriginal))
-      ? "—" : brlFormatter.format(Number(r.precoOriginal));
-
-    const temPromo = r.precoPromocionado != null && Number.isFinite(Number(r.precoPromocionado))
-      && Number(r.precoPromocionado) < Number(r.precoOriginal);
-    const precoPromoFmt = !temPromo ? "—" : brlFormatter.format(Number(r.precoPromocionado));
-    const promoStyle = temPromo ? "color:var(--vf-success);font-weight:600;" : "color:var(--vf-text-m);";
-    const originalStyle = temPromo ? "text-decoration:line-through;color:var(--vf-text-m);" : "";
-    const precoAtualNum = Number(r.precoEfetivo);
-    const precoAlvoNum = Number(r.precoAlvo);
-    let ajusteFmt = "—";
-    let ajusteColor = "";
-    let ajusteIcon = "";
-    if (Number.isFinite(precoAtualNum) && Number.isFinite(precoAlvoNum) && precoAtualNum > 0) {
-      const delta = precoAlvoNum - precoAtualNum;
-      const deltaPct = (delta / precoAtualNum) * 100;
-      if (Math.abs(deltaPct) < 0.5) {
-        ajusteFmt = "Manter";
-        ajusteColor = "color:var(--vf-text-m);";
-        ajusteIcon = "=";
-      } else if (delta > 0) {
-        ajusteFmt = `+${brlFormatter.format(delta)} (${pctFormatter.format(deltaPct)}%)`;
-        ajusteColor = "color:var(--vf-success);";
-        ajusteIcon = "↑";
-      } else {
-        ajusteFmt = `${brlFormatter.format(delta)} (${pctFormatter.format(deltaPct)}%)`;
-        ajusteColor = "color:var(--vf-danger);";
-        ajusteIcon = "↓";
-      }
-    }
-    const freteFmt =
-      r.frete == null || !Number.isFinite(Number(r.frete))
-        ? "—"
-        : brlFormatter.format(Number(r.frete));
-
-    const lcColor =
-      lcFmt === "—" ? "" : (lcNumber > 0 ? "color:var(--vf-success);" : (lcNumber < 0 ? "color:var(--vf-danger);" : ""));
-    const mcColor =
-      mcFmt === "—" ? "" : (mcNumber > 0 ? "color:var(--vf-success);" : (mcNumber < 0 ? "color:var(--vf-danger);" : ""));
-
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td style="font-family:var(--vf-mono);font-size:.8rem;">
-        <button type="button" class="vf-calc-info-btn" data-idx="${PREVIEW_ML_ROWS.indexOf(r)}" style="border:none;background:transparent;cursor:pointer;color:var(--vf-primary);margin-right:4px;" title="Ver cálculo">ⓘ</button>
-        ${escapeHTML(r.item_id ?? "—")}
-      </td>
-      <td style="white-space:normal;line-height:1.35;" title="${escapeHTML(r.titulo ?? "")}">${escapeHTML(r.titulo ?? "—")}</td>
-      <td>${escapeHTML(r.status ?? "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${originalStyle}">${escapeHTML(precoOriginalFmt)}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${promoStyle}">${escapeHTML(precoPromoFmt)}</td>
-      <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.listing_type_id ?? r.tipoAnuncio ?? "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.custoProduto ?? "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(r.impostoPercentual ?? "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(freteFmt)}</td>
-      <td>${r.temBase ? "Sim" : "Não"}</td>
-      <td>${renderDiagnosticoBadge(diag)}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(comissaoFmt)}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(lcFmt)}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcColor}">${escapeHTML(mcFmt)}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(precoAlvoFmt)}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${ajusteColor}">${ajusteIcon} ${escapeHTML(ajusteFmt)}</td>
-    `;
-    tbody.appendChild(tr);
-  });
-  tbody.querySelectorAll(".vf-calc-info-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const idx = parseInt(btn.getAttribute("data-idx"), 10);
-      const linha = PREVIEW_ML_ROWS[idx];
-      if (linha) abrirModalCalculo(linha);
-    });
-  });
-}
-
-function setPreviewMlState({ page, totalItensMl, linhas }) {
-  const empty = document.getElementById("precificacao-ml-preview-empty");
-  const box = document.getElementById("precificacao-ml-preview-box");
-  const badge = document.getElementById("precificacao-ml-total");
-  const pageEl = document.getElementById("precificacao-ml-page");
-  const prevBtn = document.getElementById("btn-precificacao-ml-prev");
-  const nextBtn = document.getElementById("btn-precificacao-ml-next");
-
-  if (empty) empty.style.display = "none";
-  if (box) box.style.display = "block";
-
-  const total = Number(totalItensMl ?? 0) || 0;
-  const p = Number(page ?? 1) || 1;
-  const totalPages = Math.max(1, Math.ceil(total / PREVIEW_ML_LIMIT));
-
-  if (badge) {
-    badge.style.display = "inline-block";
-    badge.textContent = String(total);
-  }
-  if (pageEl) pageEl.textContent = `Página ${p} de ${totalPages}`;
-  if (prevBtn) prevBtn.disabled = p <= 1;
-  if (nextBtn) nextBtn.disabled = p >= totalPages;
-  PREVIEW_ML_ROWS = Array.isArray(linhas) ? linhas : [];
-  PREVIEW_ML_FILTER = "todos";
-  PREVIEW_ML_SEARCH = "";
-  const searchInput = document.getElementById("precificacao-ml-search");
-  if (searchInput) searchInput.value = "";
-
-  renderPreviewMlInsights();
-  renderPreviewMlControls();
-  renderPreviewMlTable();
-  const btnSalvar = document.getElementById("btn-precificacao-ml-salvar");
-  if (btnSalvar) {
-    btnSalvar.disabled = !(Array.isArray(PREVIEW_ML_ROWS) && PREVIEW_ML_ROWS.length > 0);
-  }
-}
-
-function resetPreviewMlUI() {
-  const empty = document.getElementById("precificacao-ml-preview-empty");
-  const box = document.getElementById("precificacao-ml-preview-box");
-  const badge = document.getElementById("precificacao-ml-total");
-  const pageEl = document.getElementById("precificacao-ml-page");
-  const prevBtn = document.getElementById("btn-precificacao-ml-prev");
-  const nextBtn = document.getElementById("btn-precificacao-ml-next");
-  const tbody = document.getElementById("precificacao-ml-tbody");
-  const insights = document.getElementById("precificacao-ml-insights");
-  const controls = document.getElementById("precificacao-ml-controls");
-  const searchInput = document.getElementById("precificacao-ml-search");
-  const filterButtons = document.getElementById("precificacao-ml-filter-buttons");
-
-  if (empty) empty.style.display = "block";
-  if (box) box.style.display = "none";
-  if (badge) badge.style.display = "none";
-  if (pageEl) pageEl.textContent = "Página 1";
-  if (prevBtn) prevBtn.disabled = true;
-  if (nextBtn) nextBtn.disabled = true;
-  if (tbody) tbody.innerHTML = "";
-  if (insights) { insights.style.display = "none"; insights.innerHTML = ""; }
-  if (controls) controls.style.display = "none";
-  if (filterButtons) filterButtons.innerHTML = "";
-  if (searchInput) searchInput.value = "";
-
-  PREVIEW_ML_ROWS = [];
-  PREVIEW_ML_FILTER = "todos";
-  PREVIEW_ML_SEARCH = "";
-  const btnSalvar = document.getElementById("btn-precificacao-ml-salvar");
-  if (btnSalvar) btnSalvar.disabled = true;
-}
-
-async function previewPrecificacao() {
-  if (!TOKEN) return;
-
-  const clienteSlug = document.getElementById("automacoes-cliente")?.value || "";
-  const baseSlug = document.getElementById("automacoes-base")?.value || "";
-
-  if (!clienteSlug) {
-    setStatus("Selecione um cliente para pré-visualizar a precificação.", "var(--vf-danger)");
-    return;
-  }
-  if (!baseSlug) {
-    setStatus("Selecione uma base para pré-visualizar a precificação.", "var(--vf-danger)");
-    return;
-  }
-
-  const btn = document.getElementById("btn-precificacao-preview");
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Carregando...";
-  }
-
-  try {
-    const qs = new URLSearchParams({ clienteSlug, baseSlug });
-    const res = await fetch(`${API_BASE}/automacoes/precificacao/preview?${qs.toString()}`, {
-      headers: { Authorization: "Bearer " + TOKEN }
-    });
-
-    if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
-
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json?.ok) {
-      throw new Error(json?.erro || `HTTP ${res.status}`);
-    }
-
-    const clienteLabel =
-      (json?.cliente?.nome && json?.cliente?.slug)
-        ? `${json.cliente.nome} (${json.cliente.slug})`
-        : (json?.cliente?.slug || clienteSlug);
-    const baseLabel =
-      (json?.base?.nome && json?.base?.slug)
-        ? `${json.base.nome} (${json.base.slug})`
-        : (json?.base?.slug || baseSlug);
-
-    setPreviewState({
-      clienteLabel,
-      baseLabel,
-      totalItens: json.totalItens ?? 0,
-      itensPreview: json.itensPreview ?? [],
-    });
-
-    setStatus(`Preview carregado. Itens na base: ${json.totalItens ?? 0}.`, "var(--vf-success)");
-  } catch (err) {
-    setStatus(err?.message ? `Erro: ${err.message}` : "Erro ao gerar preview.", "var(--vf-danger)");
-    setPreviewState({
-      clienteLabel: clienteSlug,
-      baseLabel: baseSlug,
-      totalItens: 0,
-      itensPreview: [],
-    });
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Pré-visualizar";
-    }
-  }
-}
-
-async function previewPrecificacaoMl() {
-  if (!TOKEN) return;
-
-  const clienteSlug = document.getElementById("automacoes-cliente")?.value || "";
-  const baseSlug = document.getElementById("automacoes-base")?.value || "";
-  const margemInput = document.getElementById("automacoes-margem");
-  const margemRaw = (margemInput?.value ?? "").toString().trim();
-
-  if (!clienteSlug) {
-    setStatus("Selecione um cliente para gerar a prévia com dados do ML.", "var(--vf-danger)");
-    return;
-  }
-  if (!baseSlug) {
-    setStatus("Selecione uma base para gerar a prévia com dados do ML.", "var(--vf-danger)");
-    return;
-  }
-
-  const btn = document.getElementById("btn-precificacao-preview-ml");
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Carregando...";
-  }
-
-  try {
-    const qs = new URLSearchParams({
-      clienteSlug,
-      baseSlug,
-      page: String(PREVIEW_ML_PAGE),
-      limit: String(PREVIEW_ML_LIMIT),
-    });
-    if (margemRaw !== "") {
-      const margemNumero = Number(margemRaw);
-      if (Number.isFinite(margemNumero)) {
-        qs.set("margemAlvo", String(margemNumero / 100));
-      }
-    }
-    const res = await fetch(`${API_BASE}/automacoes/precificacao/preview-ml?${qs.toString()}`, {
-      headers: { Authorization: "Bearer " + TOKEN }
-    });
-
-    if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
-
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json?.ok) {
-      throw new Error(json?.erro || `HTTP ${res.status}`);
-    }
-
-    setPreviewMlState({
-      page: json.page ?? PREVIEW_ML_PAGE,
-      totalItensMl: json.totalItensMl ?? 0,
-      linhas: json.linhas ?? [],
-    });
-
-    setStatus("Prévia com dados do Mercado Livre carregada (somente leitura).", "var(--vf-success)");
-  } catch (err) {
-    resetPreviewMlUI();
-    setStatus(err?.message ? `Erro: ${err.message}` : "Erro ao gerar prévia com dados do ML.", "var(--vf-danger)");
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Prévia com dados ML";
-    }
-  }
-}
-
-async function salvarRelatorioAtual() {
-  if (!TOKEN) return;
-
-  const clienteSelect = document.getElementById("automacoes-cliente");
-  const baseSelect = document.getElementById("automacoes-base");
-  const clienteSlug = clienteSelect?.value || "";
-  const baseSlug = baseSelect?.value || "";
-
-  if (!clienteSlug) {
-    setStatus("Selecione um cliente para salvar o relatório.", "var(--vf-danger)");
-    return;
-  }
-  if (!baseSlug) {
-    setStatus("Selecione uma base para salvar o relatório.", "var(--vf-danger)");
-    return;
-  }
-  if (!Array.isArray(PREVIEW_ML_ROWS) || PREVIEW_ML_ROWS.length === 0) {
-    setStatus("Gere uma prévia com dados ML antes de salvar.", "var(--vf-danger)");
-    return;
-  }
-
-  const margemAlvo = getMargemAlvoDecimalAtual();
-
-  const linhas = PREVIEW_ML_ROWS.map((r) => {
-    const diag = diagnosticarLinhaMl(r);
-    return {
-      item_id: r.item_id ?? null,
-      titulo: r.titulo ?? null,
-      statusAnuncio: r.status ?? null,
-      listingTypeId: r.listing_type_id ?? r.tipoAnuncio ?? null,
-      precoOriginal: Number.isFinite(Number(r.precoOriginal)) ? Number(r.precoOriginal) : null,
-      precoPromocional: Number.isFinite(Number(r.precoPromocionado)) ? Number(r.precoPromocionado) : null,
-      precoEfetivo: Number.isFinite(Number(r.precoEfetivo)) ? Number(r.precoEfetivo) : null,
-      custo: Number.isFinite(Number(r.custoProduto)) ? Number(r.custoProduto) : null,
-      impostoPercentual: Number.isFinite(Number(r.impostoPercentual)) ? Number(r.impostoPercentual) : null,
-      taxaFixa: Number.isFinite(Number(r.taxaFixa)) ? Number(r.taxaFixa) : null,
-      frete: Number.isFinite(Number(r.frete)) ? Number(r.frete) : null,
-      comissao: Number.isFinite(Number(r.comissaoMarketplace)) ? Number(r.comissaoMarketplace) : null,
-      comissaoPercentual: Number.isFinite(Number(r.comissaoPercentual)) ? Number(r.comissaoPercentual) : null,
-      lc: Number.isFinite(Number(r.lucroContribuicao)) ? Number(r.lucroContribuicao) : null,
-      mc: Number.isFinite(Number(r.margemContribuicao)) ? Number(r.margemContribuicao) : null,
-      precoAlvo: Number.isFinite(Number(r.precoAlvo)) ? Number(r.precoAlvo) : null,
-      diagnostico: diag.key,
-      temBase: !!r.temBase,
-    };
-  });
-
-  const btn = document.getElementById("btn-precificacao-ml-salvar");
-  const labelOriginal = btn ? btn.textContent : "Salvar relatório";
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Salvando...";
-  }
-
-  try {
-    const res = await fetch(`${API_BASE}/automacoes/relatorios`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + TOKEN,
-      },
-      body: JSON.stringify({
-        clienteSlug,
-        baseSlug,
-        margemAlvo,
-        escopo: "pagina_atual",
-        linhas,
-      }),
-    });
-
-    if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
-
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json?.ok) {
-      throw new Error(json?.erro || `HTTP ${res.status}`);
-    }
-
-    setStatus(`Relatório #${json.relatorio_id} salvo com sucesso (${linhas.length} itens).`, "var(--vf-success)");
-    ULTIMO_RELATORIO_SALVO_ID = json.relatorio_id;
-    ULTIMO_RELATORIO_SALVO_META = {
-      relatorioId: json.relatorio_id,
-      clienteSlug,
-      baseSlug,
-      itensSalvos: linhas.length,
-      margemAlvo,
-    };
-    mostrarRelatorioPronto(ULTIMO_RELATORIO_SALVO_META);
-    if (typeof carregarRelatoriosCliente === "function") {
-      carregarRelatoriosCliente(clienteSlug);
-    }
-  } catch (err) {
-    setStatus(err?.message ? `Erro ao salvar relatório: ${err.message}` : "Erro ao salvar relatório.", "var(--vf-danger)");
-  } finally {
-    if (btn) {
-      btn.disabled = !(Array.isArray(PREVIEW_ML_ROWS) && PREVIEW_ML_ROWS.length > 0);
-      btn.textContent = labelOriginal;
-    }
-  }
-}
-
-function formatarDataRelatorio(iso) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString("pt-BR");
-  } catch (_) {
-    return String(iso);
-  }
-}
-
-function formatarMargemAlvo(valor) {
-  const n = Number(valor);
-  if (!Number.isFinite(n) || n <= 0) return "—";
-  return `${(n * 100).toFixed(2)}%`;
-}
-
-function formatarMcMedia(valor) {
-  const n = Number(valor);
-  if (!Number.isFinite(n)) return "—";
-  return `${(n * 100).toFixed(2)}%`;
-}
-
-function renderRelatoriosLista(relatorios) {
-  const tbody = document.getElementById("vf-relatorios-tbody");
-  const wrapper = document.getElementById("vf-relatorios-wrapper");
-  const empty = document.getElementById("vf-relatorios-empty");
-  const badge = document.getElementById("vf-relatorios-total");
-  if (!tbody || !wrapper || !empty || !badge) return;
-
-  tbody.innerHTML = "";
-
-  const lista = Array.isArray(relatorios) ? relatorios : [];
-  badge.style.display = "inline-block";
-  badge.textContent = String(lista.length);
-
-  if (lista.length === 0) {
-    wrapper.style.display = "none";
-    empty.style.display = "block";
-    empty.innerHTML = `<p>Nenhum relatório salvo para este cliente ainda.</p>`;
-    return;
-  }
-
-  empty.style.display = "none";
-  wrapper.style.display = "block";
-
-  lista.forEach((r) => {
-    const tr = document.createElement("tr");
-    const mcStyle =
-      Number.isFinite(Number(r.mc_media)) && Number(r.mc_media) < 0
-        ? "color:var(--vf-danger);"
-        : (Number.isFinite(Number(r.mc_media)) && Number(r.mc_media) > 0
-            ? "color:var(--vf-success);"
-            : "");
-
-    tr.innerHTML = `
-      <td style="font-family:var(--vf-mono);font-size:.8rem;">#${escapeHTML(String(r.id))}</td>
-      <td>${escapeHTML(formatarDataRelatorio(r.created_at))}</td>
-      <td>${escapeHTML(r.base_slug || "—")}</td>
-      <td>${escapeHTML(r.escopo || "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(formatarMargemAlvo(r.margem_alvo))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.total_itens ?? 0))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;color:var(--vf-danger);">${escapeHTML(String(r.itens_criticos ?? 0))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;color:var(--vf-warning, #d97706);">${escapeHTML(String(r.itens_atencao ?? 0))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;color:var(--vf-success);">${escapeHTML(String(r.itens_saudaveis ?? 0))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(String(r.itens_sem_base ?? 0))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcStyle}">${escapeHTML(formatarMcMedia(r.mc_media))}</td>
-      <td>${escapeHTML(r.status || "—")}</td>
-      <td style="white-space:nowrap;">
-        <button type="button" class="vf-btn-secondary vf-relatorio-detalhes-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">Ver detalhes</button>
-      </td>
-      <td style="white-space:nowrap;">
-        <button type="button" class="vf-btn-secondary vf-relatorio-excluir-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">Excluir</button>
-      </td>
-      <td>
-        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
-          <button type="button" class="vf-btn-secondary vf-relatorio-xlsx-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">XLSX</button>
-          <button type="button" class="vf-btn-secondary vf-relatorio-csv-btn" data-id="${escapeHTML(String(r.id))}" style="margin:0;padding:.25rem .6rem;font-size:.75rem;">CSV</button>
-        </div>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
-
-  tbody.querySelectorAll(".vf-relatorio-detalhes-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      if (!id) return;
-      abrirRelatorioDetalhe(id);
-    });
-  });
-  tbody.querySelectorAll(".vf-relatorio-excluir-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      if (!id) return;
-      excluirRelatorioSalvo(id);
-    });
-  });
-  tbody.querySelectorAll(".vf-relatorio-csv-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      if (!id) return;
-      baixarRelatorioArquivo(id, "csv");
-    });
-  });
-  tbody.querySelectorAll(".vf-relatorio-xlsx-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      if (!id) return;
-      baixarRelatorioArquivo(id, "xlsx");
-    });
-  });
-}
-
-async function carregarRelatoriosCliente(clienteSlug) {
-  const card = document.getElementById("vf-relatorios-card");
-  const empty = document.getElementById("vf-relatorios-empty");
-  const wrapper = document.getElementById("vf-relatorios-wrapper");
-  const badge = document.getElementById("vf-relatorios-total");
-  if (!card || !empty || !wrapper || !badge) return;
-
-  if (!clienteSlug) {
-    card.style.display = "none";
-    return;
-  }
-  if (!TOKEN) return;
-
-  card.style.display = "block";
-  wrapper.style.display = "none";
-  empty.style.display = "block";
-  empty.innerHTML = `<p>Carregando relatórios...</p>`;
-  badge.style.display = "none";
-
-  try {
-    const qs = new URLSearchParams({ clienteSlug });
-    const res = await fetch(`${API_BASE}/automacoes/relatorios?${qs.toString()}`, {
-      headers: { Authorization: "Bearer " + TOKEN },
-    });
-
-    if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
-
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json?.ok) {
-      throw new Error(json?.erro || `HTTP ${res.status}`);
-    }
-
-    renderRelatoriosLista(json.relatorios || []);
-  } catch (err) {
-    wrapper.style.display = "none";
-    empty.style.display = "block";
-    empty.innerHTML = `<p style="color:var(--vf-danger);">Erro ao carregar relatórios: ${escapeHTML(err.message || "desconhecido")}</p>`;
-    badge.style.display = "none";
-  }
-}
-
-function pararPollingDiagnostico() {
-  if (DIAG_POLL_TIMER) {
-    clearInterval(DIAG_POLL_TIMER);
-    DIAG_POLL_TIMER = null;
-  }
-}
-
-function renderDiagnosticoCompletoEstado(relatorio) {
-  const badge = document.getElementById("vf-diagnostico-status-badge");
-  const statusText = document.getElementById("vf-diagnostico-status-text");
-  const resumo = document.getElementById("vf-diagnostico-resumo");
-  const finalBox = document.getElementById("vf-diagnostico-final");
-  const progress = document.getElementById("vf-diagnostico-progress");
-  const progressBar = document.getElementById("vf-diagnostico-progress-bar");
-  const btn = document.getElementById("btn-diagnostico-completo-start");
-  if (!badge || !statusText || !resumo || !finalBox || !progress || !progressBar || !btn) return;
-
-  const r = relatorio || {};
-  const status = String(r.status || "").toLowerCase();
-  const isProcessando = status === "processando";
-  const isConcluido = status === "concluido";
-  const isErro = status === "erro";
-
-  let tone = "neutral";
-  if (isProcessando) tone = "warning";
-  if (isConcluido) tone = "success";
-  if (isErro) tone = "danger";
-
-  badge.className = `vf-ml-badge vf-ml-badge-${tone}`;
-  badge.textContent = isProcessando ? "Processando" : (isConcluido ? "Concluído" : (isErro ? "Erro" : "Aguardando"));
-
-  const total = Number(r.total_itens ?? 0) || 0;
-  const comBase = Number(r.itens_com_base ?? 0) || 0;
-  const semBase = Number(r.itens_sem_base ?? 0) || 0;
-  const criticos = Number(r.itens_criticos ?? 0) || 0;
-  const atencao = Number(r.itens_atencao ?? 0) || 0;
-  const saudaveis = Number(r.itens_saudaveis ?? 0) || 0;
-  const mcMedia = formatarMcMedia(r.mc_media);
-
-  resumo.innerHTML = `
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Total</div><div class="vf-ml-insight-value">${escapeHTML(String(total))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Com base</div><div class="vf-ml-insight-value">${escapeHTML(String(comBase))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Sem base</div><div class="vf-ml-insight-value">${escapeHTML(String(semBase))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Críticos</div><div class="vf-ml-insight-value">${escapeHTML(String(criticos))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Atenção</div><div class="vf-ml-insight-value">${escapeHTML(String(atencao))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Saudáveis</div><div class="vf-ml-insight-value">${escapeHTML(String(saudaveis))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">MC média</div><div class="vf-ml-insight-value">${escapeHTML(mcMedia)}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Relatório</div><div class="vf-ml-insight-value">#${escapeHTML(String(r.id ?? "—"))}</div></div>
-  `;
-  resumo.style.display = "grid";
-
-  if (isProcessando) {
-    const pct = Math.min(95, Math.round(15 + (Math.log10(total + 1) * 35)));
-    progress.style.display = "block";
-    progressBar.style.width = `${Math.max(8, pct)}%`;
-    progressBar.style.background = "var(--vf-primary)";
-    statusText.textContent = `Diagnóstico em andamento. Itens processados até agora: ${total}.`;
-    finalBox.style.display = "none";
-  } else if (isConcluido) {
-    progress.style.display = "block";
-    progressBar.style.width = "100%";
-    progressBar.style.background = "var(--vf-success)";
-    statusText.textContent = `Diagnóstico concluído em ${escapeHTML(formatarDataRelatorio(r.created_at))}.`;
-    finalBox.style.display = "block";
-    finalBox.innerHTML = `<p><strong>Concluído.</strong> Relatório #${escapeHTML(String(r.id || "—"))} finalizado com ${escapeHTML(String(total))} itens.</p>`;
-  } else if (isErro) {
-    progress.style.display = "block";
-    progressBar.style.width = "100%";
-    progressBar.style.background = "var(--vf-danger)";
-    statusText.textContent = "O diagnóstico terminou com erro.";
-    finalBox.style.display = "block";
-    finalBox.innerHTML = `<p style="color:var(--vf-danger);"><strong>Erro:</strong> ${escapeHTML(r.observacoes || "Falha durante o processamento.")}</p>`;
+function renderReadiness(ctx) {
+  const readiness = document.getElementById("auto-readiness");
+  if (readiness) readiness.hidden = false;
+
+  // Grant ML
+  setStatusChip("rd-grant", ctx.hasGrantMl ? "success" : "danger",
+    ctx.hasGrantMl ? "Conectado" : "Não conectado");
+
+  // Base de custos
+  const baseEl = document.getElementById("rd-base");
+  const updEl = document.getElementById("rd-updated");
+  if (ctx.baseStatus === "ok") {
+    if (baseEl) baseEl.textContent = ctx.baseMeliNome || ctx.baseMeli || "—";
+    if (updEl) updEl.textContent = formatarIdadeBase(ctx.baseMeliUpdatedAt);
+  } else if (ctx.baseStatus === "multiplas") {
+    if (baseEl) baseEl.textContent = `${ctx.basesMeliCount} bases vinculadas`;
+    if (updEl) updEl.textContent = "—";
   } else {
-    progress.style.display = "none";
-    progressBar.style.width = "0%";
-    statusText.textContent = "Aguardando início do diagnóstico completo.";
-    finalBox.style.display = "none";
+    if (baseEl) baseEl.textContent = "Nenhuma vinculada";
+    if (updEl) updEl.textContent = "—";
   }
 
-  btn.disabled = isProcessando;
-}
-
-function resetDiagnosticoCompletoUI() {
-  pararPollingDiagnostico();
-  DIAG_RELATORIO_ID = null;
-  DIAG_ULTIMO_RELATORIO = null;
-  esconderPainelRelatorioPronto();
-
-  const badge = document.getElementById("vf-diagnostico-status-badge");
-  const statusText = document.getElementById("vf-diagnostico-status-text");
-  const resumo = document.getElementById("vf-diagnostico-resumo");
-  const finalBox = document.getElementById("vf-diagnostico-final");
-  const progress = document.getElementById("vf-diagnostico-progress");
-  const progressBar = document.getElementById("vf-diagnostico-progress-bar");
-  const btn = document.getElementById("btn-diagnostico-completo-start");
-  if (!badge || !statusText || !resumo || !finalBox || !progress || !progressBar || !btn) return;
-
-  const clienteSlug = document.getElementById("automacoes-cliente")?.value || "";
-  const baseSlug = document.getElementById("automacoes-base")?.value || "";
-  const podeIniciar = Boolean(clienteSlug && baseSlug);
-
-  badge.className = "vf-ml-badge vf-ml-badge-neutral";
-  badge.textContent = "Aguardando";
-  statusText.textContent = podeIniciar
-    ? "Pronto para iniciar um novo diagnóstico completo."
-    : "Selecione cliente e base para habilitar.";
-  resumo.style.display = "none";
-  resumo.innerHTML = "";
-  finalBox.style.display = "none";
-  finalBox.innerHTML = "";
-  progress.style.display = "none";
-  progressBar.style.width = "0%";
-  progressBar.style.background = "var(--vf-primary)";
-  btn.disabled = !podeIniciar;
-}
-
-async function carregarDiagnosticoCompleto(relatorioId) {
-  if (!relatorioId || !TOKEN) return;
-
-  const res = await fetch(`${API_BASE}/automacoes/diagnostico-completo/${encodeURIComponent(relatorioId)}`, {
-    headers: { Authorization: "Bearer " + TOKEN },
-  });
-
-  if (res.status === 401) { clearSession(); return; }
-  if (res.status === 403) { window.location.replace("dashboard.html"); return; }
-
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || !json?.ok) {
-    throw new Error(json?.erro || `HTTP ${res.status}`);
-  }
-
-  const anteriorStatus = String(DIAG_ULTIMO_RELATORIO?.status || "").toLowerCase();
-  const atual = json.relatorio || {};
-  const atualStatus = String(atual.status || "").toLowerCase();
-
-  DIAG_RELATORIO_ID = atual.id || relatorioId;
-  DIAG_ULTIMO_RELATORIO = atual;
-  renderDiagnosticoCompletoEstado(atual);
-
-  if (atualStatus === "concluido") {
-    pararPollingDiagnostico();
-    if (anteriorStatus !== "concluido") {
-      setStatus(`Diagnóstico completo concluído (relatório #${atual.id}).`, "var(--vf-success)");
-      mostrarRelatorioPronto({
-        relatorioId: atual.id,
-        total: atual.total_itens,
-        comBase: atual.itens_com_base,
-        semBase: atual.itens_sem_base,
-        criticos: atual.itens_criticos,
-        atencao: atual.itens_atencao,
-        saudaveis: atual.itens_saudaveis,
-        mcMedia: atual.mc_media,
-      });
-      const slug = document.getElementById("automacoes-cliente")?.value || "";
-      if (slug) carregarRelatoriosCliente(slug);
-    }
-  } else if (atualStatus === "erro") {
-    pararPollingDiagnostico();
-    if (anteriorStatus !== "erro") {
-      setStatus("Diagnóstico completo finalizado com erro. Verifique as observações.", "var(--vf-danger)");
-    }
-  }
-}
-
-function iniciarPollingDiagnostico(relatorioId) {
-  DIAG_RELATORIO_ID = relatorioId;
-  pararPollingDiagnostico();
-  carregarDiagnosticoCompleto(relatorioId).catch((err) => {
-    setStatus(`Erro ao carregar diagnóstico: ${err.message}`, "var(--vf-danger)");
-  });
-  DIAG_POLL_TIMER = setInterval(() => {
-    carregarDiagnosticoCompleto(relatorioId).catch((err) => {
-      pararPollingDiagnostico();
-      setStatus(`Erro no polling do diagnóstico: ${err.message}`, "var(--vf-danger)");
-      const badge = document.getElementById("vf-diagnostico-status-badge");
-      const statusText = document.getElementById("vf-diagnostico-status-text");
-      if (badge) {
-        badge.className = "vf-ml-badge vf-ml-badge-danger";
-        badge.textContent = "Erro";
-      }
-      if (statusText) statusText.textContent = "Falha ao atualizar o andamento do diagnóstico.";
+  // Status geral + banner de bloqueio
+  if (!ctx.hasGrantMl) {
+    setStatusChip("rd-status", "danger", "Requer correção");
+    setStateBanner({
+      tone: "danger",
+      titulo: "Cliente sem grant ML",
+      descricao: "Conecte a conta do Mercado Livre deste cliente para habilitar a análise.",
     });
-  }, 3000);
+  } else if (ctx.baseStatus === "ausente") {
+    setStatusChip("rd-status", "warning", "Requer correção");
+    setStateBanner({
+      tone: "warning",
+      titulo: "Cliente sem base MELI vinculada",
+      descricao: "Ajuste o vínculo da base de custos em Bases de Custo para habilitar a análise.",
+    });
+  } else if (ctx.baseStatus === "multiplas") {
+    setStatusChip("rd-status", "warning", "Requer correção");
+    setStateBanner({
+      tone: "warning",
+      titulo: "Mais de uma base MELI vinculada",
+      descricao: "Corrija os vínculos em Bases de Custo para que reste apenas uma base MELI ativa.",
+    });
+  } else {
+    setStatusChip("rd-status", "success", "Pronto");
+    setStateBanner({});
+  }
 }
 
-async function iniciarDiagnosticoCompleto() {
+// ─── Alternância de estados da página ────────────────────────────────────
+function setConfigDisabled(disabled) {
+  ["auto-cliente-search", "auto-cliente", "auto-margem", "btn-otimizador-analisar"]
+    .forEach((id) => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
+}
+
+function resetResultadoEProcessamento() {
+  stopPolling();
+  DIAG_RELATORIO_ID = null;
+  DIAG_ULTIMO_STATUS = "";
+  RELATORIO_CONCLUIDO_ID = null;
+  const prog = document.getElementById("auto-progress-card");
+  const results = document.getElementById("auto-results");
+  if (prog) prog.hidden = true;
+  if (results) results.hidden = true;
+}
+
+// ─── Análise (início + polling) ──────────────────────────────────────────
+async function analisarLoja() {
   if (!TOKEN) return;
-
-  const clienteSlug = document.getElementById("automacoes-cliente")?.value || "";
-  const baseSlug = document.getElementById("automacoes-base")?.value || "";
-  if (!clienteSlug) {
-    setStatus("Selecione um cliente para gerar o diagnóstico completo.", "var(--vf-danger)");
-    return;
-  }
-  if (!baseSlug) {
-    setStatus("Selecione uma base para gerar o diagnóstico completo.", "var(--vf-danger)");
+  const ctx = getClienteAtual();
+  if (!ctx) { setFeedback("Selecione um cliente para iniciar a análise.", "danger"); return; }
+  if (!ctx.prontoParaAnalise) {
+    setFeedback("Este cliente não está pronto. Ajuste grant/base antes de analisar.", "danger");
     return;
   }
 
-  const btn = document.getElementById("btn-diagnostico-completo-start");
-  const labelOriginal = btn ? btn.textContent : "Gerar diagnóstico completo";
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Iniciando...";
-  }
+  setFeedback("");
+  setConfigDisabled(true);
+  mostrarProcessando("Iniciando análise da loja…", "");
 
   try {
-    const margemAlvo = getMargemAlvoDecimalAtual();
     const res = await fetch(`${API_BASE}/automacoes/diagnostico-completo/start`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + TOKEN,
-      },
-      body: JSON.stringify({
-        clienteSlug,
-        baseSlug,
-        margemAlvo,
-      }),
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + TOKEN },
+      body: JSON.stringify({ clienteSlug: ctx.slug, margemAlvo: getMargemDecimal() }),
     });
-
     if (res.status === 401) { clearSession(); return; }
     if (res.status === 403) { window.location.replace("dashboard.html"); return; }
 
     const json = await res.json().catch(() => ({}));
-    if (res.status === 409) {
-      const relatorioId = json?.relatorio_id;
-      setStatus(json?.erro || "Já existe um diagnóstico completo em andamento para este cliente.", "var(--vf-text-m)");
-      if (relatorioId) iniciarPollingDiagnostico(relatorioId);
+
+    // Relatório já em andamento para este cliente: reaproveita o polling.
+    if (res.status === 409 && json?.relatorio_id) {
+      setFeedback(json?.erro || "Já existe uma análise em andamento para este cliente.", "info");
+      startPolling(json.relatorio_id);
       return;
     }
     if (!res.ok || !json?.ok) {
       throw new Error(json?.erro || `HTTP ${res.status}`);
     }
 
-    setStatus(`Diagnóstico completo iniciado (relatório #${json.relatorio_id}).`, "var(--vf-success)");
-    iniciarPollingDiagnostico(json.relatorio_id);
+    startPolling(json.relatorio_id);
   } catch (err) {
-    setStatus(err?.message ? `Erro ao iniciar diagnóstico completo: ${err.message}` : "Erro ao iniciar diagnóstico completo.", "var(--vf-danger)");
-  } finally {
-    if (btn) btn.textContent = labelOriginal;
-    if (!DIAG_ULTIMO_RELATORIO || String(DIAG_ULTIMO_RELATORIO.status || "").toLowerCase() !== "processando") {
-      const clienteAtual = document.getElementById("automacoes-cliente")?.value || "";
-      const baseAtual = document.getElementById("automacoes-base")?.value || "";
-      if (btn) btn.disabled = !(clienteAtual && baseAtual);
-    }
+    mostrarErro(err?.message || "Erro ao iniciar a análise.");
   }
 }
 
-function atualizarBotoesExportDetalhe() {
-  const csvBtn = document.getElementById("btn-relatorio-detalhe-csv");
-  const xlsxBtn = document.getElementById("btn-relatorio-detalhe-xlsx");
-  const habilitar = Boolean(RELATORIO_DETALHE_ATUAL_ID);
-  if (csvBtn) csvBtn.disabled = !habilitar;
-  if (xlsxBtn) xlsxBtn.disabled = !habilitar;
+function mostrarProcessando(statusTxt, metaTxt) {
+  const prog = document.getElementById("auto-progress-card");
+  const results = document.getElementById("auto-results");
+  if (results) results.hidden = true;
+  if (prog) prog.hidden = false;
+  const st = document.getElementById("auto-progress-status");
+  const meta = document.getElementById("auto-progress-meta");
+  const bar = document.getElementById("auto-progress-bar");
+  if (st) st.textContent = statusTxt || "Processando…";
+  if (meta) meta.textContent = metaTxt || "";
+  if (bar) { bar.style.width = "8%"; bar.className = "vf-progress__bar"; }
 }
 
-async function baixarRelatorioArquivo(relatorioId, formato) {
-  if (!TOKEN || !relatorioId) return;
-  const fmt = formato === "xlsx" ? "xlsx" : "csv";
+function mostrarErro(msg) {
+  stopPolling();
+  setConfigDisabled(false);
+  const prog = document.getElementById("auto-progress-card");
+  if (prog) prog.hidden = true;
+  setFeedback(msg, "danger");
+}
+
+function startPolling(relatorioId) {
+  if (!relatorioId) return;
+  DIAG_RELATORIO_ID = relatorioId;
+  stopPolling();
+  pollOnce(relatorioId);
+  DIAG_POLL_TIMER = setInterval(() => pollOnce(relatorioId), POLL_INTERVAL_MS);
+}
+
+function stopPolling() {
+  if (DIAG_POLL_TIMER) { clearInterval(DIAG_POLL_TIMER); DIAG_POLL_TIMER = null; }
+}
+
+async function pollOnce(relatorioId) {
   try {
-    const res = await fetch(`${API_BASE}/automacoes/relatorios/${encodeURIComponent(relatorioId)}/export/${fmt}`, {
+    const res = await fetch(`${API_BASE}/automacoes/diagnostico-completo/${encodeURIComponent(relatorioId)}`, {
       headers: { Authorization: "Bearer " + TOKEN },
     });
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
 
+    const rel = json.relatorio || {};
+    const status = String(rel.status || "").toLowerCase();
+    DIAG_ULTIMO_STATUS = status;
+
+    if (status === "processando") {
+      renderProcessando(rel);
+    } else if (status === "concluido") {
+      stopPolling();
+      await onConcluido(rel);
+    } else if (status === "erro") {
+      mostrarErro(rel.observacoes || "A análise terminou com erro.");
+    } else {
+      renderProcessando(rel);
+    }
+  } catch (err) {
+    mostrarErro(`Falha ao acompanhar a análise: ${err.message}`);
+  }
+}
+
+function renderProcessando(rel) {
+  const total = Number(rel.total_itens ?? 0) || 0;
+  const st = document.getElementById("auto-progress-status");
+  const meta = document.getElementById("auto-progress-meta");
+  const bar = document.getElementById("auto-progress-bar");
+  if (st) st.textContent = "Analisando anúncios ativos da loja…";
+  if (meta) meta.textContent = total > 0 ? `Itens processados até agora: ${total}` : "Buscando anúncios no Mercado Livre…";
+  if (bar) {
+    const pct = Math.min(95, Math.max(8, Math.round(15 + Math.log10(total + 1) * 35)));
+    bar.style.width = `${pct}%`;
+    bar.className = "vf-progress__bar";
+  }
+}
+
+// ─── Conclusão: KPIs + prioridades ───────────────────────────────────────
+async function onConcluido(rel) {
+  RELATORIO_CONCLUIDO_ID = rel.id;
+  const bar = document.getElementById("auto-progress-bar");
+  if (bar) { bar.style.width = "100%"; bar.className = "vf-progress__bar is-success"; }
+
+  renderKpis(rel);
+
+  const sub = document.getElementById("auto-results-sub");
+  if (sub) {
+    sub.textContent = `Relatório #${rel.id} · ${rel.cliente_slug || "—"} · concluído em ${formatarDataHora(rel.created_at)}`;
+  }
+
+  // Buscar itens do relatório concluído para montar as prioridades.
+  try {
+    const itens = await buscarItensRelatorio(rel.id);
+    renderPrioridades(itens);
+  } catch (err) {
+    renderPrioridades([]);
+    setFeedback(`Não foi possível carregar as prioridades: ${err.message}`, "warning");
+  }
+
+  const prog = document.getElementById("auto-progress-card");
+  const results = document.getElementById("auto-results");
+  if (prog) prog.hidden = true;
+  if (results) results.hidden = false;
+  setConfigDisabled(false);
+  setFeedback(`Análise concluída (relatório #${rel.id}).`, "success");
+}
+
+function kpiCard({ label, value, footTone, foot }) {
+  return `
+    <div class="vf-kpi">
+      <span class="vf-kpi__label">${escapeHTML(label)}</span>
+      <span class="vf-kpi__value">${escapeHTML(value)}</span>
+      ${foot ? `<span class="vf-kpi__foot${footTone ? " is-" + footTone : ""}">${escapeHTML(foot)}</span>` : ""}
+    </div>`;
+}
+
+function renderKpis(rel) {
+  const grid = document.getElementById("auto-kpis");
+  if (!grid) return;
+  const total = Number(rel.total_itens ?? 0) || 0;
+  const comBase = Number(rel.itens_com_base ?? 0) || 0;
+  const semBase = Number(rel.itens_sem_base ?? 0) || 0;
+  const criticos = Number(rel.itens_criticos ?? 0) || 0;
+  const atencao = Number(rel.itens_atencao ?? 0) || 0;
+  const saudaveis = Number(rel.itens_saudaveis ?? 0) || 0;
+  const mcMediaNum = Number(rel.mc_media);
+  const mcMedia = Number.isFinite(mcMediaNum) ? `${pctFmt.format(mcMediaNum * 100)}%` : "—";
+
+  grid.innerHTML = [
+    kpiCard({ label: "Total", value: fmtInt(total) }),
+    kpiCard({ label: "Com base", value: fmtInt(comBase) }),
+    kpiCard({ label: "Sem base", value: fmtInt(semBase), footTone: semBase > 0 ? "warning" : "", foot: semBase > 0 ? "sem custo cadastrado" : "" }),
+    kpiCard({ label: "Críticos", value: fmtInt(criticos), footTone: criticos > 0 ? "danger" : "", foot: criticos > 0 ? "margem negativa" : "" }),
+    kpiCard({ label: "Atenção", value: fmtInt(atencao), footTone: atencao > 0 ? "warning" : "", foot: atencao > 0 ? "abaixo do alvo" : "" }),
+    kpiCard({ label: "Saudáveis", value: fmtInt(saudaveis), footTone: saudaveis > 0 ? "success" : "", foot: saudaveis > 0 ? "no alvo" : "" }),
+    kpiCard({ label: "MC média", value: mcMedia, footTone: Number.isFinite(mcMediaNum) ? (mcMediaNum < 0 ? "danger" : "success") : "", foot: Number.isFinite(mcMediaNum) ? "margem de contribuição" : "" }),
+  ].join("");
+}
+
+async function buscarItensRelatorio(id) {
+  const res = await fetch(`${API_BASE}/automacoes/relatorios/${encodeURIComponent(id)}`, {
+    headers: { Authorization: "Bearer " + TOKEN },
+  });
+  if (res.status === 401) { clearSession(); return []; }
+  if (res.status === 403) { window.location.replace("dashboard.html"); return []; }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
+  return Array.isArray(json.itens) ? json.itens : [];
+}
+
+// Ordenação: 1 críticos, 2 sem base, 3 sem frete, 4 sem comissão, 5 atenção,
+// 6 menor MC (desempate geral). Exibe no máximo 10 itens.
+const DIAG_RANK = { critico: 0, sem_base: 1, sem_frete: 2, sem_comissao: 3, atencao: 4 };
+const DIAG_META = {
+  critico: { label: "Crítico", tone: "danger" },
+  atencao: { label: "Atenção", tone: "warning" },
+  saudavel: { label: "Saudável", tone: "success" },
+  sem_base: { label: "Sem base", tone: "neutral" },
+  sem_frete: { label: "Sem frete", tone: "warning" },
+  sem_comissao: { label: "Sem comissão", tone: "warning" },
+  sem_dados: { label: "Sem dados", tone: "neutral" },
+};
+
+function renderPrioridades(itens) {
+  const tbody = document.getElementById("auto-priorities-tbody");
+  const count = document.getElementById("auto-priorities-count");
+  if (!tbody) return;
+
+  const lista = Array.isArray(itens) ? itens.slice() : [];
+  lista.sort((a, b) => {
+    const ra = DIAG_RANK[a.diagnostico] ?? 5;
+    const rb = DIAG_RANK[b.diagnostico] ?? 5;
+    if (ra !== rb) return ra - rb;
+    const ma = Number(a.mc); const mb = Number(b.mc);
+    const va = Number.isFinite(ma) ? ma : Infinity;
+    const vb = Number.isFinite(mb) ? mb : Infinity;
+    return va - vb;
+  });
+
+  const top = lista.slice(0, 10);
+  if (count) { count.hidden = false; count.textContent = String(top.length); }
+
+  tbody.innerHTML = "";
+  if (top.length === 0) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="7" class="vf-auto-priorities__empty">Nenhuma prioridade encontrada. Todos os itens analisados estão saudáveis.</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+
+  top.forEach((it) => {
+    const meta = DIAG_META[it.diagnostico] || { label: it.diagnostico || "—", tone: "neutral" };
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="vf-mono">${escapeHTML(it.item_id || "—")}</td>
+      <td class="vf-truncate" title="${escapeHTML(it.titulo || "")}">${escapeHTML(it.titulo || "—")}</td>
+      <td class="num">${escapeHTML(fmtMoney(it.preco_efetivo))}</td>
+      <td class="num">${escapeHTML(fmtMcFraction(it.mc))}</td>
+      <td class="num">${escapeHTML(fmtMoney(it.preco_alvo))}</td>
+      <td><span class="vf-status is-${meta.tone}">${escapeHTML(meta.label)}</span></td>
+      <td>${escapeHTML(it.acao_recomendada || "—")}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ─── Ações finais ────────────────────────────────────────────────────────
+async function baixarXlsx(relatorioId) {
+  if (!TOKEN || !relatorioId) return;
+  try {
+    const res = await fetch(`${API_BASE}/automacoes/relatorios/${encodeURIComponent(relatorioId)}/export/xlsx`, {
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
     if (res.status === 401) { clearSession(); return; }
     if (res.status === 403) { window.location.replace("dashboard.html"); return; }
     if (!res.ok) {
       const json = await res.json().catch(() => ({}));
       throw new Error(json?.erro || `HTTP ${res.status}`);
     }
-
     const blob = await res.blob();
     const disp = res.headers.get("content-disposition") || "";
     const nomeMatch = disp.match(/filename="?([^"]+)"?/i);
-    const filename = nomeMatch?.[1] || `relatorio-${relatorioId}.${fmt}`;
-
+    const filename = nomeMatch?.[1] || `relatorio-${relatorioId}.xlsx`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   } catch (err) {
-    setStatus(err?.message ? `Erro ao exportar relatório: ${err.message}` : "Erro ao exportar relatório.", "var(--vf-danger)");
+    setFeedback(`Erro ao exportar XLSX: ${err.message}`, "danger");
   }
 }
 
-async function excluirRelatorioSalvo(id) {
-  if (!id || !TOKEN) return;
-
-  const confirmar = window.confirm("Excluir este relatório salvo? Essa ação não pode ser desfeita.");
-  if (!confirmar) return;
-
-  try {
-    const res = await fetch(`${API_BASE}/automacoes/relatorios/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-      headers: { Authorization: "Bearer " + TOKEN },
-    });
-
-    if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
-
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json?.ok) {
-      throw new Error(json?.erro || `HTTP ${res.status}`);
-    }
-
-    setStatus(`Relatório #${id} excluído com sucesso.`, "var(--vf-success)");
-    const slug = document.getElementById("automacoes-cliente")?.value || "";
-    if (slug) carregarRelatoriosCliente(slug);
-  } catch (err) {
-    setStatus(err?.message ? `Erro ao excluir relatório: ${err.message}` : "Erro ao excluir relatório.", "var(--vf-danger)");
-  }
+function novaAnalise() {
+  resetResultadoEProcessamento();
+  setConfigDisabled(false);
+  setFeedback("");
+  // Mantém o cliente selecionado; apenas reavalia a prontidão.
+  onClienteChange();
 }
 
-function fecharRelatorioDetalheModal() {
-  const modal = document.getElementById("vf-relatorio-detalhe-modal");
-  if (modal) modal.style.display = "none";
-  RELATORIO_DETALHE_ATUAL_ID = null;
-  atualizarBotoesExportDetalhe();
-}
-
-function diagnosticoLabelDoSalvo(key) {
-  switch ((key || "").toLowerCase()) {
-    case "critico": return { label: "Crítico", tone: "danger" };
-    case "atencao": return { label: "Atenção", tone: "warning" };
-    case "saudavel": return { label: "Saudável", tone: "success" };
-    case "sem_base": return { label: "Sem base", tone: "neutral" };
-    case "sem_frete": return { label: "Sem frete", tone: "warning" };
-    case "sem_comissao": return { label: "Sem comissão", tone: "warning" };
-    case "sem_dados": return { label: "Sem dados", tone: "neutral" };
-    default: return { label: key || "—", tone: "neutral" };
-  }
-}
-
-function renderRelatorioDetalheResumo(relatorio) {
-  const container = document.getElementById("vf-relatorio-detalhe-resumo");
-  const meta = document.getElementById("vf-relatorio-detalhe-meta");
-  if (!container || !relatorio) return;
-
-  container.innerHTML = `
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Total</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.total_itens ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Com base</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_com_base ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Sem base</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_sem_base ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Críticos</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_criticos ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Atenção</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_atencao ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Saudáveis</div><div class="vf-ml-insight-value">${escapeHTML(String(relatorio.itens_saudaveis ?? 0))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">MC média</div><div class="vf-ml-insight-value">${escapeHTML(formatarMcMedia(relatorio.mc_media))}</div></div>
-    <div class="vf-ml-insight-card"><div class="vf-ml-insight-label">Margem alvo</div><div class="vf-ml-insight-value">${escapeHTML(formatarMargemAlvo(relatorio.margem_alvo))}</div></div>
-  `;
-
-  if (meta) {
-    const partes = [
-      `<strong>#${escapeHTML(String(relatorio.id))}</strong>`,
-      `Cliente: <strong>${escapeHTML(relatorio.cliente_slug || "—")}</strong>`,
-      `Base: <strong>${escapeHTML(relatorio.base_slug || "—")}</strong>`,
-      `Escopo: <strong>${escapeHTML(relatorio.escopo || "—")}</strong>`,
-      `Status: <strong>${escapeHTML(relatorio.status || "—")}</strong>`,
-      `Data: <strong>${escapeHTML(formatarDataRelatorio(relatorio.created_at))}</strong>`,
-    ];
-    if (relatorio.observacoes) {
-      partes.push(`Observações: <em>${escapeHTML(relatorio.observacoes)}</em>`);
-    }
-    meta.innerHTML = partes.join(" · ");
-  }
-}
-
-function renderRelatorioDetalheItens(itens) {
-  const tbody = document.getElementById("vf-relatorio-detalhe-tbody");
-  if (!tbody) return;
-  tbody.innerHTML = "";
-
-  const lista = Array.isArray(itens) ? itens : [];
-  if (lista.length === 0) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="14" style="color:var(--vf-text-m);">Este relatório não possui itens salvos.</td>`;
-    tbody.appendChild(tr);
-    return;
-  }
-
-  const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const pct = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  const fmtMoney = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? brl.format(n) : "—";
-  };
-  const fmtPctNum = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? `${pct.format(n)}` : "—";
-  };
-  const fmtMcFraction = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? `${pct.format(n * 100)}%` : "—";
-  };
-  const fmtComissaoPct = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? `${pct.format(n)}%` : "—";
-  };
-
-  lista.forEach((it) => {
-    const diag = diagnosticoLabelDoSalvo(it.diagnostico);
-    const lcN = Number(it.lc);
-    const mcN = Number(it.mc);
-    const lcColor = !Number.isFinite(lcN) ? "" : (lcN > 0 ? "color:var(--vf-success);" : (lcN < 0 ? "color:var(--vf-danger);" : ""));
-    const mcColor = !Number.isFinite(mcN) ? "" : (mcN > 0 ? "color:var(--vf-success);" : (mcN < 0 ? "color:var(--vf-danger);" : ""));
-
-    const precoOriginalN = Number(it.preco_original);
-    const precoPromoN = Number(it.preco_promocional);
-    const temPromo =
-      Number.isFinite(precoPromoN) && precoPromoN > 0 &&
-      Number.isFinite(precoOriginalN) && precoPromoN < precoOriginalN;
-    const originalStyle = temPromo ? "text-decoration:line-through;color:var(--vf-text-m);" : "";
-    const promoStyle = temPromo ? "color:var(--vf-success);font-weight:600;" : "color:var(--vf-text-m);";
-    const promoFmt = temPromo ? fmtMoney(precoPromoN) : "—";
-
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td style="font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(it.item_id || "—")}</td>
-      <td style="white-space:normal;line-height:1.35;" title="${escapeHTML(it.titulo || "")}">${escapeHTML(it.titulo || "—")}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${originalStyle}">${escapeHTML(fmtMoney(it.preco_original))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${promoStyle}">${escapeHTML(promoFmt)}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_efetivo))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.custo))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtPctNum(it.imposto_percentual))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.frete))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtComissaoPct(it.comissao_percentual))}</td>
-      <td>${it.tem_base ? "Sim" : "Não"}</td>
-      <td><span class="vf-ml-badge vf-ml-badge-${diag.tone}">${escapeHTML(diag.label)}</span></td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${lcColor}">${escapeHTML(fmtMoney(it.lc))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;${mcColor}">${escapeHTML(fmtMcFraction(it.mc))}</td>
-      <td style="text-align:right;font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(fmtMoney(it.preco_alvo))}</td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-async function abrirRelatorioDetalhe(id) {
-  if (!id || !TOKEN) return;
-
-  const modal = document.getElementById("vf-relatorio-detalhe-modal");
-  const loading = document.getElementById("vf-relatorio-detalhe-loading");
-  const content = document.getElementById("vf-relatorio-detalhe-content");
-  const titulo = document.getElementById("vf-relatorio-detalhe-titulo");
-  if (!modal || !loading || !content) return;
-  RELATORIO_DETALHE_ATUAL_ID = id;
-  atualizarBotoesExportDetalhe();
-
-  if (titulo) titulo.textContent = `Relatório #${id}`;
-  modal.style.display = "flex";
-  loading.style.display = "block";
-  loading.textContent = "Carregando...";
-  content.style.display = "none";
-
-  try {
-    const res = await fetch(`${API_BASE}/automacoes/relatorios/${encodeURIComponent(id)}`, {
-      headers: { Authorization: "Bearer " + TOKEN },
-    });
-
-    if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
-
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json?.ok) {
-      throw new Error(json?.erro || `HTTP ${res.status}`);
-    }
-
-    const relatorio = json.relatorio || {};
-    const itens = json.itens || [];
-
-    if (titulo) {
-      titulo.textContent = `Relatório #${relatorio.id || id} — ${relatorio.cliente_slug || "—"}`;
-    }
-
-    renderRelatorioDetalheResumo(relatorio);
-    renderRelatorioDetalheItens(itens);
-
-    loading.style.display = "none";
-    content.style.display = "block";
-  } catch (err) {
-    loading.style.display = "block";
-    loading.innerHTML = `<span style="color:var(--vf-danger);">Erro ao carregar detalhe: ${escapeHTML(err.message || "desconhecido")}</span>`;
-    content.style.display = "none";
-  }
-}
-
-document.getElementById("automacoes-cliente")?.addEventListener("change", (e) => {
-  const slug = e.target.value || "";
-  resetDiagnosticoCompletoUI();
-  if (!slug) {
-    setStatus("Selecione um cliente para preparar o contexto.", "var(--vf-text-m)");
-    const card = document.getElementById("vf-relatorios-card");
-    if (card) card.style.display = "none";
-    return;
-  }
-  setStatus(`Cliente selecionado: ${escapeHTML(slug)} (ações: em breve)`, "var(--vf-success)");
-  carregarRelatoriosCliente(slug);
+// ─── Listeners ───────────────────────────────────────────────────────────
+document.getElementById("auto-cliente-search")?.addEventListener("input", applyClienteSearch);
+document.getElementById("auto-cliente")?.addEventListener("change", onClienteChange);
+document.getElementById("btn-otimizador-analisar")?.addEventListener("click", analisarLoja);
+document.getElementById("btn-nova-analise")?.addEventListener("click", novaAnalise);
+document.getElementById("btn-baixar-xlsx")?.addEventListener("click", () => {
+  if (RELATORIO_CONCLUIDO_ID) baixarXlsx(RELATORIO_CONCLUIDO_ID);
 });
-document.getElementById("automacoes-base")?.addEventListener("change", () => {
-  resetDiagnosticoCompletoUI();
+document.getElementById("btn-ver-relatorio-completo")?.addEventListener("click", () => {
+  if (!RELATORIO_CONCLUIDO_ID) { window.location.href = "relatorios.html"; return; }
+  window.location.href = `relatorios.html?relatorio=${encodeURIComponent(RELATORIO_CONCLUIDO_ID)}`;
 });
 
-document.getElementById("automacoes-cliente-search")?.addEventListener("input", () => {
-  applyClienteSearchFilter({ keepValueIfPossible: true });
-});
-document.getElementById("automacoes-base-search")?.addEventListener("input", () => {
-  applyBaseSearchFilter({ keepValueIfPossible: true });
-});
-document.getElementById("precificacao-ml-search")?.addEventListener("input", (e) => {
-  PREVIEW_ML_SEARCH = e.target.value || "";
-  renderPreviewMlTable();
-});
-document.getElementById("automacoes-margem")?.addEventListener("input", () => {
-  if (PREVIEW_ML_ROWS.length > 0) {
-    renderPreviewMlInsights();
-    renderPreviewMlControls();
-    renderPreviewMlTable();
-  }
-});
-
-document.getElementById("btn-precificacao-preview")?.addEventListener("click", previewPrecificacao);
-document.getElementById("btn-precificacao-preview-ml")?.addEventListener("click", () => {
-  PREVIEW_ML_PAGE = 1;
-  previewPrecificacaoMl();
-});
-document.getElementById("btn-relatorios-refresh")?.addEventListener("click", () => {
-  const slug = document.getElementById("automacoes-cliente")?.value || "";
-  if (!slug) {
-    setStatus("Selecione um cliente para listar relatórios.", "var(--vf-danger)");
-    return;
-  }
-  carregarRelatoriosCliente(slug);
-});
-document.getElementById("btn-diagnostico-completo-start")?.addEventListener("click", iniciarDiagnosticoCompleto);
-document.getElementById("btn-precificacao-ml-salvar")?.addEventListener("click", salvarRelatorioAtual);
-
-document.getElementById("vf-pos-salvar-baixar-xlsx")?.addEventListener("click", () => {
-  if (!ULTIMO_RELATORIO_SALVO_ID) return;
-  baixarRelatorioArquivo(ULTIMO_RELATORIO_SALVO_ID, "xlsx");
-});
-document.getElementById("vf-pos-salvar-ver-detalhes")?.addEventListener("click", () => {
-  if (!ULTIMO_RELATORIO_SALVO_ID) return;
-  if (typeof abrirRelatorioDetalhe === "function") abrirRelatorioDetalhe(ULTIMO_RELATORIO_SALVO_ID);
-});
-document.getElementById("vf-pos-salvar-abrir-relatorios")?.addEventListener("click", () => {
-  window.location.href = "relatorios.html";
-});
-document.getElementById("vf-pos-salvar-nova-analise")?.addEventListener("click", () => {
-  esconderPainelPosSalvar();
-});
-
-document.getElementById("vf-relatorio-pronto-baixar-xlsx")?.addEventListener("click", () => {
-  if (!ULTIMO_RELATORIO_PRONTO_ID) return;
-  baixarRelatorioArquivo(ULTIMO_RELATORIO_PRONTO_ID, "xlsx");
-});
-document.getElementById("vf-relatorio-pronto-ver-detalhes")?.addEventListener("click", () => {
-  if (!ULTIMO_RELATORIO_PRONTO_ID) return;
-  if (typeof abrirRelatorioDetalhe === "function") abrirRelatorioDetalhe(ULTIMO_RELATORIO_PRONTO_ID);
-});
-document.getElementById("vf-relatorio-pronto-abrir-relatorios")?.addEventListener("click", () => {
-  window.location.href = "relatorios.html";
-});
-document.getElementById("btn-precificacao-ml-prev")?.addEventListener("click", () => {
-  PREVIEW_ML_PAGE = Math.max(1, PREVIEW_ML_PAGE - 1);
-  previewPrecificacaoMl();
-});
-document.getElementById("btn-precificacao-ml-next")?.addEventListener("click", () => {
-  PREVIEW_ML_PAGE = PREVIEW_ML_PAGE + 1;
-  previewPrecificacaoMl();
-});
-document.getElementById("vf-relatorio-detalhe-close")?.addEventListener("click", fecharRelatorioDetalheModal);
-document.getElementById("btn-relatorio-detalhe-csv")?.addEventListener("click", () => {
-  if (!RELATORIO_DETALHE_ATUAL_ID) return;
-  baixarRelatorioArquivo(RELATORIO_DETALHE_ATUAL_ID, "csv");
-});
-document.getElementById("btn-relatorio-detalhe-xlsx")?.addEventListener("click", () => {
-  if (!RELATORIO_DETALHE_ATUAL_ID) return;
-  baixarRelatorioArquivo(RELATORIO_DETALHE_ATUAL_ID, "xlsx");
-});
-document.getElementById("vf-relatorio-detalhe-modal")?.addEventListener("click", (e) => {
-  if (e.target.id === "vf-relatorio-detalhe-modal") fecharRelatorioDetalheModal();
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    const modal = document.getElementById("vf-relatorio-detalhe-modal");
-    if (modal && modal.style.display !== "none") fecharRelatorioDetalheModal();
-  }
-});
-
+// ─── Init ────────────────────────────────────────────────────────────────
 if (TOKEN) {
   loadClientes();
-  loadBases();
-  resetDiagnosticoCompletoUI();
 }
-

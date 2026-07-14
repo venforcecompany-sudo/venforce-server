@@ -4,12 +4,7 @@
 
 const pool = require("../../config/database");
 const { mlFetch } = require("../../utils/mlClient");
-
-function normalizarSlug(nome) {
-  return String(nome || "").trim().toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\w\-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
-}
+const { exigirContextoPronto } = require("./contextoPrecificacaoService");
 
 function criarErroHttp(statusCode, payload) {
   const err = new Error(payload?.erro || "Erro");
@@ -20,27 +15,15 @@ function criarErroHttp(statusCode, payload) {
 
 async function gerarPreviewPrecificacao({ clienteSlugRaw, baseSlugRaw }) {
   const clienteSlugRawStr = String(clienteSlugRaw || "").trim();
-  const baseSlugRawStr = String(baseSlugRaw || "").trim();
-
   if (!clienteSlugRawStr) throw criarErroHttp(400, { ok: false, erro: "clienteSlug é obrigatório" });
-  if (!baseSlugRawStr) throw criarErroHttp(400, { ok: false, erro: "baseSlug é obrigatório" });
 
-  const clienteSlug = normalizarSlug(clienteSlugRawStr);
-  const baseSlug = normalizarSlug(baseSlugRawStr);
+  // baseSlug é opcional: quando ausente, a base MELI vinculada ao cliente é
+  // resolvida automaticamente; quando presente, é validada (compat).
+  const { cliente, base } = await exigirContextoPronto({
+    clienteSlugRaw: clienteSlugRawStr,
+    baseSlugRaw,
+  });
 
-  const c = await pool.query(
-    "SELECT id, nome, slug, ativo, created_at FROM clientes WHERE slug = $1",
-    [clienteSlug]
-  );
-  if (!c.rows.length) throw criarErroHttp(404, { ok: false, erro: "Cliente não encontrado." });
-
-  const b = await pool.query(
-    "SELECT id, nome, slug, ativo, created_at, updated_at FROM bases WHERE slug = $1",
-    [baseSlug]
-  );
-  if (!b.rows.length) throw criarErroHttp(404, { ok: false, erro: "Base não encontrada." });
-
-  const base = b.rows[0];
   const custos = await pool.query(
     "SELECT produto_id, custo_produto, imposto_percentual, taxa_fixa FROM custos WHERE base_id = $1 ORDER BY produto_id ASC",
     [base.id]
@@ -56,7 +39,7 @@ async function gerarPreviewPrecificacao({ clienteSlugRaw, baseSlugRaw }) {
 
   return {
     ok: true,
-    cliente: c.rows[0],
+    cliente,
     base: {
       id: base.id,
       nome: base.nome,
@@ -78,13 +61,7 @@ async function gerarPreviewPrecificacaoMl({
   margemAlvoRaw,
 }) {
   const clienteSlugRawStr = String(clienteSlugRaw || "").trim();
-  const baseSlugRawStr = String(baseSlugRaw || "").trim();
-
   if (!clienteSlugRawStr) throw criarErroHttp(400, { ok: false, erro: "clienteSlug é obrigatório" });
-  if (!baseSlugRawStr) throw criarErroHttp(400, { ok: false, erro: "baseSlug é obrigatório" });
-
-  const clienteSlug = normalizarSlug(clienteSlugRawStr);
-  const baseSlug = normalizarSlug(baseSlugRawStr);
 
   const page = Math.max(1, parseInt(pageRaw) || 1);
   const limit = Math.min(Math.max(1, parseInt(limitRaw) || 20), 20);
@@ -95,19 +72,12 @@ async function gerarPreviewPrecificacaoMl({
       ? parsedMargemAlvo
       : null;
 
-  const c = await pool.query(
-    "SELECT id, nome, slug, ativo, created_at FROM clientes WHERE slug = $1",
-    [clienteSlug]
-  );
-  if (!c.rows.length) throw criarErroHttp(404, { ok: false, erro: "Cliente não encontrado." });
-  const cliente = c.rows[0];
-
-  const b = await pool.query(
-    "SELECT id, nome, slug, ativo, created_at, updated_at FROM bases WHERE slug = $1",
-    [baseSlug]
-  );
-  if (!b.rows.length) throw criarErroHttp(404, { ok: false, erro: "Base não encontrada." });
-  const base = b.rows[0];
+  // Resolução única: cliente + grant ML + base MELI vinculada (baseSlug opcional).
+  // A base continua fornecendo custo/imposto/taxa fixa; o grant fornece o ml_user_id.
+  const { cliente, base, mlUserId } = await exigirContextoPronto({
+    clienteSlugRaw: clienteSlugRawStr,
+    baseSlugRaw,
+  });
 
   const custosRes = await pool.query(
     "SELECT produto_id, custo_produto, imposto_percentual, taxa_fixa FROM custos WHERE base_id = $1",
@@ -128,16 +98,6 @@ async function gerarPreviewPrecificacaoMl({
     custosMapNorm.set(key.toUpperCase(), payload);
     if (/^\d+$/.test(key)) custosMapNumeric.set(key, payload);
   });
-
-  // ML (somente leitura): usar ml_user_id já vinculado ao cliente
-  const tokenRow = await pool.query(
-    "SELECT ml_user_id FROM ml_tokens WHERE cliente_id = $1",
-    [cliente.id]
-  );
-  if (!tokenRow.rows.length) {
-    throw criarErroHttp(404, { ok: false, erro: "Cliente sem conta ML vinculada." });
-  }
-  const mlUserId = tokenRow.rows[0].ml_user_id;
 
   // Somente leitura (anúncios/dados): esta rota faz apenas GET no ML.
   // Refresh OAuth é permitido aqui só para evitar quebra por expiração do access_token; isso não altera anúncios/preços/estoque/campanhas.
