@@ -509,50 +509,53 @@
 
 /* Card com botão de info: reserva espaço no rótulo p/ não sobrepor */
 .vf-page-financeiro .vf-fin-reconciliation__item.has-info .vf-fin-reconciliation__item-label {
-  padding-right: var(--vf-sp-5);
+  padding-right: var(--vf-sp-8);
 }
 
-/* Ícone discreto de info no canto superior direito do card */
-.vf-page-financeiro .vf-fin-recon-info {
+/* Gatilho discreto de info no canto superior direito do card.
+   Sem borda própria — o único círculo visível é o do SVG. */
+.vf-page-financeiro .vf-fin-impact-trigger {
   position: absolute;
-  top: var(--vf-sp-2);
-  right: var(--vf-sp-2);
+  top: var(--vf-sp-1);
+  right: var(--vf-sp-1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: 1px solid var(--vf-border);
-  border-radius: var(--vf-radius-pill);
-  background: var(--vf-surface);
+  border: 0;
+  border-radius: var(--vf-radius-sm);
+  background: transparent;
   color: var(--vf-text-muted);
   cursor: pointer;
-  transition: color .15s ease, border-color .15s ease, background .15s ease;
+  transition: color .15s ease, background .15s ease;
 }
 
-.vf-page-financeiro .vf-fin-recon-info:hover,
-.vf-page-financeiro .vf-fin-recon-info[aria-expanded="true"] {
-  color: var(--vf-danger-strong);
-  border-color: var(--vf-danger);
-  background: var(--vf-surface-2);
+.vf-page-financeiro .vf-fin-impact-trigger:hover,
+.vf-page-financeiro .vf-fin-impact-trigger[aria-expanded="true"] {
+  color: var(--vf-primary-strong);
+  background: var(--vf-primary-soft);
 }
 
-.vf-page-financeiro .vf-fin-recon-info:focus-visible {
+.vf-page-financeiro .vf-fin-impact-trigger:focus-visible {
   outline: 2px solid var(--vf-primary);
   outline-offset: 2px;
+  color: var(--vf-primary-strong);
 }
 
-/* Popover ancorado no canto superior direito do card */
-.vf-page-financeiro .vf-fin-recon-pop {
-  position: absolute;
-  top: calc(var(--vf-sp-2) + 26px);
-  right: var(--vf-sp-2);
-  z-index: var(--vf-z-dropdown);
-  width: 260px;
-  max-width: calc(100vw - 2 * var(--vf-sp-4));
-  max-height: 240px;
-  overflow-y: auto;
+/* Popover — renderizado em document.body e posicionado por JS (position:
+   fixed + top/left). Nunca é cortado pelo overflow da Reconciliação.
+   Cabeçalho e descrição ficam fixos; só a lista rola. */
+.vf-page-financeiro .vf-fin-impact-popover {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: var(--vf-z-modal);
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(320px, calc(100vh - 24px));
   padding: var(--vf-sp-3);
   border: 1px solid var(--vf-border);
   border-radius: var(--vf-radius-lg);
@@ -560,50 +563,89 @@
   box-shadow: var(--vf-shadow-popover);
 }
 
-.vf-page-financeiro .vf-fin-recon-pop__title {
-  margin: 0;
+.vf-page-financeiro .vf-fin-impact-popover__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vf-sp-2);
+}
+
+.vf-page-financeiro .vf-fin-impact-popover__header strong {
   font-size: var(--vf-fs-sm);
   font-weight: var(--vf-fw-semibold);
   color: var(--vf-text);
 }
 
-.vf-page-financeiro .vf-fin-recon-pop__desc {
+.vf-page-financeiro .vf-fin-impact-popover__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--vf-radius-sm);
+  background: transparent;
+  color: var(--vf-text-muted);
+  cursor: pointer;
+  transition: color .15s ease, background .15s ease;
+}
+
+.vf-page-financeiro .vf-fin-impact-popover__close:hover {
+  color: var(--vf-text);
+  background: var(--vf-surface-2);
+}
+
+.vf-page-financeiro .vf-fin-impact-popover__close:focus-visible {
+  outline: 2px solid var(--vf-primary);
+  outline-offset: 2px;
+}
+
+.vf-page-financeiro .vf-fin-impact-popover__description {
+  flex: 0 0 auto;
   margin: 2px 0 var(--vf-sp-2);
   font-size: var(--vf-fs-2xs);
   color: var(--vf-text-muted);
   line-height: var(--vf-lh-snug);
 }
 
-.vf-page-financeiro .vf-fin-recon-pop__list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.vf-page-financeiro .vf-fin-impact-popover__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--vf-sp-1);
 }
 
-.vf-page-financeiro .vf-fin-recon-pop__row {
+.vf-page-financeiro .vf-fin-impact-popover__item {
   display: flex;
   flex-direction: column;
   gap: 1px;
   padding: var(--vf-sp-1) 0;
 }
 
-.vf-page-financeiro .vf-fin-recon-pop__row + .vf-fin-recon-pop__row {
+.vf-page-financeiro .vf-fin-impact-popover__item + .vf-fin-impact-popover__item {
   border-top: 1px solid var(--vf-border);
 }
 
-.vf-page-financeiro .vf-fin-recon-pop__name {
+.vf-page-financeiro .vf-fin-impact-popover__name {
   font-size: var(--vf-fs-xs);
   color: var(--vf-text);
   overflow-wrap: anywhere;
 }
 
-.vf-page-financeiro .vf-fin-recon-pop__meta {
+.vf-page-financeiro .vf-fin-impact-popover__meta {
   font-size: var(--vf-fs-2xs);
   color: var(--vf-text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+  .vf-page-financeiro .vf-fin-impact-popover {
+    max-height: 60vh;
+  }
 }
 
 .vf-page-financeiro .vf-fin-reconciliation__item.is-positive {

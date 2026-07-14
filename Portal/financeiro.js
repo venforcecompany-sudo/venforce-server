@@ -1110,13 +1110,18 @@ function renderShopeeReconciliacao(data) {
   const impactItems = topCancelled.filter((i) => i && i.productName);
   const impactsPopId = "fin-recon-impacts-pop";
   const impactsPopHtml = impactItems.length
-    ? `<button type="button" class="vf-fin-recon-info" aria-label="Ver maiores impactos de cancelamento confirmado" aria-expanded="false" aria-controls="${impactsPopId}">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    ? `<button type="button" class="vf-fin-impact-trigger" aria-label="Ver maiores impactos" aria-expanded="false" aria-controls="${impactsPopId}">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>
       </button>
-      <div class="vf-fin-recon-pop" id="${impactsPopId}" role="dialog" aria-label="Maiores impactos de cancelamento confirmado" hidden>
-        <p class="vf-fin-recon-pop__title">Maiores impactos</p>
-        <p class="vf-fin-recon-pop__desc">Produtos mais afetados por cancelamento confirmado.</p>
-        <ul class="vf-fin-recon-pop__list">${impactItems.map((i) => `<li class="vf-fin-recon-pop__row"><span class="vf-fin-recon-pop__name">${escapeHTML(i.productName)}</span><span class="vf-fin-recon-pop__meta">${num(i.count || 0)} pedido${(i.count || 0) !== 1 ? "s" : ""} · ${brl(i.revenue || 0)}</span></li>`).join("")}</ul>
+      <div class="vf-fin-impact-popover" id="${impactsPopId}" role="dialog" aria-label="Maiores impactos de cancelamento confirmado" hidden>
+        <div class="vf-fin-impact-popover__header">
+          <strong>Maiores impactos</strong>
+          <button type="button" class="vf-fin-impact-popover__close" aria-label="Fechar">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+          </button>
+        </div>
+        <p class="vf-fin-impact-popover__description">Produtos mais afetados por cancelamento confirmado.</p>
+        <div class="vf-fin-impact-popover__list">${impactItems.map((i) => `<div class="vf-fin-impact-popover__item"><span class="vf-fin-impact-popover__name">${escapeHTML(i.productName)}</span><span class="vf-fin-impact-popover__meta">${num(i.count || 0)} pedido${(i.count || 0) !== 1 ? "s" : ""} · ${brl(i.revenue || 0)}</span></div>`).join("")}</div>
       </div>`
     : "";
 
@@ -1171,35 +1176,95 @@ function renderShopeeReconciliacao(data) {
 
 // Fiação do popover de "Maiores impactos" ancorado no card
 // "Cancelados confirmados". Apenas apresentação — não altera cálculos.
+// O painel visual é movido para document.body enquanto aberto e
+// posicionado com position: fixed, para nunca ser cortado pelo overflow
+// do painel da Reconciliação.
 function wireReconInfoPopover(root) {
-  const btn = root.querySelector(".vf-fin-recon-info");
-  const pop = root.querySelector(".vf-fin-recon-pop");
-  if (!btn || !pop) return;
+  // Remove qualquer popover órfão de uma renderização anterior.
+  document.querySelectorAll("body > .vf-fin-impact-popover").forEach((n) => n.remove());
 
-  const close = () => {
-    if (pop.hidden) return;
-    pop.hidden = true;
-    btn.setAttribute("aria-expanded", "false");
-    document.removeEventListener("click", onDocClick, true);
-    document.removeEventListener("keydown", onKeydown, true);
-  };
-  const open = () => {
-    if (!pop.hidden) return;
-    pop.hidden = false;
-    btn.setAttribute("aria-expanded", "true");
-    document.addEventListener("click", onDocClick, true);
-    document.addEventListener("keydown", onKeydown, true);
-  };
+  const trigger = root.querySelector(".vf-fin-impact-trigger");
+  const pop = root.querySelector(".vf-fin-impact-popover");
+  if (!trigger || !pop) return;
+
+  const home = pop.parentNode; // volta para o card ao fechar
+  const MARGIN = 12;
+  const GAP = 6;
+  let isOpen = false;
+
+  function position() {
+    const r = trigger.getBoundingClientRect();
+    const pw = pop.offsetWidth;
+    const ph = pop.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // Horizontal: alinhado à direita do gatilho, preso à viewport.
+    let left = r.right - pw;
+    left = Math.min(left, vw - MARGIN - pw);
+    left = Math.max(left, MARGIN);
+
+    // Vertical: abaixo quando cabe; senão acima; senão o lado com mais espaço.
+    const spaceBelow = vh - r.bottom;
+    const spaceAbove = r.top;
+    let top;
+    if (spaceBelow >= ph + GAP + MARGIN) top = r.bottom + GAP;
+    else if (spaceAbove >= ph + GAP + MARGIN) top = r.top - ph - GAP;
+    else top = spaceBelow >= spaceAbove ? r.bottom + GAP : r.top - ph - GAP;
+    top = Math.min(top, vh - MARGIN - ph);
+    top = Math.max(top, MARGIN);
+
+    pop.style.top = `${Math.round(top)}px`;
+    pop.style.left = `${Math.round(left)}px`;
+  }
+
   function onDocClick(ev) {
-    if (!pop.contains(ev.target) && !btn.contains(ev.target)) close();
+    if (!pop.contains(ev.target) && !trigger.contains(ev.target)) close();
   }
   function onKeydown(ev) {
-    if (ev.key === "Escape") { close(); btn.focus(); }
+    if (ev.key === "Escape") { close(); trigger.focus(); }
+  }
+  function onScrollOrResize() {
+    if (isOpen) position();
   }
 
-  btn.addEventListener("click", (ev) => {
+  function open() {
+    if (isOpen) return;
+    document.body.appendChild(pop); // fora de qualquer container com overflow
+    pop.style.visibility = "hidden";
+    pop.hidden = false;
+    position(); // mede e posiciona antes de revelar
+    pop.style.visibility = "";
+    isOpen = true;
+    trigger.setAttribute("aria-expanded", "true");
+    document.addEventListener("click", onDocClick, true);
+    document.addEventListener("keydown", onKeydown, true);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+  }
+  function close() {
+    if (!isOpen) return;
+    pop.hidden = true;
+    pop.style.visibility = "";
+    pop.style.top = "";
+    pop.style.left = "";
+    if (home && pop.parentNode !== home) home.appendChild(pop);
+    isOpen = false;
+    trigger.setAttribute("aria-expanded", "false");
+    document.removeEventListener("click", onDocClick, true);
+    document.removeEventListener("keydown", onKeydown, true);
+    window.removeEventListener("scroll", onScrollOrResize, true);
+    window.removeEventListener("resize", onScrollOrResize);
+  }
+
+  trigger.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    pop.hidden ? open() : close();
+    isOpen ? close() : open();
+  });
+  pop.querySelector(".vf-fin-impact-popover__close")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    close();
+    trigger.focus();
   });
 }
 
