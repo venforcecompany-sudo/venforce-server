@@ -1,0 +1,554 @@
+/* ============================================================
+ * VenForce — Relatórios · CSS específico da página (V2)
+ *
+ * Ordem de carga (em relatorios.html):
+ *   style.css (layout/sidebar/topbar) →
+ *   css/vf-tokens-v2.css → css/vf-components-v2.css →
+ *   css/pages/relatorios-v2.css (este arquivo, sempre por último)
+ *
+ * REGRAS DESTE ARQUIVO
+ *  - Só o que é REALMENTE específico desta página: enquadramento
+ *    do shell, layout sidebar+conteúdo, navegação de organização,
+ *    faixa de resumo, modal-workspace, posicionamento de menus e
+ *    ajustes locais das tabelas.
+ *  - Componentes globais (botão, input, select, card, tabela, tag,
+ *    status, banner, chip, menu, modal, empty, spinner, progress)
+ *    vêm de vf-components-v2.css e NÃO são recriados aqui.
+ *  - Só tokens V2. Sem !important, sem hexadecimais soltos, sem
+ *    sombras/radius/gradientes próprios, sem Bootstrap.
+ * ============================================================ */
+
+/* ------------------------------------------------------------
+ * 1. Shell da página
+ * A tela vive dentro do layout existente (.vf-main-with-sidebar >
+ * .vf-content). Neutralizamos a largura/padding herdados do
+ * style.css e deixamos vf-page-shell + vf-page-container--wide
+ * cuidarem do enquadramento V2.
+ * ------------------------------------------------------------ */
+.vf-page-relatorios .vf-content {
+  max-width: none;
+  padding: 0;
+}
+
+/* O atributo [hidden] precisa vencer o display dos componentes
+   (banner, loading, empty, filtros ativos, menus, painéis). */
+.vf-page-relatorios [hidden] {
+  display: none;
+}
+
+/* Cores semânticas de valores (LC/MC/críticos) — só tokens */
+.vf-page-relatorios .is-pos { color: var(--vf-success-strong); }
+.vf-page-relatorios .is-neg { color: var(--vf-danger); }
+.vf-page-relatorios .vf-report-cellneg { color: var(--vf-danger); font-weight: var(--vf-fw-medium); }
+.vf-page-relatorios .vf-report-nowrap { white-space: nowrap; }
+
+/* ------------------------------------------------------------
+ * 2. Layout principal: sidebar de organização + conteúdo
+ * ------------------------------------------------------------ */
+.vf-page-relatorios .vf-report-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: var(--vf-sp-5);
+  align-items: start;
+}
+
+.vf-page-relatorios .vf-report-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-4);
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------
+ * 3. Sidebar de organização (visões + pastas)
+ * ------------------------------------------------------------ */
+.vf-page-relatorios .vf-report-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-5);
+  padding: var(--vf-sp-4);
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  position: sticky;
+  top: calc(var(--vf-topbar-h) + var(--vf-sp-4));
+  max-height: calc(100vh - var(--vf-topbar-h) - var(--vf-sp-8));
+  overflow-y: auto;
+}
+
+.vf-page-relatorios .vf-report-sidebar__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-2);
+}
+
+.vf-page-relatorios .vf-report-sidebar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vf-sp-2);
+}
+
+.vf-page-relatorios .vf-report-sidebar__title {
+  margin: 0;
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: var(--vf-ls-caps);
+  text-transform: uppercase;
+  color: var(--vf-text-muted);
+}
+
+.vf-page-relatorios .vf-report-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vf-page-relatorios .vf-report-nav__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.vf-page-relatorios .vf-report-nav__item {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vf-sp-2);
+  min-width: 0;
+  padding: var(--vf-sp-2) var(--vf-sp-3);
+  border: none;
+  border-radius: var(--vf-radius-sm);
+  background: transparent;
+  font-family: var(--vf-font-body);
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--vf-duration-fast) var(--vf-ease),
+    color var(--vf-duration-fast) var(--vf-ease);
+}
+
+.vf-page-relatorios .vf-report-nav__item:hover {
+  background: var(--vf-surface-hover);
+  color: var(--vf-text);
+}
+
+/* Seleção atual bem visível */
+.vf-page-relatorios .vf-report-nav__row.is-active .vf-report-nav__item {
+  background: var(--vf-primary-soft);
+  color: var(--vf-primary-strong);
+  font-weight: var(--vf-fw-semibold);
+}
+
+.vf-page-relatorios .vf-report-nav__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.vf-page-relatorios .vf-report-nav__count {
+  flex: 0 0 auto;
+  font-size: var(--vf-fs-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--vf-text-muted);
+}
+
+.vf-page-relatorios .vf-report-nav__row.is-active .vf-report-nav__count {
+  color: var(--vf-primary-strong);
+}
+
+.vf-page-relatorios .vf-report-nav__empty {
+  margin: 0;
+  padding: var(--vf-sp-2) var(--vf-sp-3);
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-muted);
+}
+
+/* Menu "⋯" da pasta: aparece no hover, no foco ou quando aberto */
+.vf-page-relatorios .vf-report-nav__menu {
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity var(--vf-duration-fast) var(--vf-ease);
+}
+
+.vf-page-relatorios .vf-report-nav__row:hover .vf-report-nav__menu,
+.vf-page-relatorios .vf-report-nav__row:focus-within .vf-report-nav__menu,
+.vf-page-relatorios .vf-report-nav__menu:has(.vf-menu:not([hidden])) {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------
+ * 4. Menus "⋯" — a superfície vem de .vf-menu (fundação);
+ * aqui só o posicionamento (responsabilidade da página).
+ * ------------------------------------------------------------ */
+.vf-page-relatorios .vf-report-menuwrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.vf-page-relatorios .vf-report-menuwrap .vf-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--vf-sp-1));
+}
+
+.vf-page-relatorios .vf-report-menuwrap .vf-menu.is-up {
+  top: auto;
+  bottom: calc(100% + var(--vf-sp-1));
+}
+
+/* ------------------------------------------------------------
+ * 5. Escopo selecionado + resumo compacto
+ * ------------------------------------------------------------ */
+.vf-page-relatorios .vf-report-scope {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  min-width: 0;
+}
+
+.vf-page-relatorios .vf-report-scope__title {
+  margin: 0;
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-lg);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Botão "Organização" só existe quando a sidebar vira drawer */
+.vf-page-relatorios .vf-report-scope__org {
+  display: none;
+}
+
+.vf-page-relatorios .vf-report-summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vf-sp-2);
+  flex-wrap: wrap;
+  padding: var(--vf-sp-2) var(--vf-sp-4);
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text-secondary);
+}
+
+.vf-page-relatorios .vf-report-summary__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.vf-page-relatorios .vf-report-summary__value {
+  font-family: var(--vf-font-display);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--vf-fw-bold);
+  color: var(--vf-text);
+}
+
+.vf-page-relatorios .vf-report-summary__item.is-danger .vf-report-summary__value { color: var(--vf-danger); }
+.vf-page-relatorios .vf-report-summary__item.is-warning .vf-report-summary__value { color: var(--vf-warning-strong); }
+
+.vf-page-relatorios .vf-report-summary__label {
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-muted);
+}
+
+.vf-page-relatorios .vf-report-summary__sep {
+  color: var(--vf-text-placeholder);
+}
+
+/* ------------------------------------------------------------
+ * 6. Toolbar e filtros
+ * ------------------------------------------------------------ */
+.vf-page-relatorios .vf-report-toolbar__select {
+  width: auto;
+  min-width: 130px;
+  flex: 0 1 auto;
+}
+
+.vf-page-relatorios .vf-report-adv .vf-card__body {
+  padding: var(--vf-sp-4);
+}
+
+.vf-page-relatorios .vf-report-adv__checks {
+  flex-direction: column;
+  gap: var(--vf-sp-2);
+}
+
+/* ------------------------------------------------------------
+ * 7. Tabela principal — scroll interno, sem paginação
+ * ------------------------------------------------------------ */
+.vf-page-relatorios .vf-report-table-wrap {
+  max-height: calc(100vh - var(--vf-topbar-h) - 260px);
+  min-height: 220px;
+}
+
+.vf-page-relatorios .vf-report-cellclient {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vf-page-relatorios .vf-report-cellclient__base {
+  font-size: var(--vf-fs-2xs);
+  color: var(--vf-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.vf-page-relatorios .vf-report-cellpasta {
+  max-width: 140px;
+}
+
+.vf-page-relatorios .vf-report-rowactions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--vf-sp-1);
+  white-space: nowrap;
+}
+
+/* Indicador discreto de renderização em lotes */
+.vf-page-relatorios .vf-report-render-hint {
+  margin: var(--vf-sp-1) 0 0;
+  font-size: var(--vf-fs-2xs);
+  color: var(--vf-text-muted);
+}
+
+/* ------------------------------------------------------------
+ * 8. Modal-workspace do relatório
+ * ------------------------------------------------------------ */
+.vf-page-relatorios .vf-modal--workspace {
+  max-width: min(96vw, 1760px);
+  height: min(94vh, 980px);
+  max-height: min(94vh, 980px);
+}
+
+.vf-page-relatorios .vf-report-detail-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-3);
+  min-width: 0;
+}
+
+.vf-page-relatorios .vf-report-detail-head__meta {
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-muted);
+  white-space: nowrap;
+}
+
+.vf-page-relatorios .vf-report-detail-head__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  flex: 0 0 auto;
+}
+
+/* O body é o workspace: só a tabela rola */
+.vf-page-relatorios .vf-report-detail-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: var(--vf-sp-4) var(--vf-sp-5);
+}
+
+.vf-page-relatorios .vf-report-detail-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-3);
+}
+
+.vf-page-relatorios .vf-report-summary--detail {
+  padding: var(--vf-sp-2) var(--vf-sp-3);
+}
+
+.vf-page-relatorios .vf-report-detail-meta {
+  margin: 0;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+}
+
+.vf-page-relatorios .vf-report-detail-toolbar {
+  padding: var(--vf-sp-2) var(--vf-sp-3);
+}
+
+.vf-page-relatorios .vf-report-detail-counter {
+  font-size: var(--vf-fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--vf-text-secondary);
+  white-space: nowrap;
+}
+
+.vf-page-relatorios .vf-report-detail-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  flex-wrap: wrap;
+}
+
+.vf-page-relatorios .vf-report-chipcount {
+  font-variant-numeric: tabular-nums;
+  color: var(--vf-text-muted);
+}
+
+.vf-page-relatorios .vf-filter-chip.is-active .vf-report-chipcount {
+  color: var(--vf-primary-strong);
+}
+
+/* A tabela de itens ocupa todo o espaço restante do workspace */
+.vf-page-relatorios .vf-report-detail-table-wrap {
+  flex: 1 1 auto;
+  min-height: 160px;
+}
+
+.vf-page-relatorios .vf-report-cellmlb {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vf-page-relatorios .vf-report-cellmlb__sku {
+  font-size: var(--vf-fs-2xs);
+  color: var(--vf-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.vf-page-relatorios .vf-report-celltitulo {
+  display: block;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vf-page-relatorios .vf-report-cellacao {
+  display: block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Seletor de colunas (posicionamento do menu) */
+.vf-page-relatorios .vf-report-colwrap {
+  position: relative;
+}
+
+.vf-page-relatorios .vf-report-colmenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--vf-sp-1));
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.vf-page-relatorios .vf-report-colmenu__item {
+  display: flex;
+  width: 100%;
+  padding: var(--vf-sp-1) var(--vf-sp-3);
+  border-radius: var(--vf-radius-sm);
+}
+
+.vf-page-relatorios .vf-report-colmenu__item:hover {
+  background: var(--vf-surface-hover);
+}
+
+/* Nota fixa do editor de base */
+.vf-page-relatorios .vf-report-modal-note {
+  margin-bottom: var(--vf-sp-3);
+}
+
+/* ------------------------------------------------------------
+ * 9. Responsivo
+ * Desktop: sidebar fixa · Tablet/Mobile: sidebar vira drawer
+ * acionado pelo botão "Organização".
+ * ------------------------------------------------------------ */
+@media (max-width: 1024px) {
+  .vf-page-relatorios .vf-report-layout {
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: var(--vf-sp-4);
+  }
+}
+
+@media (max-width: 900px) {
+  .vf-page-relatorios .vf-report-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vf-page-relatorios .vf-report-scope__org {
+    display: inline-flex;
+  }
+
+  /* Sidebar vira drawer à esquerda (não ocupa a tela) */
+  .vf-page-relatorios .vf-report-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: var(--vf-z-drawer);
+    width: min(300px, 86vw);
+    max-height: none;
+    border-radius: 0;
+    border-top: none;
+    border-bottom: none;
+    border-left: none;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform var(--vf-duration-slow) var(--vf-ease),
+      visibility var(--vf-duration-slow) var(--vf-ease);
+  }
+
+  .vf-page-relatorios .vf-report-sidebar.is-open {
+    transform: translateX(0);
+    visibility: visible;
+    box-shadow: var(--vf-shadow-modal);
+  }
+
+  .vf-page-relatorios .vf-report-table-wrap {
+    max-height: calc(100vh - var(--vf-topbar-h) - 200px);
+  }
+}
+
+@media (max-width: 600px) {
+  .vf-page-relatorios .vf-report-toolbar__select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Modal do relatório praticamente em tela cheia */
+  .vf-page-relatorios .vf-modal--workspace {
+    max-width: 100%;
+    height: calc(100vh - 2 * var(--vf-sp-4));
+    max-height: calc(100vh - 2 * var(--vf-sp-4));
+  }
+
+  .vf-page-relatorios .vf-report-detail-head__meta {
+    display: none;
+  }
+
+  .vf-page-relatorios .vf-report-detail-body {
+    padding: var(--vf-sp-3);
+  }
+
+  .vf-page-relatorios .vf-report-celltitulo {
+    max-width: 200px;
+  }
+}

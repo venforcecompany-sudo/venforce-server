@@ -4,241 +4,475 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Venforce — Relatórios</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Fundação Global V2: Hanken Grotesk (corpo) · Manrope (display) · IBM Plex Mono (códigos) -->
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- 1. Layout compartilhado (sidebar/topbar/estados globais indispensáveis) -->
   <link rel="stylesheet" href="style.css">
+  <!-- 2. Fundação Global V2 (tokens → componentes → página) -->
+  <link rel="stylesheet" href="css/vf-tokens-v2.css">
+  <link rel="stylesheet" href="css/vf-components-v2.css">
+  <link rel="stylesheet" href="css/pages/relatorios-v2.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
 </head>
 <body class="vf-page vf-page-relatorios">
+
   <div class="vf-main-with-sidebar">
     <main class="vf-content">
-      <div class="vf-page-header">
-        <h2>Relatórios</h2>
-        <p>Consulte, filtre e exporte diagnósticos salvos por cliente.</p>
-      </div>
+      <div class="vf-page-shell">
+        <div class="vf-page-container vf-page-container--wide">
 
-      <div class="vf-card vf-report-hub-filters-card" style="margin-bottom:24px;">
-        <div class="vf-card-header">
-          <h5>Filtros</h5>
-          <button type="button" id="btn-atualizar-relatorios" class="vf-btn-secondary" style="margin:0;padding:.32rem .75rem;font-size:.8rem;">Atualizar</button>
-        </div>
-        <div style="padding:.9rem 1.5rem;">
-          <div style="display:grid;grid-template-columns:minmax(220px,2fr) repeat(3,minmax(130px,1fr));gap:10px;align-items:end;">
-            <div class="vf-form-group" style="margin:0;">
-              <label for="filtro-busca">Busca</label>
-              <input id="filtro-busca" class="vf-input" type="search" placeholder="Buscar por ID, cliente, base ou escopo..." autocomplete="off">
+          <!-- 1. PAGE HEADER -->
+          <header class="vf-page-header">
+            <div class="vf-page-header__main">
+              <p class="vf-page-header__eyebrow">Análises</p>
+              <h1 class="vf-page-header__title">Relatórios</h1>
+              <p class="vf-page-header__description">Organize e analise os diagnósticos de precificação do Mercado Livre.</p>
             </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="filtro-cliente">Cliente</label>
-              <select id="filtro-cliente" class="vf-input">
-                <option value="">Todos</option>
-              </select>
+            <div class="vf-page-header__actions">
+              <button type="button" id="btn-atualizar-relatorios" class="vf-btn vf-btn--secondary">Atualizar</button>
+              <button type="button" id="btn-nova-pasta-header" class="vf-btn vf-btn--primary">Nova pasta</button>
             </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="filtro-escopo">Escopo</label>
-              <select id="filtro-escopo" class="vf-input">
-                <option value="">Todos</option>
-                <option value="loja_completa">loja_completa</option>
-                <option value="pagina_atual">pagina_atual</option>
-              </select>
-            </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="filtro-status">Status</label>
-              <select id="filtro-status" class="vf-input">
-                <option value="">Todos</option>
-                <option value="concluido">concluido</option>
-                <option value="processando">processando</option>
-                <option value="erro">erro</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
+          </header>
 
-      <div class="vf-card">
-        <div class="vf-card-header">
-          <h5>Relatórios salvos</h5>
-          <span id="relatorios-total" class="vf-badge" style="display:none;">0</span>
-        </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div id="relatorios-feedback" style="display:none;margin-bottom:10px;font-size:.875rem;"></div>
-          <div class="vf-relatorios-layout vf-report-hub-layout">
-            <aside class="vf-relatorios-pastas-col vf-drive-sidebar vf-report-hub-folders-bar">
-              <div class="vf-drive-sidebar-header vf-report-hub-folders-header">
-                <div class="vf-drive-sidebar-title" style="font-weight:700;font-size:.875rem;color:var(--vf-text-l);text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;">Pastas</div>
-                <button type="button" id="btn-nova-pasta" class="vf-btn-secondary vf-drive-sidebar-new vf-report-hub-new-btn" style="margin:0;padding:.28rem .65rem;font-size:.78rem;border-radius:999px;">+ Nova pasta</button>
+          <!-- Feedback global da página -->
+          <div id="relatorios-feedback" class="vf-banner" role="status" aria-live="polite" hidden></div>
+
+          <!-- 2. LAYOUT: sidebar de organização + conteúdo -->
+          <div class="vf-report-layout">
+
+            <!-- Backdrop do drawer (mobile) -->
+            <div id="rs-backdrop" class="vf-drawer-backdrop" hidden></div>
+
+            <aside class="vf-report-sidebar" id="report-sidebar" aria-label="Organização dos relatórios">
+              <div class="vf-report-sidebar__section">
+                <p class="vf-report-sidebar__title">Visões</p>
+                <nav class="vf-report-nav" id="rs-views-nav" aria-label="Visões rápidas"></nav>
               </div>
-              <div id="relatorios-pastas-lista"></div>
+              <div class="vf-report-sidebar__section">
+                <div class="vf-report-sidebar__head">
+                  <p class="vf-report-sidebar__title">Pastas</p>
+                  <button type="button" id="btn-nova-pasta" class="vf-btn vf-btn--ghost vf-btn--sm">+ Nova</button>
+                </div>
+                <nav class="vf-report-nav" id="rs-pastas-nav" aria-label="Pastas de relatórios"></nav>
+              </div>
             </aside>
 
-            <section class="vf-relatorios-tabela-col vf-relatorios-dashboard vf-drive-main">
-              <div id="relatorios-loading" class="vf-empty-state" style="display:none;padding:1.5rem 1rem;">
-                <p>Carregando relatórios...</p>
+            <section class="vf-report-content">
+
+              <!-- Escopo selecionado + botão de organização (mobile) -->
+              <div class="vf-report-scope">
+                <button type="button" id="btn-org-toggle" class="vf-btn vf-btn--secondary vf-btn--sm vf-report-scope__org" aria-expanded="false" aria-controls="report-sidebar">Organização</button>
+                <h2 class="vf-report-scope__title" id="rh-scope-title">Todos</h2>
+                <span class="vf-badge" id="rh-scope-count" hidden>0</span>
               </div>
-              <div id="relatorios-erro" class="vf-empty-state" style="display:none;padding:1.5rem 1rem;">
-                <p style="color:var(--vf-danger);">Erro ao carregar relatórios.</p>
+
+              <!-- 3. RESUMO COMPACTO -->
+              <div class="vf-report-summary" id="rh-summary" aria-live="polite"></div>
+
+              <!-- 4. TOOLBAR DE FILTROS -->
+              <div class="vf-toolbar vf-report-toolbar">
+                <div class="vf-toolbar__filters">
+                  <input type="search" id="rh-busca" class="vf-input vf-search" placeholder="Buscar por ID, cliente, base, escopo, pasta ou observações…" autocomplete="off" aria-label="Buscar relatórios">
+                  <select id="rh-cliente" class="vf-select vf-select--sm vf-report-toolbar__select" aria-label="Filtrar por cliente">
+                    <option value="">Cliente: todos</option>
+                  </select>
+                  <select id="rh-status" class="vf-select vf-select--sm vf-report-toolbar__select" aria-label="Filtrar por status">
+                    <option value="">Status: todos</option>
+                    <option value="concluido">Concluído</option>
+                    <option value="processando">Processando</option>
+                    <option value="erro">Erro</option>
+                  </select>
+                  <select id="rh-periodo" class="vf-select vf-select--sm vf-report-toolbar__select" aria-label="Filtrar por período">
+                    <option value="">Período: todos</option>
+                    <option value="1">Hoje</option>
+                    <option value="7">Últimos 7 dias</option>
+                    <option value="30">Últimos 30 dias</option>
+                    <option value="90">Últimos 90 dias</option>
+                  </select>
+                  <select id="rh-ordenacao" class="vf-select vf-select--sm vf-report-toolbar__select" aria-label="Ordenar relatórios">
+                    <option value="data:desc">Mais recentes</option>
+                    <option value="data:asc">Mais antigos</option>
+                    <option value="id:desc">ID</option>
+                    <option value="cliente:asc">Cliente</option>
+                    <option value="total:desc">Mais itens</option>
+                    <option value="criticos:desc">Mais críticos</option>
+                    <option value="sem_base:desc">Mais sem base</option>
+                    <option value="mc:asc">Menor MC</option>
+                    <option value="mc:desc">Maior MC</option>
+                  </select>
+                </div>
+                <div class="vf-toolbar__actions">
+                  <button type="button" id="rh-adv-toggle" class="vf-btn vf-btn--secondary vf-btn--sm" aria-expanded="false" aria-controls="rh-adv-panel">Filtros avançados</button>
+                </div>
               </div>
-              <div id="relatorios-vazio" class="vf-empty-state" style="display:none;padding:1.5rem 1rem;">
-                <p>Nenhum relatório encontrado</p>
+
+              <!-- Filtros avançados (recolhíveis) -->
+              <div class="vf-card vf-report-adv" id="rh-adv-panel" hidden>
+                <div class="vf-card__body">
+                  <div class="vf-form-grid">
+                    <div class="vf-field">
+                      <label class="vf-field__label" for="rh-adv-escopo">Escopo</label>
+                      <select id="rh-adv-escopo" class="vf-select vf-select--sm">
+                        <option value="">Todos</option>
+                        <option value="loja_completa">Loja completa</option>
+                        <option value="pagina_atual">Página atual</option>
+                      </select>
+                    </div>
+                    <div class="vf-field">
+                      <label class="vf-field__label" for="rh-margem-min">Margem-alvo mínima</label>
+                      <div class="vf-input-group">
+                        <input id="rh-margem-min" class="vf-input vf-input--sm" type="number" step="0.5" min="0" max="99" placeholder="0" autocomplete="off">
+                        <span class="vf-input-suffix">%</span>
+                      </div>
+                    </div>
+                    <div class="vf-field">
+                      <label class="vf-field__label" for="rh-margem-max">Margem-alvo máxima</label>
+                      <div class="vf-input-group">
+                        <input id="rh-margem-max" class="vf-input vf-input--sm" type="number" step="0.5" min="0" max="99" placeholder="99" autocomplete="off">
+                        <span class="vf-input-suffix">%</span>
+                      </div>
+                    </div>
+                    <div class="vf-field">
+                      <label class="vf-field__label" for="rh-mc-min">MC mínima</label>
+                      <div class="vf-input-group">
+                        <input id="rh-mc-min" class="vf-input vf-input--sm" type="number" step="0.5" placeholder="-100" autocomplete="off">
+                        <span class="vf-input-suffix">%</span>
+                      </div>
+                    </div>
+                    <div class="vf-field">
+                      <label class="vf-field__label" for="rh-mc-max">MC máxima</label>
+                      <div class="vf-input-group">
+                        <input id="rh-mc-max" class="vf-input vf-input--sm" type="number" step="0.5" placeholder="100" autocomplete="off">
+                        <span class="vf-input-suffix">%</span>
+                      </div>
+                    </div>
+                    <div class="vf-field vf-report-adv__checks">
+                      <span class="vf-field__label">Somente com</span>
+                      <label class="vf-check"><input type="checkbox" id="rh-so-criticos"><span>Críticos</span></label>
+                      <label class="vf-check"><input type="checkbox" id="rh-so-sembase"><span>Itens sem base</span></label>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div id="relatorios-wrapper" style="display:none;">
-                <div id="vf-relatorios-summary-grid" class="vf-relatorios-summary-grid"></div>
-                <div id="vf-relatorio-card-list" class="vf-relatorio-card-list"></div>
+
+              <!-- Filtros ativos -->
+              <div class="vf-active-filters" id="rh-active-filters" hidden></div>
+
+              <!-- Estados -->
+              <div id="rh-loading" class="vf-loading-state" hidden>
+                <span class="vf-spinner" aria-hidden="true"></span>
+                Carregando relatórios…
               </div>
+              <div id="rh-erro" class="vf-empty" hidden>
+                <div class="vf-empty__icon is-danger" aria-hidden="true">!</div>
+                <p class="vf-empty__title">Erro ao carregar relatórios</p>
+                <p class="vf-empty__description" id="rh-erro-msg"></p>
+                <div class="vf-empty__actions">
+                  <button type="button" id="rh-erro-retry" class="vf-btn vf-btn--secondary">Tentar novamente</button>
+                </div>
+              </div>
+              <div id="rh-vazio" class="vf-empty" hidden>
+                <p class="vf-empty__title">Nenhum relatório encontrado</p>
+                <p class="vf-empty__description">Ajuste os filtros ou gere uma nova análise no Otimizador de Precificação.</p>
+              </div>
+
+              <!-- 5. TABELA PRINCIPAL -->
+              <div id="rh-wrapper" hidden>
+                <div class="vf-table-wrap vf-report-table-wrap">
+                  <table class="vf-table vf-table--compact" id="rh-table">
+                    <thead id="rh-thead"></thead>
+                    <tbody id="rh-tbody"></tbody>
+                  </table>
+                </div>
+                <p class="vf-report-render-hint" id="rh-render-hint" hidden>Renderizando…</p>
+              </div>
+
             </section>
           </div>
+
         </div>
       </div>
     </main>
   </div>
 
-  <div id="vf-relatorio-detalhe-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;padding:20px;">
-    <div style="background:var(--vf-surface);border-radius:14px;max-width:1650px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:var(--vf-shadow-card);overflow:hidden;">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:1.25rem 1.5rem;border-bottom:1px solid var(--vf-border);">
-        <h5 style="margin:0;display:flex;align-items:center;gap:8px;">
-          <span id="vf-relatorio-detalhe-titulo">Detalhe do relatório</span>
-        </h5>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <button id="btn-relatorio-detalhe-csv" type="button" class="vf-btn-secondary" style="margin:0;padding:.35rem .65rem;" disabled>CSV</button>
-          <button id="btn-relatorio-detalhe-xlsx" type="button" class="vf-btn-secondary" style="margin:0;padding:.35rem .65rem;" disabled>XLSX</button>
-          <button id="vf-relatorio-detalhe-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;color:var(--vf-text-m);" aria-label="Fechar">×</button>
+  <!-- ══════════ MODAL: DETALHE DO RELATÓRIO (workspace) ══════════ -->
+  <div class="vf-overlay" id="vf-relatorio-detalhe-modal" role="dialog" aria-modal="true" aria-labelledby="vf-relatorio-detalhe-titulo">
+    <div class="vf-modal vf-modal--workspace">
+      <div class="vf-modal__header">
+        <div class="vf-report-detail-head">
+          <h2 class="vf-modal__title" id="vf-relatorio-detalhe-titulo">Relatório</h2>
+          <span class="vf-status" id="rd-status-chip" hidden>—</span>
+          <span class="vf-report-detail-head__meta" id="rd-head-meta"></span>
+        </div>
+        <div class="vf-report-detail-head__actions">
+          <button type="button" id="btn-relatorio-detalhe-xlsx" class="vf-btn vf-btn--secondary vf-btn--sm" disabled>XLSX</button>
+          <button type="button" id="btn-relatorio-detalhe-csv" class="vf-btn vf-btn--secondary vf-btn--sm" disabled>CSV</button>
+          <button type="button" id="vf-relatorio-detalhe-close" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Fechar">✕</button>
         </div>
       </div>
-      <div id="vf-relatorio-detalhe-body" style="padding:1.25rem 1.5rem;overflow:auto;flex:1;">
-        <div id="vf-relatorio-detalhe-loading" style="color:var(--vf-text-m);">Carregando...</div>
-        <div id="vf-relatorio-detalhe-content" style="display:none;">
-          <div id="vf-relatorio-detalhe-resumo" class="vf-detalhe-resumo-wrap"></div>
-          <div id="vf-relatorio-detalhe-meta" class="vf-detalhe-meta-line"></div>
-          <div id="vf-relatorio-detalhe-filtros" class="vf-detalhe-toolbar vf-ml-controls">
-            <div class="vf-form-group vf-detalhe-busca">
-              <label for="vf-relatorio-detalhe-busca">Buscar nos itens</label>
-              <input id="vf-relatorio-detalhe-busca" class="vf-input" type="search" placeholder="Buscar por SKU, MLB ou título..." autocomplete="off">
+      <div class="vf-modal__body vf-report-detail-body">
+        <div id="rd-loading" class="vf-loading-state">
+          <span class="vf-spinner" aria-hidden="true"></span>
+          Carregando itens do relatório…
+        </div>
+        <div id="rd-content" class="vf-report-detail-content" hidden>
+
+          <!-- Resumo compacto do relatório -->
+          <div class="vf-report-summary vf-report-summary--detail" id="rd-summary"></div>
+          <p class="vf-report-detail-meta" id="rd-meta"></p>
+
+          <!-- Toolbar do detalhe -->
+          <div class="vf-toolbar vf-report-detail-toolbar">
+            <div class="vf-toolbar__filters">
+              <input type="search" id="rd-busca" class="vf-input vf-search" placeholder="Buscar MLB, SKU ou título..." autocomplete="off" aria-label="Buscar itens do relatório">
+              <select id="rd-tembase" class="vf-select vf-select--sm vf-report-toolbar__select" aria-label="Filtrar por base">
+                <option value="todos">Base: todas</option>
+                <option value="com">Com base</option>
+                <option value="sem">Sem base</option>
+              </select>
+              <select id="rd-ordenacao" class="vf-select vf-select--sm vf-report-toolbar__select" aria-label="Ordenar itens">
+                <option value="prioridade:asc">Prioridade</option>
+                <option value="item_id:asc">MLB</option>
+                <option value="sku:asc">SKU</option>
+                <option value="titulo:asc">Título</option>
+                <option value="preco_efetivo:desc">Preço efetivo</option>
+                <option value="custo:desc">Custo</option>
+                <option value="frete:desc">Frete</option>
+                <option value="comissao:desc">Comissão</option>
+                <option value="lc:asc">LC</option>
+                <option value="mc:asc">MC</option>
+                <option value="preco_alvo:desc">Preço-alvo</option>
+                <option value="diferenca_preco:desc">Diferença de preço</option>
+              </select>
+              <span class="vf-report-detail-counter" id="rd-contador" aria-live="polite">0 de 0 itens</span>
             </div>
-            <div id="vf-relatorio-detalhe-filter-buttons" class="vf-ml-filter-buttons vf-detalhe-chips"></div>
-            <div id="vf-relatorio-detalhe-filtrados-info" class="vf-detalhe-contador">
-              0 de 0 itens
+            <div class="vf-toolbar__actions">
+              <div class="vf-report-colwrap">
+                <button type="button" id="rd-colunas-btn" class="vf-btn vf-btn--secondary vf-btn--sm" aria-expanded="false" aria-haspopup="true">Colunas</button>
+                <div class="vf-menu vf-report-colmenu" id="rd-colunas-menu" hidden></div>
+              </div>
+              <button type="button" id="rd-adv-toggle" class="vf-btn vf-btn--secondary vf-btn--sm" aria-expanded="false" aria-controls="rd-adv-panel">Filtros avançados</button>
             </div>
           </div>
-          <div id="vf-detail-item-list" class="vf-detail-item-list"></div>
+
+          <!-- Filtros rápidos por diagnóstico (com contagem) -->
+          <div class="vf-report-detail-chips" id="rd-chips" role="group" aria-label="Filtros por diagnóstico"></div>
+
+          <!-- Filtros avançados do detalhe -->
+          <div class="vf-card vf-report-adv" id="rd-adv-panel" hidden>
+            <div class="vf-card__body">
+              <div class="vf-form-grid">
+                <div class="vf-field">
+                  <label class="vf-field__label" for="rd-status-anuncio">Status do anúncio</label>
+                  <select id="rd-status-anuncio" class="vf-select vf-select--sm">
+                    <option value="todos">Todos</option>
+                  </select>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="rd-promocao">Promoção</label>
+                  <select id="rd-promocao" class="vf-select vf-select--sm">
+                    <option value="todos">Todos</option>
+                    <option value="com">Com promoção</option>
+                    <option value="sem">Sem promoção</option>
+                  </select>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="rd-mc-min">MC mínima</label>
+                  <div class="vf-input-group">
+                    <input id="rd-mc-min" class="vf-input vf-input--sm" type="number" step="0.5" placeholder="-100" autocomplete="off">
+                    <span class="vf-input-suffix">%</span>
+                  </div>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="rd-mc-max">MC máxima</label>
+                  <div class="vf-input-group">
+                    <input id="rd-mc-max" class="vf-input vf-input--sm" type="number" step="0.5" placeholder="100" autocomplete="off">
+                    <span class="vf-input-suffix">%</span>
+                  </div>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="rd-lc">LC</label>
+                  <select id="rd-lc" class="vf-select vf-select--sm">
+                    <option value="todos">Todos</option>
+                    <option value="positivo">LC positivo</option>
+                    <option value="negativo">LC negativo</option>
+                  </select>
+                </div>
+                <div class="vf-field vf-report-adv__checks">
+                  <span class="vf-field__label">Condições</span>
+                  <label class="vf-check"><input type="checkbox" id="rd-tem-alvo"><span>Possui preço-alvo</span></label>
+                  <label class="vf-check"><input type="checkbox" id="rd-tem-acao"><span>Possui ação recomendada</span></label>
+                  <label class="vf-check"><input type="checkbox" id="rd-sem-frete"><span>Frete ausente</span></label>
+                  <label class="vf-check"><input type="checkbox" id="rd-sem-comissao"><span>Comissão ausente</span></label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filtros ativos do detalhe -->
+          <div class="vf-active-filters" id="rd-active-filters" hidden></div>
+
+          <!-- Tabela de itens -->
+          <div class="vf-table-wrap vf-report-detail-table-wrap">
+            <table class="vf-table vf-table--compact" id="rd-table">
+              <thead id="rd-thead"></thead>
+              <tbody id="rd-tbody"></tbody>
+            </table>
+          </div>
+          <p class="vf-report-render-hint" id="rd-render-hint" hidden>Renderizando…</p>
         </div>
       </div>
     </div>
   </div>
 
-  <div id="vf-base-custo-rapido-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;align-items:center;justify-content:center;padding:20px;">
-    <div style="background:var(--vf-surface);border-radius:14px;max-width:560px;width:100%;box-shadow:var(--vf-shadow-card);overflow:hidden;border:1px solid var(--vf-border);">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid var(--vf-border);">
+  <!-- ══════════ MODAL: EDITOR RÁPIDO DA BASE ══════════ -->
+  <div class="vf-overlay" id="vf-base-custo-rapido-modal" role="dialog" aria-modal="true" aria-labelledby="vf-base-custo-rapido-titulo">
+    <div class="vf-modal">
+      <div class="vf-modal__header">
         <div>
-          <div style="font-weight:800;">Adicionar/atualizar item na base</div>
-          <div id="vf-base-custo-rapido-subtitulo" style="font-size:.8rem;color:var(--vf-text-m);font-family:var(--vf-mono);margin-top:2px;"></div>
+          <h2 class="vf-modal__title" id="vf-base-custo-rapido-titulo">Adicionar/atualizar item na base</h2>
+          <p class="vf-card__description vf-mono" id="vf-base-custo-rapido-subtitulo"></p>
         </div>
-        <button id="vf-base-custo-rapido-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;color:var(--vf-text-m);" aria-label="Fechar">×</button>
+        <button type="button" id="vf-base-custo-rapido-close" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Fechar">✕</button>
       </div>
-      <div style="padding:1rem 1.25rem;">
-        <div id="vf-base-custo-rapido-feedback" style="display:none;margin-bottom:10px;font-size:.875rem;"></div>
-
-        <div class="vf-form-group" style="margin-bottom:12px;">
-          <label for="vf-base-custo-produto-id">Produto ID / MLB</label>
-          <input id="vf-base-custo-produto-id" class="vf-input" type="text" placeholder="MLB123..." autocomplete="off">
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div class="vf-form-group" style="margin-bottom:12px;">
-            <label>SKU</label>
-            <div id="vf-base-custo-sku" class="vf-input" style="background:var(--vf-bg);color:var(--vf-text-m);cursor:default;">—</div>
-          </div>
-          <div class="vf-form-group" style="margin-bottom:12px;">
-            <label>Título</label>
-            <div id="vf-base-custo-titulo" class="vf-input" style="background:var(--vf-bg);color:var(--vf-text-m);cursor:default;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
+      <div class="vf-modal__body">
+        <div id="vf-base-custo-rapido-feedback" class="vf-banner vf-banner--compact" role="status" aria-live="polite" hidden></div>
+        <div class="vf-banner vf-banner--compact is-info vf-report-modal-note">
+          <div class="vf-banner__content">
+            <p class="vf-banner__description">O relatório aberto é histórico: salvar na base não recalcula os valores já registrados.</p>
           </div>
         </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div class="vf-form-group" style="margin-bottom:12px;">
-            <label for="vf-base-custo-custo-produto">Custo produto</label>
-            <input id="vf-base-custo-custo-produto" class="vf-input" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Ex: 42.90">
+        <div class="vf-stack">
+          <div class="vf-field">
+            <label class="vf-field__label" for="vf-base-custo-produto-id">Produto ID / MLB</label>
+            <input id="vf-base-custo-produto-id" class="vf-input" type="text" placeholder="MLB123..." autocomplete="off">
           </div>
-          <div class="vf-form-group" style="margin-bottom:12px;">
-            <label for="vf-base-custo-imposto">Imposto %</label>
-            <input id="vf-base-custo-imposto" class="vf-input" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Ex: 14">
+          <div class="vf-form-grid">
+            <div class="vf-field">
+              <label class="vf-field__label" for="vf-base-custo-sku">SKU</label>
+              <input id="vf-base-custo-sku" class="vf-input" type="text" readonly value="—">
+            </div>
+            <div class="vf-field">
+              <label class="vf-field__label" for="vf-base-custo-titulo">Título</label>
+              <input id="vf-base-custo-titulo" class="vf-input" type="text" readonly value="—">
+            </div>
+          </div>
+          <div class="vf-form-grid">
+            <div class="vf-field">
+              <label class="vf-field__label" for="vf-base-custo-custo-produto">Custo produto</label>
+              <input id="vf-base-custo-custo-produto" class="vf-input" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Ex: 42.90">
+            </div>
+            <div class="vf-field">
+              <label class="vf-field__label" for="vf-base-custo-imposto">Imposto</label>
+              <div class="vf-input-group">
+                <input id="vf-base-custo-imposto" class="vf-input" type="number" inputmode="decimal" step="0.01" min="0" placeholder="Ex: 14">
+                <span class="vf-input-suffix">%</span>
+              </div>
+            </div>
           </div>
         </div>
-
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;padding:1rem 1.25rem;border-top:1px solid var(--vf-border);background:linear-gradient(180deg,var(--vf-surface) 0%, #fafbfc 100%);">
-        <button type="button" id="vf-base-custo-rapido-cancel" class="vf-btn-secondary" style="margin:0;">Cancelar</button>
-        <button type="button" id="vf-base-custo-rapido-save" class="vf-btn-primary" style="margin:0;min-width:170px;">Salvar na base</button>
+      <div class="vf-modal__footer">
+        <button type="button" id="vf-base-custo-rapido-cancel" class="vf-btn vf-btn--secondary">Cancelar</button>
+        <button type="button" id="vf-base-custo-rapido-save" class="vf-btn vf-btn--primary">Salvar na base</button>
       </div>
     </div>
   </div>
 
-  <div id="vf-mover-relatorio-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;align-items:center;justify-content:center;padding:20px;">
-    <div style="background:var(--vf-surface);border-radius:14px;max-width:520px;width:100%;box-shadow:var(--vf-shadow-card);overflow:hidden;border:1px solid var(--vf-border);">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid var(--vf-border);">
+  <!-- ══════════ MODAL: MOVER RELATÓRIO ══════════ -->
+  <div class="vf-overlay" id="vf-mover-relatorio-modal" role="dialog" aria-modal="true" aria-labelledby="vf-mover-relatorio-titulo">
+    <div class="vf-modal vf-modal--sm">
+      <div class="vf-modal__header">
         <div>
-          <div style="font-weight:800;">Mover relatório</div>
-          <div id="vf-mover-relatorio-sub" style="font-size:.8rem;color:var(--vf-text-m);font-family:var(--vf-mono);margin-top:2px;"></div>
+          <h2 class="vf-modal__title" id="vf-mover-relatorio-titulo">Mover relatório</h2>
+          <p class="vf-card__description vf-mono" id="vf-mover-relatorio-sub"></p>
         </div>
-        <button id="vf-mover-relatorio-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;color:var(--vf-text-m);" aria-label="Fechar">×</button>
+        <button type="button" id="vf-mover-relatorio-close" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Fechar">✕</button>
       </div>
-      <div style="padding:1rem 1.25rem;">
-        <div id="vf-mover-relatorio-feedback" style="display:none;margin-bottom:10px;font-size:.875rem;"></div>
-        <div class="vf-form-group" style="margin-bottom:12px;">
-          <label for="vf-mover-relatorio-select">Pasta</label>
-          <select id="vf-mover-relatorio-select" class="vf-input"></select>
+      <div class="vf-modal__body">
+        <div id="vf-mover-relatorio-feedback" class="vf-banner vf-banner--compact" role="status" aria-live="polite" hidden></div>
+        <div class="vf-field">
+          <label class="vf-field__label" for="vf-mover-relatorio-select">Pasta</label>
+          <select id="vf-mover-relatorio-select" class="vf-select"></select>
         </div>
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;padding:1rem 1.25rem;border-top:1px solid var(--vf-border);background:linear-gradient(180deg,var(--vf-surface) 0%, #fafbfc 100%);">
-        <button type="button" id="vf-mover-relatorio-cancel" class="vf-btn-secondary" style="margin:0;">Cancelar</button>
-        <button type="button" id="vf-mover-relatorio-save" class="vf-btn-primary" style="margin:0;min-width:170px;">Mover</button>
+      <div class="vf-modal__footer">
+        <button type="button" id="vf-mover-relatorio-cancel" class="vf-btn vf-btn--secondary">Cancelar</button>
+        <button type="button" id="vf-mover-relatorio-save" class="vf-btn vf-btn--primary">Mover</button>
       </div>
     </div>
   </div>
 
-  <div id="vf-pasta-modal" class="vf-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;align-items:center;justify-content:center;padding:20px;">
-    <div class="vf-modal-card" style="background:var(--vf-surface);border-radius:14px;max-width:520px;width:100%;box-shadow:var(--vf-shadow-card);overflow:hidden;border:1px solid var(--vf-border);">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid var(--vf-border);">
+  <!-- ══════════ MODAL: NOVA PASTA / RENOMEAR PASTA ══════════ -->
+  <div class="vf-overlay" id="vf-pasta-modal" role="dialog" aria-modal="true" aria-labelledby="vf-pasta-modal-titulo">
+    <div class="vf-modal vf-modal--sm">
+      <div class="vf-modal__header">
         <div>
-          <div id="vf-pasta-modal-titulo" style="font-weight:800;">Nova pasta</div>
-          <div id="vf-pasta-modal-sub" style="font-size:.8rem;color:var(--vf-text-m);margin-top:2px;">Organize seus relatórios em pastas.</div>
+          <h2 class="vf-modal__title" id="vf-pasta-modal-titulo">Nova pasta</h2>
+          <p class="vf-card__description" id="vf-pasta-modal-sub">Organize seus relatórios em pastas.</p>
         </div>
-        <button id="vf-pasta-modal-close" type="button" class="vf-modal-x" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;color:var(--vf-text-m);" aria-label="Fechar">×</button>
+        <button type="button" id="vf-pasta-modal-close" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Fechar">✕</button>
       </div>
-      <div style="padding:1rem 1.25rem;">
-        <div id="vf-pasta-modal-feedback" style="display:none;margin-bottom:10px;font-size:.875rem;"></div>
-        <div class="vf-form-group" style="margin-bottom:12px;">
-          <label for="vf-pasta-modal-nome">Nome da pasta</label>
-          <input id="vf-pasta-modal-nome" class="vf-input" type="text" placeholder="Ex: Lojas em alta" autocomplete="off" maxlength="120">
-        </div>
-        <div class="vf-form-group" id="vf-pasta-modal-desc-wrap" style="margin-bottom:4px;">
-          <label for="vf-pasta-modal-descricao">Descrição (opcional)</label>
-          <textarea id="vf-pasta-modal-descricao" class="vf-input" rows="3" placeholder="Para que serve esta pasta?" maxlength="500" style="resize:vertical;min-height:72px;"></textarea>
+      <div class="vf-modal__body">
+        <div id="vf-pasta-modal-feedback" class="vf-banner vf-banner--compact" role="status" aria-live="polite" hidden></div>
+        <div class="vf-stack">
+          <div class="vf-field">
+            <label class="vf-field__label" for="vf-pasta-modal-nome">Nome da pasta</label>
+            <input id="vf-pasta-modal-nome" class="vf-input" type="text" placeholder="Ex: Lojas em alta" autocomplete="off" maxlength="120">
+          </div>
+          <div class="vf-field" id="vf-pasta-modal-desc-wrap">
+            <label class="vf-field__label" for="vf-pasta-modal-descricao">Descrição (opcional)</label>
+            <textarea id="vf-pasta-modal-descricao" class="vf-textarea" rows="3" placeholder="Para que serve esta pasta?" maxlength="500"></textarea>
+          </div>
         </div>
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;padding:1rem 1.25rem;border-top:1px solid var(--vf-border);background:linear-gradient(180deg,var(--vf-surface) 0%, #fafbfc 100%);">
-        <button type="button" id="vf-pasta-modal-cancel" class="vf-btn-secondary" style="margin:0;">Cancelar</button>
-        <button type="button" id="vf-pasta-modal-save" class="vf-btn-primary" style="margin:0;min-width:170px;">Criar pasta</button>
+      <div class="vf-modal__footer">
+        <button type="button" id="vf-pasta-modal-cancel" class="vf-btn vf-btn--secondary">Cancelar</button>
+        <button type="button" id="vf-pasta-modal-save" class="vf-btn vf-btn--primary">Criar pasta</button>
       </div>
     </div>
   </div>
 
-  <div id="vf-pasta-delete-modal" class="vf-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;align-items:center;justify-content:center;padding:20px;">
-    <div class="vf-modal-card" style="background:var(--vf-surface);border-radius:14px;max-width:480px;width:100%;box-shadow:var(--vf-shadow-card);overflow:hidden;border:1px solid var(--vf-border);">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid var(--vf-border);">
+  <!-- ══════════ MODAL: EXCLUIR PASTA ══════════ -->
+  <div class="vf-overlay" id="vf-pasta-delete-modal" role="dialog" aria-modal="true" aria-labelledby="vf-pasta-delete-titulo">
+    <div class="vf-modal vf-modal--sm">
+      <div class="vf-modal__header">
         <div>
-          <div style="font-weight:800;">Excluir pasta</div>
-          <div id="vf-pasta-delete-sub" style="font-size:.8rem;color:var(--vf-text-m);margin-top:2px;font-family:var(--vf-mono);"></div>
+          <h2 class="vf-modal__title" id="vf-pasta-delete-titulo">Excluir pasta</h2>
+          <p class="vf-card__description vf-mono" id="vf-pasta-delete-sub"></p>
         </div>
-        <button id="vf-pasta-delete-close" type="button" class="vf-modal-x" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;color:var(--vf-text-m);" aria-label="Fechar">×</button>
+        <button type="button" id="vf-pasta-delete-close" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Fechar">✕</button>
       </div>
-      <div style="padding:1rem 1.25rem;">
-        <div id="vf-pasta-delete-feedback" style="display:none;margin-bottom:10px;font-size:.875rem;"></div>
-        <p style="margin:0;color:var(--vf-text-m);font-size:.9rem;line-height:1.5;">
-          A pasta só pode ser excluída se não tiver relatórios dentro. Mova ou remova os relatórios antes de excluir.
-        </p>
+      <div class="vf-modal__body">
+        <div id="vf-pasta-delete-feedback" class="vf-banner vf-banner--compact" role="status" aria-live="polite" hidden></div>
+        <p>A pasta só pode ser excluída se não tiver relatórios dentro. Mova ou remova os relatórios antes de excluir.</p>
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;padding:1rem 1.25rem;border-top:1px solid var(--vf-border);background:linear-gradient(180deg,var(--vf-surface) 0%, #fafbfc 100%);">
-        <button type="button" id="vf-pasta-delete-cancel" class="vf-btn-secondary" style="margin:0;">Cancelar</button>
-        <button type="button" id="vf-pasta-delete-confirm" class="vf-btn-danger" style="margin:0;min-width:170px;">Excluir pasta</button>
+      <div class="vf-modal__footer">
+        <button type="button" id="vf-pasta-delete-cancel" class="vf-btn vf-btn--secondary">Cancelar</button>
+        <button type="button" id="vf-pasta-delete-confirm" class="vf-btn vf-btn--danger">Excluir pasta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ MODAL: EXCLUIR RELATÓRIO ══════════ -->
+  <div class="vf-overlay" id="vf-relatorio-delete-modal" role="dialog" aria-modal="true" aria-labelledby="vf-relatorio-delete-titulo">
+    <div class="vf-modal vf-modal--sm">
+      <div class="vf-modal__header">
+        <div>
+          <h2 class="vf-modal__title" id="vf-relatorio-delete-titulo">Excluir relatório</h2>
+          <p class="vf-card__description vf-mono" id="vf-relatorio-delete-sub"></p>
+        </div>
+        <button type="button" id="vf-relatorio-delete-close" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Fechar">✕</button>
+      </div>
+      <div class="vf-modal__body">
+        <div id="vf-relatorio-delete-feedback" class="vf-banner vf-banner--compact" role="status" aria-live="polite" hidden></div>
+        <p>Excluir este relatório salvo? Essa ação não pode ser desfeita.</p>
+      </div>
+      <div class="vf-modal__footer">
+        <button type="button" id="vf-relatorio-delete-cancel" class="vf-btn vf-btn--secondary">Cancelar</button>
+        <button type="button" id="vf-relatorio-delete-confirm" class="vf-btn vf-btn--danger">Excluir relatório</button>
       </div>
     </div>
   </div>
