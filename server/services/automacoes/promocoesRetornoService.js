@@ -14,6 +14,7 @@
 
 const pool = require("../../config/database");
 const { mlFetch } = require("../../utils/mlClient");
+const { exigirContextoPronto } = require("./contextoPrecificacaoService");
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -638,10 +639,6 @@ async function gerarPreviewPromocoesRetorno({
   const baseSlugRawStr = String(baseSlugRaw || "").trim();
 
   if (!clienteSlugRawStr) throw criarErroHttp(400, { ok: false, erro: "clienteSlug é obrigatório" });
-  if (!baseSlugRawStr) throw criarErroHttp(400, { ok: false, erro: "baseSlug é obrigatório" });
-
-  const clienteSlug = normalizarSlug(clienteSlugRawStr);
-  const baseSlug = normalizarSlug(baseSlugRawStr);
 
   const page = Math.max(1, parseInt(pageRaw) || 1);
   const limit = Math.min(Math.max(1, parseInt(limitRaw) || 20), 50);
@@ -660,31 +657,16 @@ async function gerarPreviewPromocoesRetorno({
     apenasComRetorno,
   };
 
-  // 1) Cliente
-  const c = await pool.query(
-    "SELECT id, nome, slug, ativo, created_at FROM clientes WHERE slug = $1",
-    [clienteSlug]
-  );
-  if (!c.rows.length) throw criarErroHttp(404, { ok: false, erro: "Cliente não encontrado." });
-  const cliente = c.rows[0];
-
-  // 2) Token ML do cliente (somente leitura: precisamos do ml_user_id vinculado)
-  const tokenRow = await pool.query(
-    "SELECT ml_user_id FROM ml_tokens WHERE cliente_id = $1",
-    [cliente.id]
-  );
-  if (!tokenRow.rows.length || !tokenRow.rows[0].ml_user_id) {
-    throw criarErroHttp(400, { ok: false, erro: "Cliente sem conta ML vinculada." });
-  }
-  const mlUserId = tokenRow.rows[0].ml_user_id;
-
-  // 3) Base
-  const b = await pool.query(
-    "SELECT id, nome, slug, ativo, created_at, updated_at FROM bases WHERE slug = $1",
-    [baseSlug]
-  );
-  if (!b.rows.length) throw criarErroHttp(404, { ok: false, erro: "Base não encontrada." });
-  const base = b.rows[0];
+  // 1-3) Cliente + grant ML + base MELI: resolução única via contextoPrecificacaoService.
+  // baseSlugRawStr ausente → resolve automaticamente a base MELI vinculada ao cliente.
+  // baseSlugRawStr informado (compat) → valida se pertence ao cliente + MELI + ativa.
+  const contexto = await exigirContextoPronto({
+    clienteSlugRaw: clienteSlugRawStr,
+    baseSlugRaw: baseSlugRawStr,
+  });
+  const cliente = contexto.cliente;
+  const mlUserId = contexto.mlUserId;
+  const base = contexto.base;
 
   // 4) Contexto financeiro (custos da base + último snapshot de relatorio_itens).
   // Extraído para carregarContextoFinanceiro para ser reutilizado pelo diagnóstico.

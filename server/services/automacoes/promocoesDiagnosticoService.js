@@ -24,11 +24,11 @@ const {
   enriquecerItem,
   extrairSkuMl,
   toAliquota,
-  normalizarSlug,
   criarErroHttp,
   pLimit,
   chunk,
 } = require("./promocoesRetornoService");
+const { exigirContextoPronto } = require("./contextoPrecificacaoService");
 
 const schemaPath = path.join(__dirname, "..", "..", "sql", "promocoes_diagnostico_schema.sql");
 
@@ -125,38 +125,16 @@ function classificarFrescorSnapshot(createdAt) {
   return { idadeMinutos, frescor };
 }
 
-// Resolve cliente + base + ml_user_id (mesmas validações do preview).
-async function resolverClienteBase(clienteSlugRaw, baseSlugRaw) {
-  const clienteSlugRawStr = String(clienteSlugRaw || "").trim();
-  const baseSlugRawStr = String(baseSlugRaw || "").trim();
-  if (!clienteSlugRawStr) throw criarErroHttp(400, { ok: false, erro: "clienteSlug é obrigatório" });
-  if (!baseSlugRawStr) throw criarErroHttp(400, { ok: false, erro: "baseSlug é obrigatório" });
-
-  const clienteSlug = normalizarSlug(clienteSlugRawStr);
-  const baseSlug = normalizarSlug(baseSlugRawStr);
-
-  const c = await pool.query("SELECT id, nome, slug FROM clientes WHERE slug = $1", [clienteSlug]);
-  if (!c.rows.length) throw criarErroHttp(404, { ok: false, erro: "Cliente não encontrado." });
-  const cliente = c.rows[0];
-
-  const tokenRow = await pool.query("SELECT ml_user_id FROM ml_tokens WHERE cliente_id = $1", [cliente.id]);
-  if (!tokenRow.rows.length || !tokenRow.rows[0].ml_user_id) {
-    throw criarErroHttp(400, { ok: false, erro: "Cliente sem conta ML vinculada." });
-  }
-  const mlUserId = tokenRow.rows[0].ml_user_id;
-
-  const b = await pool.query("SELECT id, nome, slug FROM bases WHERE slug = $1", [baseSlug]);
-  if (!b.rows.length) throw criarErroHttp(404, { ok: false, erro: "Base não encontrada." });
-  const base = b.rows[0];
-
-  return { cliente, base, mlUserId };
-}
-
 // ─── 1) Criar o job (start) ──────────────────────────────────────────────────
 async function criarJobDiagnostico({ userId, body }) {
   const b = body || {};
   await ensurePromocoesDiagnosticoTables();
-  const { cliente, base, mlUserId } = await resolverClienteBase(b.clienteSlug, b.baseSlug);
+  // Cliente + grant ML + base MELI: resolução única via contextoPrecificacaoService.
+  // b.baseSlug ausente → resolve automaticamente a base MELI vinculada ao cliente.
+  const { cliente, base, mlUserId } = await exigirContextoPronto({
+    clienteSlugRaw: b.clienteSlug,
+    baseSlugRaw: b.baseSlug,
+  });
 
   // Limpeza de órfãos: jobs presos em 'aguardando'/'processando' sem progresso
   // (ex.: restart/deploy no meio) não podem travar o cliente para sempre.
@@ -564,10 +542,11 @@ async function buscarStatusDiagnostico({ idRaw }) {
 // ─── 4) Leitura do snapshot (último concluído) ───────────────────────────────
 async function buscarUltimoSnapshotPromocoes({ clienteSlugRaw, baseSlugRaw }) {
   await ensurePromocoesDiagnosticoTables();
-  const clienteSlug = normalizarSlug(String(clienteSlugRaw || "").trim());
-  const baseSlug = normalizarSlug(String(baseSlugRaw || "").trim());
-  if (!clienteSlug) throw criarErroHttp(400, { ok: false, erro: "clienteSlug é obrigatório" });
-  if (!baseSlug) throw criarErroHttp(400, { ok: false, erro: "baseSlug é obrigatório" });
+  // Cliente + grant ML + base MELI: resolução única via contextoPrecificacaoService.
+  // baseSlugRaw ausente → resolve automaticamente a base MELI vinculada ao cliente.
+  const contexto = await exigirContextoPronto({ clienteSlugRaw, baseSlugRaw });
+  const clienteSlug = contexto.cliente.slug;
+  const baseSlug = contexto.base.slug;
 
   const head = await pool.query(
     `SELECT * FROM promocoes_diagnosticos

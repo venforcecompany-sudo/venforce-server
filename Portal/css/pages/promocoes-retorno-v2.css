@@ -1,0 +1,485 @@
+/* ============================================================
+ * VenForce — Promoções ML · CSS específico (Fundação Global V2)
+ *
+ * Ordem de carga (em promocoes-retorno.html):
+ *   style.css → css/vf-tokens-v2.css → css/vf-components-v2.css →
+ *   css/pages/promocoes-retorno-v2.css (este arquivo, sempre por último)
+ *
+ * REGRAS DESTE ARQUIVO
+ *  - Só o que é REALMENTE específico desta página: enquadramento do
+ *    shell, faixa de contexto do cliente, critérios de decisão, faixa
+ *    de estado dos dados, grade de KPIs secundários e ajustes locais
+ *    da tabela/drawer de cálculo.
+ *  - Componentes globais (botão, card, toolbar, kpi, tabela, status,
+ *    banner, badge/tag, drawer, menu, progress, spinner) vêm de
+ *    vf-components-v2.css e NÃO são recriados aqui.
+ *  - Só tokens V2. Sem !important, sem Bootstrap, sem cores soltas,
+ *    sem radius/sombras próprios, sem gradientes.
+ * ============================================================ */
+
+.vf-page-promocoes-retorno .vf-content {
+  max-width: none;
+  padding: 0;
+}
+
+.vf-page-promocoes-retorno .vf-table {
+  min-width: 0;
+}
+
+.vf-page-promocoes-retorno [hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------
+ * 1. Contexto do cliente (toolbar + prontidão)
+ * ------------------------------------------------------------ */
+.vf-promo-context {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-3);
+}
+
+.vf-promo-context__row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--vf-sp-4);
+  flex-wrap: wrap;
+}
+
+.vf-promo-context__cliente {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--vf-sp-3);
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+.vf-promo-context__cliente .vf-field {
+  min-width: 0;
+}
+
+.vf-promo-context__cliente .vf-field:first-child {
+  flex: 0 0 220px;
+}
+
+.vf-promo-context__cliente .vf-field:last-child {
+  flex: 1 1 260px;
+}
+
+.vf-promo-context__status {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-4);
+  flex-wrap: wrap;
+  font-size: var(--vf-fs-sm);
+}
+
+.vf-promo-context__status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vf-promo-context__status-label {
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: var(--vf-ls-caps);
+  text-transform: uppercase;
+  color: var(--vf-text-muted);
+}
+
+.vf-promo-context__status-value {
+  font-size: var(--vf-fs-sm);
+  font-weight: var(--vf-fw-medium);
+  color: var(--vf-text);
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------
+ * 2. Critérios de decisão
+ * ------------------------------------------------------------ */
+.vf-promo-criteria__grid {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.6fr) minmax(160px, 0.6fr) minmax(220px, 1fr);
+  gap: var(--vf-sp-4);
+  align-items: start;
+}
+
+.vf-promo-criteria__advanced {
+  margin-top: var(--vf-sp-4);
+  border-top: 1px solid var(--vf-border);
+  padding-top: var(--vf-sp-4);
+}
+
+.vf-promo-criteria__advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--vf-fs-sm);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-primary);
+  cursor: pointer;
+}
+
+.vf-promo-criteria__advanced-toggle::after {
+  content: "▾";
+  font-size: .7em;
+  transition: transform .15s ease;
+}
+
+.vf-promo-criteria__advanced-toggle[aria-expanded="true"]::after {
+  transform: rotate(180deg);
+}
+
+.vf-promo-criteria__advanced-body {
+  margin-top: var(--vf-sp-4);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--vf-sp-3);
+}
+
+.vf-promo-criteria__advanced-body .vf-field--wide {
+  grid-column: 1 / -1;
+}
+
+/* ------------------------------------------------------------
+ * 3. Ações (diagnóstico completo × consulta rápida)
+ * ------------------------------------------------------------ */
+.vf-promo-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vf-sp-3);
+  flex-wrap: wrap;
+}
+
+.vf-promo-actions__primary {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  flex-wrap: wrap;
+}
+
+.vf-promo-quick {
+  margin-top: var(--vf-sp-3);
+}
+
+.vf-promo-quick__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--vf-fs-sm);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text-secondary);
+  cursor: pointer;
+}
+
+.vf-promo-quick__toggle::after {
+  content: "▾";
+  font-size: .7em;
+  transition: transform .15s ease;
+}
+
+.vf-promo-quick__toggle[aria-expanded="true"]::after {
+  transform: rotate(180deg);
+}
+
+.vf-promo-quick__body {
+  margin-top: var(--vf-sp-3);
+  padding: var(--vf-sp-4);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  background: var(--vf-surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-3);
+}
+
+.vf-promo-quick__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--vf-sp-3);
+}
+
+.vf-promo-quick__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-3);
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------
+ * 4. Estado dos dados
+ * ------------------------------------------------------------ */
+.vf-promo-databar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-2);
+}
+
+.vf-promo-databar__row {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-3);
+  flex-wrap: wrap;
+}
+
+.vf-promo-databar__meta {
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text-secondary);
+}
+
+.vf-promo-databar__progress {
+  margin-top: var(--vf-sp-2);
+}
+
+/* ------------------------------------------------------------
+ * 5. KPIs
+ * ------------------------------------------------------------ */
+.vf-promo-kpis-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vf-sp-2) var(--vf-sp-5);
+  padding: var(--vf-sp-3) var(--vf-sp-4);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  background: var(--vf-surface-2);
+  font-size: var(--vf-fs-sm);
+}
+
+.vf-promo-kpis-secondary__item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.vf-promo-kpis-secondary__label {
+  color: var(--vf-text-muted);
+}
+
+.vf-promo-kpis-secondary__value {
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------
+ * 6. Workspace da tabela
+ * ------------------------------------------------------------ */
+.vf-promo-workspace .vf-toolbar {
+  flex-wrap: wrap;
+}
+
+.vf-promo-quickchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vf-sp-2);
+  margin-bottom: var(--vf-sp-3);
+}
+
+.vf-promo-activefilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vf-sp-2);
+  margin-bottom: var(--vf-sp-3);
+}
+
+.vf-promo-activefilters .vf-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.vf-promo-count {
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text-muted);
+  white-space: nowrap;
+}
+
+.vf-promo-menu-field {
+  padding: 0 var(--vf-sp-3) var(--vf-sp-2);
+}
+
+.vf-promo-menuwrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.vf-promo-menuwrap .vf-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--vf-sp-1));
+}
+
+.vf-promo-columns-menu {
+  min-width: 240px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.vf-promo-columns-menu__item {
+  padding: var(--vf-sp-1) var(--vf-sp-2);
+}
+
+/* Tabela: título/campanha truncam; MLB/SKU e valores numéricos em mono. */
+.vf-page-promocoes-retorno td.vf-promo-titulo,
+.vf-page-promocoes-retorno td.vf-promo-campanha {
+  white-space: normal;
+  min-width: 180px;
+  max-width: 260px;
+}
+
+.vf-page-promocoes-retorno td.vf-promo-motivo {
+  white-space: normal;
+  min-width: 180px;
+  max-width: 260px;
+  color: var(--vf-text-secondary);
+  font-size: var(--vf-fs-xs);
+}
+
+.vf-page-promocoes-retorno .vf-promo-mlbsku {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vf-page-promocoes-retorno .vf-promo-mlbsku__sku {
+  font-size: var(--vf-fs-2xs);
+  color: var(--vf-text-muted);
+}
+
+.vf-page-promocoes-retorno .vf-promo-neg { color: var(--vf-danger-strong); }
+.vf-page-promocoes-retorno .vf-promo-pos { color: var(--vf-success-strong); }
+
+.vf-page-promocoes-retorno .vf-promo-row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+/* ------------------------------------------------------------
+ * 7. Drawer de cálculo
+ * ------------------------------------------------------------ */
+.vf-promo-calc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-5);
+}
+
+.vf-promo-calc__section-title {
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: var(--vf-ls-caps);
+  text-transform: uppercase;
+  color: var(--vf-text-muted);
+  margin-bottom: var(--vf-sp-2);
+}
+
+.vf-promo-calc__grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px var(--vf-sp-4);
+  font-family: var(--vf-font-mono);
+  font-size: var(--vf-fs-sm);
+  line-height: 1.7;
+}
+
+.vf-promo-calc__grid dt {
+  color: var(--vf-text-secondary);
+  font-family: var(--vf-font-body);
+}
+
+.vf-promo-calc__grid dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vf-promo-calc__sep {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--vf-border);
+  margin: 4px 0;
+}
+
+.vf-promo-calc__strong dt,
+.vf-promo-calc__strong dd {
+  font-weight: var(--vf-fw-bold);
+  color: var(--vf-text);
+}
+
+.vf-promo-calc__source {
+  padding: var(--vf-sp-3);
+  background: var(--vf-surface-2);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+  line-height: 1.5;
+}
+
+.vf-promo-calc__ml-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.vf-promo-calc__decision {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  flex-wrap: wrap;
+}
+
+/* Fronteira de futura ação PUT: fica oculta enquanto a capacidade não existir. */
+.vf-promo-write-action[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------
+ * 8. Responsivo
+ * ------------------------------------------------------------ */
+@media (max-width: 1024px) {
+  .vf-promo-criteria__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .vf-promo-context__row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .vf-promo-context__cliente {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .vf-promo-context__cliente .vf-field:first-child {
+    flex: 1 1 auto;
+  }
+
+  .vf-promo-criteria__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vf-promo-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 480px) {
+  .vf-promo-quick__grid {
+    grid-template-columns: 1fr;
+  }
+}

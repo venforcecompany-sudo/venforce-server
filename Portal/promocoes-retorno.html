@@ -4,223 +4,249 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Venforce — Promoções ML</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Fundação Global V2: Hanken Grotesk (corpo) · Manrope (display) · IBM Plex Mono (códigos) -->
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- 1. Layout compartilhado (sidebar/topbar/estados globais indispensáveis) -->
   <link rel="stylesheet" href="style.css">
+  <!-- 2. Fundação Global V2 (tokens → componentes → página) -->
+  <link rel="stylesheet" href="css/vf-tokens-v2.css">
+  <link rel="stylesheet" href="css/vf-components-v2.css">
+  <link rel="stylesheet" href="css/pages/promocoes-retorno-v2.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
-  <style>
-    /* Estilos locais mínimos da tela Promoções ML (somente leitura). */
-    .vf-promo-table { font-size: .8rem; }
-    .vf-promo-table th, .vf-promo-table td { white-space: nowrap; }
-    .vf-promo-table td.vf-promo-num { text-align: right; font-family: var(--vf-mono); font-variant-numeric: tabular-nums; }
-    .vf-promo-table td.vf-promo-titulo { white-space: normal; min-width: 200px; max-width: 280px; }
-    .vf-promo-table td.vf-promo-motivo { white-space: normal; min-width: 180px; max-width: 240px; color: var(--vf-text-m); font-size: .76rem; }
-    .vf-promo-neg { color: #b91c1c; }
-    .vf-promo-pos { color: #047857; }
-    .vf-mini-badge-neutral { background: var(--vf-bg); color: var(--vf-text-m); border-color: var(--vf-border); }
-    .vf-mini-badge-tolerancia { background: #f0fdf4; color: #15803d; border-color: rgba(21,128,61,.16); }
-    .vf-promo-actions { display: flex; gap: 6px; }
-    .vf-promo-calc-grid { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; font-family: var(--vf-mono); font-size: .82rem; line-height: 1.7; }
-    .vf-promo-calc-grid .vf-promo-calc-val { text-align: right; font-variant-numeric: tabular-nums; }
-    .vf-promo-calc-sep { grid-column: 1 / -1; border-top: 1px solid var(--vf-border); margin: .4rem 0; }
-    .vf-promo-calc-strong { font-weight: 800; color: var(--vf-text); }
-  </style>
 </head>
-<body class="vf-page vf-page-automacoes">
+<body class="vf-page vf-page-promocoes-retorno">
 
   <div class="vf-main-with-sidebar">
-    <main class="vf-content">
+    <main class="vf-content" aria-label="Promoções ML">
+      <div class="vf-page-shell">
+        <div class="vf-page-container vf-page-container--wide">
 
-      <div class="vf-page-header">
-        <h2>Promoções ML</h2>
-        <p>Analise promoções com retorno do Mercado Livre antes de entrar.</p>
-      </div>
+          <!-- 1. CABEÇALHO -->
+          <header class="vf-page-header">
+            <div class="vf-page-header__main">
+              <p class="vf-page-header__eyebrow">Mercado Livre</p>
+              <h1 class="vf-page-header__title">Promoções ML</h1>
+              <p class="vf-page-header__description">Avalie promoções disponíveis, retorno do Mercado Livre e impacto real na margem.</p>
+            </div>
+            <div class="vf-page-header__actions">
+              <span class="vf-status is-info">Modo de análise — nenhuma promoção é alterada</span>
+            </div>
+          </header>
 
-      <!-- Seção 1: Configuração da análise -->
-      <div class="vf-card vf-auto-section" style="margin-bottom:24px;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-              <polyline points="17 6 23 6 23 12"></polyline>
-            </svg>
-            Configuração da análise
-            <span class="vf-auto-section-tag">somente leitura</span>
-          </h5>
-        </div>
-        <div class="vf-auto-config-body">
-          <div class="vf-auto-config-grid">
-            <div class="vf-form-group" style="margin:0;">
-              <label for="promo-cliente-search">Buscar cliente</label>
-              <input id="promo-cliente-search" class="vf-input" type="search" placeholder="Digite nome ou slug" autocomplete="off" />
-              <div class="vf-form-group" style="margin:10px 0 0 0;">
-                <label for="promo-cliente">Selecionar cliente</label>
-                <select id="promo-cliente" class="vf-input">
-                  <option value="">Carregando...</option>
-                </select>
+          <!-- Feedback global da página -->
+          <div id="promo-feedback" class="vf-banner" role="status" aria-live="polite" hidden></div>
+
+          <!-- 2. CONTEXTO DO CLIENTE -->
+          <section class="vf-card" aria-label="Contexto do cliente">
+            <div class="vf-card__body">
+              <div class="vf-promo-context">
+                <div class="vf-promo-context__row">
+                  <div class="vf-promo-context__cliente">
+                    <div class="vf-field">
+                      <label class="vf-field__label" for="promo-cliente-search">Buscar cliente</label>
+                      <input id="promo-cliente-search" class="vf-input vf-search" type="search" placeholder="Nome ou slug" autocomplete="off">
+                    </div>
+                    <div class="vf-field">
+                      <label class="vf-field__label" for="promo-cliente">Cliente</label>
+                      <select id="promo-cliente" class="vf-select">
+                        <option value="">Carregando…</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="vf-promo-context__status" id="promo-context-status" hidden>
+                    <div class="vf-promo-context__status-item">
+                      <span class="vf-promo-context__status-label">Grant ML</span>
+                      <span class="vf-status" id="promo-ctx-grant">—</span>
+                    </div>
+                    <div class="vf-promo-context__status-item">
+                      <span class="vf-promo-context__status-label">Base vinculada</span>
+                      <span class="vf-promo-context__status-value" id="promo-ctx-base">—</span>
+                    </div>
+                    <div class="vf-promo-context__status-item">
+                      <span class="vf-promo-context__status-label">Atualização da base</span>
+                      <span class="vf-promo-context__status-value" id="promo-ctx-base-updated">—</span>
+                    </div>
+                    <div class="vf-promo-context__status-item">
+                      <span class="vf-promo-context__status-label">Snapshot</span>
+                      <span class="vf-status" id="promo-ctx-snapshot">—</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Banner de bloqueio: sem grant / sem base / múltiplas bases -->
+                <div id="promo-readiness-banner" class="vf-banner" role="status" aria-live="polite" hidden></div>
               </div>
             </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="promo-base-search">Buscar base</label>
-              <input id="promo-base-search" class="vf-input" type="search" placeholder="Digite nome ou slug da base" autocomplete="off" />
-              <div class="vf-form-group" style="margin:10px 0 0 0;">
-                <label for="promo-base">Selecionar base</label>
-                <select id="promo-base" class="vf-input">
-                  <option value="">Carregando...</option>
-                </select>
+          </section>
+
+          <!-- 3. CRITÉRIOS DE DECISÃO -->
+          <section class="vf-card" id="promo-criteria-card" aria-label="Critérios de decisão">
+            <div class="vf-card__header">
+              <h2 class="vf-card__title">Critérios de decisão</h2>
+            </div>
+            <div class="vf-card__body">
+              <div class="vf-promo-criteria__grid">
+                <div class="vf-field">
+                  <label class="vf-field__label" for="promo-margem">Margem alvo</label>
+                  <div class="vf-input-group">
+                    <input id="promo-margem" class="vf-input" type="number" min="0" max="99" step="0.5" placeholder="10">
+                    <span class="vf-input-suffix">%</span>
+                  </div>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="promo-tolerancia">Tolerância abaixo do alvo</label>
+                  <div class="vf-input-group">
+                    <input id="promo-tolerancia" class="vf-input" type="number" min="0" max="99" step="0.5" placeholder="2">
+                    <span class="vf-input-suffix">p.p.</span>
+                  </div>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="promo-escopo">Escopo</label>
+                  <select id="promo-escopo" class="vf-select">
+                    <option value="true" selected>Promoções com retorno ML</option>
+                    <option value="false">Todas as promoções</option>
+                  </select>
+                  <p class="vf-field__hint">Promoções com retorno ML são aquelas em que o Mercado Livre participa do desconto (<code>meli_percentage</code>).</p>
+                </div>
+              </div>
+
+              <div class="vf-promo-criteria__advanced">
+                <button type="button" class="vf-promo-criteria__advanced-toggle" id="promo-quickopts-toggle" aria-expanded="false" aria-controls="promo-quickopts-body">
+                  Opções da consulta rápida
+                </button>
+                <div class="vf-promo-criteria__advanced-body" id="promo-quickopts-body" hidden>
+                  <div class="vf-field">
+                    <label class="vf-field__label" for="promo-page">Página</label>
+                    <input id="promo-page" class="vf-input" type="number" min="1" step="1" value="1">
+                  </div>
+                  <div class="vf-field">
+                    <label class="vf-field__label" for="promo-limit">Itens por página</label>
+                    <input id="promo-limit" class="vf-input" type="number" min="1" max="50" step="1" value="20">
+                  </div>
+                  <div class="vf-field vf-field--wide">
+                    <label class="vf-field__label" for="promo-campanha">Filtro textual de campanha</label>
+                    <input id="promo-campanha" class="vf-input" type="search" placeholder="Ex: Top Oferta" autocomplete="off">
+                  </div>
+                </div>
               </div>
             </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="promo-margem">Margem alvo (%)</label>
-              <input id="promo-margem" class="vf-input" type="number" min="0" max="99" step="0.5" placeholder="Ex: 10" />
+            <div class="vf-card__footer">
+              <div class="vf-promo-actions">
+                <div class="vf-promo-actions__primary">
+                  <button type="button" id="btn-promo-diagnostico" class="vf-btn vf-btn--primary" disabled>Gerar diagnóstico</button>
+                  <button type="button" id="btn-promo-snapshot-usar" class="vf-btn vf-btn--secondary" disabled>Usar último snapshot</button>
+                </div>
+              </div>
+              <div class="vf-promo-quick">
+                <button type="button" class="vf-promo-quick__toggle" id="promo-quick-toggle" aria-expanded="false" aria-controls="promo-quick-body">
+                  Consulta rápida
+                </button>
+                <div class="vf-promo-quick__body" id="promo-quick-body" hidden>
+                  <p class="vf-field__hint">A consulta rápida analisa somente a página atual de anúncios (sem varredura completa nem snapshot salvo).</p>
+                  <div class="vf-promo-quick__footer">
+                    <button type="button" id="btn-promo-analisar" class="vf-btn vf-btn--secondary" disabled>Consultar página atual</button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="promo-tolerancia">Tolerância abaixo do alvo (p.p.)</label>
-              <input id="promo-tolerancia" class="vf-input" type="number" min="0" max="99" step="0.5" placeholder="Ex: 2" />
+          </section>
+
+          <!-- 4. ESTADO DOS DADOS -->
+          <section class="vf-card" id="promo-databar-card" hidden aria-label="Estado dos dados">
+            <div class="vf-card__body">
+              <div class="vf-promo-databar">
+                <div class="vf-promo-databar__row">
+                  <span class="vf-status" id="promo-databar-status">—</span>
+                  <span class="vf-promo-databar__meta" id="promo-databar-meta"></span>
+                </div>
+                <div class="vf-progress vf-promo-databar__progress" id="promo-databar-progress" hidden>
+                  <div class="vf-progress__bar" id="promo-databar-progress-bar"></div>
+                </div>
+              </div>
             </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="promo-limit">Itens por página (máx. 50)</label>
-              <input id="promo-limit" class="vf-input" type="number" min="1" max="50" step="1" value="20" />
+          </section>
+
+          <!-- 5. RESUMO EXECUTIVO -->
+          <section class="vf-section" id="promo-resumo-section" hidden aria-label="Resumo executivo">
+            <div class="vf-section__header">
+              <div>
+                <h2 class="vf-section__title">Resumo executivo</h2>
+              </div>
             </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="promo-page">Página</label>
-              <input id="promo-page" class="vf-input" type="number" min="1" step="1" value="1" />
-            </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="promo-campanha">Filtro de campanha (opcional)</label>
-              <input id="promo-campanha" class="vf-input" type="search" placeholder="Ex: Top Oferta" autocomplete="off" />
-            </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="promo-tipo">Tipo de promoção</label>
-              <select id="promo-tipo" class="vf-input">
-                <option value="true" selected>Apenas com retorno ML</option>
-                <option value="false">Todas as promoções</option>
-              </select>
-              <small style="display:block;margin-top:6px;color:var(--vf-text-m);font-size:.75rem;line-height:1.4;">
-                Promoções com retorno ML são aquelas em que o Mercado Livre participa do desconto via <code>meli_percentage</code>.
-              </small>
-            </div>
+            <div class="vf-kpi-grid" id="promo-kpis"></div>
+            <div class="vf-promo-kpis-secondary" id="promo-kpis-secondary"></div>
+          </section>
+
+          <div class="vf-empty" id="promo-empty-inicial">
+            <p class="vf-empty__title">Nenhuma análise carregada</p>
+            <p class="vf-empty__description">Selecione um cliente pronto e gere o diagnóstico completo ou use a consulta rápida.</p>
           </div>
-          <div id="promo-status" style="margin-top:8px;font-size:.875rem;display:none;"></div>
-          <div class="vf-auto-actions" style="flex-wrap:wrap;gap:10px;">
-            <button type="button" id="btn-promo-analisar" class="vf-btn-primary vf-auto-btn-main" style="margin:0;">
-              Analisar promoções disponíveis
-            </button>
-            <button type="button" id="btn-promo-diagnostico" class="vf-btn-primary" style="margin:0;">
-              Gerar diagnóstico de promoções
-            </button>
-            <button type="button" id="btn-promo-snapshot-usar" class="vf-btn-secondary" style="margin:0;" disabled>
-              Usar último snapshot
-            </button>
-            <button type="button" id="btn-promo-snapshot-atualizar" class="vf-btn-secondary" style="margin:0;" disabled>
-              Atualizar snapshot
-            </button>
-          </div>
-          <small style="display:block;margin-top:8px;color:var(--vf-text-m);font-size:.75rem;line-height:1.4;">
-            <strong>Diagnóstico</strong> varre as promoções da conta em segundo plano e salva um snapshot
-            automaticamente ao concluir — assim você não precisa varrer tudo toda vez. A tabela mostra no
-            máximo 50 linhas por filtro. Use <strong>Atualizar snapshot</strong> para varrer de novo e
-            <strong>Usar último snapshot</strong> para reabrir sem varrer.
-          </small>
+
+          <!-- 6. WORKSPACE DA TABELA -->
+          <section class="vf-section vf-promo-workspace" id="promo-workspace" hidden aria-label="Promoções analisadas">
+            <div class="vf-section__header">
+              <div>
+                <h2 class="vf-section__title">Promoções</h2>
+              </div>
+              <span class="vf-promo-count" id="promo-count">0 de 0</span>
+            </div>
+
+            <div class="vf-promo-quickchips" id="promo-quickchips"></div>
+            <div class="vf-promo-activefilters" id="promo-activefilters" hidden></div>
+
+            <div class="vf-toolbar">
+              <div class="vf-toolbar__filters">
+                <input id="promo-table-search" class="vf-input vf-search" type="search" placeholder="Buscar por MLB, SKU, título ou campanha" autocomplete="off">
+              </div>
+              <div class="vf-toolbar__actions">
+                <div class="vf-promo-menuwrap">
+                  <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="promo-filters-btn" aria-expanded="false" aria-controls="promo-filters-menu">Filtros</button>
+                  <div class="vf-menu" id="promo-filters-menu" hidden></div>
+                </div>
+                <div class="vf-promo-menuwrap">
+                  <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="promo-columns-btn" aria-expanded="false" aria-controls="promo-columns-menu">Colunas</button>
+                  <div class="vf-menu vf-promo-columns-menu" id="promo-columns-menu" hidden></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="promo-aviso-limite" class="vf-banner is-warning vf-banner--compact" hidden></div>
+
+            <div class="vf-empty" id="promo-tabela-empty" hidden>
+              <p class="vf-empty__title">Nenhuma linha neste filtro</p>
+              <p class="vf-empty__description">Ajuste a busca ou os filtros ativos.</p>
+            </div>
+
+            <div class="vf-table-wrap" id="promo-tabela-wrapper" hidden>
+              <table class="vf-table vf-table--compact">
+                <thead id="promo-thead"></thead>
+                <tbody id="promo-tbody"></tbody>
+              </table>
+            </div>
+          </section>
+
         </div>
       </div>
-
-      <!-- Seção 2: Resumo -->
-      <div class="vf-card" style="margin-bottom:24px;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="20" x2="12" y2="10"></line>
-              <line x1="18" y1="20" x2="18" y2="4"></line>
-              <line x1="6" y1="20" x2="6" y2="16"></line>
-            </svg>
-            Resumo
-          </h5>
-          <span class="vf-badge" id="promo-total-ml" style="display:none;">0</span>
-        </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div id="promo-resumo-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
-            <p>Selecione cliente e base e clique em "Analisar promoções disponíveis".</p>
-          </div>
-          <div id="promo-resumo-bar" class="vf-resumo-bar" style="display:none;"></div>
-          <div id="promo-resumo-nota" style="display:none;margin-top:10px;font-size:.82rem;font-weight:700;color:var(--vf-primary);"></div>
-        </div>
-      </div>
-
-      <!-- Seção 3: Promoções -->
-      <div class="vf-card vf-ml-preview" style="margin-bottom:24px;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="3" y1="9" x2="21" y2="9"></line>
-              <line x1="9" y1="3" x2="9" y2="21"></line>
-            </svg>
-            Promoções disponíveis
-            <span class="vf-auto-section-tag">somente leitura</span>
-          </h5>
-          <span class="vf-badge" id="promo-tabela-total" style="display:none;">0</span>
-        </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div style="margin-bottom:12px;color:var(--vf-text-m);font-size:.875rem;">
-            Esta análise não altera anúncios, preços, estoque, campanhas ou promoções do cliente.
-          </div>
-
-          <div id="promo-diagnostico-info" style="display:none;margin-bottom:12px;padding:.6rem .85rem;border-radius:8px;font-size:.82rem;line-height:1.5;border:1px solid var(--vf-border);"></div>
-
-          <div id="promo-filtros" class="vf-ml-filter-buttons" style="margin-bottom:14px;display:none;"></div>
-
-          <div id="promo-diagnostico-aviso" style="display:none;margin-bottom:12px;padding:.5rem .75rem;border-radius:8px;font-size:.8rem;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fde68a;"></div>
-
-          <div id="promo-tabela-empty" class="vf-empty-state" style="display:block;padding:1.5rem 1rem;">
-            <p>Nenhuma análise carregada ainda.</p>
-          </div>
-
-          <div id="promo-tabela-wrapper" class="vf-table-wrapper" style="display:none;">
-            <table class="vf-table vf-promo-table">
-              <thead>
-                <tr>
-                  <th>MLB</th>
-                  <th>Título</th>
-                  <th>Campanha</th>
-                  <th style="text-align:right;">Preço orig.</th>
-                  <th style="text-align:right;">Preço promo</th>
-                  <th style="text-align:right;">Desconto</th>
-                  <th style="text-align:right;">seller %</th>
-                  <th style="text-align:right;">meli %</th>
-                  <th style="text-align:right;">Retorno ML</th>
-                  <th style="text-align:right;">Comissão %</th>
-                  <th style="text-align:right;">Comissão R$</th>
-                  <th style="text-align:right;">Frete</th>
-                  <th style="text-align:right;">Custo</th>
-                  <th style="text-align:right;">Imposto</th>
-                  <th style="text-align:right;">LC promo</th>
-                  <th style="text-align:right;">MC promo</th>
-                  <th style="text-align:right;">Margem alvo</th>
-                  <th style="text-align:right;">Dif. p.p.</th>
-                  <th>Decisão</th>
-                  <th>Motivo</th>
-                  <th style="text-align:center;">Ações</th>
-                </tr>
-              </thead>
-              <tbody id="promo-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
     </main>
   </div>
 
-  <!-- Modal: Ver cálculo -->
-  <div id="promo-calc-modal" class="vf-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;">
-    <div style="background:var(--vf-surface);border-radius:14px;max-width:560px;width:90%;padding:1.5rem;box-shadow:var(--vf-shadow-card);max-height:92vh;overflow:auto;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <h5 style="margin:0;">Como o cálculo foi feito</h5>
-        <button id="promo-calc-modal-close" type="button" style="border:none;background:transparent;font-size:1.5rem;cursor:pointer;">×</button>
-      </div>
-      <div id="promo-calc-modal-body"></div>
-    </div>
-  </div>
+  <!-- 7. DRAWER: detalhe do cálculo -->
+  <div class="vf-drawer-backdrop" id="promo-calc-backdrop"></div>
+  <aside class="vf-drawer vf-drawer--lg" id="promo-calc-drawer" role="dialog" aria-modal="true" aria-labelledby="promo-calc-title" tabindex="-1">
+    <header class="vf-drawer__header">
+      <h2 class="vf-drawer__title" id="promo-calc-title">Como o cálculo foi feito</h2>
+      <button type="button" class="vf-btn vf-btn--ghost vf-btn--sm vf-btn--icon" id="promo-calc-close" aria-label="Fechar detalhe do cálculo">✕</button>
+    </header>
+    <div class="vf-drawer__body" id="promo-calc-body"></div>
+    <footer class="vf-drawer__footer">
+      <!-- Fronteira arquitetural para futura ação PUT (habilitar promoção). Oculta enquanto
+           PROMO_WRITE_CAPABILITY.enabled === false — ver promocoes-retorno.js. -->
+      <div class="vf-promo-write-action" id="promo-write-action" hidden></div>
+      <button type="button" class="vf-btn vf-btn--secondary" id="promo-calc-close-footer">Fechar</button>
+    </footer>
+  </aside>
 
   <script src="layout.js"></script>
   <script src="promocoes-retorno.js"></script>
