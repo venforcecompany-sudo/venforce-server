@@ -505,18 +505,12 @@ async function gerarExportRelatorioCsv({ idRaw }) {
   };
 }
 
-async function gerarExportRelatorioXlsx({ idRaw }) {
-  const id = parseInt(idRaw, 10);
-  if (!Number.isFinite(id) || id <= 0) {
-    throw criarErroHttp(400, { ok: false, erro: "id inválido." });
-  }
-
-  const dados = await carregarRelatorioComItens(id);
-  if (!dados) {
-    throw criarErroHttp(404, { ok: false, erro: "Relatório não encontrado." });
-  }
-  const { relatorio, itens } = dados;
-
+// Constrói o workbook completo (aba Resumo + aba Matriz Mercado Livre) com
+// fórmulas, formatos, merges, larguras e estilos. Compartilhado entre a
+// exportação do relatório salvo (gerarExportRelatorioXlsx) e a planilha de
+// precificação sem base (planilhaPrecificacaoSemBaseService) — mesma
+// estrutura, mesmas fórmulas, mesma formatação em ambos os casos.
+function construirWorkbookMatrizPrecificacao({ resumoRows, resumoPctCells = [], itens, margemAlvoPadrao = null }) {
   const paraDecimalPct = (v) => {
     const n = Number(v);
     if (!Number.isFinite(n)) return null;
@@ -526,22 +520,6 @@ async function gerarExportRelatorioXlsx({ idRaw }) {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   };
-
-  const resumoRows = [
-    ["Resumo do relatório", ""],
-    ["Cliente", relatorio.cliente_slug || "—"],
-    ["Base", relatorio.base_slug || "—"],
-    ["Escopo", relatorio.escopo || "—"],
-    ["Margem alvo", paraDecimalPct(relatorio.margem_alvo)],
-    ["Total de itens", numeroOuNulo(relatorio.total_itens)],
-    ["Com base", numeroOuNulo(relatorio.itens_com_base)],
-    ["Sem base", numeroOuNulo(relatorio.itens_sem_base)],
-    ["Críticos", numeroOuNulo(relatorio.itens_criticos)],
-    ["Atenção", numeroOuNulo(relatorio.itens_atencao)],
-    ["Saudáveis", numeroOuNulo(relatorio.itens_saudaveis)],
-    ["MC média", paraDecimalPct(relatorio.mc_media)],
-    ["Data do relatório", relatorio.created_at ? new Date(relatorio.created_at).toLocaleString("pt-BR") : "—"],
-  ];
 
   const matrizRows = [
     [
@@ -596,7 +574,7 @@ async function gerarExportRelatorioXlsx({ idRaw }) {
       "",
       numeroOuNulo(it.preco_efetivo),
       "",
-      paraDecimalPct(relatorio.margem_alvo),
+      paraDecimalPct(margemAlvoPadrao),
       "",
       "",
       "",
@@ -648,8 +626,7 @@ async function gerarExportRelatorioXlsx({ idRaw }) {
     ["G", "I", "M", "Q", "T", "AA"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "0.00%"));
   }
 
-  setFormat(resumoSheet, "B5", "0.00%");
-  setFormat(resumoSheet, "B12", "0.00%");
+  resumoPctCells.forEach((addr) => setFormat(resumoSheet, addr, "0.00%"));
 
   matrizSheet["!autofilter"] = { ref: `A3:AD${Math.max(3, 3 + itens.length)}` };
   matrizSheet["!freeze"] = { xSplit: 0, ySplit: 3, topLeftCell: "A4", activePane: "bottomLeft", state: "frozen" };
@@ -712,10 +689,56 @@ async function gerarExportRelatorioXlsx({ idRaw }) {
   XLSX.utils.book_append_sheet(workbook, resumoSheet, "Resumo");
   XLSX.utils.book_append_sheet(workbook, matrizSheet, "Matriz Mercado Livre");
 
-  const buffer = XLSX.write(workbook, {
+  return XLSX.write(workbook, {
     type: "buffer",
     bookType: "xlsx",
     compression: true,
+  });
+}
+
+async function gerarExportRelatorioXlsx({ idRaw }) {
+  const id = parseInt(idRaw, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw criarErroHttp(400, { ok: false, erro: "id inválido." });
+  }
+
+  const dados = await carregarRelatorioComItens(id);
+  if (!dados) {
+    throw criarErroHttp(404, { ok: false, erro: "Relatório não encontrado." });
+  }
+  const { relatorio, itens } = dados;
+
+  const paraDecimalPct = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    return n > 1 ? n / 100 : n;
+  };
+  const numeroOuNulo = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const resumoRows = [
+    ["Resumo do relatório", ""],
+    ["Cliente", relatorio.cliente_slug || "—"],
+    ["Base", relatorio.base_slug || "—"],
+    ["Escopo", relatorio.escopo || "—"],
+    ["Margem alvo", paraDecimalPct(relatorio.margem_alvo)],
+    ["Total de itens", numeroOuNulo(relatorio.total_itens)],
+    ["Com base", numeroOuNulo(relatorio.itens_com_base)],
+    ["Sem base", numeroOuNulo(relatorio.itens_sem_base)],
+    ["Críticos", numeroOuNulo(relatorio.itens_criticos)],
+    ["Atenção", numeroOuNulo(relatorio.itens_atencao)],
+    ["Saudáveis", numeroOuNulo(relatorio.itens_saudaveis)],
+    ["MC média", paraDecimalPct(relatorio.mc_media)],
+    ["Data do relatório", relatorio.created_at ? new Date(relatorio.created_at).toLocaleString("pt-BR") : "—"],
+  ];
+
+  const buffer = construirWorkbookMatrizPrecificacao({
+    resumoRows,
+    resumoPctCells: ["B5", "B12"],
+    itens,
+    margemAlvoPadrao: relatorio.margem_alvo,
   });
 
   const filename = montarNomeArquivoRelatorio(relatorio, "xlsx", "matriz-precificacao");
@@ -739,5 +762,7 @@ module.exports = {
   excluirRelatorioAutomacoes,
   gerarExportRelatorioCsv,
   gerarExportRelatorioXlsx,
+  construirWorkbookMatrizPrecificacao,
+  normalizarSlug,
 };
 

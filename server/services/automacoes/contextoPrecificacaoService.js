@@ -205,6 +205,30 @@ async function exigirContextoPronto({ clienteSlugRaw, baseSlugRaw }) {
   };
 }
 
+// Resolve e EXIGE apenas cliente + grant ML — usado por rotas somente-leitura
+// que não dependem de base de custos (ex.: planilha de precificação sem base).
+// Não valida nem exige base MELI vinculada; o chamador decide o que fazer com
+// basesMeli (0, 1 ou várias).
+async function exigirContextoGrantMl({ clienteSlugRaw }) {
+  const contexto = await resolverContextoPrecificacao({ clienteSlugRaw });
+
+  if (!contexto.grant.conectado) {
+    throw criarErroHttp(STATUS_POR_MOTIVO[MOTIVOS.GRANT_ML_NAO_CONECTADO], {
+      ok: false,
+      codigo: MOTIVOS.GRANT_ML_NAO_CONECTADO,
+      erro: MENSAGENS[MOTIVOS.GRANT_ML_NAO_CONECTADO],
+    });
+  }
+
+  return {
+    cliente: contexto.cliente,
+    grant: contexto.grant,
+    mlUserId: contexto.grant.ml_user_id,
+    basesMeli: contexto.basesMeli,
+    base: contexto.base,
+  };
+}
+
 module.exports = {
   MOTIVOS,
   MENSAGENS,
@@ -213,4 +237,5 @@ module.exports = {
   buscarBasesMeliDoCliente,
   resolverContextoPrecificacao,
   exigirContextoPronto,
+  exigirContextoGrantMl,
 };

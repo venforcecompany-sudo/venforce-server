@@ -461,5 +461,15 @@ async function executarDiagnosticoCompleto(relatorioId) {
 
 module.exports = {
   executarDiagnosticoCompleto,
+  // Exportados para reuso somente-leitura por outros fluxos que precisam do
+  // mesmo pipeline de enriquecimento e da mesma paginação por scroll (ex.:
+  // planilha de precificação sem base) — nenhum destes escreve no ML.
+  diagEnriquecerItem,
+  diagChunk,
+  diagPLimit,
+  extrairSkuMl,
+  DIAG_SCROLL_LIMIT,
+  DIAG_BATCH_DETAILS,
+  DIAG_ENRICH_CONCURRENCY,
 };
 

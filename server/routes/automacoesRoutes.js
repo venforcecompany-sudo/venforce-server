@@ -25,6 +25,7 @@ const {
   excluirRelatorioAutomacoesController,
   exportRelatorioCsvController,
   exportRelatorioXlsxController,
+  exportPlanilhaPrecificacaoSemBaseController,
   iniciarDiagnosticoCompletoController,
   buscarDiagnosticoCompletoController,
 } = require("../controllers/automacoesController");
@@ -36,6 +37,10 @@ router.get("/automacoes/clientes", authMiddleware, requireAutomacoesAccess, list
 router.get("/automacoes/precificacao/preview", authMiddleware, requireAutomacoesAccess, previewPrecificacaoController);
 
 router.get("/automacoes/precificacao/preview-ml", authMiddleware, requireAutomacoesAccess, previewPrecificacaoMlController);
+
+// Planilha de precificação (mesma matriz/fórmulas do XLSX do relatório) gerada
+// direto do grant ML, sem exigir base de custos vinculada. Somente leitura.
+router.get("/automacoes/clientes/:clienteSlug/planilha-precificacao.xlsx", authMiddleware, requireAutomacoesAccess, exportPlanilhaPrecificacaoSemBaseController);
 
 router.get("/automacoes/promocoes-retorno/preview", authMiddleware, requireAutomacoesAccess, previewPromocoesRetornoController);
 

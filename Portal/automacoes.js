@@ -197,16 +197,20 @@ function onClienteChange() {
   const ctx = getClienteAtual();
   const readiness = document.getElementById("auto-readiness");
   const btn = document.getElementById("btn-otimizador-analisar");
+  const btnPlanilha = document.getElementById("btn-baixar-planilha-precificacao");
 
   if (!ctx) {
     if (readiness) readiness.hidden = true;
     setStateBanner({});
     if (btn) btn.disabled = true;
+    if (btnPlanilha) btnPlanilha.disabled = true;
     return;
   }
 
   renderReadiness(ctx);
   if (btn) btn.disabled = !ctx.prontoParaAnalise;
+  // Baixar planilha só exige grant ML — não depende de base vinculada.
+  if (btnPlanilha) btnPlanilha.disabled = !ctx.hasGrantMl;
 }
 
 function setStatusChip(id, tone, texto) {
@@ -247,18 +251,18 @@ function renderReadiness(ctx) {
       descricao: "Conecte a conta do Mercado Livre deste cliente para habilitar a análise.",
     });
   } else if (ctx.baseStatus === "ausente") {
-    setStatusChip("rd-status", "warning", "Requer correção");
+    setStatusChip("rd-status", "warning", "Planilha disponível");
     setStateBanner({
       tone: "warning",
       titulo: "Cliente sem base MELI vinculada",
-      descricao: "Ajuste o vínculo da base de custos em Bases de Custo para habilitar a análise.",
+      descricao: "O diagnóstico financeiro está bloqueado, mas você pode baixar a planilha de precificação, preencher os custos e importá-la em Bases de Custo.",
     });
   } else if (ctx.baseStatus === "multiplas") {
     setStatusChip("rd-status", "warning", "Requer correção");
     setStateBanner({
       tone: "warning",
       titulo: "Mais de uma base MELI vinculada",
-      descricao: "Corrija os vínculos em Bases de Custo para que reste apenas uma base MELI ativa.",
+      descricao: "Corrija os vínculos em Bases de Custo para executar o diagnóstico. A planilha de precificação continua disponível para download.",
     });
   } else {
     setStatusChip("rd-status", "success", "Pronto");
@@ -268,7 +272,7 @@ function renderReadiness(ctx) {
 
 // ─── Alternância de estados da página ────────────────────────────────────
 function setConfigDisabled(disabled) {
-  ["auto-cliente-search", "auto-cliente", "auto-margem", "btn-otimizador-analisar"]
+  ["auto-cliente-search", "auto-cliente", "auto-margem", "btn-otimizador-analisar", "btn-baixar-planilha-precificacao"]
     .forEach((id) => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
 }
 
@@ -556,6 +560,51 @@ async function baixarXlsx(relatorioId) {
   }
 }
 
+// Planilha de precificação a partir do grant ML — não exige base vinculada,
+// não inicia diagnóstico e não cria relatório. Reaproveita a mesma matriz/
+// fórmulas do XLSX do relatório concluído (baixarXlsx acima), mas com os
+// campos vindos da base em branco quando não há base vinculada.
+async function baixarPlanilhaPrecificacao() {
+  if (!TOKEN) return;
+  const ctx = getClienteAtual();
+  if (!ctx) { setFeedback("Selecione um cliente para baixar a planilha.", "danger"); return; }
+  if (!ctx.hasGrantMl) { setFeedback("Este cliente não possui grant ML conectado.", "danger"); return; }
+
+  const btn = document.getElementById("btn-baixar-planilha-precificacao");
+  if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
+  setFeedback("Buscando anúncios ativos e gerando planilha…", "info");
+
+  try {
+    const res = await fetch(
+      `${API_BASE}/automacoes/clientes/${encodeURIComponent(ctx.slug)}/planilha-precificacao.xlsx`,
+      { headers: { Authorization: "Bearer " + TOKEN } }
+    );
+    if (res.status === 401) { clearSession(); return; }
+    if (res.status === 403) { window.location.replace("dashboard.html"); return; }
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const disp = res.headers.get("content-disposition") || "";
+    const nomeMatch = disp.match(/filename="?([^"]+)"?/i);
+    const filename = nomeMatch?.[1] || `matriz-precificacao-${ctx.slug}.xlsx`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    setFeedback("Planilha de precificação baixada.", "success");
+  } catch (err) {
+    setFeedback(`Erro ao baixar a planilha de precificação: ${err.message}`, "danger");
+  } finally {
+    if (btn) {
+      btn.classList.remove("is-loading");
+      btn.disabled = !getClienteAtual()?.hasGrantMl;
+    }
+  }
+}
+
 function novaAnalise() {
   resetResultadoEProcessamento();
   setConfigDisabled(false);
@@ -569,6 +618,7 @@ document.getElementById("auto-cliente-search")?.addEventListener("input", applyC
 document.getElementById("auto-cliente")?.addEventListener("change", onClienteChange);
 document.getElementById("btn-otimizador-analisar")?.addEventListener("click", analisarLoja);
 document.getElementById("btn-nova-analise")?.addEventListener("click", novaAnalise);
+document.getElementById("btn-baixar-planilha-precificacao")?.addEventListener("click", baixarPlanilhaPrecificacao);
 document.getElementById("btn-baixar-xlsx")?.addEventListener("click", () => {
   if (RELATORIO_CONCLUIDO_ID) baixarXlsx(RELATORIO_CONCLUIDO_ID);
 });

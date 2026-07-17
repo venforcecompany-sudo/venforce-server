@@ -37,6 +37,10 @@ const {
 } = require("../services/automacoes/contextoPrecificacaoService");
 
 const {
+  gerarPlanilhaPrecificacaoSemBase,
+} = require("../services/automacoes/planilhaPrecificacaoSemBaseService");
+
+const {
   criarJobDiagnostico,
   enfileirarDiagnostico,
   buscarStatusDiagnostico,
@@ -105,6 +109,7 @@ async function listarClientesAutomacoesController(req, res) {
         baseStatus,
         basesMeliCount: basesMeli.length,
         prontoParaAnalise: hasGrantMl && basesMeli.length === 1,
+        prontoParaExportacaoCrua: hasGrantMl,
       };
     });
 
@@ -354,6 +359,19 @@ async function exportRelatorioXlsxController(req, res) {
   }
 }
 
+async function exportPlanilhaPrecificacaoSemBaseController(req, res) {
+  try {
+    const arquivo = await gerarPlanilhaPrecificacaoSemBase({
+      clienteSlugRaw: req.params.clienteSlug,
+    });
+    res.setHeader("Content-Type", arquivo.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${arquivo.filename}"`);
+    return res.send(arquivo.buffer);
+  } catch (err) {
+    return responderErroService(res, err);
+  }
+}
+
 async function iniciarDiagnosticoCompletoController(req, res) {
   try {
     const { clienteSlug, baseSlug, margemAlvo, observacoes } = req.body || {};
@@ -468,6 +486,7 @@ module.exports = {
   excluirRelatorioAutomacoesController,
   exportRelatorioCsvController,
   exportRelatorioXlsxController,
+  exportPlanilhaPrecificacaoSemBaseController,
   iniciarDiagnosticoCompletoController,
   buscarDiagnosticoCompletoController,
 };
