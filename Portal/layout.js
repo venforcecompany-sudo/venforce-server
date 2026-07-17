@@ -157,7 +157,7 @@
         { label: "Mercado Ads",  href: "ads.html",           icon: "trending-up"  },
         { label: "Otimizador",   href: "automacoes.html",    icon: "repeat"       },
         { label: "Automações",   href: "automacoes.html",    icon: "repeat"       },
-        { label: "Promoções ML", href: "promocoes-retorno.html", icon: "trending-up" }
+        { label: "Promoções ML", href: "promocoes-retorno.html", icon: "trending-up" },
         
         { separator: true, label: "ANÁLISES" },
         { label: "Financeiro",   href: "financeiro.html",    icon: "vf-financeiro" },
