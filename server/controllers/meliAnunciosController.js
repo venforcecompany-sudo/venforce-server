@@ -7,12 +7,14 @@
 //   - erro de validação ........ HTTP 400/404 + { ok: false, motivo }
 //   - falha "esperada" de sync . HTTP 200 + { ok: false, codigo, motivo }
 //
-// Não altera anúncios no Mercado Livre. Sincronização e detalhe são read-only.
+// Sincronização, detalhe e otimizador são read-only no Mercado Livre.
+// A criação de anúncios (meliCriacaoService) é a única escrita intencional.
 // -----------------------------------------------------------------------------
 
 const anunciosService = require("../services/meliAnuncios/meliAnunciosService");
 const syncService = require("../services/meliAnuncios/meliSyncService");
 const otimizadorService = require("../services/meliAnuncios/otimizadorMeliService");
+const criacaoService = require("../services/meliAnuncios/meliCriacaoService");
 const { mlFetch } = require("../utils/mlClient");
 
 // ----------------------------------------------------------------------------
@@ -341,6 +343,202 @@ async function aprovarOtimizacao(req, res) {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Criação de Anúncios ML
+// ----------------------------------------------------------------------------
+
+async function criacaoStatus(req, res) {
+  try {
+    const { clienteSlug } = req.query || {};
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, motivo: "Informe o clienteSlug." });
+    }
+
+    const cliente = await anunciosService.resolverCliente(clienteSlug);
+    if (!cliente) {
+      return res.status(404).json({ ok: false, motivo: "Cliente não encontrado." });
+    }
+
+    const status = await criacaoService.obterStatusConta(cliente.id);
+    return res.json({
+      ok: !!status.ok,
+      cliente: { slug: cliente.slug, nome: cliente.nome },
+      ...status,
+    });
+  } catch (err) {
+    console.error("[anuncios-meli] criacaoStatus:", err.message);
+    return res.status(500).json({
+      ok: false,
+      motivo: "Erro ao validar a conta Mercado Livre.",
+    });
+  }
+}
+
+async function criacaoCategorias(req, res) {
+  try {
+    const { clienteSlug, q } = req.query || {};
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, motivo: "Informe o clienteSlug." });
+    }
+
+    const cliente = await anunciosService.resolverCliente(clienteSlug);
+    if (!cliente) {
+      return res.status(404).json({ ok: false, motivo: "Cliente não encontrado." });
+    }
+
+    const resultado = await criacaoService.buscarCategorias(cliente.id, q);
+    if (!resultado.ok) {
+      return res.status(resultado.statusMl || 400).json(resultado);
+    }
+    return res.json(resultado);
+  } catch (err) {
+    console.error("[anuncios-meli] criacaoCategorias:", err.message);
+    return res.status(500).json({
+      ok: false,
+      motivo: "Erro ao buscar categorias no Mercado Livre.",
+    });
+  }
+}
+
+async function criacaoAtributos(req, res) {
+  try {
+    const { categoryId } = req.params;
+    const { clienteSlug } = req.query || {};
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, motivo: "Informe o clienteSlug." });
+    }
+
+    const cliente = await anunciosService.resolverCliente(clienteSlug);
+    if (!cliente) {
+      return res.status(404).json({ ok: false, motivo: "Cliente não encontrado." });
+    }
+
+    const resultado = await criacaoService.obterAtributosCategoria(
+      cliente.id,
+      categoryId
+    );
+    if (!resultado.ok) {
+      return res.status(resultado.statusMl || 400).json(resultado);
+    }
+    return res.json(resultado);
+  } catch (err) {
+    console.error("[anuncios-meli] criacaoAtributos:", err.message);
+    return res.status(500).json({
+      ok: false,
+      motivo: "Erro ao carregar atributos da categoria.",
+    });
+  }
+}
+
+async function criacaoSaleTerms(req, res) {
+  try {
+    const { categoryId } = req.params;
+    const { clienteSlug } = req.query || {};
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, motivo: "Informe o clienteSlug." });
+    }
+
+    const cliente = await anunciosService.resolverCliente(clienteSlug);
+    if (!cliente) {
+      return res.status(404).json({ ok: false, motivo: "Cliente não encontrado." });
+    }
+
+    const resultado = await criacaoService.obterSaleTermsCategoria(
+      cliente.id,
+      categoryId
+    );
+    if (!resultado.ok) {
+      return res.status(resultado.statusMl || 400).json(resultado);
+    }
+    return res.json(resultado);
+  } catch (err) {
+    console.error("[anuncios-meli] criacaoSaleTerms:", err.message);
+    return res.status(500).json({
+      ok: false,
+      motivo: "Erro ao carregar termos comerciais da categoria.",
+    });
+  }
+}
+
+async function criacaoListingTypes(req, res) {
+  try {
+    const { clienteSlug } = req.query || {};
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, motivo: "Informe o clienteSlug." });
+    }
+
+    const cliente = await anunciosService.resolverCliente(clienteSlug);
+    if (!cliente) {
+      return res.status(404).json({ ok: false, motivo: "Cliente não encontrado." });
+    }
+
+    const resultado = await criacaoService.obterTiposAnuncio(cliente.id);
+    if (!resultado.ok) {
+      return res.status(resultado.statusMl || 400).json(resultado);
+    }
+    return res.json(resultado);
+  } catch (err) {
+    console.error("[anuncios-meli] criacaoListingTypes:", err.message);
+    return res.status(500).json({
+      ok: false,
+      motivo: "Erro ao carregar tipos de anúncio.",
+    });
+  }
+}
+
+async function publicarAnuncio(req, res) {
+  try {
+    const body = req.body || {};
+    const { clienteSlug } = body;
+
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, motivo: "Informe o clienteSlug." });
+    }
+
+    const cliente = await anunciosService.resolverCliente(clienteSlug);
+    if (!cliente) {
+      return res.status(404).json({ ok: false, motivo: "Cliente não encontrado." });
+    }
+
+    const resultado = await criacaoService.createMercadoLivreItem({
+      clienteId: cliente.id,
+      clienteSlug: cliente.slug,
+      dados: body,
+      createdBy: req.user && req.user.id,
+    });
+
+    if (!resultado.ok) {
+      return res.status(resultado.http || 400).json({
+        ok: false,
+        codigo: resultado.codigo,
+        motivo: resultado.motivo,
+        erros: resultado.erros || [],
+        statusMl: resultado.statusMl || null,
+      });
+    }
+
+    return res.status(201).json({
+      ok: true,
+      item_id: resultado.item_id,
+      permalink: resultado.permalink,
+      status: resultado.status,
+      listing_type_id: resultado.listing_type_id,
+      category_id: resultado.category_id,
+      descricaoSalva: resultado.descricaoSalva,
+      descricaoErro: resultado.descricaoErro,
+      publicacaoId: resultado.publicacaoId,
+      cliente: { slug: cliente.slug, nome: cliente.nome },
+    });
+  } catch (err) {
+    console.error("[anuncios-meli] publicarAnuncio:", err.message);
+    return res.status(500).json({
+      ok: false,
+      codigo: "ERRO_INTERNO",
+      motivo: "Erro interno ao publicar o anúncio.",
+    });
+  }
+}
+
 module.exports = {
   listarClientes,
   sincronizar,
@@ -351,4 +549,10 @@ module.exports = {
   otimizar,
   listarOtimizacoes,
   aprovarOtimizacao,
+  criacaoStatus,
+  criacaoCategorias,
+  criacaoAtributos,
+  criacaoSaleTerms,
+  criacaoListingTypes,
+  publicarAnuncio,
 };

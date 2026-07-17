@@ -1,0 +1,396 @@
+/* Portal/criar-anuncios-meli.css — Criação de Anúncios ML */
+
+.vf-page-cam .cam-card {
+  margin-bottom: 1.25rem;
+}
+
+.vf-page-cam .cam-card-body {
+  padding: 1.1rem 1.25rem 1.25rem;
+}
+
+.vf-page-cam .cam-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.vf-page-cam .cam-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.vf-page-cam .cam-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.vf-page-cam .cam-req {
+  color: #c0392b;
+  font-weight: 600;
+}
+
+.vf-page-cam .cam-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--vf-text-m, #6b7280);
+}
+
+.vf-page-cam .cam-char-count {
+  text-align: right;
+  font-size: 0.75rem;
+  color: var(--vf-text-m, #6b7280);
+  margin-top: 0.25rem;
+}
+
+.vf-page-cam .cam-status-box {
+  min-height: 2.5rem;
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: var(--vf-bg, #f7f5fb);
+  border: 1px solid rgba(90, 42, 143, 0.08);
+  font-size: 0.9rem;
+}
+
+.vf-page-cam .cam-status-ok {
+  color: #1f7a45;
+  background: #edf9f1;
+  border-color: #b7e4c7;
+}
+
+.vf-page-cam .cam-status-warn {
+  color: #9a6700;
+  background: #fff8e8;
+  border-color: #f0d58a;
+}
+
+.vf-page-cam .cam-status-bad {
+  color: #a12a2a;
+  background: #fdeeee;
+  border-color: #f0b4b4;
+}
+
+.vf-page-cam .cam-cat-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.vf-page-cam .cam-cat-row .vf-input {
+  flex: 1;
+}
+
+.vf-page-cam .cam-cat-selected {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--vf-text-m, #6b7280);
+}
+
+.vf-page-cam .cam-cat-selected.is-set {
+  color: #1f7a45;
+  font-weight: 600;
+}
+
+.vf-page-cam .cam-cat-results {
+  margin-top: 0.5rem;
+  border: 1px solid rgba(90, 42, 143, 0.12);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.vf-page-cam .cam-cat-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  background: transparent;
+  padding: 0.7rem 0.9rem;
+  cursor: pointer;
+}
+
+.vf-page-cam .cam-cat-item:hover {
+  background: rgba(90, 42, 143, 0.05);
+}
+
+.vf-page-cam .cam-cat-item strong {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.vf-page-cam .cam-cat-item span {
+  font-size: 0.75rem;
+  color: var(--vf-text-m, #6b7280);
+}
+
+.vf-page-cam .cam-textarea {
+  min-height: 140px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.vf-page-cam .cam-attr-section h6 {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vf-text-m, #6b7280);
+}
+
+.vf-page-cam .cam-attr-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.vf-page-cam .cam-attr-hint {
+  font-size: 0.7rem;
+  color: var(--vf-text-l, #9ca3af);
+  margin-top: 0.2rem;
+}
+
+.vf-page-cam .cam-attr-unit-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 0.5rem;
+}
+
+.vf-page-cam .cam-attr-optional {
+  margin-top: 1rem;
+}
+
+.vf-page-cam .cam-attr-optional summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.vf-page-cam .cam-empty {
+  padding: 1rem;
+  border-radius: 8px;
+  background: var(--vf-bg, #f7f5fb);
+  color: var(--vf-text-m, #6b7280);
+  font-size: 0.9rem;
+}
+
+.vf-page-cam .cam-images-add {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.vf-page-cam .cam-images-add .vf-input {
+  flex: 1;
+}
+
+.vf-page-cam .cam-images-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.vf-page-cam .cam-image-card {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 0.85rem;
+  padding: 0.65rem;
+  border: 1px solid rgba(90, 42, 143, 0.1);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.vf-page-cam .cam-image-preview {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f3f0f8;
+}
+
+.vf-page-cam .cam-image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vf-page-cam .cam-image-preview img.is-broken {
+  opacity: 0.35;
+}
+
+.vf-page-cam .cam-image-badge {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  background: rgba(90, 42, 143, 0.9);
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+}
+
+.vf-page-cam .cam-image-url {
+  font-size: 0.78rem;
+  color: var(--vf-text-m, #6b7280);
+  word-break: break-all;
+  margin-bottom: 0.5rem;
+}
+
+.vf-page-cam .cam-image-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.vf-page-cam .cam-sale-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.vf-page-cam .cam-var-card {
+  border: 1px solid rgba(90, 42, 143, 0.1);
+  border-radius: 10px;
+  padding: 0.9rem;
+  margin-bottom: 0.75rem;
+  background: #fff;
+}
+
+.vf-page-cam .cam-var-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.vf-page-cam .cam-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0.5rem 0 2rem;
+  flex-wrap: wrap;
+}
+
+.vf-page-cam .cam-progress {
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  background: #f7f2fc;
+  border: 1px solid rgba(90, 42, 143, 0.12);
+}
+
+.vf-page-cam .cam-progress-label {
+  font-size: 0.9rem;
+  margin-bottom: 0.55rem;
+  color: var(--vf-text, #2d2a33);
+}
+
+.vf-page-cam .cam-progress-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(90, 42, 143, 0.12);
+  overflow: hidden;
+}
+
+.vf-page-cam .cam-progress-fill {
+  height: 100%;
+  width: 12%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #5a2a8f, #8b5cf6);
+  transition: width 0.35s ease;
+}
+
+.vf-page-cam .cam-success {
+  margin-bottom: 1rem;
+  padding: 1.1rem 1.25rem;
+  border-radius: 12px;
+  background: #edf9f1;
+  border: 1px solid #b7e4c7;
+}
+
+.vf-page-cam .cam-success-title {
+  font-weight: 700;
+  color: #1f7a45;
+  margin-bottom: 0.65rem;
+}
+
+.vf-page-cam .cam-success-meta {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  margin-bottom: 0.9rem;
+}
+
+.vf-page-cam .cam-success-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.vf-page-cam .cam-api-error {
+  margin-bottom: 1rem;
+  padding: 1.1rem 1.25rem;
+  border-radius: 12px;
+  background: #fdeeee;
+  border: 1px solid #f0b4b4;
+}
+
+.vf-page-cam .cam-api-error-title {
+  font-weight: 700;
+  color: #a12a2a;
+  margin-bottom: 0.35rem;
+}
+
+.vf-page-cam .cam-api-error-motivo {
+  margin: 0 0 0.65rem;
+  font-size: 0.92rem;
+}
+
+.vf-page-cam .cam-error-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.vf-page-cam .cam-error-list li {
+  margin-bottom: 0.55rem;
+}
+
+.vf-page-cam .cam-error-field {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  background: rgba(161, 42, 42, 0.08);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.vf-page-cam .cam-error-hint {
+  font-size: 0.82rem;
+  color: #6b3a3a;
+  margin-top: 0.15rem;
+}
+
+.vf-page-cam .cam-error-code {
+  font-size: 0.72rem;
+  color: #9a6a6a;
+  margin-top: 0.1rem;
+}
+
+.vf-page-cam .is-invalid {
+  border-color: #d64545 !important;
+  box-shadow: 0 0 0 3px rgba(214, 69, 69, 0.12);
+}
+
+@media (max-width: 960px) {
+  .vf-page-cam .cam-grid-4,
+  .vf-page-cam .cam-grid-3,
+  .vf-page-cam .cam-grid-2,
+  .vf-page-cam .cam-attr-grid,
+  .vf-page-cam .cam-sale-grid {
+    grid-template-columns: 1fr;
+  }
+}
