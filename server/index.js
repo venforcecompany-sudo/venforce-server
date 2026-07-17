@@ -65,6 +65,7 @@ const assistenteBaseRoutes = require("./routes/assistenteBaseRoutes");
 const operacaoRoutes = require("./routes/operacaoRoutes");
 const cliente360Routes = require("./routes/cliente360Routes");
 const centralVendasRoutes = require("./routes/centralVendasRoutes");
+const diagnosticoInicialRoutes = require("./routes/diagnosticoInicialRoutes");
 const adsRoutes = require("./routes/adsRoutes");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("./services/activityLogService");
 const meliAnunciosRoutes = require("./routes/meliAnunciosRoutes");
@@ -75,6 +76,7 @@ const tiktokShopRoutes = require("./routes/tiktokShopRoutes");
 const shopeeRoutes = require("./routes/shopeeRoutes");
 const sellerRoutes = require("./routes/sellerRoutes");
 const { ensureCentralVendasTables } = require("./services/centralVendas/centralVendasRepository");
+const { ensureDiagnosticoInicialTables } = require("./services/diagnosticoInicial/diagnosticoInicialRepository");
 
 const app = express();
 const PORT = process.env.PORT || 3333;
@@ -487,6 +489,7 @@ app.use("/base-vinculos", baseVinculosRoutes);
 app.use("/bases/assistente", assistenteBaseRoutes);
 app.use("/operacao/cliente-360", cliente360Routes);
 app.use("/operacao/central-vendas", centralVendasRoutes);
+app.use("/operacao/diagnosticos-iniciais", diagnosticoInicialRoutes);
 app.use("/operacao", operacaoRoutes);
 app.use("/seller", sellerRoutes);
 app.use("/ads", adsRoutes);
@@ -1445,5 +1448,22 @@ app.listen(PORT, () => {
   ensureCentralVendasTables().catch((err) => {
     console.error("[centralVendas] erro ao garantir tabelas no boot:", err.message);
   });
+  startTokenRefreshWorker();
+});
+
+app.listen(PORT, () => {
+  console.log(`VenForce rodando em http://localhost:${PORT}`);
+
+  ensureCentralVendasTables().catch((err) => {
+    console.error("[centralVendas] erro ao garantir tabelas no boot:", err.message);
+  });
+
+  ensureDiagnosticoInicialTables().catch((err) => {
+    console.error(
+      "[diagnosticoInicial] erro ao garantir tabelas no boot:",
+      err.message
+    );
+  });
+
   startTokenRefreshWorker();
 });
