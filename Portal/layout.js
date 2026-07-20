@@ -154,7 +154,7 @@
         { label: "Bases de Custo", href: "bases.html",         icon: "database"     },
 
         { separator: true, label: "MARKETPLACE" },
-        { label: "Anúncios ML",  href: "anuncios-meli.html", icon: "activity",    adminOnly: true },
+        { label: "Anúncios ML",  href: "anuncios-meli.html", icon: "layers",      adminOnly: true },
         { label: "Criação Anúncios ML", href: "criar-anuncios-meli.html", icon: "activity", adminOnly: true },
         { label: "Mercado Ads",  href: "ads.html",           icon: "trending-up"  },
         { label: "Precificação - API",   href: "automacoes.html",    icon: "repeat"       },

@@ -65,25 +65,18 @@
 
   function statusInfo(s) {
     switch (s) {
-      case "active":       return { label: "Ativo", classe: "am-badge--ok" };
-      case "paused":       return { label: "Pausado", classe: "am-badge--alerta" };
-      case "closed":       return { label: "Encerrado", classe: "am-badge--ruim" };
-      case "under_review": return { label: "Em revisão", classe: "am-badge--neutro" };
-      default:             return { label: s || "—", classe: "am-badge--neutro" };
+      case "active":       return { label: "Ativo", classe: "is-success" };
+      case "paused":       return { label: "Pausado", classe: "is-warning" };
+      case "closed":       return { label: "Encerrado", classe: "is-danger" };
+      case "under_review": return { label: "Em revisão", classe: "is-info" };
+      default:             return { label: s || "—", classe: "is-neutral" };
     }
   }
 
   function scoreClasse(s) {
-    if (s === null || s === undefined) return "am-score--ruim";
-    if (s >= 80) return "am-score--ok";
-    if (s >= 60) return "am-score--alerta";
-    return "am-score--ruim";
-  }
-
-  function scoreCorBarra(s) {
-    if (s >= 80) return "#1f9d57";
-    if (s >= 60) return "#c9821a";
-    return "#d64545";
+    if (s >= 80) return "is-success";
+    if (s >= 60) return "is-warning";
+    return "is-danger";
   }
 
   function tryParseJSON(v, fallback) {
@@ -108,7 +101,8 @@
   function copiarFallback(txt, mensagem) {
     var ta = document.createElement("textarea");
     ta.value = txt;
-    ta.style.position = "fixed"; ta.style.opacity = "0";
+    ta.className = "am-copy-fallback";
+    ta.setAttribute("aria-hidden", "true");
     document.body.appendChild(ta);
     ta.select();
     try { document.execCommand("copy"); toast(mensagem || "Copiado!"); }
@@ -116,19 +110,49 @@
     document.body.removeChild(ta);
   }
 
-  var toastTimer = null;
-  function toast(msg) {
-    var prev = document.getElementById("am-toast");
-    if (prev) prev.parentNode.removeChild(prev);
+  function toast(msg, tipo) {
+    var stack = el("am-toast-stack");
+    if (!stack) return;
     var t = document.createElement("div");
-    t.id = "am-toast";
-    t.className = "am-toast";
-    t.textContent = msg;
-    document.body.appendChild(t);
-    if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () {
+    t.className = "vf-toast " + (tipo || "is-info");
+    t.setAttribute("role", "status");
+    t.innerHTML = '<div class="vf-toast__content"><p class="vf-toast__description">' +
+      escapeHtml(msg) + "</p></div>";
+    stack.appendChild(t);
+    setTimeout(function () {
       if (t.parentNode) t.parentNode.removeChild(t);
-    }, 2200);
+    }, 3200);
+  }
+
+  function estadoHtml(tipo, titulo, descricao) {
+    if (tipo === "loading") {
+      return '<div class="vf-loading-state" aria-live="polite">' +
+        '<span class="vf-spinner" aria-hidden="true"></span><span>' +
+        escapeHtml(titulo) + "</span></div>";
+    }
+    var erro = tipo === "error";
+    return '<div class="vf-empty"' + (erro ? ' role="alert"' : "") + ">" +
+      (erro ? '<div class="vf-empty__icon is-danger" aria-hidden="true">!</div>' : "") +
+      '<p class="vf-empty__title">' + escapeHtml(titulo) + "</p>" +
+      (descricao ? '<p class="vf-empty__description">' + escapeHtml(descricao) + "</p>" : "") +
+      "</div>";
+  }
+
+  function aplicarLargurasScore(container) {
+    if (!container) return;
+    var barras = container.querySelectorAll(".vf-progress__bar[data-score]");
+    for (var i = 0; i < barras.length; i++) {
+      var score = Number(barras[i].getAttribute("data-score"));
+      barras[i].style.width = Math.max(0, Math.min(100, isNaN(score) ? 0 : score)) + "%";
+    }
+  }
+
+  function atualizarIndicadorFiltros() {
+    var indicador = el("am-filtros-ativos");
+    if (!indicador) return;
+    var total = [AM.filtros.q, AM.filtros.status, AM.filtros.filtro].filter(Boolean).length;
+    indicador.textContent = total === 1 ? "1 filtro ativo" : total + " filtros ativos";
+    indicador.classList.toggle("am-hidden", total === 0);
   }
 
   // ===========================================================================
@@ -162,10 +186,10 @@
     AM.token = localStorage.getItem("vf-token");
     if (!AM.token) {
       el("am-clientes-container").innerHTML =
-        '<div class="am-state"><strong>Sessão não encontrada</strong>' +
-        "Faça login no portal para usar os Anúncios Meli.</div>";
+        estadoHtml("error", "Sessão não encontrada", "Faça login no portal para usar os Anúncios ML.");
       return;
     }
+    if (typeof window.initLayout === "function") window.initLayout();
     bindEventosFixos();
     carregarClientes();
   }
@@ -174,20 +198,22 @@
     el("am-busca-cliente").addEventListener("input", function (e) { renderClientes(e.target.value); });
     el("am-voltar").addEventListener("click", function () {
       AM.clienteAtual = null;
+      AM.resumo = null;
       el("am-view-hud").classList.add("am-hidden");
       el("am-view-clientes").classList.remove("am-hidden");
       carregarClientes();
     });
     el("am-busca").addEventListener("input", function (e) {
       AM.filtros.q = e.target.value;
+      atualizarIndicadorFiltros();
       if (AM.buscaTimer) clearTimeout(AM.buscaTimer);
       AM.buscaTimer = setTimeout(function () { AM.paginacao.page = 1; carregarAnuncios(); }, 350);
     });
     el("am-filtro-status").addEventListener("change", function (e) {
-      AM.filtros.status = e.target.value; AM.paginacao.page = 1; carregarAnuncios();
+      AM.filtros.status = e.target.value; AM.paginacao.page = 1; atualizarIndicadorFiltros(); carregarAnuncios();
     });
     el("am-filtro-problema").addEventListener("change", function (e) {
-      AM.filtros.filtro = e.target.value; AM.paginacao.page = 1; carregarAnuncios();
+      AM.filtros.filtro = e.target.value; AM.paginacao.page = 1; atualizarIndicadorFiltros(); carregarAnuncios();
     });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") fecharDetalhe();
@@ -199,12 +225,12 @@
   // ===========================================================================
   function carregarClientes() {
     var box = el("am-clientes-container");
-    box.innerHTML = '<div class="am-state"><div class="am-spinner"></div>Carregando clientes...</div>';
+    box.innerHTML = estadoHtml("loading", "Carregando clientes…");
 
     api("/anuncios-meli/clientes").then(function (r) {
       if (!r.data || !r.data.ok) {
-        box.innerHTML = '<div class="am-state"><strong>Não foi possível carregar</strong>' +
-          escapeHtml((r.data && r.data.motivo) || "Erro ao buscar clientes.") + "</div>";
+        box.innerHTML = estadoHtml("error", "Não foi possível carregar",
+          (r.data && r.data.motivo) || "Erro ao buscar clientes.");
         return;
       }
       AM.clientes = r.data.clientes || [];
@@ -222,23 +248,24 @@
     });
 
     if (!lista.length) {
-      box.innerHTML = '<div class="am-state"><strong>Nenhum cliente encontrado</strong>' +
-        (AM.clientes.length ? "Tente outro termo de busca." : "Cadastre clientes na tela de Clientes do portal.") +
-        "</div>";
+      box.innerHTML = estadoHtml("empty", "Nenhum cliente encontrado",
+        AM.clientes.length ? "Tente outro termo de busca." : "Não há clientes disponíveis para esta conta.");
       return;
     }
 
     var html = '<div class="am-clientes-grid">';
     lista.forEach(function (c) {
       var conectado = c.mlConectado;
-      html += '<div class="am-cliente-card" data-slug="' + escapeHtml(c.slug) +
-        '" data-nome="' + escapeHtml(c.nome) + '">' +
-        '<div class="am-cliente-card__nome">' + escapeHtml(c.nome) + "</div>" +
+      html += '<button type="button" class="am-cliente-card vf-card vf-card--interactive" data-slug="' + escapeHtml(c.slug) +
+        '" data-nome="' + escapeHtml(c.nome) + '" aria-label="Abrir anúncios de ' + escapeHtml(c.nome) + '">' +
+        '<span class="am-cliente-card__top"><span class="am-cliente-card__nome">' + escapeHtml(c.nome) + "</span>" +
+        '<span class="am-cliente-card__abrir" aria-hidden="true">Abrir →</span></span>' +
+        (c.slug ? '<span class="am-cliente-card__slug vf-mono">' + escapeHtml(c.slug) + "</span>" : "") +
         '<div class="am-cliente-card__meta">' +
-        '<span class="am-badge ' + (conectado ? "am-badge--ok" : "am-badge--ruim") + '">' +
-        (conectado ? "ML conectado" : "Sem ML") + "</span>" +
-        "<span>" + (c.totalAnuncios || 0) + " anúncios</span>" +
-        "</div></div>";
+        '<span class="vf-status ' + (conectado ? "is-success" : "is-danger") + '">' +
+        (conectado ? "ML conectado" : "Sem conexão ML") + "</span>" +
+        '<span class="vf-tag is-neutral">' + (c.totalAnuncios || 0) + " anúncios</span>" +
+        "</div></button>";
     });
     html += "</div>";
     box.innerHTML = html;
@@ -253,11 +280,13 @@
 
   function selecionarCliente(slug, nome) {
     AM.clienteAtual = { slug: slug, nome: nome };
+    AM.resumo = null;
     AM.paginacao.page = 1;
     AM.filtros = { q: "", status: "", filtro: "" };
     el("am-busca").value = "";
     el("am-filtro-status").value = "";
     el("am-filtro-problema").value = "";
+    atualizarIndicadorFiltros();
     el("am-view-clientes").classList.add("am-hidden");
     el("am-view-hud").classList.remove("am-hidden");
     renderHudHeader();
@@ -271,18 +300,29 @@
   function renderHudHeader() {
     var c = AM.clienteAtual;
     var resumo = AM.resumo;
+    var clienteCompleto = AM.clientes.find(function (item) { return item.slug === c.slug; }) || {};
     var subInfo = resumo
-      ? "<span>Última sincronização: <b>" + formatData(resumo.ultimaSync) + "</b></span>" +
-        "<span>Total sincronizado: <b>" + (resumo.total || 0) + " anúncios</b></span>"
-      : "<span>Carregando resumo...</span>";
+      ? '<span>Última sincronização: <strong>' + formatData(resumo.ultimaSync) + "</strong></span>" +
+        '<span>Total sincronizado: <strong>' + (resumo.total || 0) + " anúncios</strong></span>"
+      : '<span class="vf-status is-info">Carregando resumo…</span>';
 
     el("am-hud-top").innerHTML =
-      '<div class="am-hud-info">' +
-      "<h2>" + escapeHtml(c.nome) + " — Anúncios Mercado Livre</h2>" +
-      '<div class="am-hud-sub">' + subInfo + "</div></div>" +
-      '<div class="am-hud-actions">' +
-      '<button class="am-btn" id="am-sync-novos">Atualizar novos</button>' +
-      '<button class="am-btn am-btn--primary" id="am-sync-completo">Sincronização completa</button>' +
+      '<div class="am-cliente-contexto vf-card">' +
+        '<div class="am-cliente-contexto__info">' +
+          '<div class="am-cliente-contexto__title-row"><div>' +
+            '<p class="am-cliente-contexto__eyebrow">Cliente selecionado</p>' +
+            '<h2 id="am-cliente-contexto-titulo">' + escapeHtml(c.nome) + "</h2></div>" +
+            '<span class="vf-status ' + (clienteCompleto.mlConectado ? "is-success" : "is-danger") + '">' +
+              (clienteCompleto.mlConectado ? "ML conectado" : "Sem conexão ML") + "</span></div>" +
+          '<div class="am-hud-sub">' + subInfo + "</div>" +
+        "</div>" +
+        '<div class="am-sync-area">' +
+          '<p class="am-sync-area__description"><strong>Atualizar novos</strong> busca inclusões recentes. <strong>Sincronização completa</strong> revisa todo o catálogo.</p>' +
+          '<div class="am-hud-actions">' +
+            '<button type="button" class="vf-btn vf-btn--secondary" id="am-sync-novos">Atualizar novos</button>' +
+            '<button type="button" class="vf-btn vf-btn--primary" id="am-sync-completo">Sincronização completa</button>' +
+          "</div>" +
+        "</div>" +
       "</div>";
 
     el("am-sync-novos").addEventListener("click", function () { sincronizar("novos"); });
@@ -304,21 +344,22 @@
   function renderResumo() {
     var r = AM.resumo || {};
     var cards = [
-      { label: "Total de anúncios", valor: r.total || 0, classe: "" },
-      { label: "Ativos", valor: r.ativos || 0, classe: "am-stat--bom" },
-      { label: "Pausados", valor: r.pausados || 0, classe: "am-stat--alerta" },
-      { label: "Fotos insuficientes", valor: r.fotosInsuficientes || 0, classe: r.fotosInsuficientes ? "am-stat--alerta" : "" },
-      { label: "Sem SKU", valor: r.semSku || 0, classe: r.semSku ? "am-stat--alerta" : "" },
-      { label: "Score baixo", valor: r.scoreBaixo || 0, classe: r.scoreBaixo ? "am-stat--ruim" : "" },
-      { label: "Mercado Full", valor: r.full || 0, classe: "" },
+      { label: "Total de anúncios", valor: r.total || 0, estado: "neutral", meta: "Catálogo sincronizado" },
+      { label: "Ativos", valor: r.ativos || 0, estado: "success", meta: "Disponíveis no ML" },
+      { label: "Pausados", valor: r.pausados || 0, estado: r.pausados ? "warning" : "neutral", meta: "Pedem acompanhamento" },
+      { label: "Fotos insuficientes", valor: r.fotosInsuficientes || 0, estado: r.fotosInsuficientes ? "warning" : "success", meta: "Menos de 3 fotos" },
+      { label: "Sem SKU", valor: r.semSku || 0, estado: r.semSku ? "warning" : "success", meta: "Sem identificação interna" },
+      { label: "Score baixo", valor: r.scoreBaixo || 0, estado: r.scoreBaixo ? "danger" : "success", meta: "Abaixo de 60 pontos" },
+      { label: "Mercado Full", valor: r.full || 0, estado: "neutral", meta: "Com logística Full" },
       { label: "Score médio", valor: r.scoreMedio || 0,
-        classe: r.scoreMedio >= 80 ? "am-stat--bom" : r.scoreMedio >= 60 ? "am-stat--alerta" : "am-stat--ruim" },
+        estado: r.scoreMedio >= 80 ? "success" : r.scoreMedio >= 60 ? "warning" : "danger", meta: "De 100 pontos" },
     ];
     var html = "";
     cards.forEach(function (c) {
-      html += '<div class="am-stat ' + c.classe + '">' +
-        '<div class="am-stat__label">' + c.label + "</div>" +
-        '<div class="am-stat__valor">' + c.valor + "</div></div>";
+      html += '<article class="vf-kpi am-kpi is-' + c.estado + '">' +
+        '<span class="vf-kpi__label">' + c.label + "</span>" +
+        '<strong class="vf-kpi__value">' + c.valor + "</strong>" +
+        '<span class="vf-kpi__foot is-' + c.estado + '">' + c.meta + "</span></article>";
     });
     el("am-resumo").innerHTML = html;
   }
@@ -327,7 +368,7 @@
     if (!AM.clienteAtual || AM.carregandoCatalogo) return;
     AM.carregandoCatalogo = true;
     var box = el("am-catalogo-container");
-    box.innerHTML = '<div class="am-state"><div class="am-spinner"></div>Carregando anúncios...</div>';
+    box.innerHTML = estadoHtml("loading", "Carregando anúncios…");
 
     var qs = "clienteSlug=" + encodeURIComponent(AM.clienteAtual.slug) +
              "&page=" + AM.paginacao.page + "&limit=" + AM.paginacao.limit;
@@ -338,8 +379,8 @@
     api("/anuncios-meli?" + qs).then(function (r) {
       AM.carregandoCatalogo = false;
       if (!r.data || !r.data.ok) {
-        box.innerHTML = '<div class="am-state"><strong>Erro ao carregar</strong>' +
-          escapeHtml((r.data && r.data.motivo) || "Tente novamente.") + "</div>";
+        box.innerHTML = estadoHtml("error", "Erro ao carregar",
+          (r.data && r.data.motivo) || "Tente novamente.");
         return;
       }
       AM.anuncios = r.data.anuncios || [];
@@ -352,26 +393,24 @@
     var box = el("am-catalogo-container");
     if (!AM.anuncios.length) {
       var temFiltro = AM.filtros.q || AM.filtros.status || AM.filtros.filtro;
-      box.innerHTML = '<div class="am-state"><strong>' +
-        (temFiltro ? "Nenhum anúncio para esse filtro" : "Nenhum anúncio sincronizado") + "</strong>" +
-        (temFiltro ? "Ajuste a busca ou os filtros acima."
-          : 'Use o botão "Sincronização completa" para trazer os anúncios deste cliente.') + "</div>";
+      box.innerHTML = estadoHtml("empty",
+        temFiltro ? "Nenhum anúncio para esse filtro" : "Nenhum anúncio sincronizado",
+        temFiltro ? "Ajuste a busca ou os filtros acima."
+          : 'Use o botão "Sincronização completa" para trazer os anúncios deste cliente.');
       return;
     }
 
-    var html = '<div class="am-catalogo">';
+    var html = '<div class="am-catalogo" aria-label="Lista de anúncios">';
     AM.anuncios.forEach(function (a) { html += cardAnuncioHtml(a); });
     html += "</div>" + paginacaoHtml();
     box.innerHTML = html;
 
+    aplicarLargurasScore(box);
+
     var cards = box.querySelectorAll(".am-card[data-item]");
     for (var i = 0; i < cards.length; i++) {
       cards[i].querySelector(".am-card__acao").addEventListener("click", function (e) {
-        e.stopPropagation();
-        abrirDetalhe(this.parentNode.parentNode.getAttribute("data-item"));
-      });
-      cards[i].addEventListener("click", function () {
-        abrirDetalhe(this.getAttribute("data-item"));
+        abrirDetalhe(this.closest(".am-card").getAttribute("data-item"), this);
       });
     }
 
@@ -388,62 +427,81 @@
     var st = statusInfo(a.status);
     var score = a.score_venforce;
     var scoreTxt = score === null || score === undefined ? "—" : score;
-    var badges = "";
-    badges += '<span class="am-badge ' + st.classe + '">' + st.label + "</span>";
-    if (a.is_full) badges += '<span class="am-badge am-badge--full">Full</span>';
-    if ((a.pictures_count || 0) < 3) badges += '<span class="am-badge am-badge--alerta">' + (a.pictures_count || 0) + "/3 fotos</span>";
-    if (!a.sku) badges += '<span class="am-badge am-badge--ruim">Sem SKU</span>';
-    if (a.revisado) badges += '<span class="am-badge am-badge--ok">Revisado</span>';
+    var badges = '<span class="vf-status ' + st.classe + '">' + st.label + "</span>";
+    if (a.is_full) badges += '<span class="vf-tag is-info">Full</span>';
+    if ((a.pictures_count || 0) < 3) badges += '<span class="vf-tag is-warning">' + (a.pictures_count || 0) + "/3 fotos</span>";
+    if (!a.sku) badges += '<span class="vf-tag is-danger">Sem SKU</span>';
+    if (a.revisado) badges += '<span class="vf-tag is-success">Revisado</span>';
 
     var img = a.thumbnail
-      ? '<img src="' + escapeHtml(a.thumbnail) + '" alt="" loading="lazy" />'
-      : '<span class="am-card__img-vazia">sem imagem</span>';
+      ? '<img src="' + escapeHtml(a.thumbnail) + '" alt="Imagem do anúncio ' + escapeHtml(a.titulo || a.item_id) + '" loading="lazy" />'
+      : '<span class="am-card__img-vazia">Sem imagem</span>';
 
-    return '<div class="am-card" data-item="' + escapeHtml(a.item_id) + '">' +
+    return '<article class="am-card vf-card" data-item="' + escapeHtml(a.item_id) + '">' +
       '<div class="am-card__img">' + img +
-      '<span class="am-card__score ' + scoreClasse(score) + '">' + scoreTxt + "/100</span></div>" +
+      '<span class="am-card__score vf-tag ' + scoreClasse(score) + '">Score ' + scoreTxt + "/100</span></div>" +
       '<div class="am-card__body">' +
-      '<div class="am-card__titulo">' + escapeHtml(a.titulo || "(sem título)") + "</div>" +
-      '<div class="am-card__ids"><b>' + escapeHtml(a.item_id) + "</b>" +
-      (a.sku ? " · SKU " + escapeHtml(a.sku) : "") +
-      (a.modelo ? "<br>Modelo: " + escapeHtml(a.modelo) : "") + "</div>" +
-      '<div class="am-card__preco">' + formatMoeda(a.preco, a.moeda) + "</div>" +
+      '<h3 class="am-card__titulo">' + escapeHtml(a.titulo || "(sem título)") + "</h3>" +
+      '<div class="am-card__ids"><span class="vf-mono">' + escapeHtml(a.item_id) + "</span>" +
+      '<span>SKU <span class="vf-mono">' + escapeHtml(a.sku || "—") + "</span></span></div>" +
+      '<div class="am-card__metricas"><span><small>Preço</small><strong>' + formatMoeda(a.preco, a.moeda) + "</strong></span>" +
+      '<span><small>Estoque</small><strong>' + (a.estoque != null ? a.estoque : "—") + "</strong></span>" +
+      '<span><small>Vendidos</small><strong>' + (a.vendidos != null ? a.vendidos : "—") + "</strong></span></div>" +
+      '<div class="am-card__score-row"><span>Score VenForce</span><strong class="' + scoreClasse(score) + '">' + scoreTxt + "/100</strong></div>" +
+      '<div class="vf-progress vf-progress--sm" aria-label="Score VenForce ' + scoreTxt + ' de 100">' +
+        '<div class="vf-progress__bar ' + scoreClasse(score) + '" data-score="' + (score || 0) + '"></div></div>' +
       '<div class="am-card__badges">' + badges + "</div>" +
-      '<button class="am-btn am-btn--sm am-card__acao">Ver detalhes</button>' +
-      "</div></div>";
+      '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm am-card__acao">Ver detalhes</button>' +
+      "</div></article>";
   }
 
   function paginacaoHtml() {
     var p = AM.paginacao;
-    if (p.totalPaginas <= 1) return '<div class="am-paginacao"><span>' + p.total + " anúncio(s)</span></div>";
-    return '<div class="am-paginacao">' +
-      '<button class="am-btn am-btn--sm" id="am-pag-prev"' + (p.page <= 1 ? " disabled" : "") + ">&larr; Anterior</button>" +
-      "<span>Página " + p.page + " de " + p.totalPaginas + " · " + p.total + " anúncios</span>" +
-      '<button class="am-btn am-btn--sm" id="am-pag-next"' + (p.page >= p.totalPaginas ? " disabled" : "") + ">Próxima &rarr;</button>" +
-      "</div>";
+    if (p.totalPaginas <= 1) return '<nav class="vf-pagination am-paginacao" aria-label="Paginação do catálogo"><span class="vf-pagination__info">' + p.total + " anúncio(s)</span></nav>";
+    return '<nav class="vf-pagination am-paginacao" aria-label="Paginação do catálogo">' +
+      '<span class="vf-pagination__info">Página ' + p.page + " de " + p.totalPaginas + " · " + p.total + " anúncios</span>" +
+      '<div class="vf-pagination__actions">' +
+      '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="am-pag-prev"' + (p.page <= 1 ? " disabled" : "") + ">← Anterior</button>" +
+      '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="am-pag-next"' + (p.page >= p.totalPaginas ? " disabled" : "") + ">Próxima →</button></div>" +
+      "</nav>";
   }
 
   // ===========================================================================
   // Detalhe (drawer)
   // ===========================================================================
-  function abrirDetalhe(itemId) {
+  var detalheFocusAnterior = null;
+
+  function abrirDetalhe(itemId, trigger) {
     AM.detalheAtual = null;
     AM.otimizacoes = { seo: null, descricao: null, ficha_tecnica: null };
+    detalheFocusAnterior = trigger || document.activeElement;
 
-    var overlay = document.createElement("div");
-    overlay.className = "am-modal-overlay";
-    overlay.id = "am-modal-overlay";
-    overlay.innerHTML =
-      '<div class="am-drawer">' +
-      '<div class="am-drawer__head">' +
-      '<strong id="am-drawer-titulo">Detalhe do anúncio</strong>' +
-      '<button class="am-drawer__close" id="am-drawer-close">&times;</button></div>' +
-      '<div class="am-drawer__body" id="am-drawer-body">' +
-      '<div class="am-state"><div class="am-spinner"></div>Carregando...</div></div></div>';
-    document.body.appendChild(overlay);
+    var backdrop = document.createElement("div");
+    backdrop.className = "am-modal-overlay vf-drawer-backdrop";
+    backdrop.id = "am-modal-overlay";
 
-    overlay.addEventListener("click", function (e) { if (e.target === overlay) fecharDetalhe(); });
+    var drawer = document.createElement("section");
+    drawer.className = "am-drawer vf-drawer vf-drawer--lg";
+    drawer.id = "am-drawer";
+    drawer.setAttribute("role", "dialog");
+    drawer.setAttribute("aria-modal", "true");
+    drawer.setAttribute("aria-labelledby", "am-drawer-titulo");
+    drawer.innerHTML = '<header class="vf-drawer__header">' +
+      '<h2 class="vf-drawer__title am-drawer__titulo" id="am-drawer-titulo">Detalhe do anúncio</h2>' +
+      '<button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" id="am-drawer-close" aria-label="Fechar detalhes">×</button></header>' +
+      '<div class="am-drawer__body vf-drawer__body" id="am-drawer-body">' +
+      estadoHtml("loading", "Carregando detalhes…") + '</div><footer class="vf-drawer__footer">' +
+      '<button type="button" class="vf-btn vf-btn--secondary" id="am-drawer-footer-close">Fechar</button></footer>';
+    document.body.appendChild(backdrop);
+    document.body.appendChild(drawer);
+    document.body.classList.add("vf-no-scroll");
+    backdrop.classList.add("is-open");
+    drawer.classList.add("is-open");
+
+    backdrop.addEventListener("click", fecharDetalhe);
     el("am-drawer-close").addEventListener("click", fecharDetalhe);
+    el("am-drawer-footer-close").addEventListener("click", fecharDetalhe);
+    el("am-drawer-close").focus();
 
     var url = "/anuncios-meli/" + encodeURIComponent(itemId) +
               "?clienteSlug=" + encodeURIComponent(AM.clienteAtual.slug);
@@ -452,8 +510,8 @@
       var body = el("am-drawer-body");
       if (!body) return;
       if (!r.data || !r.data.ok) {
-        body.innerHTML = '<div class="am-state"><strong>Erro</strong>' +
-          escapeHtml((r.data && r.data.motivo) || "Não foi possível carregar.") + "</div>";
+        body.innerHTML = estadoHtml("error", "Erro ao carregar detalhes",
+          (r.data && r.data.motivo) || "Não foi possível carregar.");
         return;
       }
       AM.detalheAtual = { anuncio: r.data.anuncio, descricao: r.data.descricao || null };
@@ -463,125 +521,163 @@
   }
 
   function fecharDetalhe() {
-    var o = el("am-modal-overlay"); if (o) o.parentNode.removeChild(o);
+    var backdrop = el("am-modal-overlay");
+    var drawer = el("am-drawer");
+    if (!backdrop && !drawer) return;
+    if (backdrop) backdrop.parentNode.removeChild(backdrop);
+    if (drawer) drawer.parentNode.removeChild(drawer);
+    document.body.classList.remove("vf-no-scroll");
+    if (detalheFocusAnterior && typeof detalheFocusAnterior.focus === "function") detalheFocusAnterior.focus();
+    detalheFocusAnterior = null;
   }
 
   function renderDetalhe() {
     var a = AM.detalheAtual.anuncio;
     var body = el("am-drawer-body");
     var st = statusInfo(a.status);
-
     var pics = tryParseJSON(a.pictures_json, []);
     var attrs = tryParseJSON(a.attributes_json, []);
 
     el("am-drawer-titulo").textContent = a.titulo || "Detalhe do anúncio";
 
-    var html =
-      '<div class="am-tabs">' +
-      '<button class="am-tab am-tab--ativa" data-tab="ia">✨ Otimização IA</button>' +
-      '<button class="am-tab" data-tab="geral">Visão geral</button>' +
-      '<button class="am-tab" data-tab="ficha">Ficha técnica</button>' +
-      '<button class="am-tab" data-tab="fotos">Fotos</button>' +
-      '<button class="am-tab" data-tab="desc">Descrição</button>' +
-      "</div>";
+    var html = '<div class="am-tabs vf-tabs" role="tablist" aria-label="Detalhes do anúncio">' +
+      tabHtml("ia", "Otimização IA", true) +
+      tabHtml("geral", "Visão geral", false) +
+      tabHtml("ficha", "Ficha técnica", false) +
+      tabHtml("fotos", "Fotos", false) +
+      tabHtml("desc", "Descrição", false) + "</div>";
 
-    // ----- Aba IA (a estrela) -----
-    html += '<div class="am-tab-panel am-tab-panel--ativa" data-panel="ia">' +
-      painelOtimizacaoHtml() + "</div>";
+    html += painelHtml("ia", painelOtimizacaoHtml(), true);
 
-    // ----- Aba visão geral -----
-    html += '<div class="am-tab-panel" data-panel="geral">' +
-      (a.thumbnail ? '<img class="am-detalhe-img" src="' + escapeHtml(a.thumbnail) + '" alt="" />' : "") +
-      '<div class="am-bloco"><h4>' + escapeHtml(a.titulo || "(sem título)") + "</h4>" +
-      kv("MLB", a.item_id) + kv("SKU", a.sku || "—") +
-      kv("Modelo", a.modelo || "—") + kv("Marca", a.marca || "—") +
-      kv("Status", '<span class="am-badge ' + st.classe + '">' + st.label + "</span>") +
+    var geral = (a.thumbnail ? '<img class="am-detalhe-img" src="' + escapeHtml(a.thumbnail) +
+      '" alt="Imagem do anúncio ' + escapeHtml(a.titulo || a.item_id) + '" />' : "") +
+      '<section class="am-bloco vf-card"><div class="vf-card__body"><h3 class="am-bloco__title">' +
+      escapeHtml(a.titulo || "(sem título)") + '</h3><dl class="am-definition-list">' +
+      kv("MLB", '<span class="vf-mono">' + escapeHtml(a.item_id) + "</span>") +
+      kv("SKU", '<span class="vf-mono">' + escapeHtml(a.sku || "—") + "</span>") +
+      kv("Modelo", escapeHtml(a.modelo || "—")) + kv("Marca", escapeHtml(a.marca || "—")) +
+      kv("Status", '<span class="vf-status ' + st.classe + '">' + st.label + "</span>") +
       kv("Preço", formatMoeda(a.preco, a.moeda)) +
       (a.preco_original ? kv("Preço original", formatMoeda(a.preco_original, a.moeda)) : "") +
-      kv("Estoque", a.estoque != null ? a.estoque : "—") +
-      kv("Vendidos", a.vendidos != null ? a.vendidos : "—") +
-      kv("Categoria", a.category_id || "—") +
-      kv("Tipo de anúncio", a.listing_type_id || "—") +
-      kv("Logística", a.is_full ? "Mercado Full" : a.logistic_type || "—") + "</div>" +
-      '<div class="am-bloco"><h4>Score VenForce</h4>' +
-      '<div style="display:flex;align-items:baseline;gap:8px;">' +
-      '<span style="font-size:26px;font-weight:700;" class="' + scoreClasse(a.score_venforce) + '">' +
-      (a.score_venforce || 0) + '</span><span style="color:#5b6680;font-size:13px;">/ 100</span></div>' +
-      '<div class="am-score-bar"><div class="am-score-bar__fill" style="width:' +
-      (a.score_venforce || 0) + "%;background:" + scoreCorBarra(a.score_venforce || 0) + ';"></div></div>' +
-      '<div style="font-size:12.5px;color:#5b6680;margin-top:6px;">Principal ponto: <b>' +
-      escapeHtml(a.score_motivo || "—") + "</b></div></div>" +
-      '<div class="am-bloco"><h4>Ações</h4><div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-      (a.permalink ? '<a class="am-btn am-btn--sm" href="' + escapeHtml(a.permalink) +
+      kv("Estoque", a.estoque != null ? a.estoque : "—") + kv("Vendidos", a.vendidos != null ? a.vendidos : "—") +
+      kv("Categoria", escapeHtml(a.category_id || "—")) + kv("Tipo de anúncio", escapeHtml(a.listing_type_id || "—")) +
+      kv("Logística", escapeHtml(a.is_full ? "Mercado Full" : a.logistic_type || "—")) +
+      "</dl></div></section>" +
+      '<section class="am-bloco vf-card"><div class="vf-card__body"><h3 class="am-bloco__title">Score VenForce</h3>' +
+      '<div class="am-score-summary"><strong class="am-score-summary__value ' + scoreClasse(a.score_venforce) + '">' +
+      (a.score_venforce || 0) + '</strong><span>/ 100</span></div>' +
+      '<div class="vf-progress"><div class="vf-progress__bar ' + scoreClasse(a.score_venforce) + '" data-score="' +
+      (a.score_venforce || 0) + '"></div></div>' +
+      '<p class="am-score-summary__meta">Principal ponto: <strong>' + escapeHtml(a.score_motivo || "—") +
+      "</strong></p></div></section>" +
+      '<section class="am-bloco vf-card"><div class="vf-card__body"><h3 class="am-bloco__title">Ações</h3><div class="vf-cluster">' +
+      (a.permalink ? '<a class="vf-btn vf-btn--secondary vf-btn--sm" href="' + escapeHtml(a.permalink) +
         '" target="_blank" rel="noopener">Abrir no Mercado Livre</a>' : "") +
-      '<button class="am-btn am-btn--sm" id="am-btn-revisar">' +
-      (a.revisado ? "Desmarcar revisão" : "Marcar como revisado") + "</button></div></div>" +
-      "</div>";
+      '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="am-btn-revisar">' +
+      (a.revisado ? "Desmarcar revisão" : "Marcar como revisado") + "</button></div></div></section>";
+    html += painelHtml("geral", geral, false);
 
-    // ----- Aba ficha técnica -----
-    html += '<div class="am-tab-panel" data-panel="ficha">';
+    var ficha = "";
     if (!attrs.length) {
-      html += '<div class="am-state">Nenhum atributo retornado.</div>';
+      ficha = estadoHtml("empty", "Nenhum atributo retornado", "O anúncio não possui ficha técnica disponível.");
     } else {
       var preenchidos = attrs.filter(function (x) { return x && x.value; });
       var vazios = attrs.filter(function (x) { return !x || !x.value; });
-      html += '<div class="am-bloco"><h4>Preenchidos (' + preenchidos.length + ')</h4><div class="am-attr-list">';
-      if (!preenchidos.length) html += '<div class="am-attr"><span>—</span></div>';
+      ficha = '<section class="am-bloco vf-card"><div class="vf-card__body"><h3 class="am-bloco__title">Preenchidos (' +
+        preenchidos.length + ')</h3><div class="am-attr-list">';
+      if (!preenchidos.length) ficha += '<div class="am-attr"><span>—</span></div>';
       preenchidos.forEach(function (x) {
-        html += '<div class="am-attr"><span>' + escapeHtml(x.name || x.id) +
-          "</span><b>" + escapeHtml(x.value) + "</b></div>";
+        ficha += '<div class="am-attr"><span>' + escapeHtml(x.name || x.id) + "</span><strong>" + escapeHtml(x.value) + "</strong></div>";
       });
-      html += "</div></div>";
-      html += '<div class="am-bloco"><h4>Faltando (' + vazios.length + ')</h4><div class="am-attr-list">';
-      if (!vazios.length) html += '<div class="am-attr"><span>Tudo preenchido 🎉</span></div>';
+      ficha += '</div></div></section><section class="am-bloco vf-card"><div class="vf-card__body"><h3 class="am-bloco__title">Faltando (' +
+        vazios.length + ')</h3><div class="am-attr-list">';
+      if (!vazios.length) ficha += '<div class="am-attr"><span>Todos os campos estão preenchidos.</span></div>';
       vazios.forEach(function (x) {
-        html += '<div class="am-attr am-attr--vazio"><span>' + escapeHtml(x.name || x.id) +
-          "</span><b>vazio</b></div>";
+        ficha += '<div class="am-attr am-attr--vazio"><span>' + escapeHtml(x.name || x.id) + "</span><strong>Vazio</strong></div>";
       });
-      html += "</div></div>";
+      ficha += "</div></div></section>";
     }
-    html += "</div>";
+    html += painelHtml("ficha", ficha, false);
 
-    // ----- Aba fotos -----
-    html += '<div class="am-tab-panel" data-panel="fotos"><div class="am-bloco"><h4>Fotos (' + pics.length + ")</h4>";
-    if (pics.length < 3) html += '<div class="am-aviso">Recomendado ter pelo menos 3 fotos. Este anúncio tem ' + pics.length + ".</div>";
-    if (!pics.length) html += '<div class="am-state">Sem fotos.</div>';
+    var fotos = '<section class="am-bloco vf-card"><div class="vf-card__body"><h3 class="am-bloco__title">Fotos (' + pics.length + ")</h3>";
+    if (pics.length < 3) fotos += '<div class="vf-banner vf-banner--compact is-warning"><div class="vf-banner__content"><p class="vf-banner__description">Recomendado ter pelo menos 3 fotos. Este anúncio tem ' + pics.length + ".</p></div></div>";
+    if (!pics.length) fotos += estadoHtml("empty", "Sem fotos", "Nenhuma imagem foi retornada para este anúncio.");
     else {
-      html += '<div class="am-thumbs">';
-      pics.forEach(function (u) { html += '<img src="' + escapeHtml(u) + '" alt="" loading="lazy" />'; });
-      html += "</div>";
+      fotos += '<div class="am-thumbs">';
+      pics.forEach(function (u, index) {
+        fotos += '<img src="' + escapeHtml(u) + '" alt="Foto ' + (index + 1) + ' do anúncio" loading="lazy" />';
+      });
+      fotos += "</div>";
     }
-    html += "</div></div>";
+    fotos += "</div></section>";
+    html += painelHtml("fotos", fotos, false);
 
-    // ----- Aba descrição -----
-    html += '<div class="am-tab-panel" data-panel="desc"><div class="am-bloco"><h4>Descrição atual</h4>';
     var desc = AM.detalheAtual.descricao;
-    if (desc && desc.trim()) html += '<div class="am-desc">' + escapeHtml(desc.trim()) + "</div>";
-    else html += '<div class="am-aviso">Este anúncio não tem descrição preenchida.</div>';
-    html += "</div></div>";
+    var descricao = '<section class="am-bloco vf-card"><div class="vf-card__body"><h3 class="am-bloco__title">Descrição atual</h3>';
+    if (desc && desc.trim()) descricao += '<div class="am-desc">' + escapeHtml(desc.trim()) + "</div>";
+    else descricao += '<div class="vf-banner vf-banner--compact is-warning"><div class="vf-banner__content"><p class="vf-banner__description">Este anúncio não tem descrição preenchida.</p></div></div>';
+    descricao += "</div></section>";
+    html += painelHtml("desc", descricao, false);
 
     body.innerHTML = html;
+    aplicarLargurasScore(body);
     bindAbas();
     bindDetalheGeral();
     bindPainelOtimizacao();
   }
 
+  function tabHtml(id, label, ativo) {
+    return '<button type="button" class="am-tab vf-tab' + (ativo ? " is-active" : "") + '" id="am-tab-' + id +
+      '" role="tab" aria-selected="' + (ativo ? "true" : "false") + '" aria-controls="am-panel-' + id +
+      '" tabindex="' + (ativo ? "0" : "-1") + '" data-tab="' + id + '">' + label + "</button>";
+  }
+
+  function painelHtml(id, conteudo, ativo) {
+    return '<div class="am-tab-panel' + (ativo ? " is-active" : "") + '" id="am-panel-' + id +
+      '" role="tabpanel" aria-labelledby="am-tab-' + id + '" data-panel="' + id + '"' +
+      (ativo ? "" : " hidden") + ">" + conteudo + "</div>";
+  }
+
   function kv(rotulo, valor) {
-    return '<div class="am-kv"><span>' + escapeHtml(rotulo) + "</span><b>" + valor + "</b></div>";
+    return '<div class="am-kv"><dt>' + escapeHtml(rotulo) + "</dt><dd>" + valor + "</dd></div>";
+  }
+
+  function ativarAba(tab, deveFocar) {
+    var body = el("am-drawer-body");
+    if (!body || !tab) return;
+    var tabs = body.querySelectorAll(".am-tab");
+    var panels = body.querySelectorAll(".am-tab-panel");
+    var alvo = tab.getAttribute("data-tab");
+    for (var i = 0; i < tabs.length; i++) {
+      var ativa = tabs[i] === tab;
+      tabs[i].classList.toggle("is-active", ativa);
+      tabs[i].setAttribute("aria-selected", ativa ? "true" : "false");
+      tabs[i].setAttribute("tabindex", ativa ? "0" : "-1");
+    }
+    for (var j = 0; j < panels.length; j++) {
+      var painelAtivo = panels[j].getAttribute("data-panel") === alvo;
+      panels[j].classList.toggle("is-active", painelAtivo);
+      panels[j].hidden = !painelAtivo;
+    }
+    if (deveFocar) tab.focus();
   }
 
   function bindAbas() {
     var body = el("am-drawer-body");
     var tabs = body.querySelectorAll(".am-tab");
-    var panels = body.querySelectorAll(".am-tab-panel");
     for (var i = 0; i < tabs.length; i++) {
-      tabs[i].addEventListener("click", function () {
-        var alvo = this.getAttribute("data-tab");
-        for (var j = 0; j < tabs.length; j++) tabs[j].classList.remove("am-tab--ativa");
-        this.classList.add("am-tab--ativa");
-        for (var k = 0; k < panels.length; k++) {
-          panels[k].classList.toggle("am-tab-panel--ativa", panels[k].getAttribute("data-panel") === alvo);
-        }
+      tabs[i].addEventListener("click", function () { ativarAba(this, false); });
+      tabs[i].addEventListener("keydown", function (e) {
+        var lista = Array.prototype.slice.call(tabs);
+        var atual = lista.indexOf(this);
+        var proximo = atual;
+        if (e.key === "ArrowRight") proximo = (atual + 1) % lista.length;
+        else if (e.key === "ArrowLeft") proximo = (atual - 1 + lista.length) % lista.length;
+        else if (e.key === "Home") proximo = 0;
+        else if (e.key === "End") proximo = lista.length - 1;
+        else return;
+        e.preventDefault();
+        ativarAba(lista[proximo], true);
       });
     }
   }
@@ -621,7 +717,7 @@
       sub: "Otimização do título e do campo modelo para busca no Mercado Livre.",
       conteudoAtual: seoAtualHtml(a),
       conteudoSugerido: seoSugeridoHtml(null),
-      botaoGerar: "✨ Gerar SEO",
+      botaoGerar: "Gerar SEO",
     });
 
     var descSec = otimSecaoHtml({
@@ -631,7 +727,7 @@
       sub: "Reescreve a descrição em blocos padronizados para Mercado Livre.",
       conteudoAtual: descricaoAtualHtml(descAtual),
       conteudoSugerido: descricaoSugeridaHtml(null),
-      botaoGerar: "✨ Gerar Descrição",
+      botaoGerar: "Gerar descrição",
     });
 
     var fichaSec = otimSecaoHtml({
@@ -641,34 +737,32 @@
       sub: "Identifica atributos faltantes ou inconsistentes e sugere preenchimento.",
       conteudoAtual: fichaAtualHtml(tryParseJSON(a.attributes_json, [])),
       conteudoSugerido: fichaSugeridaHtml(null),
-      botaoGerar: "✨ Sugerir Ficha Técnica",
+      botaoGerar: "Sugerir ficha técnica",
     });
 
     return '<div class="am-otim">' + seoSec + descSec + fichaSec + "</div>";
   }
 
   function otimSecaoHtml(o) {
-    return '<section class="am-otim-section" data-section="' + o.id + '">' +
-      '<div class="am-otim-section__head">' +
+    return '<section class="am-otim-section vf-card" data-section="' + o.id + '">' +
+      '<div class="am-otim-section__head vf-card__header">' +
         '<div class="am-otim-section__title">' +
           '<div class="am-otim-section__icon">' + o.icon + "</div>" +
           "<div><h3>" + escapeHtml(o.titulo) + "</h3><p>" + escapeHtml(o.sub) + "</p></div>" +
         "</div>" +
-        '<span class="am-otim-status" data-status="' + o.id + '">' +
-          '<span class="am-otim-status__dot"></span>Aguardando geração</span>' +
+        '<span class="am-otim-status vf-status is-neutral" data-status="' + o.id + '">Aguardando geração</span>' +
       "</div>" +
       '<div class="am-otim-section__body">' +
         '<div class="am-otim-grid">' +
-          '<div class="am-otim-col am-otim-col--atual" data-atual="' + o.id + '">' +
+          '<div class="am-otim-col am-otim-col--atual vf-card" data-atual="' + o.id + '">' +
             o.conteudoAtual +
           "</div>" +
-          '<div class="am-otim-col am-otim-col--sugerido" data-sugerido="' + o.id + '">' +
+          '<div class="am-otim-col am-otim-col--sugerido vf-card" data-sugerido="' + o.id + '">' +
             o.conteudoSugerido +
           "</div>" +
         "</div>" +
         '<div class="am-otim-actions">' +
-          '<button class="am-btn am-btn--ai" data-gerar="' + o.id + '">' + o.botaoGerar + "</button>" +
-          '<span class="am-otim-actions__sep"></span>' +
+          '<button type="button" class="vf-btn vf-btn--secondary" data-gerar="' + o.id + '">' + o.botaoGerar + "</button>" +
         "</div>" +
       "</div>" +
     "</section>";
@@ -680,21 +774,21 @@
     var modelo = a.modelo || "";
     return '<div class="am-otim-col__label">Atual no Mercado Livre' +
       '<span class="am-otim-col__label-meta">' + titulo.length + "/60</span></div>" +
-      '<div class="am-otim-campo">' +
-        "<label>Título</label>" +
-        '<textarea class="am-textarea" id="am-titulo-atual" rows="2" maxlength="60">' +
+      '<div class="am-otim-campo vf-field">' +
+        '<label class="vf-field__label" for="am-titulo-atual">Título</label>' +
+        '<textarea class="vf-textarea" id="am-titulo-atual" rows="2" maxlength="60">' +
           escapeHtml(titulo) + "</textarea>" +
         '<div class="am-otim-campo__row">' +
-          '<button class="am-btn am-btn--sm" data-copy="am-titulo-atual">📋 Copiar</button>' +
+          '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-copy="am-titulo-atual">Copiar</button>' +
           '<span class="am-otim-col__label-meta" id="am-titulo-atual-count">' +
             titulo.length + " caracteres</span>" +
         "</div>" +
       "</div>" +
-      '<div class="am-otim-campo">' +
-        "<label>Campo modelo</label>" +
-        '<input class="am-input" id="am-modelo-atual" value="' + escapeHtml(modelo) + '" />' +
+      '<div class="am-otim-campo vf-field">' +
+        '<label class="vf-field__label" for="am-modelo-atual">Campo modelo</label>' +
+        '<input class="vf-input" id="am-modelo-atual" value="' + escapeHtml(modelo) + '" />' +
         '<div class="am-otim-campo__row">' +
-          '<button class="am-btn am-btn--sm" data-copy="am-modelo-atual">📋 Copiar</button>' +
+          '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-copy="am-modelo-atual">Copiar</button>' +
         "</div>" +
       "</div>";
   }
@@ -712,12 +806,12 @@
     var opcoesHtml = "";
     // título principal
     opcoesHtml += '<div class="am-otim-opcao am-otim-opcao--principal">' +
-      '<div class="am-otim-opcao__head"><span>★ Principal</span><span>' +
+      '<div class="am-otim-opcao__head"><span>Principal</span><span>' +
       (otim.titulo_sugerido_chars || 0) + "/60</span></div>" +
       '<div class="am-otim-opcao__txt">' + escapeHtml(otim.titulo_sugerido || "") + "</div>" +
       '<div class="am-otim-opcao__btns">' +
-        '<button class="am-btn am-btn--xs" data-copy-text="' + escapeAttr(otim.titulo_sugerido || "") + '">📋 Copiar</button>' +
-        '<button class="am-btn am-btn--xs am-btn--success" data-aprovar-titulo="' + escapeAttr(otim.titulo_sugerido || "") + '">✓ Aprovar esta</button>' +
+        '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-copy-text="' + escapeAttr(otim.titulo_sugerido || "") + '">Copiar</button>' +
+        '<button type="button" class="vf-btn vf-btn--primary vf-btn--sm" data-aprovar-titulo="' + escapeAttr(otim.titulo_sugerido || "") + '">Aprovar esta</button>' +
       "</div>" +
     "</div>";
     // alternativas
@@ -727,8 +821,8 @@
         '<div class="am-otim-opcao__head"><span>Opção ' + (idx + 1) + "</span><span>" + len + "/60</span></div>" +
         '<div class="am-otim-opcao__txt">' + escapeHtml(t) + "</div>" +
         '<div class="am-otim-opcao__btns">' +
-          '<button class="am-btn am-btn--xs" data-copy-text="' + escapeAttr(t) + '">📋 Copiar</button>' +
-          '<button class="am-btn am-btn--xs am-btn--success" data-aprovar-titulo="' + escapeAttr(t) + '">✓ Aprovar esta</button>' +
+          '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-copy-text="' + escapeAttr(t) + '">Copiar</button>' +
+          '<button type="button" class="vf-btn vf-btn--primary vf-btn--sm" data-aprovar-titulo="' + escapeAttr(t) + '">Aprovar esta</button>' +
         "</div>" +
       "</div>";
     });
@@ -742,15 +836,15 @@
     }
 
     return '<div class="am-otim-col__label">Sugestão da IA' +
-      '<span class="am-badge am-badge--ia">' + escapeHtml(otim.ai_model || "IA") + "</span></div>" +
-      '<div class="am-otim-campo"><label>Títulos sugeridos</label>' +
+      '<span class="vf-tag is-primary">' + escapeHtml(otim.ai_model || "IA") + "</span></div>" +
+      '<div class="am-otim-campo vf-field"><span class="vf-field__label">Títulos sugeridos</span>' +
         '<div class="am-otim-opcoes">' + opcoesHtml + "</div></div>" +
-      '<div class="am-otim-campo">' +
-        "<label>Modelo sugerido</label>" +
-        '<input class="am-input" id="am-modelo-sugerido" value="' + escapeAttr(otim.modelo_sugerido || "") + '" />' +
+      '<div class="am-otim-campo vf-field">' +
+        '<label class="vf-field__label" for="am-modelo-sugerido">Modelo sugerido</label>' +
+        '<input class="vf-input" id="am-modelo-sugerido" value="' + escapeAttr(otim.modelo_sugerido || "") + '" />' +
         '<div class="am-otim-campo__row">' +
-          '<button class="am-btn am-btn--sm" data-copy="am-modelo-sugerido">📋 Copiar</button>' +
-          '<button class="am-btn am-btn--sm am-btn--success" data-aprovar-modelo="1">✓ Aprovar modelo</button>' +
+          '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-copy="am-modelo-sugerido">Copiar</button>' +
+          '<button type="button" class="vf-btn vf-btn--primary vf-btn--sm" data-aprovar-modelo="1">Aprovar modelo</button>' +
         "</div>" +
       "</div>" +
       '<div class="am-otim-meta">' +
@@ -767,11 +861,12 @@
     var d = String(desc || "").trim();
     return '<div class="am-otim-col__label">Descrição atual' +
       '<span class="am-otim-col__label-meta">' + d.length + " caracteres</span></div>" +
-      '<div class="am-otim-campo">' +
-        '<textarea class="am-textarea" id="am-desc-atual" rows="14" placeholder="Sem descrição cadastrada">' +
+      '<div class="am-otim-campo vf-field">' +
+        '<label class="vf-visually-hidden" for="am-desc-atual">Descrição atual</label>' +
+        '<textarea class="vf-textarea" id="am-desc-atual" rows="14" placeholder="Sem descrição cadastrada">' +
           escapeHtml(d) + "</textarea>" +
         '<div class="am-otim-campo__row">' +
-          '<button class="am-btn am-btn--sm" data-copy="am-desc-atual">📋 Copiar</button>' +
+          '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-copy="am-desc-atual">Copiar</button>' +
         "</div>" +
       "</div>";
   }
@@ -793,19 +888,19 @@
     }
     var melhHtml = "";
     if (melh.length) {
-      melhHtml = '<div class="am-otim-meta__row"><span>Melhorias:</span></div><ul class="am-otim-alertas" style="color:#5b6680;">';
+      melhHtml = '<div class="am-otim-meta__row"><span>Melhorias:</span></div><ul class="am-otim-alertas am-otim-alertas--neutral">';
       melh.forEach(function (m) { melhHtml += "<li>" + escapeHtml(m) + "</li>"; });
       melhHtml += "</ul>";
     }
 
     return '<div class="am-otim-col__label">Sugestão da IA' +
-      '<span class="am-badge am-badge--ia">' + escapeHtml(otim.ai_model || "IA") + "</span></div>" +
-      '<div class="am-otim-campo">' +
-        "<label>Descrição sugerida (" + d.length + " caracteres)</label>" +
-        '<textarea class="am-textarea" id="am-desc-sugerida" rows="14">' + escapeHtml(d) + "</textarea>" +
+      '<span class="vf-tag is-primary">' + escapeHtml(otim.ai_model || "IA") + "</span></div>" +
+      '<div class="am-otim-campo vf-field">' +
+        '<label class="vf-field__label" for="am-desc-sugerida">Descrição sugerida (' + d.length + " caracteres)</label>" +
+        '<textarea class="vf-textarea" id="am-desc-sugerida" rows="14">' + escapeHtml(d) + "</textarea>" +
         '<div class="am-otim-campo__row">' +
-          '<button class="am-btn am-btn--sm" data-copy="am-desc-sugerida">📋 Copiar</button>' +
-          '<button class="am-btn am-btn--sm am-btn--success" data-aprovar-descricao="1">✓ Aprovar descrição</button>' +
+          '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-copy="am-desc-sugerida">Copiar</button>' +
+          '<button type="button" class="vf-btn vf-btn--primary vf-btn--sm" data-aprovar-descricao="1">Aprovar descrição</button>' +
         "</div>" +
       "</div>" +
       (melhHtml || alertasHtml
@@ -823,15 +918,15 @@
     if (!attrs || !attrs.length) {
       return html + '<div class="am-otim-vazio">Sem atributos cadastrados neste anúncio.</div>';
     }
-    html += '<div style="max-height:380px;overflow-y:auto;">' +
-      '<table class="am-ficha-tabela"><thead><tr><th>Atributo</th><th>Valor</th></tr></thead><tbody>';
+    html += '<div class="am-ficha-scroll vf-table-wrap">' +
+      '<table class="am-ficha-tabela vf-table"><thead><tr><th>Atributo</th><th>Valor</th></tr></thead><tbody>';
     preenchidos.forEach(function (x) {
       html += "<tr><td>" + escapeHtml(x.name || x.id) +
         '</td><td class="am-ficha-val">' + escapeHtml(x.value) + "</td></tr>";
     });
     vazios.forEach(function (x) {
       html += "<tr><td>" + escapeHtml(x.name || x.id) +
-        '</td><td style="color:#d64545;">vazio</td></tr>';
+        '</td><td class="am-ficha-vazia">Vazio</td></tr>';
     });
     html += "</tbody></table></div>";
     return html;
@@ -850,16 +945,16 @@
     }
 
     var html = '<div class="am-otim-col__label">Sugestões da IA' +
-      '<span class="am-badge am-badge--ia">' + escapeHtml(otim.ai_model || "IA") + "</span></div>" +
-      '<div style="max-height:380px;overflow-y:auto;">' +
-      '<table class="am-ficha-tabela"><thead><tr><th>Campo</th><th>Atual</th><th>Sugerido</th><th>Conf.</th></tr></thead><tbody>';
+      '<span class="vf-tag is-primary">' + escapeHtml(otim.ai_model || "IA") + "</span></div>" +
+      '<div class="am-ficha-scroll vf-table-wrap">' +
+      '<table class="am-ficha-tabela vf-table"><thead><tr><th>Campo</th><th>Atual</th><th>Sugerido</th><th>Conf.</th></tr></thead><tbody>';
     sug.forEach(function (s) {
       var conf = String(s.confianca || "media").toLowerCase();
       html += "<tr>" +
         "<td>" + escapeHtml(s.campo || "—") + "</td>" +
         "<td>" + escapeHtml(s.valor_atual || "(vazio)") + "</td>" +
         '<td class="am-ficha-suj">' + escapeHtml(s.valor_sugerido || "—") + "</td>" +
-        '<td><span class="am-conf am-conf--' + conf + '">' + escapeHtml(conf) + "</span></td>" +
+        '<td><span class="am-conf vf-tag ' + (conf === "alta" ? "is-success" : conf === "baixa" ? "is-danger" : "is-warning") + '">' + escapeHtml(conf) + "</span></td>" +
       "</tr>";
     });
     html += "</tbody></table></div>";
@@ -870,9 +965,9 @@
       html += "</ul>";
     }
 
-    html += '<div class="am-otim-actions" style="margin-top:10px;">' +
-      '<button class="am-btn am-btn--sm" data-copy-ficha="1">📋 Copiar como lista</button>' +
-      '<button class="am-btn am-btn--sm am-btn--success" data-aprovar-ficha="1">✓ Aprovar sugestões</button>' +
+    html += '<div class="am-otim-actions am-otim-actions--resultado">' +
+      '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-copy-ficha="1">Copiar como lista</button>' +
+      '<button type="button" class="vf-btn vf-btn--primary vf-btn--sm" data-aprovar-ficha="1">Aprovar sugestões</button>' +
       "</div>";
     return html;
   }
@@ -889,6 +984,8 @@
 
     // Botões "Copiar" em campos existentes (id)
     body.querySelectorAll("[data-copy]").forEach(function (b) {
+      if (b.getAttribute("data-am-bound") === "true") return;
+      b.setAttribute("data-am-bound", "true");
       b.addEventListener("click", function () {
         var alvo = el(this.getAttribute("data-copy"));
         if (alvo) copiarTexto(alvo.value !== undefined ? alvo.value : alvo.textContent);
@@ -896,34 +993,49 @@
     });
     // Botões "Copiar" com texto inline
     body.querySelectorAll("[data-copy-text]").forEach(function (b) {
+      if (b.getAttribute("data-am-bound") === "true") return;
+      b.setAttribute("data-am-bound", "true");
       b.addEventListener("click", function () {
         copiarTexto(this.getAttribute("data-copy-text"));
       });
     });
     // Botões "Gerar" por seção
     body.querySelectorAll("[data-gerar]").forEach(function (b) {
+      if (b.getAttribute("data-am-bound") === "true") return;
+      b.setAttribute("data-am-bound", "true");
       b.addEventListener("click", function () { gerar(this.getAttribute("data-gerar")); });
     });
     // Aprovar título (uma das 3 opções)
     body.querySelectorAll("[data-aprovar-titulo]").forEach(function (b) {
+      if (b.getAttribute("data-am-bound") === "true") return;
+      b.setAttribute("data-am-bound", "true");
       b.addEventListener("click", function () { aprovarTitulo(this.getAttribute("data-aprovar-titulo")); });
     });
     body.querySelectorAll("[data-aprovar-modelo]").forEach(function (b) {
+      if (b.getAttribute("data-am-bound") === "true") return;
+      b.setAttribute("data-am-bound", "true");
       b.addEventListener("click", function () { aprovarModelo(); });
     });
     body.querySelectorAll("[data-aprovar-descricao]").forEach(function (b) {
+      if (b.getAttribute("data-am-bound") === "true") return;
+      b.setAttribute("data-am-bound", "true");
       b.addEventListener("click", function () { aprovarDescricao(); });
     });
     body.querySelectorAll("[data-aprovar-ficha]").forEach(function (b) {
+      if (b.getAttribute("data-am-bound") === "true") return;
+      b.setAttribute("data-am-bound", "true");
       b.addEventListener("click", function () { aprovarFicha(); });
     });
     body.querySelectorAll("[data-copy-ficha]").forEach(function (b) {
+      if (b.getAttribute("data-am-bound") === "true") return;
+      b.setAttribute("data-am-bound", "true");
       b.addEventListener("click", copiarFichaSugerida);
     });
 
     // contador de chars do título atual
     var tat = el("am-titulo-atual");
-    if (tat) {
+    if (tat && tat.getAttribute("data-am-bound") !== "true") {
+      tat.setAttribute("data-am-bound", "true");
       tat.addEventListener("input", function () {
         var c = el("am-titulo-atual-count");
         if (c) c.textContent = this.value.length + " caracteres";
@@ -965,8 +1077,8 @@
 
     if (btn) { btn.disabled = true; btn.textContent = "Gerando..."; }
     if (statusEl) {
-      statusEl.className = "am-otim-status am-otim-status--gerando";
-      statusEl.innerHTML = '<span class="am-otim-status__dot"></span>Consultando IA...';
+      statusEl.className = "am-otim-status vf-status is-info";
+      statusEl.textContent = "Consultando IA…";
     }
 
     api("/anuncios-meli/" + encodeURIComponent(a.item_id) + "/otimizar", {
@@ -977,26 +1089,26 @@
       if (!r.data || !r.data.ok) {
         var motivo = (r.data && r.data.motivo) || "Erro ao consultar a IA.";
         if (statusEl) {
-          statusEl.className = "am-otim-status am-otim-status--erro";
-          statusEl.innerHTML = '<span class="am-otim-status__dot"></span>' + escapeHtml(motivo);
+          statusEl.className = "am-otim-status vf-status is-danger";
+          statusEl.textContent = motivo;
         }
-        toast(motivo);
+        toast(motivo, "is-danger");
         return;
       }
       AM.otimizacoes[tipo] = r.data.otimizacao;
       atualizarSecao(tipo, r.data.otimizacao);
       if (statusEl) {
-        statusEl.className = "am-otim-status am-otim-status--ok";
-        statusEl.innerHTML = '<span class="am-otim-status__dot"></span>Sugestão gerada';
+        statusEl.className = "am-otim-status vf-status is-success";
+        statusEl.textContent = "Sugestão gerada";
       }
     });
   }
 
   function botaoLabelDe(tipo) {
-    if (tipo === "seo") return "✨ Gerar SEO";
-    if (tipo === "descricao") return "✨ Gerar Descrição";
-    if (tipo === "ficha_tecnica") return "✨ Sugerir Ficha Técnica";
-    return "✨ Gerar";
+    if (tipo === "seo") return "Gerar SEO";
+    if (tipo === "descricao") return "Gerar descrição";
+    if (tipo === "ficha_tecnica") return "Sugerir ficha técnica";
+    return "Gerar";
   }
 
   function atualizarSecao(tipo, otim) {
@@ -1008,9 +1120,8 @@
 
     var status = document.querySelector('[data-status="' + tipo + '"]');
     if (status && otim.status === "aprovado") {
-      status.className = "am-otim-status am-otim-status--ok";
-      status.innerHTML = '<span class="am-otim-status__dot"></span>Aprovado em ' +
-        formatData(otim.aprovado_at);
+      status.className = "am-otim-status vf-status is-success";
+      status.textContent = "Aprovado em " + formatData(otim.aprovado_at);
     }
 
     // re-bind dos botões dentro do conteúdo recém-renderizado
@@ -1088,12 +1199,17 @@
   // ===========================================================================
   function sincronizar(modo) {
     var overlay = document.createElement("div");
-    overlay.className = "am-sync-overlay";
+    overlay.className = "am-sync-overlay vf-overlay is-open";
     overlay.id = "am-sync-overlay";
-    overlay.innerHTML = '<div class="am-sync-box"><div class="am-spinner"></div><strong>' +
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "am-sync-titulo");
+    overlay.innerHTML = '<div class="am-sync-box vf-modal vf-modal--sm">' +
+      '<div class="vf-modal__body"><div class="vf-loading-state" aria-live="polite"><span class="vf-spinner" aria-hidden="true"></span><strong id="am-sync-titulo">' +
       (modo === "completo" ? "Sincronização completa em andamento" : "Buscando anúncios novos") +
-      "</strong><p>Consultando a API do Mercado Livre. Pode levar alguns minutos.</p></div>";
+      "</strong><span>Consultando a API do Mercado Livre. Pode levar alguns minutos.</span></div></div></div>";
     document.body.appendChild(overlay);
+    document.body.classList.add("vf-no-scroll");
 
     api("/anuncios-meli/sync", {
       method: "POST",
@@ -1104,23 +1220,24 @@
       if (d.ok) {
         var msg;
         if (d.totalSalvos > 0) {
-          msg = "<strong>Sincronização concluída</strong><p>" + (d.totalEncontrados || 0) +
+          msg = '<div class="vf-banner is-success"><div class="vf-banner__content"><p class="vf-banner__title">Sincronização concluída</p><p class="vf-banner__description">' + (d.totalEncontrados || 0) +
             " anúncios na conta · " + d.totalSalvos + " gravados/atualizados.</p>" +
-            (d.limitado ? "<p>O limite de itens por sincronização foi atingido. Rode novamente para continuar.</p>" : "");
+            (d.limitado ? '<p class="vf-banner__description">O limite de itens por sincronização foi atingido. Rode novamente para continuar.</p>' : "") + "</div></div>";
         } else {
-          msg = "<strong>Tudo em dia</strong><p>" + escapeHtml(d.mensagem || "Nenhum anúncio novo para gravar.") + "</p>";
+          msg = '<div class="vf-banner is-success"><div class="vf-banner__content"><p class="vf-banner__title">Tudo em dia</p><p class="vf-banner__description">' + escapeHtml(d.mensagem || "Nenhum anúncio novo para gravar.") + "</p></div></div>";
         }
-        box.innerHTML = msg + '<button class="am-btn am-btn--primary" id="am-sync-ok">OK</button>';
+        box.innerHTML = '<div class="vf-modal__body">' + msg + '</div><div class="vf-modal__footer"><button type="button" class="vf-btn vf-btn--primary" id="am-sync-ok">OK</button></div>';
         carregarResumo(); carregarAnuncios();
       } else {
-        box.innerHTML = "<strong>Não foi possível sincronizar</strong><p>" +
+        box.innerHTML = '<div class="vf-modal__body"><div class="vf-banner is-danger" role="alert"><div class="vf-banner__content"><p class="vf-banner__title">Não foi possível sincronizar</p><p class="vf-banner__description">' +
           escapeHtml(d.motivo || "Erro ao consultar o Mercado Livre.") + "</p>" +
-          (d.codigo === "NO_TOKEN" ? "<p>Conecte a conta do Mercado Livre deste cliente na tela de Clientes.</p>" : "") +
-          '<button class="am-btn" id="am-sync-ok">Fechar</button>';
+          (d.codigo === "NO_TOKEN" ? '<p class="vf-banner__description">Conecte a conta do Mercado Livre deste cliente na tela de Clientes.</p>' : "") +
+          '</div></div></div><div class="vf-modal__footer"><button type="button" class="vf-btn vf-btn--secondary" id="am-sync-ok">Fechar</button></div>';
       }
       var btn = el("am-sync-ok");
       if (btn) btn.addEventListener("click", function () {
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        document.body.classList.remove("vf-no-scroll");
       });
     });
   }

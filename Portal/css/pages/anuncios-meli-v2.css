@@ -1,0 +1,825 @@
+/* ============================================================
+ * VenForce — Anúncios ML · CSS específico da página (V2)
+ * Componentes visuais genéricos vêm de vf-components-v2.css.
+ * As classes am-* abaixo são hooks ou composições exclusivas.
+ * ============================================================ */
+
+.vf-page-anuncios-meli {
+  overflow-x: clip;
+}
+
+.vf-page-anuncios-meli .vf-content {
+  max-width: none;
+  min-width: 0;
+  padding: 0;
+}
+
+.vf-page-anuncios-meli [hidden],
+.vf-page-anuncios-meli .am-hidden {
+  display: none;
+}
+
+.vf-page-anuncios-meli .vf-app-topbar {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.vf-page-anuncios-meli .am-contexto-bar {
+  display: flex;
+  align-items: center;
+}
+
+.vf-page-anuncios-meli .am-clientes-toolbar {
+  justify-content: flex-start;
+}
+
+.vf-page-anuncios-meli .am-cliente-search {
+  flex: 1 1 320px;
+  max-width: 480px;
+}
+
+.vf-page-anuncios-meli .am-clientes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--vf-sp-3);
+}
+
+.vf-page-anuncios-meli .am-cliente-card {
+  width: 100%;
+  min-height: 148px;
+  padding: var(--vf-sp-5);
+  font: inherit;
+  text-align: left;
+}
+
+.vf-page-anuncios-meli .am-cliente-card__top,
+.vf-page-anuncios-meli .am-cliente-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vf-sp-3);
+}
+
+.vf-page-anuncios-meli .am-cliente-card__nome {
+  min-width: 0;
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-lg);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+  overflow-wrap: anywhere;
+}
+
+.vf-page-anuncios-meli .am-cliente-card__abrir {
+  flex: 0 0 auto;
+  font-size: var(--vf-fs-xs);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-primary-strong);
+}
+
+.vf-page-anuncios-meli .am-cliente-card__slug {
+  display: block;
+  margin: var(--vf-sp-2) 0 var(--vf-sp-5);
+  color: var(--vf-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.vf-page-anuncios-meli .am-cliente-card__meta {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.vf-page-anuncios-meli .am-cliente-contexto {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+  gap: var(--vf-sp-6);
+  padding: var(--vf-sp-5);
+}
+
+.vf-page-anuncios-meli .am-cliente-contexto__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vf-sp-4);
+}
+
+.vf-page-anuncios-meli .am-cliente-contexto__eyebrow {
+  margin: 0 0 var(--vf-sp-1);
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: var(--vf-ls-caps);
+  text-transform: uppercase;
+  color: var(--vf-text-muted);
+}
+
+.vf-page-anuncios-meli .am-cliente-contexto h2 {
+  margin: 0;
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-lg);
+  color: var(--vf-text);
+}
+
+.vf-page-anuncios-meli .am-hud-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vf-sp-2) var(--vf-sp-5);
+  margin-top: var(--vf-sp-3);
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+}
+
+.vf-page-anuncios-meli .am-sync-area {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: var(--vf-sp-3);
+  padding-left: var(--vf-sp-5);
+  border-left: 1px solid var(--vf-border);
+}
+
+.vf-page-anuncios-meli .am-sync-area__description {
+  margin: 0;
+  max-width: 520px;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+  text-align: right;
+}
+
+.vf-page-anuncios-meli .am-hud-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--vf-sp-2);
+}
+
+.vf-page-anuncios-meli .am-resumo {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.vf-page-anuncios-meli .am-kpi.is-success {
+  border-left: 3px solid var(--vf-success);
+}
+
+.vf-page-anuncios-meli .am-kpi.is-warning {
+  border-left: 3px solid var(--vf-warning);
+}
+
+.vf-page-anuncios-meli .am-kpi.is-danger {
+  border-left: 3px solid var(--vf-danger);
+}
+
+.vf-page-anuncios-meli .am-filtros {
+  align-items: flex-end;
+}
+
+.vf-page-anuncios-meli .am-filtros .vf-toolbar__filters {
+  align-items: flex-end;
+}
+
+.vf-page-anuncios-meli .am-filtro-busca {
+  flex: 1 1 280px;
+  max-width: 520px;
+}
+
+.vf-page-anuncios-meli .am-filtro-select {
+  flex: 0 1 220px;
+}
+
+.vf-page-anuncios-meli .am-catalogo {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--vf-sp-4);
+}
+
+.vf-page-anuncios-meli .am-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.vf-page-anuncios-meli .am-card__img {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--vf-surface-2);
+  border-bottom: 1px solid var(--vf-border);
+}
+
+.vf-page-anuncios-meli .am-card__img img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.vf-page-anuncios-meli .am-card__img-vazia {
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-muted);
+}
+
+.vf-page-anuncios-meli .am-card__score {
+  position: absolute;
+  top: var(--vf-sp-2);
+  right: var(--vf-sp-2);
+}
+
+.vf-page-anuncios-meli .am-card__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--vf-sp-3);
+  padding: var(--vf-sp-4);
+}
+
+.vf-page-anuncios-meli .am-card__titulo {
+  display: -webkit-box;
+  min-height: 2.7em;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-sm);
+  font-weight: var(--vf-fw-semibold);
+  line-height: var(--vf-lh-snug);
+  color: var(--vf-text);
+}
+
+.vf-page-anuncios-meli .am-card__ids {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--vf-sp-2);
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-muted);
+}
+
+.vf-page-anuncios-meli .am-card__metricas {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 0.75fr));
+  gap: var(--vf-sp-2);
+  padding: var(--vf-sp-3) 0;
+  border-top: 1px solid var(--vf-border);
+  border-bottom: 1px solid var(--vf-border);
+}
+
+.vf-page-anuncios-meli .am-card__metricas span {
+  min-width: 0;
+}
+
+.vf-page-anuncios-meli .am-card__metricas small,
+.vf-page-anuncios-meli .am-card__metricas strong {
+  display: block;
+}
+
+.vf-page-anuncios-meli .am-card__metricas small {
+  font-size: var(--vf-fs-2xs);
+  color: var(--vf-text-muted);
+}
+
+.vf-page-anuncios-meli .am-card__metricas strong {
+  margin-top: var(--vf-sp-1);
+  overflow: hidden;
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vf-page-anuncios-meli .am-card__score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vf-sp-2);
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+}
+
+.vf-page-anuncios-meli .am-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  margin-top: auto;
+}
+
+.vf-page-anuncios-meli .am-card__acao {
+  width: 100%;
+  margin-top: var(--vf-sp-1);
+}
+
+.vf-page-anuncios-meli .is-success {
+  color: var(--vf-success-strong);
+}
+
+.vf-page-anuncios-meli .is-warning {
+  color: var(--vf-warning-strong);
+}
+
+.vf-page-anuncios-meli .is-danger {
+  color: var(--vf-danger-strong);
+}
+
+.vf-page-anuncios-meli .am-paginacao {
+  margin-top: var(--vf-sp-5);
+}
+
+.vf-page-anuncios-meli .am-drawer {
+  max-width: min(960px, calc(100vw - var(--vf-sp-16)));
+}
+
+.vf-page-anuncios-meli .am-drawer__titulo {
+  max-width: min(720px, 75vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vf-page-anuncios-meli .am-drawer__body {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.vf-page-anuncios-meli .am-tabs {
+  margin-bottom: var(--vf-sp-5);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.vf-page-anuncios-meli .am-tab {
+  flex: 0 0 auto;
+  border-radius: 0;
+}
+
+.vf-page-anuncios-meli .am-tab-panel {
+  min-width: 0;
+}
+
+.vf-page-anuncios-meli .am-detalhe-img {
+  width: 100%;
+  max-height: 320px;
+  margin-bottom: var(--vf-sp-3);
+  object-fit: contain;
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+}
+
+.vf-page-anuncios-meli .am-bloco + .am-bloco {
+  margin-top: var(--vf-sp-3);
+}
+
+.vf-page-anuncios-meli .am-bloco__title {
+  margin: 0 0 var(--vf-sp-3);
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-sm);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+}
+
+.vf-page-anuncios-meli .am-definition-list {
+  margin: 0;
+}
+
+.vf-page-anuncios-meli .am-kv {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.6fr) minmax(0, 1.4fr);
+  gap: var(--vf-sp-4);
+  padding: var(--vf-sp-2) 0;
+  border-top: 1px solid var(--vf-border);
+}
+
+.vf-page-anuncios-meli .am-kv dt {
+  color: var(--vf-text-muted);
+}
+
+.vf-page-anuncios-meli .am-kv dd {
+  min-width: 0;
+  margin: 0;
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.vf-page-anuncios-meli .am-score-summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vf-sp-2);
+  margin-bottom: var(--vf-sp-2);
+  color: var(--vf-text-muted);
+}
+
+.vf-page-anuncios-meli .am-score-summary__value {
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-2xl);
+  line-height: var(--vf-lh-tight);
+}
+
+.vf-page-anuncios-meli .am-score-summary__meta {
+  margin: var(--vf-sp-2) 0 0;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+}
+
+.vf-page-anuncios-meli .am-attr-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.vf-page-anuncios-meli .am-attr {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vf-sp-4);
+  padding: var(--vf-sp-2) 0;
+  border-top: 1px solid var(--vf-border);
+}
+
+.vf-page-anuncios-meli .am-attr span {
+  color: var(--vf-text-secondary);
+}
+
+.vf-page-anuncios-meli .am-attr strong {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.vf-page-anuncios-meli .am-attr--vazio strong,
+.vf-page-anuncios-meli .am-ficha-vazia {
+  color: var(--vf-danger-strong);
+}
+
+.vf-page-anuncios-meli .am-thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: var(--vf-sp-3);
+  margin-top: var(--vf-sp-4);
+}
+
+.vf-page-anuncios-meli .am-thumbs img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius-sm);
+}
+
+.vf-page-anuncios-meli .am-desc {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: var(--vf-lh-relaxed);
+  color: var(--vf-text);
+}
+
+.vf-page-anuncios-meli .am-otim {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-5);
+}
+
+.vf-page-anuncios-meli .am-otim-section {
+  overflow: hidden;
+}
+
+.vf-page-anuncios-meli .am-otim-section__head {
+  align-items: flex-start;
+}
+
+.vf-page-anuncios-meli .am-otim-section__title {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vf-sp-3);
+  min-width: 0;
+}
+
+.vf-page-anuncios-meli .am-otim-section__title h3 {
+  margin: 0;
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-md);
+  color: var(--vf-text);
+}
+
+.vf-page-anuncios-meli .am-otim-section__title p {
+  margin: var(--vf-sp-1) 0 0;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+}
+
+.vf-page-anuncios-meli .am-otim-section__icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--vf-control-h-sm);
+  height: var(--vf-control-h-sm);
+  border-radius: var(--vf-radius-sm);
+  background: var(--vf-primary-soft);
+  font-family: var(--vf-font-display);
+  font-weight: var(--vf-fw-bold);
+  color: var(--vf-primary-strong);
+}
+
+.vf-page-anuncios-meli .am-otim-section__body {
+  padding: var(--vf-sp-5);
+}
+
+.vf-page-anuncios-meli .am-otim-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vf-sp-4);
+}
+
+.vf-page-anuncios-meli .am-otim-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-3);
+  padding: var(--vf-sp-4);
+}
+
+.vf-page-anuncios-meli .am-otim-col--sugerido {
+  background: var(--vf-primary-soft);
+  border-color: var(--vf-primary-border);
+}
+
+.vf-page-anuncios-meli .am-otim-col__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vf-sp-2);
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: var(--vf-ls-caps);
+  text-transform: uppercase;
+  color: var(--vf-text-secondary);
+}
+
+.vf-page-anuncios-meli .am-otim-col__label-meta {
+  font-size: var(--vf-fs-2xs);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--vf-text-muted);
+}
+
+.vf-page-anuncios-meli .am-otim-campo,
+.vf-page-anuncios-meli .am-otim-opcoes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-2);
+}
+
+.vf-page-anuncios-meli .am-otim-campo__row,
+.vf-page-anuncios-meli .am-otim-opcao__btns,
+.vf-page-anuncios-meli .am-otim-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--vf-sp-2);
+}
+
+.vf-page-anuncios-meli .am-otim-opcao {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-2);
+  padding: var(--vf-sp-3);
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius-sm);
+}
+
+.vf-page-anuncios-meli .am-otim-opcao--principal {
+  border-color: var(--vf-primary);
+}
+
+.vf-page-anuncios-meli .am-otim-opcao__head,
+.vf-page-anuncios-meli .am-otim-meta__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vf-sp-2);
+  flex-wrap: wrap;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-muted);
+}
+
+.vf-page-anuncios-meli .am-otim-opcao__txt {
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+  overflow-wrap: anywhere;
+}
+
+.vf-page-anuncios-meli .am-otim-vazio {
+  padding: var(--vf-sp-6) var(--vf-sp-3);
+  text-align: center;
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text-muted);
+}
+
+.vf-page-anuncios-meli .am-otim-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-2);
+  padding: var(--vf-sp-3);
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius-sm);
+}
+
+.vf-page-anuncios-meli .am-otim-score {
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-lg);
+}
+
+.vf-page-anuncios-meli .am-otim-alertas {
+  margin: var(--vf-sp-2) 0 0;
+  padding: var(--vf-sp-3) var(--vf-sp-4) var(--vf-sp-3) var(--vf-sp-8);
+  background: var(--vf-warning-bg);
+  border: 1px solid var(--vf-warning-border);
+  border-radius: var(--vf-radius-sm);
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-warning-strong);
+}
+
+.vf-page-anuncios-meli .am-otim-alertas--neutral {
+  background: var(--vf-neutral-bg);
+  border-color: var(--vf-neutral-border);
+  color: var(--vf-neutral-strong);
+}
+
+.vf-page-anuncios-meli .am-otim-actions {
+  justify-content: flex-end;
+  margin-top: var(--vf-sp-4);
+}
+
+.vf-page-anuncios-meli .am-otim-actions--resultado {
+  margin-top: var(--vf-sp-3);
+}
+
+.vf-page-anuncios-meli .am-ficha-scroll {
+  max-height: 380px;
+  overflow: auto;
+}
+
+.vf-page-anuncios-meli .am-ficha-tabela {
+  min-width: 520px;
+}
+
+.vf-page-anuncios-meli .am-conf {
+  text-transform: capitalize;
+}
+
+.vf-page-anuncios-meli .am-copy-fallback {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vf-page-anuncios-meli .am-sync-box .vf-modal__body {
+  text-align: center;
+}
+
+@media (max-width: 1280px) {
+  .vf-page-anuncios-meli .am-resumo {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1024px) {
+  .vf-page-anuncios-meli .am-cliente-contexto {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vf-page-anuncios-meli .am-sync-area {
+    align-items: flex-start;
+    padding-top: var(--vf-sp-4);
+    padding-left: 0;
+    border-top: 1px solid var(--vf-border);
+    border-left: none;
+  }
+
+  .vf-page-anuncios-meli .am-sync-area__description {
+    text-align: left;
+  }
+
+  .vf-page-anuncios-meli .am-hud-actions {
+    justify-content: flex-start;
+  }
+
+  .vf-page-anuncios-meli .am-resumo {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .vf-page-anuncios-meli .vf-page-header__main {
+    flex-basis: auto;
+  }
+
+  .vf-page-anuncios-meli .vf-page-shell {
+    padding: var(--vf-sp-5) var(--vf-sp-4) var(--vf-sp-8);
+  }
+
+  .vf-page-anuncios-meli .am-otim-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vf-page-anuncios-meli .am-drawer {
+    max-width: calc(100vw - var(--vf-sp-4));
+  }
+
+  .vf-page-anuncios-meli .am-filtros .vf-toolbar__filters,
+  .vf-page-anuncios-meli .am-filtros .vf-toolbar__actions {
+    width: 100%;
+  }
+
+  .vf-page-anuncios-meli .am-filtro-busca,
+  .vf-page-anuncios-meli .am-filtro-select {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .vf-page-anuncios-meli .vf-page-shell {
+    padding-right: var(--vf-sp-3);
+    padding-left: var(--vf-sp-3);
+  }
+
+  .vf-page-anuncios-meli .am-clientes-grid,
+  .vf-page-anuncios-meli .am-catalogo,
+  .vf-page-anuncios-meli .am-resumo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vf-page-anuncios-meli .am-cliente-contexto,
+  .vf-page-anuncios-meli .am-otim-section__body,
+  .vf-page-anuncios-meli .am-drawer__body {
+    padding: var(--vf-sp-3);
+  }
+
+  .vf-page-anuncios-meli .am-cliente-contexto__title-row,
+  .vf-page-anuncios-meli .am-otim-section__head {
+    flex-direction: column;
+  }
+
+  .vf-page-anuncios-meli .am-hud-actions,
+  .vf-page-anuncios-meli .am-hud-actions .vf-btn,
+  .vf-page-anuncios-meli .am-otim-campo__row,
+  .vf-page-anuncios-meli .am-otim-campo__row .vf-btn {
+    width: 100%;
+  }
+
+  .vf-page-anuncios-meli .vf-btn {
+    min-height: var(--vf-control-h-lg);
+  }
+
+  .vf-page-anuncios-meli .vf-btn--icon {
+    min-width: var(--vf-control-h-lg);
+  }
+
+  .vf-page-anuncios-meli .am-paginacao,
+  .vf-page-anuncios-meli .am-paginacao .vf-pagination__actions {
+    width: 100%;
+  }
+
+  .vf-page-anuncios-meli .am-paginacao .vf-pagination__actions .vf-btn {
+    flex: 1 1 0;
+  }
+
+  .vf-page-anuncios-meli .am-kv {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--vf-sp-1);
+  }
+
+  .vf-page-anuncios-meli .am-kv dd {
+    text-align: left;
+  }
+
+  .vf-page-anuncios-meli .am-drawer {
+    max-width: 100vw;
+    border-left: none;
+  }
+}
+
+@media (max-width: 390px) {
+  .vf-page-anuncios-meli .am-card__metricas {
+    grid-template-columns: minmax(0, 1fr) repeat(2, minmax(64px, 0.7fr));
+  }
+
+  .vf-page-anuncios-meli .am-card__body,
+  .vf-page-anuncios-meli .am-cliente-card,
+  .vf-page-anuncios-meli .am-otim-col {
+    padding: var(--vf-sp-3);
+  }
+
+  .vf-page-anuncios-meli .vf-toast {
+    min-width: 0;
+  }
+}

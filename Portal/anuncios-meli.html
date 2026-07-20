@@ -3,87 +3,112 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Anúncios Meli — VenForce</title>
+  <title>Anúncios ML — VenForce</title>
 
-  <!-- CSS global do portal (sidebar / layout compartilhado) -->
   <link rel="stylesheet" href="style.css" />
-  <!-- CSS próprio do módulo (todas as classes com prefixo .am-) -->
-  <link rel="stylesheet" href="anuncios-meli.css" />
+  <link rel="stylesheet" href="css/vf-tokens-v2.css" />
+  <link rel="stylesheet" href="css/vf-components-v2.css" />
+  <link rel="stylesheet" href="css/pages/anuncios-meli-v2.css" />
 </head>
-<body>
-  <!--
-    ATENÇÃO (único ajuste manual possível):
-    O layout.js monta a sidebar compartilhada. Se a sidebar não aparecer
-    igual às outras telas, abra a ads.html, copie o esqueleto do <body>
-    (a div/main que envolve o conteúdo) e cole a <main id="am-conteudo">
-    abaixo no lugar do conteúdo dela. O bloco .am-page é autossuficiente
-    e funciona dentro de qualquer wrapper.
-  -->
-  <main id="am-conteudo" class="am-main">
-    <div class="am-page" id="am-page">
+<body class="vf-page vf-page-anuncios-meli">
+  <div class="vf-main-with-sidebar">
+    <main class="vf-content" id="am-conteudo">
+      <div class="vf-page-shell">
+        <div class="vf-page-container vf-page-container--wide" id="am-page">
+          <header class="vf-page-header">
+            <div class="vf-page-header__main">
+              <p class="vf-page-header__eyebrow">Mercado Livre</p>
+              <h1 class="vf-page-header__title">Anúncios ML</h1>
+              <p class="vf-page-header__description">Consulte, sincronize, revise e otimize os anúncios Mercado Livre de cada cliente.</p>
+            </div>
+          </header>
 
-      <!-- ============================================================
-           VIEW 1 — Seleção de cliente
-           ============================================================ -->
-      <section id="am-view-clientes">
-        <div class="am-head">
-          <h1>Anúncios Meli</h1>
-          <p>Escolha um cliente para visualizar, sincronizar e otimizar os anúncios do Mercado Livre.</p>
+          <section class="vf-section" id="am-view-clientes" aria-labelledby="am-clientes-titulo">
+            <div class="vf-section__header">
+              <div>
+                <h2 class="vf-section__title" id="am-clientes-titulo">Escolha um cliente</h2>
+                <p class="vf-section__description">Selecione uma operação conectada para abrir o catálogo de anúncios.</p>
+              </div>
+            </div>
+
+            <div class="vf-toolbar am-clientes-toolbar">
+              <div class="vf-toolbar__filters">
+                <div class="vf-field am-cliente-search">
+                  <label class="vf-field__label" for="am-busca-cliente">Buscar cliente</label>
+                  <input type="search" id="am-busca-cliente" class="vf-input vf-search"
+                         placeholder="Nome ou slug do cliente" autocomplete="off" />
+                </div>
+              </div>
+            </div>
+
+            <div id="am-clientes-container" aria-live="polite">
+              <div class="vf-loading-state">
+                <span class="vf-spinner" aria-hidden="true"></span>
+                <span>Carregando clientes…</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="vf-section am-hidden" id="am-view-hud" aria-labelledby="am-cliente-contexto-titulo">
+            <div class="am-contexto-bar">
+              <button type="button" class="vf-btn vf-btn--ghost vf-btn--sm" id="am-voltar">← Trocar cliente</button>
+            </div>
+
+            <div class="am-hud-top" id="am-hud-top" aria-live="polite"></div>
+            <div class="vf-kpi-grid am-resumo" id="am-resumo" aria-label="Resumo dos anúncios"></div>
+
+            <section class="vf-section am-catalogo-section" aria-labelledby="am-catalogo-titulo">
+              <div class="vf-section__header">
+                <div>
+                  <h2 class="vf-section__title" id="am-catalogo-titulo">Catálogo de anúncios</h2>
+                  <p class="vf-section__description">Localize anúncios por título, identificador, SKU, status ou problema.</p>
+                </div>
+              </div>
+
+              <div class="vf-toolbar am-filtros">
+                <div class="vf-toolbar__filters">
+                  <div class="vf-field am-filtro-busca">
+                    <label class="vf-field__label" for="am-busca">Buscar anúncios</label>
+                    <input type="search" id="am-busca" class="vf-input vf-search"
+                           placeholder="Título, MLB ou SKU" autocomplete="off" />
+                  </div>
+                  <div class="vf-field am-filtro-select">
+                    <label class="vf-field__label" for="am-filtro-status">Status</label>
+                    <select id="am-filtro-status" class="vf-select">
+                      <option value="">Todos os status</option>
+                      <option value="active">Ativos</option>
+                      <option value="paused">Pausados</option>
+                      <option value="closed">Encerrados</option>
+                    </select>
+                  </div>
+                  <div class="vf-field am-filtro-select">
+                    <label class="vf-field__label" for="am-filtro-problema">Qualidade</label>
+                    <select id="am-filtro-problema" class="vf-select">
+                      <option value="">Todos os anúncios</option>
+                      <option value="score_baixo">Score baixo</option>
+                      <option value="sem_fotos">Fotos insuficientes</option>
+                      <option value="sem_sku">Sem SKU</option>
+                      <option value="ficha_incompleta">Ficha incompleta</option>
+                      <option value="pausados">Apenas pausados</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="vf-toolbar__actions">
+                  <span class="vf-tag is-primary am-hidden" id="am-filtros-ativos">Filtros ativos</span>
+                </div>
+              </div>
+
+              <div id="am-catalogo-container" aria-live="polite"></div>
+            </section>
+          </section>
         </div>
+      </div>
+    </main>
+  </div>
 
-        <div class="am-clientes-bar">
-          <input type="text" id="am-busca-cliente" class="am-input"
-                 placeholder="Buscar cliente..." autocomplete="off" />
-        </div>
+  <div class="vf-toast-stack" id="am-toast-stack" role="status" aria-live="polite" aria-atomic="false"></div>
 
-        <div id="am-clientes-container">
-          <div class="am-state">
-            <div class="am-spinner"></div>
-            Carregando clientes...
-          </div>
-        </div>
-      </section>
-
-      <!-- ============================================================
-           VIEW 2 — HUD do cliente
-           ============================================================ -->
-      <section id="am-view-hud" class="am-hidden">
-        <div class="am-head">
-          <button class="am-btn am-btn--ghost am-btn--sm" id="am-voltar">&larr; Trocar cliente</button>
-        </div>
-
-        <div class="am-hud-top" id="am-hud-top"></div>
-
-        <div class="am-resumo" id="am-resumo"></div>
-
-        <div class="am-filtros">
-          <input type="text" id="am-busca" class="am-input"
-                 placeholder="Buscar por título, MLB ou SKU..." autocomplete="off" />
-          <select id="am-filtro-status" class="am-select">
-            <option value="">Todos os status</option>
-            <option value="active">Ativos</option>
-            <option value="paused">Pausados</option>
-            <option value="closed">Encerrados</option>
-          </select>
-          <select id="am-filtro-problema" class="am-select">
-            <option value="">Todos os anúncios</option>
-            <option value="score_baixo">Score baixo</option>
-            <option value="sem_fotos">Fotos insuficientes</option>
-            <option value="sem_sku">Sem SKU</option>
-            <option value="ficha_incompleta">Ficha incompleta</option>
-            <option value="pausados">Apenas pausados</option>
-          </select>
-        </div>
-
-        <div id="am-catalogo-container"></div>
-      </section>
-
-    </div>
-  </main>
-
-  <!-- Layout/sidebar compartilhado -->
   <script src="layout.js"></script>
-  <!-- Lógica do módulo -->
   <script src="anuncios-meli.js"></script>
 </body>
 </html>
