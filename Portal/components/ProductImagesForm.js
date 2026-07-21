@@ -30,10 +30,10 @@
     container.innerHTML =
       '<div class="cam-images">' +
       '<div class="cam-images-add">' +
-      '<input type="url" class="vf-input" id="cam-image-url" placeholder="https://.../imagem.jpg" />' +
-      '<button type="button" class="vf-btn-secondary" id="cam-image-add">Adicionar</button>' +
+      '<input type="url" class="vf-input" id="cam-image-url" placeholder="https://.../imagem.jpg" aria-describedby="cam-images-hint" />' +
+      '<button type="button" class="vf-btn vf-btn--secondary" id="cam-image-add">Adicionar</button>' +
       "</div>" +
-      '<p class="cam-hint">Informe URLs públicas HTTPS. A primeira imagem será a capa do anúncio.</p>' +
+      '<p class="vf-field__hint" id="cam-images-hint">Informe URLs públicas HTTPS. A primeira imagem será a capa do anúncio.</p>' +
       '<div class="cam-images-list" id="cam-pictures-list"></div>' +
       "</div>";
 
@@ -56,7 +56,7 @@
     function render() {
       if (!state.images.length) {
         listEl.innerHTML =
-          '<div class="cam-empty">Nenhuma imagem adicionada.</div>';
+          '<div class="vf-empty cam-empty"><p class="vf-empty__description">Nenhuma imagem adicionada.</p></div>';
         notify();
         return;
       }
@@ -72,8 +72,8 @@
             escapeHtml(src) +
             '" alt="Imagem ' +
             (idx + 1) +
-            '" loading="lazy" onerror="this.classList.add(\'is-broken\')" />' +
-            (idx === 0 ? '<span class="cam-image-badge">Capa</span>' : "") +
+            '" loading="lazy" />' +
+            (idx === 0 ? '<span class="vf-tag is-primary cam-image-badge">Capa</span>' : "") +
             "</div>" +
             '<div class="cam-image-meta">' +
             '<div class="cam-image-url" title="' +
@@ -82,17 +82,17 @@
             escapeHtml(src) +
             "</div>" +
             '<div class="cam-image-actions">' +
-            '<button type="button" class="vf-btn-xs cam-img-up" data-idx="' +
+            '<button type="button" class="vf-btn vf-btn--ghost vf-btn--sm vf-btn--icon cam-img-up" aria-label="Mover imagem ' + (idx + 1) + ' para cima" data-idx="' +
             idx +
             '"' +
             (idx === 0 ? " disabled" : "") +
             ">↑</button>" +
-            '<button type="button" class="vf-btn-xs cam-img-down" data-idx="' +
+            '<button type="button" class="vf-btn vf-btn--ghost vf-btn--sm vf-btn--icon cam-img-down" aria-label="Mover imagem ' + (idx + 1) + ' para baixo" data-idx="' +
             idx +
             '"' +
             (idx === state.images.length - 1 ? " disabled" : "") +
             ">↓</button>" +
-            '<button type="button" class="vf-btn-xs cam-img-remove" data-idx="' +
+            '<button type="button" class="vf-btn vf-btn--ghost vf-btn--sm cam-img-remove" data-idx="' +
             idx +
             '">Remover</button>' +
             "</div></div></div>"
@@ -109,10 +109,12 @@
         if (typeof opts.onError === "function") {
           opts.onError("URL de imagem inválida. Use http:// ou https://.");
         }
-        inputEl.classList.add("is-invalid");
+        inputEl.classList.add("is-invalid", "is-error");
+        inputEl.setAttribute("aria-invalid", "true");
         return;
       }
-      inputEl.classList.remove("is-invalid");
+      inputEl.classList.remove("is-invalid", "is-error");
+      inputEl.removeAttribute("aria-invalid");
       if (state.images.indexOf(url) >= 0) return;
       state.images.push(url);
       inputEl.value = "";
@@ -126,6 +128,10 @@
         addImage();
       }
     });
+
+    listEl.addEventListener("error", function (ev) {
+      if (ev.target && ev.target.matches(".cam-image-preview img")) ev.target.classList.add("is-broken");
+    }, true);
 
     listEl.addEventListener("click", function (ev) {
       const btn = ev.target.closest("button");

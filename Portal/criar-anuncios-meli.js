@@ -44,6 +44,12 @@
       .replace(/'/g, "&#39;");
   }
 
+  function emptyState(message, loading) {
+    return '<div class="vf-empty cam-empty">' +
+      (loading ? '<span class="vf-spinner" aria-hidden="true"></span>' : "") +
+      '<p class="vf-empty__description">' + escapeHtml(message) + "</p></div>";
+  }
+
   async function api(path, options) {
     var opts = options || {};
     var token = getToken();
@@ -66,11 +72,16 @@
 
   function toast(msg) {
     var n = document.createElement("div");
-    n.className = "cam-toast";
-    n.textContent = msg;
-    n.style.cssText =
-      "position:fixed;right:16px;bottom:16px;z-index:9999;background:#2d2a33;color:#fff;padding:.7rem 1rem;border-radius:10px;font-size:.85rem;box-shadow:0 8px 24px rgba(0,0,0,.18);";
-    document.body.appendChild(n);
+    var content = document.createElement("div");
+    var description = document.createElement("p");
+    n.className = "vf-toast is-info";
+    n.setAttribute("role", "status");
+    content.className = "vf-toast__content";
+    description.className = "vf-toast__description";
+    description.textContent = msg;
+    content.appendChild(description);
+    n.appendChild(content);
+    el("cam-toast-stack").appendChild(n);
     setTimeout(function () {
       n.remove();
     }, 2600);
@@ -117,9 +128,9 @@
     var userBox = el("cam-ml-user");
     var statusBox = el("cam-ml-status");
     userBox.textContent = "—";
-    userBox.className = "cam-status-box";
+    userBox.className = "vf-alert cam-status-box";
     statusBox.textContent = "Validando conexão...";
-    statusBox.className = "cam-status-box";
+    statusBox.className = "vf-alert cam-status-box is-info";
 
     if (!slug) {
       statusBox.textContent = "Selecione um cliente";
@@ -136,7 +147,7 @@
 
     if (!data.mlConectado) {
       statusBox.textContent = "Sem token ML";
-      statusBox.className = "cam-status-box cam-status-bad";
+      statusBox.className = "vf-alert cam-status-box is-danger";
       el("cam-publish-hint").textContent =
         "Conecte a conta em Clientes → Conectar ML.";
       return;
@@ -144,7 +155,7 @@
 
     if (!data.tokenValido) {
       statusBox.textContent = "Token inválido / expirado";
-      statusBox.className = "cam-status-box cam-status-bad";
+      statusBox.className = "vf-alert cam-status-box is-danger";
       userBox.textContent = data.mlUserId || "—";
       el("cam-publish-hint").textContent = "Reconecte a conta Mercado Livre.";
       return;
@@ -157,14 +168,14 @@
     if (!data.podePublicar) {
       statusBox.textContent =
         "Sem permissão de publicação (" + (data.statusConta || "?") + ")";
-      statusBox.className = "cam-status-box cam-status-warn";
+      statusBox.className = "vf-alert cam-status-box is-warning";
       el("cam-publish-hint").textContent =
         "Esta conta não está apta a listar anúncios.";
       return;
     }
 
     statusBox.textContent = "Conectado · apto a publicar";
-    statusBox.className = "cam-status-box cam-status-ok";
+    statusBox.className = "vf-alert cam-status-box is-success";
     el("cam-publish-hint").textContent = "Revise os campos e publique.";
     setPublishEnabled(true);
     await carregarListingTypes(slug);
@@ -197,7 +208,10 @@
   }
 
   function setPublishEnabled(enabled) {
-    el("cam-publish").disabled = !enabled || CAM.publishing;
+    var button = el("cam-publish");
+    button.disabled = !enabled || CAM.publishing;
+    button.classList.toggle("is-loading", CAM.publishing);
+    button.setAttribute("aria-busy", CAM.publishing ? "true" : "false");
   }
 
   // ─── Categorias ────────────────────────────────────────────────────────────
@@ -215,8 +229,8 @@
       return;
     }
 
-    box.style.display = "";
-    box.innerHTML = '<div class="cam-empty">Buscando categorias...</div>';
+    box.hidden = false;
+    box.innerHTML = emptyState("Buscando categorias...", true);
 
     var resp = await api(
       "/anuncios-meli/criacao/categorias?clienteSlug=" +
@@ -226,23 +240,20 @@
     );
 
     if (!resp.ok || !resp.data || !resp.data.ok) {
-      box.innerHTML =
-        '<div class="cam-empty">' +
-        escapeHtml((resp.data && resp.data.motivo) || "Falha ao buscar.") +
-        "</div>";
+      box.innerHTML = emptyState((resp.data && resp.data.motivo) || "Falha ao buscar.");
       return;
     }
 
     var cats = resp.data.categorias || [];
     if (!cats.length) {
-      box.innerHTML = '<div class="cam-empty">Nenhuma categoria encontrada.</div>';
+      box.innerHTML = emptyState("Nenhuma categoria encontrada.");
       return;
     }
 
     box.innerHTML = cats
       .map(function (c) {
         return (
-          '<button type="button" class="cam-cat-item" data-id="' +
+          '<button type="button" class="cam-cat-item" role="option" data-id="' +
           escapeHtml(c.category_id) +
           '" data-name="' +
           escapeHtml(c.category_name) +
@@ -263,11 +274,11 @@
     CAM.categoryId = categoryId;
     CAM.categoryName = categoryName;
     el("cam-category-id").value = categoryId;
-    el("cam-category-results").style.display = "none";
+    el("cam-category-results").hidden = true;
 
     var sel = el("cam-category-selected");
     sel.textContent = categoryName + " (" + categoryId + ")";
-    sel.className = "cam-cat-selected is-set";
+    sel.className = "vf-field__hint cam-cat-selected is-set";
 
     await Promise.all([
       carregarAtributos(categoryId),
@@ -278,7 +289,7 @@
   async function carregarAtributos(categoryId) {
     var slug = (el("cam-cliente").value || "").trim();
     var box = el("cam-attrs");
-    box.innerHTML = '<div class="cam-empty">Carregando atributos...</div>';
+    box.innerHTML = emptyState("Carregando atributos...", true);
 
     var resp = await api(
       "/anuncios-meli/criacao/categorias/" +
@@ -288,10 +299,7 @@
     );
 
     if (!resp.ok || !resp.data || !resp.data.ok) {
-      box.innerHTML =
-        '<div class="cam-empty">' +
-        escapeHtml((resp.data && resp.data.motivo) || "Erro ao carregar atributos.") +
-        "</div>";
+      box.innerHTML = emptyState((resp.data && resp.data.motivo) || "Erro ao carregar atributos.");
       CAM.attrsForm = null;
       CAM.attrsApi = null;
       return;
@@ -306,7 +314,7 @@
   async function carregarSaleTerms(categoryId) {
     var slug = (el("cam-cliente").value || "").trim();
     var box = el("cam-sale-terms");
-    box.innerHTML = '<div class="cam-empty">Carregando termos...</div>';
+    box.innerHTML = emptyState("Carregando termos...", true);
 
     var resp = await api(
       "/anuncios-meli/criacao/categorias/" +
@@ -320,9 +328,7 @@
     CAM.saleTermsApi = terms;
 
     if (!terms.length) {
-      box.innerHTML =
-        '<div class="cam-empty">Nenhum termo comercial específico para esta categoria. Você pode preencher garantia manualmente abaixo.</div>' +
-        renderSaleTermsFallback();
+      box.innerHTML = emptyState("Nenhum termo comercial específico para esta categoria. Você pode preencher garantia manualmente abaixo.") + renderSaleTermsFallback();
       return;
     }
 
@@ -333,11 +339,11 @@
           var id = "cam-st-" + escapeHtml(t.id);
           var label =
             escapeHtml(t.name || t.id) +
-            (t.required ? ' <span class="cam-req">*</span>' : "");
+            (t.required ? ' <span class="vf-field__required">*</span>' : "");
           var control = "";
           if (Array.isArray(t.values) && t.values.length) {
             control =
-              '<select class="vf-input cam-st-input" data-st-id="' +
+              '<select class="vf-select cam-st-input" data-st-id="' +
               escapeHtml(t.id) +
               '" id="' +
               id +
@@ -367,7 +373,7 @@
               '" />';
           }
           return (
-            '<div class="vf-form-group" style="margin:0;"><label for="' +
+            '<div class="vf-field"><label class="vf-field__label" for="' +
             id +
             '">' +
             label +
@@ -382,17 +388,17 @@
 
   function renderSaleTermsFallback() {
     return (
-      '<div class="cam-sale-grid" style="margin-top:.75rem;">' +
-      '<div class="vf-form-group" style="margin:0;">' +
-      '<label for="cam-st-WARRANTY_TYPE">Tipo de garantia</label>' +
-      '<select id="cam-st-WARRANTY_TYPE" class="vf-input cam-st-input" data-st-id="WARRANTY_TYPE">' +
+      '<div class="cam-sale-grid cam-sale-grid--fallback">' +
+      '<div class="vf-field">' +
+      '<label class="vf-field__label" for="cam-st-WARRANTY_TYPE">Tipo de garantia</label>' +
+      '<select id="cam-st-WARRANTY_TYPE" class="vf-select cam-st-input" data-st-id="WARRANTY_TYPE">' +
       '<option value="">Não informar</option>' +
       '<option value="name:Garantia do vendedor">Garantia do vendedor</option>' +
       '<option value="name:Garantia de fábrica">Garantia de fábrica</option>' +
       '<option value="name:Sem garantia">Sem garantia</option>' +
       "</select></div>" +
-      '<div class="vf-form-group" style="margin:0;">' +
-      '<label for="cam-st-WARRANTY_TIME">Tempo de garantia</label>' +
+      '<div class="vf-field">' +
+      '<label class="vf-field__label" for="cam-st-WARRANTY_TIME">Tempo de garantia</label>' +
       '<input type="text" id="cam-st-WARRANTY_TIME" class="vf-input cam-st-input" data-st-id="WARRANTY_TIME" placeholder="Ex.: 90 dias" />' +
       "</div></div>"
     );
@@ -428,8 +434,7 @@
   function renderVariations() {
     var box = el("cam-variations");
     if (!CAM.variations.length) {
-      box.innerHTML =
-        '<div class="cam-empty">Nenhuma variação adicionada. O anúncio será publicado sem variations.</div>';
+      box.innerHTML = emptyState("Nenhuma variação adicionada. O anúncio será publicado sem variations.");
       return;
     }
 
@@ -441,23 +446,23 @@
           '">' +
           '<div class="cam-var-head"><span>Variação #' +
           (idx + 1) +
-          '</span><button type="button" class="vf-btn-xs cam-var-remove" data-idx="' +
+          '</span><button type="button" class="vf-btn vf-btn--ghost vf-btn--sm cam-var-remove" data-idx="' +
           idx +
           '">Remover</button></div>' +
           '<div class="cam-grid-3">' +
-          '<div class="vf-form-group" style="margin:0;"><label>Combinações (JSON)</label>' +
-          '<input type="text" class="vf-input cam-var-combos" data-idx="' +
+          '<div class="vf-field"><label class="vf-field__label">Combinações (JSON)</label>' +
+          '<input type="text" class="vf-input vf-mono cam-var-combos" data-idx="' +
           idx +
           '" value="' +
           escapeHtml(JSON.stringify(v.attribute_combinations || [])) +
           '" placeholder=\'[{"id":"COLOR","value_name":"Preto"}]\' /></div>' +
-          '<div class="vf-form-group" style="margin:0;"><label>Preço</label>' +
+          '<div class="vf-field"><label class="vf-field__label">Preço</label>' +
           '<input type="number" class="vf-input cam-var-price" data-idx="' +
           idx +
           '" min="0.01" step="0.01" value="' +
           escapeHtml(v.price != null ? v.price : "") +
           '" /></div>' +
-          '<div class="vf-form-group" style="margin:0;"><label>Estoque</label>' +
+          '<div class="vf-field"><label class="vf-field__label">Estoque</label>' +
           '<input type="number" class="vf-input cam-var-qty" data-idx="' +
           idx +
           '" min="1" step="1" value="' +
@@ -609,20 +614,21 @@
 
   function setProgress(pct, label) {
     var wrap = el("cam-progress");
-    wrap.style.display = "";
-    el("cam-progress-fill").style.width = pct + "%";
+    wrap.hidden = false;
+    el("cam-progress-fill").setAttribute("data-progress", String(pct));
+    wrap.querySelector('[role="progressbar"]').setAttribute("aria-valuenow", String(pct));
     el("cam-progress-label").textContent = label || "Publicando...";
   }
 
   function hideProgress() {
-    el("cam-progress").style.display = "none";
+    el("cam-progress").hidden = true;
   }
 
   async function publicar() {
     if (CAM.publishing) return;
 
     window.MercadoLivreApiError.clear(el("cam-errors"));
-    el("cam-success").style.display = "none";
+    el("cam-success").hidden = true;
 
     var erros = validarLocal();
     if (erros.length) {
@@ -696,7 +702,7 @@
   }
 
   function showSuccess(data) {
-    el("cam-success").style.display = "";
+    el("cam-success").hidden = false;
     el("cam-success-id").textContent = data.item_id || "—";
     el("cam-success-status").textContent = data.status || "—";
     var link = data.permalink || "#";
@@ -709,7 +715,7 @@
   }
 
   function resetFormParcial() {
-    el("cam-success").style.display = "none";
+    el("cam-success").hidden = true;
     window.MercadoLivreApiError.clear(el("cam-errors"));
     el("cam-title").value = "";
     el("cam-title-count").textContent = "0";

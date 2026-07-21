@@ -53,26 +53,26 @@
     }
 
     container.innerHTML =
-      '<div class="cam-api-error" role="alert">' +
-      '<div class="cam-api-error-title">Falha na publicação</div>' +
-      '<p class="cam-api-error-motivo">' +
+      '<div class="vf-banner is-danger cam-api-error" role="alert"><div class="vf-banner__content">' +
+      '<p class="vf-banner__title">Falha na publicação</p><p class="vf-banner__description">' +
       escapeHtml(motivo) +
       "</p>" +
       items +
-      "</div>";
-    container.style.display = "";
+      "</div></div>";
+    container.hidden = false;
   }
 
   function clear(container) {
     if (!container) return;
     container.innerHTML = "";
-    container.style.display = "none";
+    container.hidden = true;
   }
 
   function highlightFields(root, erros) {
     if (!root) return;
     root.querySelectorAll(".is-invalid").forEach(function (el) {
-      el.classList.remove("is-invalid");
+      el.classList.remove("is-invalid", "is-error");
+      el.removeAttribute("aria-invalid");
     });
     (erros || []).forEach(function (e) {
       if (!e || !e.campo) return;
@@ -91,7 +91,7 @@
       const sel = map[e.campo];
       if (!sel) return;
       const el = root.querySelector(sel);
-      if (el) el.classList.add("is-invalid");
+      if (el) { el.classList.add("is-invalid", "is-error"); el.setAttribute("aria-invalid", "true"); }
     });
   }
 

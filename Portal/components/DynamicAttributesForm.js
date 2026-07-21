@@ -23,7 +23,7 @@
     const id = "cam-attr-" + escapeHtml(attr.id);
     const label =
       escapeHtml(attr.name || attr.id) +
-      (required ? ' <span class="cam-req">*</span>' : "");
+      (required ? ' <span class="vf-field__required">*</span>' : "");
 
     let control = "";
     const current = valor || {};
@@ -47,7 +47,7 @@
         )
         .join("");
       control =
-        '<select class="vf-input cam-attr-input" data-attr-id="' +
+        '<select class="vf-select cam-attr-input" data-attr-id="' +
         escapeHtml(attr.id) +
         '" data-mode="list" id="' +
         id +
@@ -85,7 +85,7 @@
         '"' +
         (required ? " required" : "") +
         " />" +
-        '<select class="vf-input cam-attr-unit" data-attr-id="' +
+        '<select class="vf-select cam-attr-unit" data-attr-id="' +
         escapeHtml(attr.id) +
         '">' +
         unitOpts +
@@ -108,17 +108,17 @@
     }
 
     return (
-      '<div class="vf-form-group cam-attr-field" data-attr-id="' +
+      '<div class="vf-field cam-attr-field" data-attr-id="' +
       escapeHtml(attr.id) +
       '">' +
-      "<label for=\"" +
+      '<label class="vf-field__label" for="' +
       id +
       '">' +
       label +
       "</label>" +
       control +
       (attr.id
-        ? '<div class="cam-attr-hint">ID: ' + escapeHtml(attr.id) + "</div>"
+        ? '<div class="vf-field__hint vf-mono cam-attr-hint">ID: ' + escapeHtml(attr.id) + "</div>"
         : "") +
       "</div>"
     );
@@ -190,7 +190,7 @@
 
     if (!atributos.length) {
       container.innerHTML =
-        '<div class="cam-empty">Selecione uma categoria para carregar os atributos.</div>';
+        '<div class="vf-empty cam-empty"><p class="vf-empty__description">Selecione uma categoria para carregar os atributos.</p></div>';
       return { collect: function () { return []; }, getRequiredIds: function () { return []; } };
     }
 
@@ -201,7 +201,7 @@
 
     let html = "";
     if (required.length) {
-      html += '<div class="cam-attr-section"><h6>Atributos obrigatórios</h6><div class="cam-attr-grid">';
+      html += '<div class="cam-attr-section"><h3 class="cam-attr-section__title">Atributos obrigatórios</h3><div class="cam-attr-grid">';
       required.forEach(function (a) {
         html += renderField(a, iniciais[a.id]);
       });

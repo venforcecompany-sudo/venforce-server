@@ -1031,8 +1031,8 @@ h4 {
 }
 
 .vf-toolbar__filters .vf-search {
-  flex: 1 1 180px;
-  max-width: 280px;
+  flex: 0 0 150px;
+  max-width: 150px;
 }
 
 .vf-toolbar__actions {

@@ -20,6 +20,7 @@ const TOKEN = getToken();
 const API_BASE = "https://venforce-server.onrender.com";
 let dadosAtuais = null;
 let abaAtiva = "abc";
+let processamentoAtivo = false;
 
 let marketplaceAtivo = "shopee"; // "shopee" | "meli"
 
@@ -34,22 +35,31 @@ let tablePage = 1;
 const TABS_SEM_DADOS_MELI = new Set(["impressoes", "cliques", "ctr", "conversao"]);
 
 function atualizarTabsParaMarketplace() {
-  document.querySelectorAll(".fc-tab").forEach((btn) => {
+  document.querySelectorAll(".vf-tab[data-tab]").forEach((btn) => {
     const tab = btn.dataset.tab || "";
     const indisponivel = marketplaceAtivo === "meli" && TABS_SEM_DADOS_MELI.has(tab);
     btn.disabled = indisponivel;
     btn.title = indisponivel ? "Dado não disponível na planilha de vendas do Mercado Livre" : "";
-    btn.style.opacity = indisponivel ? "0.35" : "";
-    btn.style.cursor = indisponivel ? "not-allowed" : "";
+    btn.classList.toggle("is-disabled", indisponivel);
+    btn.setAttribute("aria-disabled", indisponivel ? "true" : "false");
   });
 
   if (marketplaceAtivo === "meli" && TABS_SEM_DADOS_MELI.has(abaAtiva)) {
     abaAtiva = "abc";
-    document.querySelectorAll(".fc-tab").forEach((b) => {
-      b.classList.toggle("fc-tab-active", b.dataset.tab === "abc");
-      b.setAttribute("aria-selected", b.dataset.tab === "abc" ? "true" : "false");
-    });
   }
+
+  sincronizarTabs();
+}
+
+function sincronizarTabs() {
+  const panel = document.getElementById("fc-tab-content");
+  document.querySelectorAll(".vf-tab[data-tab]").forEach((btn) => {
+    const ativo = btn.dataset.tab === abaAtiva;
+    btn.classList.toggle("is-active", ativo);
+    btn.setAttribute("aria-selected", ativo ? "true" : "false");
+    btn.tabIndex = ativo && !btn.disabled ? 0 : -1;
+    if (ativo && panel) panel.setAttribute("aria-labelledby", btn.id);
+  });
 }
 
 function escapeHTML(s) {
@@ -64,59 +74,121 @@ function ensureTabContentEl() {
 
 function ensureFileLabelSpan(inputEl) {
   if (!inputEl) return null;
-  const root = inputEl.closest(".fc-upload-card") || inputEl.parentElement;
+  const root = inputEl.closest(".vf-fechamento-upload") || inputEl.parentElement;
   if (!root) return null;
 
-  let span = root.querySelector(".fc-file-name");
+  let span = root.querySelector(".vf-file-item__name");
   if (!span) {
-    span = document.createElement("div");
-    span.className = "fc-file-name";
-    span.style.margin = "10px 0 0";
-    span.style.color = "#a1a1aa";
-    span.style.fontSize = "12.5px";
+    span = document.createElement("p");
+    span.className = "vf-file-item__name";
     span.textContent = "Nenhum arquivo selecionado";
     inputEl.insertAdjacentElement("afterend", span);
   }
   return span;
 }
 
+function isValidSpreadsheet(file) {
+  return !!file && file.name.toLowerCase().endsWith(".xlsx");
+}
+
+function updateFilePresentation(input, message = "") {
+  if (!input) return;
+  const root = input.closest(".vf-fechamento-upload");
+  const dropzone = root?.querySelector(".vf-dropzone");
+  const fileItem = root?.querySelector(".vf-file-item");
+  const nameEl = root?.querySelector(".vf-file-item__name");
+  const infoEl = root?.querySelector(".vf-file-item__info");
+  const files = Array.from(input.files || []);
+  const hasFiles = files.length > 0;
+
+  dropzone?.classList.toggle("has-file", hasFiles && !message);
+  dropzone?.classList.toggle("is-error", !!message);
+  fileItem?.classList.toggle("is-error", !!message);
+  if (fileItem) fileItem.hidden = !hasFiles && !message;
+
+  if (message) {
+    if (nameEl) nameEl.textContent = "Arquivo inválido";
+    if (infoEl) infoEl.textContent = message;
+    return;
+  }
+
+  if (!hasFiles) {
+    if (nameEl) nameEl.textContent = "Nenhum arquivo selecionado";
+    if (infoEl) infoEl.textContent = input.multiple ? "Arquivos prontos para compilação" : "Arquivo pronto para análise";
+    return;
+  }
+
+  if (nameEl) {
+    nameEl.textContent = input.multiple
+      ? `${files.length} arquivo(s) selecionado(s)`
+      : files[0].name;
+  }
+  if (infoEl) {
+    infoEl.textContent = input.multiple
+      ? files.map((file) => file.name).join(" · ")
+      : "Arquivo pronto para análise";
+  }
+}
+
+function validateInputFiles(input) {
+  const files = Array.from(input?.files || []);
+  if (!files.length) {
+    updateFilePresentation(input);
+    return true;
+  }
+  if (files.some((file) => !isValidSpreadsheet(file))) {
+    updateFilePresentation(input, "Apenas arquivos .xlsx são aceitos.");
+    setStatus("Apenas arquivos .xlsx são aceitos.", "danger");
+    return false;
+  }
+  if (input.multiple && files.length > 20) {
+    updateFilePresentation(input, "Selecione no máximo 20 arquivos.");
+    setStatus("A compilação aceita no máximo 20 arquivos.", "danger");
+    return false;
+  }
+  updateFilePresentation(input);
+  return true;
+}
+
 function initFechamentoDragDrop(inputId, acceptExt = ".xlsx") {
   const input = document.getElementById(inputId);
   if (!input) return;
-  const card = input.closest(".fc-upload-card");
-  if (!card) return;
+  const dropzone = input.closest(".vf-fechamento-upload")?.querySelector(".vf-dropzone");
+  if (!dropzone) return;
 
-  card.addEventListener("dragover", (e) => {
+  dropzone.addEventListener("click", () => input.click());
+  dropzone.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    input.click();
+  });
+
+  dropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
-    card.classList.add("drag-over");
+    dropzone.classList.add("is-dragging");
   });
 
-  card.addEventListener("dragleave", (e) => {
-    if (!card.contains(e.relatedTarget)) card.classList.remove("drag-over");
+  dropzone.addEventListener("dragleave", (e) => {
+    if (!dropzone.contains(e.relatedTarget)) dropzone.classList.remove("is-dragging");
   });
 
-  card.addEventListener("drop", (e) => {
+  dropzone.addEventListener("drop", (e) => {
     e.preventDefault();
-    card.classList.remove("drag-over");
+    dropzone.classList.remove("is-dragging");
     const files = e.dataTransfer?.files;
     if (!files?.length) return;
 
     const valid = Array.from(files).every((f) => f.name.toLowerCase().endsWith(acceptExt));
-    if (!valid) {
-      let msg = card.querySelector(".fc-upload-reject-msg");
-      if (!msg) {
-        msg = document.createElement("div");
-        msg.className = "fc-upload-reject-msg";
-        card.appendChild(msg);
-      }
-      msg.textContent = `Apenas arquivos ${acceptExt} são aceitos.`;
-      setTimeout(() => msg.remove(), 3500);
-      card.classList.add("invalid-file");
-      setTimeout(() => card.classList.remove("invalid-file"), 600);
+    if (!valid || (input.multiple && files.length > 20)) {
+      const message = !valid
+        ? `Apenas arquivos ${acceptExt} são aceitos.`
+        : "Selecione no máximo 20 arquivos.";
+      updateFilePresentation(input, message);
+      setStatus(message, "danger");
       return;
     }
-    card.querySelector(".fc-upload-reject-msg")?.remove();
+
     try {
       const dt = new DataTransfer();
       if (input.multiple) Array.from(files).forEach((f) => dt.items.add(f));
@@ -127,7 +199,7 @@ function initFechamentoDragDrop(inputId, acceptExt = ".xlsx") {
   });
 
   input.addEventListener("change", () => {
-    card.classList.toggle("has-file", !!(input.files?.length));
+    validateInputFiles(input);
   });
 }
 
@@ -183,13 +255,17 @@ function getPageSize() {
 }
 
 function hideTableChrome() {
-  document.getElementById("fc-table-toolbar")?.classList.remove("is-visible");
-  document.getElementById("fc-pagination-wrap")?.classList.remove("is-visible");
+  const toolbar = document.getElementById("fc-table-toolbar");
+  const pagination = document.getElementById("fc-pagination-wrap");
+  if (toolbar) toolbar.hidden = true;
+  if (pagination) pagination.hidden = true;
 }
 
 function showTableChrome() {
-  document.getElementById("fc-table-toolbar")?.classList.add("is-visible");
-  document.getElementById("fc-pagination-wrap")?.classList.add("is-visible");
+  const toolbar = document.getElementById("fc-table-toolbar");
+  const pagination = document.getElementById("fc-pagination-wrap");
+  if (toolbar) toolbar.hidden = false;
+  if (pagination) pagination.hidden = false;
 }
 
 function updateTableChrome(filteredLen, page, totalPages, sliceLen, pageSize) {
@@ -213,30 +289,50 @@ function updateTableChrome(filteredLen, page, totalPages, sliceLen, pageSize) {
 
 function curvaBadge(valor) {
   const v = String(valor || "").toUpperCase();
-  if (v === "A") return '<span class="badge-green">A</span>';
-  if (v === "B") return '<span class="badge-yellow">B</span>';
-  if (v === "C") return '<span class="badge-red">C</span>';
+  if (v === "A") return '<span class="vf-tag is-success">A</span>';
+  if (v === "B") return '<span class="vf-tag is-warning">B</span>';
+  if (v === "C") return '<span class="vf-tag is-danger">C</span>';
   return `<span>${escapeHTML(v || "—")}</span>`;
 }
 
 function setStatus(msg, tipo) {
   const el = document.getElementById("fechamento-status");
   if (!el) return;
-  if (!msg) { el.style.display = "none"; return; }
-  el.textContent = msg;
-  el.style.display = "block";
-
-  if (tipo === "success") el.style.color = "#047857";
-  else if (tipo === "danger") el.style.color = "var(--vf-danger)";
-  else if (tipo === "info") el.style.color = "var(--vf-text-m)";
-  else el.style.color = "var(--vf-text-m)";
+  const description = el.querySelector(".vf-banner__description") || el;
+  el.classList.remove("is-success", "is-danger", "is-info", "is-warning");
+  if (!msg) {
+    el.hidden = true;
+    description.textContent = "";
+    return;
+  }
+  description.textContent = msg;
+  el.classList.add(tipo === "danger" ? "is-danger" : tipo === "success" ? "is-success" : "is-info");
+  el.setAttribute("role", tipo === "danger" ? "alert" : "status");
+  el.hidden = false;
 }
 
-function setLoading(on) {
-  const btn = document.getElementById("btn-processar");
-  if (!btn) return;
-  btn.disabled = !!on;
-  btn.textContent = on ? "Processando..." : "Analisar planilha única";
+function setLoading(mode, on) {
+  processamentoAtivo = !!on;
+  const processar = document.getElementById("btn-processar");
+  const compilar = document.getElementById("btn-compilar");
+  const result = document.getElementById("fc-tab-content");
+
+  [processar, compilar].forEach((button) => {
+    if (!button) return;
+    button.disabled = !!on;
+    button.classList.toggle("is-loading", !!on && button.id === `btn-${mode}`);
+    button.setAttribute("aria-busy", !!on && button.id === `btn-${mode}` ? "true" : "false");
+  });
+
+  if (result) result.setAttribute("aria-busy", on ? "true" : "false");
+  if (on && result) {
+    hideTableChrome();
+    result.innerHTML = `
+      <div class="vf-loading-state" role="status">
+        <span class="vf-spinner" aria-hidden="true"></span>
+        <span>${mode === "compilar" ? "Compilando planilhas…" : "Processando planilha…"}</span>
+      </div>`;
+  }
 }
 
 function base64ToBlob(base64, mimeType) {
@@ -254,12 +350,12 @@ function limparConvBlob() {
 
 function hideConvDownloadButton() {
   const btn = document.getElementById("btn-download-conversao");
-  if (btn) btn.style.display = "none";
+  if (btn) btn.hidden = true;
 }
 
 function showConvDownloadButton() {
   const btn = ensureConvDownloadButton();
-  btn.style.display = "inline-flex";
+  btn.hidden = false;
 }
 
 let _convBtnWired = false;
@@ -269,11 +365,11 @@ function ensureConvDownloadButton() {
     btn = document.createElement("button");
     btn.type = "button";
     btn.id = "btn-download-conversao";
-    btn.className = "fc-btn fc-btn-primary fc-btn-main";
-    btn.textContent = "⬇ Baixar planilha";
-    btn.style.display = "none";
+    btn.className = "vf-btn vf-btn--secondary";
+    btn.textContent = "Baixar resultado";
+    btn.hidden = true;
     const statusEl = document.getElementById("fechamento-status");
-    const actionsEl = document.querySelector(".fc-actions");
+    const actionsEl = document.querySelector(".vf-fechamento-actions");
     if (statusEl && statusEl.parentNode) {
       statusEl.parentNode.insertBefore(btn, statusEl.nextSibling);
     } else if (actionsEl) {
@@ -299,13 +395,55 @@ function exportConvResultado() {
     a.remove();
     return;
   }
-  setStatus("Não foi possível gerar XLSX para download.", "danger");
+
+  const csvEmMemoria = dadosParaCSV(getTabRows());
+  const csv = csvEmMemoria || domTabelaParaCSV();
+  if (!csv) {
+    setStatus("Não há dados disponíveis para download.", "danger");
+    return;
+  }
+
+  const blobUrl = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = `fechamento-conversao-${abaAtiva}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(blobUrl);
+}
+
+function csvCell(value) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function dadosParaCSV(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return "";
+  const headers = Array.from(rows.reduce((set, row) => {
+    Object.keys(row || {}).forEach((key) => set.add(key));
+    return set;
+  }, new Set()));
+  if (!headers.length) return "";
+  return [
+    headers.map(csvCell).join(";"),
+    ...rows.map((row) => headers.map((header) => csvCell(row?.[header])).join(";")),
+  ].join("\r\n");
+}
+
+function domTabelaParaCSV() {
+  const table = document.querySelector("#fc-tab-content .vf-table");
+  if (!table) return "";
+  return Array.from(table.querySelectorAll("tr"))
+    .map((row) => Array.from(row.querySelectorAll("th, td")).map((cell) => csvCell(cell.textContent.trim())).join(";"))
+    .filter(Boolean)
+    .join("\r\n");
 }
 
 function limparStats() {
   ["stat-faturamento", "stat-unidades", "stat-pedidos", "stat-produtos"].forEach((id) => {
     const card = document.getElementById(id);
-    const v = card?.querySelector?.(".fc-stat-value");
+    const v = card?.querySelector?.(".vf-kpi__value");
     if (v) v.textContent = "—";
   });
 }
@@ -314,10 +452,10 @@ function renderResumo() {
   if (!dadosAtuais) return;
   const r = dadosAtuais.resumo || {};
 
-  const faturamentoEl = document.getElementById("stat-faturamento")?.querySelector(".fc-stat-value");
-  const unidadesEl = document.getElementById("stat-unidades")?.querySelector(".fc-stat-value");
-  const pedidosEl = document.getElementById("stat-pedidos")?.querySelector(".fc-stat-value");
-  const produtosEl = document.getElementById("stat-produtos")?.querySelector(".fc-stat-value");
+  const faturamentoEl = document.getElementById("stat-faturamento")?.querySelector(".vf-kpi__value");
+  const unidadesEl = document.getElementById("stat-unidades")?.querySelector(".vf-kpi__value");
+  const pedidosEl = document.getElementById("stat-pedidos")?.querySelector(".vf-kpi__value");
+  const produtosEl = document.getElementById("stat-produtos")?.querySelector(".vf-kpi__value");
 
   if (faturamentoEl) faturamentoEl.textContent = brl(r.faturamentoTotal);
   if (unidadesEl) unidadesEl.textContent = num(r.unidadesTotais);
@@ -326,13 +464,15 @@ function renderResumo() {
 }
 
 function renderTable(columns, rowsHtml) {
-  const th = (Array.isArray(columns) ? columns : []).map((c) => {
-    if (c && typeof c === "object" && "html" in c) return String(c.html || "");
-    return `<th>${escapeHTML(String(c ?? ""))}</th>`;
+  const normalizedColumns = Array.isArray(columns) ? columns : [];
+  const th = normalizedColumns.map((c) => {
+    const column = c && typeof c === "object" ? c : { label: c };
+    const className = column.className ? ` class="${escapeHTML(column.className)}"` : "";
+    return `<th scope="col"${className}>${escapeHTML(String(column.label ?? ""))}</th>`;
   }).join("");
   return `
-    <div class="fc-table-scroll">
-      <table class="fc-table">
+    <div class="vf-table-wrap">
+      <table class="vf-table vf-table--compact${normalizedColumns.length > 6 ? " vf-fechamento-table--wide" : ""}">
         <thead>
           <tr>${th}</tr>
         </thead>
@@ -353,9 +493,10 @@ function renderTabContent() {
   if (!dadosAtuais) {
     hideTableChrome();
     el.innerHTML = `
-      <div class="fc-empty fc-empty-hero">
-        <p class="fc-empty-hero-title">Envie uma planilha para gerar a análise.</p>
-        <p class="fc-empty" style="margin-top:10px;padding:0;background:none;border:none;">Importe uma planilha de performance ou compile várias para visualizar curvas, rankings e recomendações.</p>
+      <div class="vf-empty">
+        <span class="vf-empty__icon is-primary" aria-hidden="true">XLSX</span>
+        <h3 class="vf-empty__title">Envie uma planilha para gerar a análise</h3>
+        <p class="vf-empty__description">Importe uma planilha de performance ou compile várias para visualizar curvas, rankings e recomendações.</p>
       </div>`;
     return;
   }
@@ -363,7 +504,12 @@ function renderTabContent() {
   const allRows = getTabRows();
   if (!allRows.length) {
     hideTableChrome();
-    el.innerHTML = '<div class="fc-empty">Nenhum dado para exibir nesta aba.</div>';
+    el.innerHTML = `
+      <div class="vf-empty">
+        <span class="vf-empty__icon" aria-hidden="true">—</span>
+        <h3 class="vf-empty__title">Esta aba não possui dados</h3>
+        <p class="vf-empty__description">O arquivo processado não retornou informações para esta análise.</p>
+      </div>`;
     return;
   }
 
@@ -376,7 +522,12 @@ function renderTabContent() {
   const sliceLen = slice.length;
 
   if (filtered.length === 0 && allRows.length > 0) {
-    el.innerHTML = '<div class="fc-empty">Nenhum produto corresponde à busca.</div>';
+    el.innerHTML = `
+      <div class="vf-empty">
+        <span class="vf-empty__icon" aria-hidden="true">⌕</span>
+        <h3 class="vf-empty__title">Nenhum produto encontrado</h3>
+        <p class="vf-empty__description">Revise o ID ou nome informado na busca.</p>
+      </div>`;
     updateTableChrome(0, 1, 1, 0, pageSize);
     return;
   }
@@ -388,17 +539,17 @@ function renderTabContent() {
   switch (abaAtiva) {
     case "abc": {
       const cols = [
-        { html: '<th>ID</th>' },
-        { html: '<th style="text-align:left;">Produto</th>' },
-        { html: '<th style="text-align:right;">Fat.</th>' },
-        { html: '<th style="text-align:right;">% Fat.</th>' },
-        { html: '<th style="text-align:right;">Acum. Fat.</th>' },
-        { html: '<th style="text-align:right;">Unid.</th>' },
-        { html: '<th style="text-align:right;">% Unid.</th>' },
-        { html: '<th style="text-align:right;">Acum. Unid.</th>' },
-        { html: '<th style="text-align:center;">Curva Fat</th>' },
-        { html: '<th style="text-align:center;">Curva Uni</th>' },
-        { html: '<th style="text-align:center;">Final</th>' },
+        { label: "ID", className: "vf-mono" },
+        "Produto",
+        { label: "Fat.", className: "num" },
+        { label: "% Fat.", className: "num" },
+        { label: "Acum. Fat.", className: "num" },
+        { label: "Unid.", className: "num" },
+        { label: "% Unid.", className: "num" },
+        { label: "Acum. Unid.", className: "num" },
+        { label: "Curva Fat", className: "vf-fechamento-cell-center" },
+        { label: "Curva Uni", className: "vf-fechamento-cell-center" },
+        { label: "Final", className: "vf-fechamento-cell-center" },
       ];
       const rows = slice.map((r) => {
         const curvaFat = curvaBadge(r.curvaFat || r.curva_fat || r.curvaFaturamento);
@@ -406,23 +557,23 @@ function renderTabContent() {
         const final = escapeHTML(r.curvaFinal || r.curva_final || r.curva || "—");
         return `
           <tr>
-            <td class="fc-td-id">${escapeHTML(r.id ?? r.productId ?? r.produtoId ?? "—")}</td>
-            <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-            <td class="fc-td-num">${escapeHTML(brl(r.faturamento ?? r.fat ?? r.faturamentoTotalItem ?? 0))}</td>
-            <td class="fc-td-num">${escapeHTML(pct(r.percentualFaturamento ?? r.percFat ?? r.pctFat ?? r.percentualFat ?? 0))}</td>
-            <td class="fc-td-num">${escapeHTML(pct(r.acumuladoFaturamento ?? r.acumFat ?? r.acumuladoFat ?? 0))}</td>
-            <td class="fc-td-num">${escapeHTML(num(r.unidadesTotais ?? r.unidades ?? r.unid ?? r.unidadesPagas ?? 0))}</td>
-            <td class="fc-td-num">${escapeHTML(pct(r.percentualUnidades ?? r.percUnid ?? r.pctUnid ?? r.percentualUnid ?? 0))}</td>
-            <td class="fc-td-num">${escapeHTML(pct(r.acumuladoUnidades ?? r.acumUnid ?? r.acumuladoUnid ?? 0))}</td>
-            <td class="fc-td-center">${curvaFat}</td>
-            <td class="fc-td-center">${curvaUni}</td>
-            <td class="fc-td-center"><span style="color:#c4b5fd;font-weight:800">${final}</span></td>
+            <td class="vf-mono">${escapeHTML(r.id ?? r.productId ?? r.produtoId ?? "—")}</td>
+            <td class="vf-fechamento-product">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+            <td class="num">${escapeHTML(brl(r.faturamento ?? r.fat ?? r.faturamentoTotalItem ?? 0))}</td>
+            <td class="num">${escapeHTML(pct(r.percentualFaturamento ?? r.percFat ?? r.pctFat ?? r.percentualFat ?? 0))}</td>
+            <td class="num">${escapeHTML(pct(r.acumuladoFaturamento ?? r.acumFat ?? r.acumuladoFat ?? 0))}</td>
+            <td class="num">${escapeHTML(num(r.unidadesTotais ?? r.unidades ?? r.unid ?? r.unidadesPagas ?? 0))}</td>
+            <td class="num">${escapeHTML(pct(r.percentualUnidades ?? r.percUnid ?? r.pctUnid ?? r.percentualUnid ?? 0))}</td>
+            <td class="num">${escapeHTML(pct(r.acumuladoUnidades ?? r.acumUnid ?? r.acumuladoUnid ?? 0))}</td>
+            <td class="vf-fechamento-cell-center">${curvaFat}</td>
+            <td class="vf-fechamento-cell-center">${curvaUni}</td>
+            <td class="vf-fechamento-cell-center"><span class="vf-fechamento-emphasis">${final}</span></td>
           </tr>
         `;
       }).join("");
 
       el.innerHTML = `
-        <div class="fc-section-title">Curva ABC completa</div>
+        <h3 class="vf-fechamento-table-title">Curva ABC completa</h3>
         ${renderTable(cols, rows)}
       `;
       return;
@@ -432,13 +583,13 @@ function renderTabContent() {
       const cols = ["ID", "Produto", "Impressões"];
       const rows = slice.map((r) => `
         <tr>
-          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td class="fc-td-num"><span style="color:#c4b5fd;font-weight:800">${escapeHTML(num(r.valor ?? 0))}</span></td>
+          <td class="vf-mono">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+          <td class="vf-fechamento-product">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+          <td class="num vf-fechamento-emphasis">${escapeHTML(num(r.valor ?? 0))}</td>
         </tr>
       `).join("");
       el.innerHTML = `
-        <div class="fc-section-title">Produtos com mais impressões</div>
+        <h3 class="vf-fechamento-table-title">Produtos com mais impressões</h3>
         ${renderTable(cols, rows)}
       `;
       return;
@@ -448,13 +599,13 @@ function renderTabContent() {
       const cols = ["ID", "Produto", "Cliques"];
       const rows = slice.map((r) => `
         <tr>
-          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td class="fc-td-num"><span style="color:#c4b5fd;font-weight:800">${escapeHTML(num(r.valor ?? 0))}</span></td>
+          <td class="vf-mono">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+          <td class="vf-fechamento-product">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+          <td class="num vf-fechamento-emphasis">${escapeHTML(num(r.valor ?? 0))}</td>
         </tr>
       `).join("");
       el.innerHTML = `
-        <div class="fc-section-title">Produtos com mais cliques</div>
+        <h3 class="vf-fechamento-table-title">Produtos com mais cliques</h3>
         ${renderTable(cols, rows)}
       `;
       return;
@@ -464,13 +615,13 @@ function renderTabContent() {
       const cols = ["ID", "Produto", "CTR"];
       const rows = slice.map((r) => `
         <tr>
-          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td class="fc-td-num"><span style="color:#c4b5fd;font-weight:800">${escapeHTML(pct(r.valor ?? 0))}</span></td>
+          <td class="vf-mono">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+          <td class="vf-fechamento-product">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+          <td class="num vf-fechamento-emphasis">${escapeHTML(pct(r.valor ?? 0))}</td>
         </tr>
       `).join("");
       el.innerHTML = `
-        <div class="fc-section-title">Produtos com maior CTR</div>
+        <h3 class="vf-fechamento-table-title">Produtos com maior CTR</h3>
         ${renderTable(cols, rows)}
       `;
       return;
@@ -480,13 +631,13 @@ function renderTabContent() {
       const cols = ["ID", "Produto", "Conversão"];
       const rows = slice.map((r) => `
         <tr>
-          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td class="fc-td-num"><span style="color:#c4b5fd;font-weight:800">${escapeHTML(pct(r.valor ?? 0))}</span></td>
+          <td class="vf-mono">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+          <td class="vf-fechamento-product">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+          <td class="num vf-fechamento-emphasis">${escapeHTML(pct(r.valor ?? 0))}</td>
         </tr>
       `).join("");
       el.innerHTML = `
-        <div class="fc-section-title">Produtos com maior conversão</div>
+        <h3 class="vf-fechamento-table-title">Produtos com maior conversão</h3>
         ${renderTable(cols, rows)}
       `;
       return;
@@ -494,18 +645,20 @@ function renderTabContent() {
 
     case "kits": {
       const cols = ["ID", "Produto", "Pedidos pagos", "Unidades pagas", "Unid./Pedido", "Recomendação"];
-      const rows = slice.map((r) => `
-        <tr>
-          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td class="fc-td-num">${escapeHTML(num(r.pedidosPagos ?? r.pedidos ?? 0))}</td>
-          <td class="fc-td-num">${escapeHTML(num(r.unidadesPagas ?? r.unidades ?? 0))}</td>
-          <td class="fc-td-num"><span style="color:#c4b5fd;font-weight:800">${escapeHTML((r.unidadesPorPedido ?? r.unidPorPedido ?? r.unid_pedido ?? 0).toFixed ? (r.unidadesPorPedido).toFixed(2) : String(r.unidadesPorPedido ?? r.unidPorPedido ?? r.unid_pedido ?? 0))}</span></td>
-          <td><span style="color:#86efac;font-weight:700">Criar kit / combo</span></td>
-        </tr>
-      `).join("");
+      const rows = slice.map((r) => {
+        const unidadesPorPedido = Number(r.unidadesPorPedido ?? r.unidPorPedido ?? r.unid_pedido ?? 0);
+        return `
+          <tr>
+            <td class="vf-mono">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+            <td class="vf-fechamento-product">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+            <td class="num">${escapeHTML(num(r.pedidosPagos ?? r.pedidos ?? 0))}</td>
+            <td class="num">${escapeHTML(num(r.unidadesPagas ?? r.unidades ?? 0))}</td>
+            <td class="num vf-fechamento-emphasis">${escapeHTML(Number.isFinite(unidadesPorPedido) ? unidadesPorPedido.toFixed(2) : "0,00")}</td>
+            <td><span class="vf-status is-success">Criar kit / combo</span></td>
+          </tr>`;
+      }).join("");
       el.innerHTML = `
-        <div class="fc-section-title">Sugestão de Kits</div>
+        <h3 class="vf-fechamento-table-title">Sugestão de Kits</h3>
         ${renderTable(cols, rows)}
       `;
       return;
@@ -519,25 +672,20 @@ function renderTabContent() {
           : abaAtiva === "ads34" ? "ADS Prioridade 3/4"
             : "ADS Prioridade 2/4";
 
-      const src =
-        abaAtiva === "adsObrigatorios" ? d.adsObrigatorios
-          : abaAtiva === "ads34" ? d.adsPrioridade34
-            : d.adsPrioridade24;
-
       const cols = ["ID", "Produto", "Cliques", "CTR", "Conversão", "Motivo"];
       const rows = slice.map((r) => `
         <tr>
-          <td class="fc-td-id">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
-          <td class="fc-td-produto">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
-          <td class="fc-td-num">${escapeHTML(num(r.cliques ?? r.clicks ?? 0))}</td>
-          <td class="fc-td-num">${escapeHTML(pct(r.ctr ?? 0))}</td>
-          <td class="fc-td-num">${escapeHTML(pct(r.conversao ?? r.conversion ?? 0))}</td>
+          <td class="vf-mono">${escapeHTML(r.id ?? r.produtoId ?? "—")}</td>
+          <td class="vf-fechamento-product">${escapeHTML(r.produto ?? r.nome ?? r.titulo ?? "—")}</td>
+          <td class="num">${escapeHTML(num(r.cliques ?? r.clicks ?? 0))}</td>
+          <td class="num">${escapeHTML(pct(r.ctr ?? 0))}</td>
+          <td class="num">${escapeHTML(pct(r.conversao ?? r.conversion ?? 0))}</td>
           <td>${escapeHTML(r.motivo ?? r.reason ?? "—")}</td>
         </tr>
       `).join("");
 
       el.innerHTML = `
-        <div class="fc-section-title">${escapeHTML(title)}</div>
+        <h3 class="vf-fechamento-table-title">${escapeHTML(title)}</h3>
         ${renderTable(cols, rows)}
       `;
       return;
@@ -545,21 +693,23 @@ function renderTabContent() {
 
     default:
       hideTableChrome();
-      el.innerHTML = '<div class="fc-empty">Nenhum dado para exibir.</div>';
+      el.innerHTML = '<div class="vf-empty"><h3 class="vf-empty__title">Nenhum dado para exibir</h3></div>';
   }
 }
 
 async function processarArquivo() {
-  if (!TOKEN) return;
+  if (!TOKEN || processamentoAtivo) return;
 
-  const arquivo = document.getElementById("fechamento-arquivo")?.files?.[0];
+  const input = document.getElementById("fechamento-arquivo");
+  const arquivo = input?.files?.[0];
   if (!arquivo) {
     setStatus("Selecione um arquivo .xlsx.", "danger");
     return;
   }
+  if (!validateInputFiles(input)) return;
 
   limparConvBlob();
-  setLoading(true);
+  setLoading("processar", true);
   setStatus("Processando...", "info");
 
   try {
@@ -574,6 +724,7 @@ async function processarArquivo() {
     });
 
     if (res.status === 401) { window.location.replace("index.html"); return; }
+    if (res.status === 403) throw new Error("Você não tem permissão para processar esta planilha.");
 
     const json = await res.json();
     if (!res.ok) throw new Error(json.erro || json.message || "HTTP " + res.status);
@@ -595,13 +746,14 @@ async function processarArquivo() {
     showConvDownloadButton();
   } catch (err) {
     setStatus("Erro: " + (err?.message || "Falha ao processar."), "danger");
+    renderTabContent();
   } finally {
-    setLoading(false);
+    setLoading("processar", false);
   }
 }
 
 async function compilarArquivos() {
-  if (!TOKEN) return;
+  if (!TOKEN || processamentoAtivo) return;
 
   const input = document.getElementById("fechamento-arquivos");
   const arquivos = input?.files;
@@ -609,14 +761,11 @@ async function compilarArquivos() {
     setStatus("Selecione ao menos uma planilha.", "danger");
     return;
   }
+  if (!validateInputFiles(input)) return;
 
   limparConvBlob();
-
-  const btnCompilar = document.getElementById("btn-compilar");
-  if (btnCompilar) {
-    btnCompilar.disabled = true;
-    btnCompilar.textContent = "Compilando...";
-  }
+  setLoading("compilar", true);
+  setStatus("Compilando planilhas...", "info");
 
   try {
     const formData = new FormData();
@@ -632,6 +781,7 @@ async function compilarArquivos() {
     });
 
     if (res.status === 401) { window.location.replace("index.html"); return; }
+    if (res.status === 403) throw new Error("Você não tem permissão para compilar estas planilhas.");
 
     const json = await res.json();
     if (!res.ok) throw new Error(json.erro || json.message || "HTTP " + res.status);
@@ -653,35 +803,17 @@ async function compilarArquivos() {
     showConvDownloadButton();
   } catch (err) {
     setStatus("Erro: " + (err?.message || "Falha ao compilar."), "danger");
+    renderTabContent();
   } finally {
-    if (btnCompilar) {
-      btnCompilar.disabled = false;
-      btnCompilar.textContent = "Compilar várias planilhas";
-    }
+    setLoading("compilar", false);
   }
 }
 
 // Eventos
 const inputArquivo = document.getElementById("fechamento-arquivo");
 const fileLabelSpan = ensureFileLabelSpan(inputArquivo);
-
-if (inputArquivo) {
-  inputArquivo.addEventListener("change", () => {
-    const f = inputArquivo.files?.[0];
-    if (fileLabelSpan) fileLabelSpan.textContent = f ? f.name : "Nenhum arquivo selecionado";
-  });
-}
-
 const inputArquivosMulti = document.getElementById("fechamento-arquivos");
 const filesMultiLabel = ensureFileLabelSpan(inputArquivosMulti);
-if (inputArquivosMulti) {
-  inputArquivosMulti.addEventListener("change", () => {
-    const n = inputArquivosMulti.files?.length || 0;
-    if (filesMultiLabel) {
-      filesMultiLabel.textContent = n === 0 ? "Nenhum arquivo selecionado" : `${n} arquivo(s) selecionado(s)`;
-    }
-  });
-}
 
 initFechamentoDragDrop("fechamento-arquivo", ".xlsx");
 initFechamentoDragDrop("fechamento-arquivos", ".xlsx");
@@ -699,10 +831,8 @@ if (btnLimpar) {
     if (fileLabelSpan) fileLabelSpan.textContent = "Nenhum arquivo selecionado";
     if (inputArquivosMulti) inputArquivosMulti.value = "";
     if (filesMultiLabel) filesMultiLabel.textContent = "Nenhum arquivo selecionado";
-
-    document.querySelectorAll(".fc-upload-card").forEach((c) => {
-      c.classList.remove("has-file", "drag-over");
-    });
+    updateFilePresentation(inputArquivo);
+    updateFilePresentation(inputArquivosMulti);
 
     const searchEl = document.getElementById("fc-table-search");
     if (searchEl) searchEl.value = "";
@@ -723,22 +853,32 @@ if (btnLimpar) {
   });
 }
 
-document.querySelectorAll(".fc-tab").forEach((btn) => {
+document.querySelectorAll(".vf-tab[data-tab]").forEach((btn) => {
   btn.addEventListener("click", () => {
+    if (btn.disabled) return;
     const tab = btn.dataset.tab || "abc";
     abaAtiva = tab;
     tablePage = 1;
     const searchEl = document.getElementById("fc-table-search");
     if (searchEl) searchEl.value = "";
 
-    document.querySelectorAll(".fc-tab").forEach((b) => {
-      b.classList.remove("fc-tab-active");
-      b.setAttribute("aria-selected", "false");
-    });
-    btn.classList.add("fc-tab-active");
-    btn.setAttribute("aria-selected", "true");
-
+    sincronizarTabs();
     renderTabContent();
+  });
+
+  btn.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const available = Array.from(document.querySelectorAll(".vf-tab[data-tab]:not(:disabled)"));
+    const currentIndex = available.indexOf(btn);
+    if (currentIndex < 0) return;
+    event.preventDefault();
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + available.length) % available.length;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % available.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = available.length - 1;
+    available[nextIndex].focus();
+    available[nextIndex].click();
   });
 });
 
@@ -767,13 +907,15 @@ document.getElementById("fc-page-next")?.addEventListener("click", () => {
   renderTabContent();
 });
 
-document.querySelectorAll(".fc-mp-pill").forEach((pill) => {
+document.querySelectorAll(".vf-segmented__item[data-mp]").forEach((pill) => {
   pill.addEventListener("click", () => {
     const mp = pill.dataset.mp || "shopee";
     marketplaceAtivo = mp;
 
-    document.querySelectorAll(".fc-mp-pill").forEach((p) => {
-      p.classList.toggle("fc-mp-active", p.dataset.mp === mp);
+    document.querySelectorAll(".vf-segmented__item[data-mp]").forEach((p) => {
+      const active = p.dataset.mp === mp;
+      p.classList.toggle("is-active", active);
+      p.setAttribute("aria-pressed", active ? "true" : "false");
     });
 
     const label = document.getElementById("fc-upload-label-single");
@@ -786,6 +928,10 @@ document.querySelectorAll(".fc-mp-pill").forEach((pill) => {
     dadosAtuais = null;
     limparConvBlob();
     limparStats();
+    if (inputArquivo) inputArquivo.value = "";
+    if (inputArquivosMulti) inputArquivosMulti.value = "";
+    updateFilePresentation(inputArquivo);
+    updateFilePresentation(inputArquivosMulti);
     tablePage = 1;
     const searchEl = document.getElementById("fc-table-search");
     if (searchEl) searchEl.value = "";

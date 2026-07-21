@@ -1,0 +1,290 @@
+/* ============================================================
+ * VenForce — Conversão de planilhas · CSS específico da página
+ * Fundação Global V2
+ * ============================================================ */
+
+.vf-page-fechamento .vf-content {
+  max-width: none;
+  padding: 0;
+  min-width: 0;
+}
+
+.vf-page-fechamento .vf-main-with-sidebar,
+.vf-page-fechamento .vf-page-shell,
+.vf-page-fechamento .vf-page-container {
+  min-width: 0;
+}
+
+.vf-page-fechamento .vf-app-topbar {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.vf-page-fechamento .vf-fechamento-upload-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vf-sp-4);
+}
+
+.vf-page-fechamento .vf-fechamento-upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-3);
+  min-width: 0;
+}
+
+.vf-page-fechamento .vf-fechamento-upload__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vf-sp-3);
+}
+
+.vf-page-fechamento .vf-fechamento-upload__title {
+  margin: 0;
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-sm);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+}
+
+.vf-page-fechamento .vf-fechamento-upload__description {
+  margin: var(--vf-sp-1) 0 0;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+}
+
+.vf-page-fechamento .vf-fechamento-dropzone {
+  min-height: 180px;
+}
+
+.vf-page-fechamento .vf-fechamento-dropzone.is-error {
+  border-color: var(--vf-danger);
+  background: var(--vf-danger-bg);
+}
+
+.vf-page-fechamento .vf-dropzone__icon {
+  font-size: var(--vf-fs-2xs);
+  font-family: var(--vf-font-mono);
+  font-weight: var(--vf-fw-semibold);
+}
+
+.vf-page-fechamento .vf-file-item__info {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vf-page-fechamento .vf-fechamento-actions {
+  flex-wrap: wrap;
+}
+
+.vf-page-fechamento .vf-fechamento-actions #btn-limpar {
+  margin-right: auto;
+}
+
+.vf-page-fechamento .vf-kpi-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* Neutraliza o componente V1 de mesmo nome ainda presente em style.css. */
+.vf-page-fechamento .vf-tabs {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--vf-border);
+  border-radius: 0;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.vf-page-fechamento .vf-tab {
+  flex: 0 0 auto;
+  border-radius: 0;
+}
+
+.vf-page-fechamento .vf-tab:hover {
+  background: transparent;
+}
+
+.vf-page-fechamento .vf-tab.is-disabled {
+  text-decoration: line-through;
+  text-decoration-color: var(--vf-border-strong);
+}
+
+.vf-page-fechamento #fechamento-resultado {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.vf-page-fechamento #fc-tab-content {
+  min-width: 0;
+}
+
+.vf-page-fechamento .vf-toolbar {
+  border-width: 0 0 1px;
+  border-radius: 0;
+}
+
+.vf-page-fechamento .vf-fechamento-search-field {
+  flex: 1 1 280px;
+}
+
+.vf-page-fechamento .vf-fechamento-counter {
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+  white-space: nowrap;
+}
+
+.vf-page-fechamento .vf-fechamento-table-title {
+  margin: 0;
+  padding: var(--vf-sp-4) var(--vf-sp-4) 0;
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-md);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+}
+
+.vf-page-fechamento .vf-table-wrap {
+  max-width: 100%;
+  max-height: 680px;
+  margin-top: var(--vf-sp-3);
+  border-width: 1px 0 0;
+  border-radius: 0;
+  overflow: auto;
+}
+
+.vf-page-fechamento .vf-table {
+  min-width: 720px;
+}
+
+.vf-page-fechamento .vf-table.vf-fechamento-table--wide {
+  min-width: 1180px;
+}
+
+.vf-page-fechamento .vf-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.vf-page-fechamento .vf-table th:first-child,
+.vf-page-fechamento .vf-table td:first-child {
+  white-space: nowrap;
+}
+
+.vf-page-fechamento .vf-fechamento-product {
+  min-width: 280px;
+  max-width: 420px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.vf-page-fechamento .vf-fechamento-cell-center {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.vf-page-fechamento .vf-fechamento-emphasis {
+  color: var(--vf-primary-strong);
+  font-weight: var(--vf-fw-bold);
+}
+
+.vf-page-fechamento .vf-pagination {
+  border-top: 1px solid var(--vf-border);
+  padding: var(--vf-sp-3) var(--vf-sp-4);
+}
+
+.vf-page-fechamento [hidden] {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .vf-page-fechamento .vf-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .vf-page-fechamento .vf-page-header__main {
+    flex-basis: auto;
+  }
+
+  .vf-page-fechamento .vf-fechamento-upload-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vf-page-fechamento .vf-fechamento-actions {
+    align-items: stretch;
+  }
+
+  .vf-page-fechamento .vf-fechamento-actions .vf-btn {
+    flex: 1 1 calc(50% - var(--vf-sp-2));
+  }
+
+  .vf-page-fechamento .vf-fechamento-actions #btn-limpar {
+    margin-right: 0;
+  }
+
+  .vf-page-fechamento .vf-toolbar__actions {
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 600px) {
+  .vf-page-fechamento .vf-segmented {
+    width: 100%;
+  }
+
+  .vf-page-fechamento .vf-segmented__item {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  .vf-page-fechamento .vf-fechamento-actions .vf-btn {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .vf-page-fechamento .vf-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vf-page-fechamento .vf-toolbar__filters,
+  .vf-page-fechamento .vf-toolbar__actions,
+  .vf-page-fechamento .vf-page-size {
+    width: 100%;
+  }
+
+  .vf-page-fechamento .vf-toolbar__actions {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .vf-page-fechamento .vf-pagination__actions {
+    width: 100%;
+  }
+
+  .vf-page-fechamento .vf-pagination__actions .vf-btn {
+    flex: 1 1 0;
+  }
+
+  .vf-page-fechamento .vf-table-wrap {
+    max-height: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .vf-page-fechamento .vf-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vf-page-fechamento .vf-fechamento-upload__header {
+    flex-direction: column;
+  }
+}
+
+.vf-espacamento-input {
+  flex: 1 1 30px;
+  width: 300px;
+}
