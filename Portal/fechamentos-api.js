@@ -640,28 +640,73 @@ function dayScope(data) {
 }
 
 /* ── CARREGAMENTO ─────────────────────────────────────────── */
+// Mock só é usado se explicitamente ligado neste navegador (nunca automático
+// após erro real de backend): localStorage.setItem('vf-fapi-mock-dev','1').
+function mockModeDevAtivo() {
+  try { return localStorage.getItem('vf-fapi-mock-dev') === '1'; }
+  catch (_) { return false; }
+}
+function buildMockPayload(slug) {
+  const cli = F.clientes.find(c => c.slug === slug) || mockFechamentoApiPayload.cliente;
+  const comp = MOCK_COMPETENCIAS[0];
+  const p = JSON.parse(JSON.stringify(mockFechamentoApiPayload));
+  p.cliente = { id:cli.id, nome:cli.nome, slug:cli.slug };
+  p.periodo = { competencia:comp.competencia, inicio:comp.inicio, fim:comp.fim, label:comp.label };
+  return p;
+}
+async function lerRespostaErro(res) {
+  try {
+    const data = await res.json();
+    return data?.erro || data?.message || data?.error || JSON.stringify(data);
+  } catch (_) {
+    try { return await res.text(); } catch (_) { return ''; }
+  }
+}
+const HTTP_ERRO_MSG = {
+  401: 'Sessão expirada. Faça login novamente.',
+  403: 'Você não tem permissão para acessar estes dados.',
+};
 async function carregarPayload(slug, dateFrom, dateTo, signal) {
   if (!slug) return null;
+
+  let res;
   try {
-    const res = await fetch(
+    res = await fetch(
       `${API_BASE}/operacao/central-vendas/${encodeURIComponent(slug)}?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`,
       { headers: { Authorization: "Bearer " + TOKEN }, signal }
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (!data || data.ok !== true) throw new Error("payload_invalido");
-    // Período sem pedidos é resposta VÁLIDA (mostra estado vazio honesto, não mock).
-    return data;
   } catch (err) {
-    if (err?.name === 'AbortError') return null; // cancelado por troca de cliente/período
-    // fallback para mock só quando o backend está inacessível — motor fica "Mock"
-    const cli = F.clientes.find(c => c.slug === slug) || mockFechamentoApiPayload.cliente;
-    const comp = MOCK_COMPETENCIAS[0];
-    const p = JSON.parse(JSON.stringify(mockFechamentoApiPayload));
-    p.cliente = { id:cli.id, nome:cli.nome, slug:cli.slug };
-    p.periodo = { competencia:comp.competencia, inicio:comp.inicio, fim:comp.fim, label:comp.label };
-    return p;
+    if (err?.name === 'AbortError') return null; // cancelado por troca de cliente/período — silencioso
+    console.error('[fechamentos-api] falha de rede ao carregar a Central de Vendas:', err);
+    if (mockModeDevAtivo()) return buildMockPayload(slug);
+    return { ok:false, erro:'Falha de conexão com o servidor.', erroTipo:'rede' };
   }
+
+  if (!res.ok) {
+    const corpo = await lerRespostaErro(res);
+    const mensagem = HTTP_ERRO_MSG[res.status] || corpo || `Erro ${res.status} ao carregar a Central de Vendas.`;
+    console.error(`[fechamentos-api] HTTP ${res.status} em /operacao/central-vendas/${slug}:`, corpo);
+    if (mockModeDevAtivo()) return buildMockPayload(slug);
+    return { ok:false, erro:mensagem, erroTipo:'http', httpStatus:res.status };
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch (err) {
+    console.error('[fechamentos-api] resposta inválida (JSON) da Central de Vendas:', err);
+    if (mockModeDevAtivo()) return buildMockPayload(slug);
+    return { ok:false, erro:'Resposta inválida do servidor.', erroTipo:'json_invalido' };
+  }
+
+  if (!data || data.ok !== true) {
+    console.error('[fechamentos-api] payload com ok !== true da Central de Vendas:', data);
+    if (mockModeDevAtivo()) return buildMockPayload(slug);
+    return { ok:false, erro: data?.erro || 'Backend retornou um payload inválido.', erroTipo:'payload_invalido' };
+  }
+
+  // Período sem pedidos é resposta VÁLIDA (mostra estado vazio honesto, não mock).
+  return data;
 }
 
 /* ── INIT ─────────────────────────────────────────────────── */
@@ -917,13 +962,13 @@ function renderAll() {
     return;
   }
 
-  // 3) Backend indisponível (sem payload válido e sem fallback)
+  // 3) Backend indisponível ou retornou erro real (sem payload válido)
   if (!F.rawPayload?.ok) {
     showPanels(false);
     stateHost.hidden = false;
     stateHost.innerHTML = emptyState({
       icon:'plug', tone:'is-danger', title:'Motor indisponível',
-      why:'O backend do motor não respondeu para este cliente/período.',
+      why: F.rawPayload?.erro || 'O backend do motor não respondeu para este cliente/período.',
       next:'Tente novamente em instantes ou use "Atualizar leitura".',
     });
     return;
