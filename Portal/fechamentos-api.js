@@ -939,8 +939,12 @@ function renderAll() {
 
   const stateHost = document.getElementById('fapi-state-host');
   const tabs = document.getElementById('fapi-tabs');
-  const panels = TAB_KEYS.map(k => document.getElementById(`fapi-panel-${k}`));
-  const showPanels = show => { tabs.hidden = !show; panels.forEach(p => { p.hidden = true; }); if (!show) return; };
+  const panels = TAB_KEYS.map(k => document.getElementById(`fapi-panel-${k}`)).filter(Boolean);
+  const showPanels = show => {
+    if (tabs) tabs.hidden = !show;
+    panels.forEach(p => { p.hidden = true; });
+    if (!show) return;
+  };
 
   // 1) Sem cliente selecionado
   if (!F.cliente) {
@@ -977,7 +981,7 @@ function renderAll() {
   // 4) Dados carregados — abas + painéis
   stateHost.hidden = true;
   stateHost.innerHTML = '';
-  tabs.hidden = false;
+  if (tabs) tabs.hidden = false;
   renderTabCounts();
   F.visiblePayload = { ...F.viewPayload, pedidos: getVisiblePedidos() };
   renderFechamentoSection();
