@@ -198,6 +198,7 @@
         { label: "Callbacks", href: "callbacks.html", icon: "repeat"   },
         { label: "Atividade", href: "atividade.html", icon: "activity" },
         { label: "Control Center", href: "control-center.html", icon: "terminal" },
+        { label: "Laboratório UI", href: "design-system-lab.html", icon: "layers" },
       ],
     },
     clickup: {
@@ -217,6 +218,7 @@
     "usuarios.html":        "admin",
     "atividade.html":       "admin",
     "control-center.html":   "admin",
+    "design-system-lab.html": "admin",
     "clickup-executivo.html": "clickup",
     "guia-vendedor.html":   "guia",
     "anuncios-meli.html":   "operacao",

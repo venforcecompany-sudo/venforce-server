@@ -1,0 +1,1829 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VenForce — Laboratório do Design System</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  >
+
+  <!-- Layout do Portal + Fundação Global V2 -->
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="css/vf-tokens-v2.css">
+  <link rel="stylesheet" href="css/vf-components-v2.css">
+
+  <style>
+    /* ------------------------------------------------------------
+     * Scaffolding exclusivo deste laboratório (classes lab-*).
+     * Nada aqui faz parte da fundação — apenas organiza a demo.
+     * ------------------------------------------------------------ */
+    .lab-controls {
+      position: sticky;
+      top: 0;
+      z-index: var(--vf-z-sticky);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--vf-sp-3);
+      flex-wrap: wrap;
+      padding: var(--vf-sp-3) var(--vf-sp-5);
+      background: var(--vf-surface);
+      border-bottom: 1px solid var(--vf-border);
+    }
+
+    .lab-controls__brand {
+      font-family: var(--vf-font-display);
+      font-size: var(--vf-fs-sm);
+      font-weight: var(--vf-fw-bold);
+      color: var(--vf-primary-strong);
+      white-space: nowrap;
+    }
+
+    .lab-controls__group {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--vf-sp-2);
+    }
+
+    .lab-controls__label {
+      font-size: var(--vf-fs-2xs);
+      font-weight: var(--vf-fw-semibold);
+      letter-spacing: var(--vf-ls-caps);
+      text-transform: uppercase;
+      color: var(--vf-text-muted);
+    }
+
+    /* Simulador de largura: os grids/flex respondem ao container.
+       Media queries reagem à janela real — redimensione o navegador
+       para validar breakpoints. */
+    .lab-viewport {
+      margin: 0 auto;
+      transition: max-width var(--vf-duration-slow) var(--vf-ease);
+    }
+
+    .lab-viewport[data-width="wide"] { max-width: 1440px; }
+    .lab-viewport[data-width="notebook"] { max-width: 1280px; }
+    .lab-viewport[data-width="tablet"] { max-width: 768px; }
+    .lab-viewport[data-width="mobile"] { max-width: 390px; }
+
+    .lab-viewport[data-width="tablet"],
+    .lab-viewport[data-width="mobile"] {
+      outline: 1px dashed var(--vf-border-strong);
+    }
+
+    .lab-note {
+      margin: 0;
+      font-size: var(--vf-fs-xs);
+      color: var(--vf-text-muted);
+    }
+
+    .lab-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--vf-sp-2);
+    }
+
+    .lab-row--start {
+      align-items: flex-start;
+    }
+
+    .lab-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: var(--vf-sp-4);
+      align-items: start;
+    }
+
+    .lab-grid--half {
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    }
+
+    .lab-table-demo {
+      max-height: 340px;
+    }
+
+    .lab-select-inline {
+      width: auto;
+      min-width: 150px;
+    }
+
+    /* Amostras de tokens */
+    .lab-swatch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: var(--vf-sp-2);
+    }
+
+    .lab-swatch {
+      border: 1px solid var(--vf-border);
+      border-radius: var(--vf-radius-sm);
+      overflow: hidden;
+      background: var(--vf-surface);
+    }
+
+    .lab-swatch__color {
+      height: 44px;
+      border-bottom: 1px solid var(--vf-border);
+    }
+
+    .lab-swatch__meta {
+      padding: var(--vf-sp-1) var(--vf-sp-2);
+      font-size: var(--vf-fs-2xs);
+      color: var(--vf-text-secondary);
+    }
+
+    .lab-swatch__meta code {
+      display: block;
+      font-family: var(--vf-font-mono);
+      font-size: 0.95em;
+      color: var(--vf-text);
+    }
+
+    .sw-primary { background: var(--vf-primary); }
+    .sw-primary-hover { background: var(--vf-primary-hover); }
+    .sw-primary-active { background: var(--vf-primary-active); }
+    .sw-primary-soft { background: var(--vf-primary-soft); }
+    .sw-primary-border { background: var(--vf-primary-border); }
+    .sw-bg { background: var(--vf-bg); }
+    .sw-bg-2 { background: var(--vf-bg-2); }
+    .sw-surface { background: var(--vf-surface); }
+    .sw-surface-2 { background: var(--vf-surface-2); }
+    .sw-surface-hover { background: var(--vf-surface-hover); }
+    .sw-text { background: var(--vf-text); }
+    .sw-text-secondary { background: var(--vf-text-secondary); }
+    .sw-text-muted { background: var(--vf-text-muted); }
+    .sw-border { background: var(--vf-border); }
+    .sw-border-strong { background: var(--vf-border-strong); }
+    .sw-success { background: var(--vf-success); }
+    .sw-success-bg { background: var(--vf-success-bg); }
+    .sw-warning { background: var(--vf-warning); }
+    .sw-warning-bg { background: var(--vf-warning-bg); }
+    .sw-danger { background: var(--vf-danger); }
+    .sw-danger-bg { background: var(--vf-danger-bg); }
+    .sw-info { background: var(--vf-info); }
+    .sw-info-bg { background: var(--vf-info-bg); }
+
+    .lab-type-specimen {
+      display: flex;
+      flex-direction: column;
+      gap: var(--vf-sp-3);
+    }
+
+    .lab-type-specimen > div {
+      display: flex;
+      align-items: baseline;
+      gap: var(--vf-sp-4);
+      flex-wrap: wrap;
+    }
+
+    .lab-type-meta {
+      flex: 0 0 190px;
+      font-family: var(--vf-font-mono);
+      font-size: var(--vf-fs-2xs);
+      color: var(--vf-text-muted);
+    }
+
+    .lab-fs-2xs { font-size: var(--vf-fs-2xs); }
+    .lab-fs-xs { font-size: var(--vf-fs-xs); }
+    .lab-fs-sm { font-size: var(--vf-fs-sm); }
+    .lab-fs-md { font-size: var(--vf-fs-md); }
+    .lab-fs-lg { font-size: var(--vf-fs-lg); font-family: var(--vf-font-display); font-weight: var(--vf-fw-semibold); }
+    .lab-fs-xl { font-size: var(--vf-fs-xl); font-family: var(--vf-font-display); font-weight: var(--vf-fw-bold); }
+    .lab-fs-2xl { font-size: var(--vf-fs-2xl); font-family: var(--vf-font-display); font-weight: var(--vf-fw-bold); letter-spacing: var(--vf-ls-tighter); }
+    .lab-mono-sample { font-family: var(--vf-font-mono); font-size: var(--vf-fs-sm); }
+
+    .lab-space-bar {
+      height: 14px;
+      background: var(--vf-primary-soft);
+      border: 1px solid var(--vf-primary-border);
+      border-radius: 3px;
+    }
+
+    .lab-space-row {
+      display: flex;
+      align-items: center;
+      gap: var(--vf-sp-3);
+    }
+
+    .lab-space-row code {
+      flex: 0 0 110px;
+      font-family: var(--vf-font-mono);
+      font-size: var(--vf-fs-2xs);
+      color: var(--vf-text-secondary);
+    }
+
+    .lab-radius-box {
+      width: 84px;
+      height: 56px;
+      background: var(--vf-surface);
+      border: 1px solid var(--vf-border-strong);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--vf-font-mono);
+      font-size: var(--vf-fs-2xs);
+      color: var(--vf-text-secondary);
+    }
+
+    .lab-r-sm { border-radius: var(--vf-radius-sm); }
+    .lab-r-md { border-radius: var(--vf-radius); }
+    .lab-r-lg { border-radius: var(--vf-radius-lg); }
+    .lab-r-pill { border-radius: var(--vf-radius-pill); }
+
+    .lab-shadow-box {
+      width: 130px;
+      height: 64px;
+      background: var(--vf-surface);
+      border: 1px solid var(--vf-border);
+      border-radius: var(--vf-radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--vf-font-mono);
+      font-size: var(--vf-fs-2xs);
+      color: var(--vf-text-secondary);
+    }
+
+    .lab-sh-xs { box-shadow: var(--vf-shadow-xs); }
+    .lab-sh-hover { box-shadow: var(--vf-shadow-hover); }
+    .lab-sh-popover { box-shadow: var(--vf-shadow-popover); }
+    .lab-sh-modal { box-shadow: var(--vf-shadow-modal); }
+
+    /* Demonstração estática de menu/popover/tooltip */
+    .lab-float-demo {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--vf-sp-5);
+      align-items: flex-start;
+    }
+
+    /* Menu interativo da demo */
+    .lab-menu-anchor {
+      position: relative;
+      display: inline-block;
+    }
+
+    .lab-menu-anchor .vf-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      display: none;
+    }
+
+    .lab-menu-anchor .vf-menu.is-open {
+      display: block;
+    }
+
+    /* Comparação de densidades lado a lado */
+    .lab-density-pane {
+      border: 1px solid var(--vf-border);
+      border-radius: var(--vf-radius);
+      padding: var(--vf-sp-4);
+      background: var(--vf-bg);
+      display: flex;
+      flex-direction: column;
+      gap: var(--vf-sp-3);
+    }
+
+    .lab-density-pane__title {
+      margin: 0;
+      font-size: var(--vf-fs-xs);
+      font-weight: var(--vf-fw-semibold);
+      letter-spacing: var(--vf-ls-caps);
+      text-transform: uppercase;
+      color: var(--vf-text-muted);
+    }
+
+    .lab-progress-demo {
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: var(--vf-sp-3);
+    }
+
+    .lab-currency-stress .vf-kpi-grid {
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    }
+
+    /* Apoio da demo (substituem estilos inline) */
+    .lab-fieldset { border: none; margin: 0; padding: 0; }
+    .lab-fieldset-stack { margin-top: 6px; }
+    .lab-input-narrow { max-width: 180px; }
+    .lab-m0 { margin: 0; }
+    .lab-bar-68 { width: 68%; }
+    .lab-bar-92 { width: 92%; }
+    .lab-bar-100 { width: 100%; }
+    .lab-w4 { width: 4px; }
+    .lab-w8 { width: 8px; }
+    .lab-w12 { width: 12px; }
+    .lab-w16 { width: 16px; }
+    .lab-w20 { width: 20px; }
+    .lab-w24 { width: 24px; }
+    .lab-w32 { width: 32px; }
+    .lab-w40 { width: 40px; }
+    .lab-w48 { width: 48px; }
+    .lab-w64 { width: 64px; }
+  </style>
+  <link rel="stylesheet" href="css/pages/design-system-lab.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
+</head>
+<body class="vf-page vf-page-dashboard vf-page-design-system">
+
+  <div class="vf-main-with-sidebar">
+    <div class="vf-content vf-lab-content">
+
+  <!-- Controles do laboratório -->
+  <div class="lab-controls">
+    <div class="lab-controls__identity">
+      <span class="lab-controls__brand">Design System Lab</span>
+      <span class="lab-controls__state" id="lab-change-state">Fundação V2 · padrão</span>
+    </div>
+
+    <div class="lab-controls__group lab-controls__finder">
+      <label class="vf-visually-hidden" for="lab-component-search">Buscar componente</label>
+      <input class="vf-input vf-input--sm vf-search" id="lab-component-search" type="search" placeholder="Buscar componente…" autocomplete="off">
+      <label class="vf-visually-hidden" for="lab-section-jump">Ir para uma seção</label>
+      <select class="vf-select vf-select--sm" id="lab-section-jump">
+        <option value="">Ir para…</option>
+        <option value="sec-tokens">Tokens</option>
+        <option value="sec-structure">Estrutura</option>
+        <option value="sec-buttons">Botões</option>
+        <option value="sec-forms">Formulários</option>
+        <option value="sec-cards">Cards</option>
+        <option value="sec-kpis">KPIs</option>
+        <option value="sec-table">Tabelas</option>
+        <option value="sec-feedback">Feedback</option>
+        <option value="sec-overlay">Modal e drawer</option>
+        <option value="sec-context">Contexto real</option>
+      </select>
+    </div>
+
+    <div class="lab-controls__group" role="group" aria-label="Densidade">
+      <span class="lab-controls__label" id="lab-density-label">Densidade</span>
+      <div class="vf-segmented">
+        <button type="button" class="vf-segmented__item is-active" data-density="comfortable" aria-pressed="true">Confortável</button>
+        <button type="button" class="vf-segmented__item" data-density="compact" aria-pressed="false">Compacta</button>
+      </div>
+    </div>
+
+    <div class="lab-controls__group" role="group" aria-label="Largura simulada">
+      <span class="lab-controls__label" id="lab-width-label">Largura</span>
+      <div class="vf-segmented">
+        <button type="button" class="vf-segmented__item is-active" data-width="wide" aria-pressed="true">Desktop</button>
+        <button type="button" class="vf-segmented__item" data-width="notebook" aria-pressed="false">Notebook</button>
+        <button type="button" class="vf-segmented__item" data-width="tablet" aria-pressed="false">Tablet</button>
+        <button type="button" class="vf-segmented__item" data-width="mobile" aria-pressed="false">Mobile</button>
+      </div>
+    </div>
+
+    <div class="lab-controls__group lab-controls__actions">
+      <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="lab-reset">Restaurar</button>
+      <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="lab-copy-css">Copiar CSS</button>
+      <button type="button" class="vf-btn vf-btn--primary vf-btn--sm" id="lab-open-customizer" aria-controls="lab-customizer" aria-expanded="false">Ajustar tokens</button>
+    </div>
+  </div>
+
+  <div class="lab-viewport" data-width="wide" id="lab-viewport">
+    <main class="vf-page-shell">
+      <div class="vf-page-container vf-page-container--wide" id="lab-density-root">
+
+        <!-- ==================== Cabeçalho ==================== -->
+        <header class="vf-page-header">
+          <div class="vf-page-header__main">
+            <p class="vf-page-header__eyebrow">Portal VenForce · ambiente isolado</p>
+            <h1 class="vf-page-header__title">Laboratório do Design System</h1>
+            <p class="vf-page-header__description">
+              Explore a Fundação Global V2, ajuste tokens em tempo real e valide componentes antes
+              de levá-los às telas do produto. As alterações ficam somente neste navegador e este
+              ambiente não faz chamadas à API nem usa dados reais.
+            </p>
+          </div>
+          <div class="vf-page-header__actions">
+            <button type="button" class="vf-btn vf-btn--secondary" id="lab-compare-density">Comparar densidades</button>
+            <button type="button" class="vf-btn vf-btn--primary" id="lab-jump-context">Abrir cenário real</button>
+          </div>
+        </header>
+
+        <!-- ==================== 1. Tokens ==================== -->
+        <section class="vf-section" aria-labelledby="sec-tokens">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-tokens">1 · Tokens</h2>
+              <p class="vf-section__description">Cores, tipografia, espaçamento, radius e sombras — a fonte única.</p>
+            </div>
+          </div>
+
+          <div class="vf-card">
+            <div class="vf-card__header"><h3 class="vf-card__title">Marca e neutros</h3></div>
+            <div class="vf-card__body">
+              <div class="lab-swatch-grid">
+                <div class="lab-swatch"><div class="lab-swatch__color sw-primary"></div><div class="lab-swatch__meta"><code>--vf-primary</code>#5a2a8f</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-primary-hover"></div><div class="lab-swatch__meta"><code>--vf-primary-hover</code>#4c2379</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-primary-active"></div><div class="lab-swatch__meta"><code>--vf-primary-active</code>#3f1d64</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-primary-soft"></div><div class="lab-swatch__meta"><code>--vf-primary-soft</code>#f4eef9</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-primary-border"></div><div class="lab-swatch__meta"><code>--vf-primary-border</code>#e2d5f2</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-bg"></div><div class="lab-swatch__meta"><code>--vf-bg</code>#f7f8fb</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-bg-2"></div><div class="lab-swatch__meta"><code>--vf-bg-2</code>#eef0f6</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-surface"></div><div class="lab-swatch__meta"><code>--vf-surface</code>#ffffff</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-surface-2"></div><div class="lab-swatch__meta"><code>--vf-surface-2</code>#fafbfd</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-surface-hover"></div><div class="lab-swatch__meta"><code>--vf-surface-hover</code>#f3f5f9</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-text"></div><div class="lab-swatch__meta"><code>--vf-text</code>#1b1d28</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-text-secondary"></div><div class="lab-swatch__meta"><code>--vf-text-secondary</code>#545b6e</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-text-muted"></div><div class="lab-swatch__meta"><code>--vf-text-muted</code>#6b7285</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-border"></div><div class="lab-swatch__meta"><code>--vf-border</code>#e7e9f0</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-border-strong"></div><div class="lab-swatch__meta"><code>--vf-border-strong</code>#d6d9e4</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="vf-card">
+            <div class="vf-card__header"><h3 class="vf-card__title">Semânticas</h3></div>
+            <div class="vf-card__body">
+              <div class="lab-swatch-grid">
+                <div class="lab-swatch"><div class="lab-swatch__color sw-success"></div><div class="lab-swatch__meta"><code>--vf-success</code>#0f7a52</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-success-bg"></div><div class="lab-swatch__meta"><code>--vf-success-bg</code>#e7f6ef</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-warning"></div><div class="lab-swatch__meta"><code>--vf-warning</code>#b25e00</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-warning-bg"></div><div class="lab-swatch__meta"><code>--vf-warning-bg</code>#fdf1e3</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-danger"></div><div class="lab-swatch__meta"><code>--vf-danger</code>#c62828</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-danger-bg"></div><div class="lab-swatch__meta"><code>--vf-danger-bg</code>#fdecec</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-info"></div><div class="lab-swatch__meta"><code>--vf-info</code>#1d5fb8</div></div>
+                <div class="lab-swatch"><div class="lab-swatch__color sw-info-bg"></div><div class="lab-swatch__meta"><code>--vf-info-bg</code>#e8f1fc</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="vf-card">
+            <div class="vf-card__header"><h3 class="vf-card__title">Tipografia</h3></div>
+            <div class="vf-card__body lab-type-specimen">
+              <div><span class="lab-type-meta">2xs · 11px · Hanken</span><span class="lab-fs-2xs">Labels uppercase, notas de rodapé e metadados.</span></div>
+              <div><span class="lab-type-meta">xs · 12px · Hanken</span><span class="lab-fs-xs">Hints, chips, badges e textos de apoio.</span></div>
+              <div><span class="lab-type-meta">sm · 14px · Hanken</span><span class="lab-fs-sm">Tabelas, botões, campos e navegação.</span></div>
+              <div><span class="lab-type-meta">md · 15px · Hanken</span><span class="lab-fs-md">Corpo padrão de leitura do portal.</span></div>
+              <div><span class="lab-type-meta">lg · 18px · Manrope</span><span class="lab-fs-lg">Títulos de seção</span></div>
+              <div><span class="lab-type-meta">xl · 22px · Manrope</span><span class="lab-fs-xl">Título de página</span></div>
+              <div><span class="lab-type-meta">2xl · 26px · Manrope</span><span class="lab-fs-2xl num">R$ 184.320,55</span></div>
+              <div><span class="lab-type-meta">mono · IBM Plex</span><span class="lab-mono-sample">MLB3481920456 · SKU-8842 · VF-0042</span></div>
+            </div>
+          </div>
+
+          <div class="lab-grid">
+            <div class="vf-card">
+              <div class="vf-card__header"><h3 class="vf-card__title">Espaçamento (base 4px)</h3></div>
+              <div class="vf-card__body vf-stack vf-stack--sm">
+                <div class="lab-space-row"><code>--vf-sp-1 · 4px</code><div class="lab-space-bar lab-w4"></div></div>
+                <div class="lab-space-row"><code>--vf-sp-2 · 8px</code><div class="lab-space-bar lab-w8"></div></div>
+                <div class="lab-space-row"><code>--vf-sp-3 · 12px</code><div class="lab-space-bar lab-w12"></div></div>
+                <div class="lab-space-row"><code>--vf-sp-4 · 16px</code><div class="lab-space-bar lab-w16"></div></div>
+                <div class="lab-space-row"><code>--vf-sp-5 · 20px</code><div class="lab-space-bar lab-w20"></div></div>
+                <div class="lab-space-row"><code>--vf-sp-6 · 24px</code><div class="lab-space-bar lab-w24"></div></div>
+                <div class="lab-space-row"><code>--vf-sp-8 · 32px</code><div class="lab-space-bar lab-w32"></div></div>
+                <div class="lab-space-row"><code>--vf-sp-10 · 40px</code><div class="lab-space-bar lab-w40"></div></div>
+                <div class="lab-space-row"><code>--vf-sp-12 · 48px</code><div class="lab-space-bar lab-w48"></div></div>
+                <div class="lab-space-row"><code>--vf-sp-16 · 64px</code><div class="lab-space-bar lab-w64"></div></div>
+              </div>
+            </div>
+            <div class="vf-card">
+              <div class="vf-card__header"><h3 class="vf-card__title">Radius</h3></div>
+              <div class="vf-card__body lab-row">
+                <div class="lab-radius-box lab-r-sm">sm 6</div>
+                <div class="lab-radius-box lab-r-md">md 10</div>
+                <div class="lab-radius-box lab-r-lg">lg 12</div>
+                <div class="lab-radius-box lab-r-pill">pill</div>
+              </div>
+            </div>
+            <div class="vf-card">
+              <div class="vf-card__header"><h3 class="vf-card__title">Sombras</h3></div>
+              <div class="vf-card__body lab-row">
+                <div class="lab-shadow-box lab-sh-xs">xs</div>
+                <div class="lab-shadow-box lab-sh-hover">hover</div>
+                <div class="lab-shadow-box lab-sh-popover">popover</div>
+                <div class="lab-shadow-box lab-sh-modal">modal</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 2. Estrutura de página ==================== -->
+        <section class="vf-section" aria-labelledby="sec-structure">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-structure">2 · Estrutura de página</h2>
+              <p class="vf-section__description">page-header com eyebrow textual (sem pill) + section com header e ações.</p>
+            </div>
+          </div>
+          <div class="vf-card">
+            <div class="vf-card__body">
+              <header class="vf-page-header">
+                <div class="vf-page-header__main">
+                  <p class="vf-page-header__eyebrow">Clientes · Loja Aurora</p>
+                  <h1 class="vf-page-header__title">Fechamento financeiro</h1>
+                  <p class="vf-page-header__description">Consolidação de vendas, custos e margens do período com base nos dados sincronizados dos marketplaces.</p>
+                </div>
+                <div class="vf-page-header__actions">
+                  <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm">Exportar</button>
+                  <button type="button" class="vf-btn vf-btn--primary vf-btn--sm">Fechar período</button>
+                </div>
+              </header>
+              <hr class="vf-divider">
+              <div class="vf-section">
+                <div class="vf-section__header">
+                  <div>
+                    <h3 class="vf-section__title">Custos adicionais</h3>
+                    <p class="vf-section__description">Lançamentos manuais do período.</p>
+                  </div>
+                  <div class="vf-section__actions">
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--sm">Adicionar custo</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 3. Botões ==================== -->
+        <section class="vf-section" aria-labelledby="sec-buttons">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-buttons">3 · Botões</h2>
+              <p class="vf-section__description">Mesmo visual em &lt;button&gt;, &lt;a&gt; e [role="button"]. Loading não desloca o texto.</p>
+            </div>
+          </div>
+          <div class="vf-card">
+            <div class="vf-card__body vf-stack">
+              <div class="lab-row">
+                <button type="button" class="vf-btn vf-btn--primary">Primary</button>
+                <button type="button" class="vf-btn vf-btn--secondary">Secondary</button>
+                <button type="button" class="vf-btn vf-btn--ghost">Ghost</button>
+                <button type="button" class="vf-btn vf-btn--danger">Danger</button>
+                <button type="button" class="vf-btn">Base sem modificador</button>
+              </div>
+              <div class="lab-row">
+                <button type="button" class="vf-btn vf-btn--primary vf-btn--sm">Small</button>
+                <button type="button" class="vf-btn vf-btn--primary">Padrão</button>
+                <button type="button" class="vf-btn vf-btn--primary vf-btn--lg">Large</button>
+                <button type="button" class="vf-btn vf-btn--secondary vf-btn--icon" aria-label="Atualizar">↻</button>
+                <button type="button" class="vf-btn vf-btn--secondary vf-btn--icon vf-btn--sm" aria-label="Editar">✎</button>
+              </div>
+              <div class="lab-row">
+                <button type="button" class="vf-btn vf-btn--primary" disabled>Disabled</button>
+                <button type="button" class="vf-btn vf-btn--secondary" disabled>Disabled</button>
+                <button type="button" class="vf-btn vf-btn--primary is-loading">Salvando alterações</button>
+                <button type="button" class="vf-btn vf-btn--secondary is-loading">Carregando</button>
+              </div>
+              <div class="lab-row">
+                <a class="vf-btn vf-btn--secondary" href="#sec-buttons">Sou um &lt;a&gt;</a>
+                <button type="button" class="vf-btn vf-btn--secondary">Sou um &lt;button&gt;</button>
+                <div class="vf-btn-group" role="group" aria-label="Período">
+                  <button type="button" class="vf-btn vf-btn--sm">7d</button>
+                  <button type="button" class="vf-btn vf-btn--sm is-active">30d</button>
+                  <button type="button" class="vf-btn vf-btn--sm">90d</button>
+                </div>
+              </div>
+              <button type="button" class="vf-btn vf-btn--primary vf-btn--full">Botão largura total (--full)</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 4. Formulários ==================== -->
+        <section class="vf-section" aria-labelledby="sec-forms">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-forms">4 · Formulários</h2>
+              <p class="vf-section__description">Estados completos, grupos com prefixo/sufixo, busca, checkbox, radio e switch.</p>
+            </div>
+          </div>
+          <div class="vf-card">
+            <div class="vf-card__body vf-stack vf-stack--lg">
+              <div class="vf-form-grid">
+                <div class="vf-field">
+                  <label class="vf-field__label" for="f-nome">Nome do cliente <span class="vf-field__required" aria-hidden="true">*</span></label>
+                  <input class="vf-input" id="f-nome" type="text" placeholder="Ex.: Loja Aurora" required>
+                  <span class="vf-field__hint">Como aparece no contrato.</span>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="f-mkt">Marketplace</label>
+                  <select class="vf-select" id="f-mkt">
+                    <option>Mercado Livre</option>
+                    <option>Shopee</option>
+                    <option>Amazon</option>
+                  </select>
+                </div>
+                <div class="vf-field is-error">
+                  <label class="vf-field__label" for="f-cnpj">CNPJ</label>
+                  <input class="vf-input" id="f-cnpj" type="text" value="12.345.678" aria-invalid="true" aria-describedby="f-cnpj-err">
+                  <span class="vf-field__error" id="f-cnpj-err" role="alert">CNPJ inválido — verifique os dígitos.</span>
+                </div>
+                <div class="vf-field is-success">
+                  <label class="vf-field__label" for="f-email">E-mail de cobrança</label>
+                  <input class="vf-input" id="f-email" type="email" value="financeiro@aurora.com.br">
+                  <span class="vf-field__hint">E-mail verificado.</span>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="f-cod">Código interno</label>
+                  <input class="vf-input" id="f-cod" type="text" value="VF-0042" disabled>
+                  <span class="vf-field__hint">Gerado automaticamente.</span>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="f-contrato">Contrato</label>
+                  <input class="vf-input" id="f-contrato" type="text" value="CT-2026-0117" readonly>
+                  <span class="vf-field__hint">Somente leitura.</span>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="f-preco">Preço de venda</label>
+                  <div class="vf-input-group">
+                    <span class="vf-input-prefix">R$</span>
+                    <input class="vf-input num" id="f-preco" type="text" value="249,90">
+                  </div>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="f-margem">Margem alvo</label>
+                  <div class="vf-input-group">
+                    <input class="vf-input num" id="f-margem" type="text" value="22,0">
+                    <span class="vf-input-suffix">%</span>
+                  </div>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="f-busca">Busca</label>
+                  <input class="vf-input vf-search" id="f-busca" type="search" placeholder="Buscar anúncio, SKU, MLB…">
+                </div>
+                <div class="vf-field vf-field--full">
+                  <label class="vf-field__label" for="f-obs">Observações</label>
+                  <textarea class="vf-textarea" id="f-obs" placeholder="Anotações livres sobre a conta…"></textarea>
+                </div>
+              </div>
+
+              <div class="lab-row lab-row--start">
+                <fieldset class="lab-fieldset">
+                  <legend class="vf-field__label">Notificações</legend>
+                  <div class="vf-stack vf-stack--sm lab-fieldset-stack">
+                    <label class="vf-check"><input type="checkbox" checked><span>Alertas de margem negativa</span></label>
+                    <label class="vf-check"><input type="checkbox"><span>Resumo diário por e-mail</span></label>
+                    <label class="vf-check"><input type="checkbox" disabled><span>Integração WhatsApp (em breve)</span></label>
+                  </div>
+                </fieldset>
+                <fieldset class="lab-fieldset">
+                  <legend class="vf-field__label">Regime de custos</legend>
+                  <div class="vf-stack vf-stack--sm lab-fieldset-stack">
+                    <label class="vf-radio"><input type="radio" name="regime" checked><span>Base de custos vinculada</span></label>
+                    <label class="vf-radio"><input type="radio" name="regime"><span>Custo médio manual</span></label>
+                  </div>
+                </fieldset>
+                <fieldset class="lab-fieldset">
+                  <legend class="vf-field__label">Automação</legend>
+                  <div class="vf-stack vf-stack--sm lab-fieldset-stack">
+                    <label class="vf-switch"><input type="checkbox" role="switch" checked><span>Sincronização automática</span></label>
+                    <label class="vf-switch"><input type="checkbox" role="switch"><span>Reprecificação por regra</span></label>
+                    <label class="vf-switch"><input type="checkbox" role="switch" disabled><span>Modo auditoria</span></label>
+                  </div>
+                </fieldset>
+              </div>
+
+              <div class="vf-form-actions">
+                <button type="button" class="vf-btn vf-btn--ghost">Cancelar</button>
+                <button type="button" class="vf-btn vf-btn--primary">Salvar cliente</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 5. Cards ==================== -->
+        <section class="vf-section" aria-labelledby="sec-cards">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-cards">5 · Cards</h2>
+              <p class="vf-section__description">Sem sombra permanente. Interativo ganha sombra só no hover; selecionado usa borda + fundo soft.</p>
+            </div>
+          </div>
+          <div class="lab-grid" id="lab-card-grid" data-layout-playground>
+            <div class="vf-card">
+              <div class="vf-card__header">
+                <div>
+                  <h3 class="vf-card__title">Resumo da conta</h3>
+                  <p class="vf-card__description">Atualizado às 14:32</p>
+                </div>
+                <span class="vf-status is-success">Ativa</span>
+              </div>
+              <div class="vf-card__body">Card completo com header, body e footer.</div>
+              <div class="vf-card__footer">
+                <button type="button" class="vf-btn vf-btn--ghost vf-btn--sm">Cancelar</button>
+                <button type="button" class="vf-btn vf-btn--primary vf-btn--sm">Salvar</button>
+              </div>
+            </div>
+            <a class="vf-card vf-card--interactive" href="#sec-cards">
+              <div class="vf-card__body">
+                <strong>Card interativo</strong><br>
+                Hover: borda reforça e ganha sombra leve, sem deslocar.
+              </div>
+            </a>
+            <div class="vf-card vf-card--selected">
+              <div class="vf-card__body">
+                <strong>Card selecionado</strong><br>
+                Borda primária + fundo soft.
+              </div>
+            </div>
+            <div class="vf-card vf-card--compact">
+              <div class="vf-card__header"><h3 class="vf-card__title">Card compacto</h3></div>
+              <div class="vf-card__body">Paddings reduzidos para listas densas.</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 6. KPIs ==================== -->
+        <section class="vf-section" aria-labelledby="sec-kpis">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-kpis">6 · KPIs</h2>
+              <p class="vf-section__description">Valores em Manrope com dígitos tabulares. Monetário e numérico têm o mesmo corpo.</p>
+            </div>
+          </div>
+          <div class="vf-kpi-grid">
+            <div class="vf-kpi">
+              <span class="vf-kpi__label">Faturamento (30d)</span>
+              <span class="vf-kpi__value vf-kpi__value--currency">
+                <span class="vf-kpi__currency">R$</span>
+                <span>184.320,55</span>
+              </span>
+              <span class="vf-kpi__trend is-success">+12,4% vs mês anterior</span>
+            </div>
+            <div class="vf-kpi">
+              <span class="vf-kpi__label">Pedidos pendentes</span>
+              <span class="vf-kpi__value">37</span>
+              <span class="vf-kpi__foot is-warning">8 vencem hoje</span>
+            </div>
+            <button type="button" class="vf-kpi vf-kpi--interactive">
+              <span class="vf-kpi__label">Anúncios pausados</span>
+              <span class="vf-kpi__value">12</span>
+              <span class="vf-kpi__foot">Clique para filtrar</span>
+            </button>
+            <button type="button" class="vf-kpi vf-kpi--interactive is-active" aria-pressed="true">
+              <span class="vf-kpi__label">Estoque crítico</span>
+              <span class="vf-kpi__value">5</span>
+              <span class="vf-kpi__foot">Filtro ativo</span>
+            </button>
+            <div class="vf-kpi vf-kpi--featured">
+              <span class="vf-kpi__label">Margem média</span>
+              <span class="vf-kpi__value">23,8%</span>
+              <span class="vf-kpi__foot">Meta: 22%</span>
+            </div>
+            <div class="vf-kpi vf-kpi--warning">
+              <span class="vf-kpi__label">Sem custo cadastrado</span>
+              <span class="vf-kpi__value">14</span>
+              <span class="vf-kpi__foot is-warning">Revisar base de custos</span>
+            </div>
+            <div class="vf-kpi vf-kpi--danger">
+              <span class="vf-kpi__label">Margem negativa</span>
+              <span class="vf-kpi__value">3</span>
+              <span class="vf-kpi__foot is-danger">Ação imediata</span>
+            </div>
+          </div>
+          <p class="lab-note">Stress de valores longos (colunas estreitas):</p>
+          <div class="lab-currency-stress">
+            <div class="vf-kpi-grid">
+              <div class="vf-kpi">
+                <span class="vf-kpi__label">GMV acumulado</span>
+                <span class="vf-kpi__value vf-kpi__value--currency">
+                  <span class="vf-kpi__currency">R$</span>
+                  <span>12.847.320,55</span>
+                </span>
+                <span class="vf-kpi__trend is-success">+3,1%</span>
+              </div>
+              <div class="vf-kpi">
+                <span class="vf-kpi__label">Custo total</span>
+                <span class="vf-kpi__value vf-kpi__value--currency">
+                  <span class="vf-kpi__currency">R$</span>
+                  <span>9.412.887,10</span>
+                </span>
+                <span class="vf-kpi__trend is-danger">-1,8%</span>
+              </div>
+              <div class="vf-kpi">
+                <span class="vf-kpi__label">Ticket médio</span>
+                <span class="vf-kpi__value vf-kpi__value--currency">
+                  <span class="vf-kpi__currency">R$</span>
+                  <span>187,42</span>
+                </span>
+                <span class="vf-kpi__trend">estável</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 7. Tags, badges e status ==================== -->
+        <section class="vf-section" aria-labelledby="sec-tags">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-tags">7 · Tags, badges e status</h2>
+              <p class="vf-section__description">Tag = categoria · Badge = contagem · Status = estado operacional (dot + texto).</p>
+            </div>
+          </div>
+          <div class="vf-card">
+            <div class="vf-card__body vf-stack">
+              <div class="lab-row">
+                <span class="vf-tag">Full</span>
+                <span class="vf-tag is-primary">VenForce Full</span>
+                <span class="vf-tag is-info">Catálogo</span>
+                <span class="vf-tag is-neutral">Arquivado</span>
+                <span class="vf-tag is-success">Promoção ativa</span>
+                <span class="vf-tag is-warning">Frete grátis</span>
+              </div>
+              <div class="lab-row">
+                <span>Tarefas <span class="vf-badge">3</span></span>
+                <span>Alertas <span class="vf-badge is-danger">12</span></span>
+                <span>Novidades <span class="vf-badge is-primary">2</span></span>
+                <span>Concluídas <span class="vf-badge is-success">48</span></span>
+              </div>
+              <div class="lab-row">
+                <span class="vf-status is-success">Sincronizado</span>
+                <span class="vf-status is-warning">Pendente</span>
+                <span class="vf-status is-danger">Erro de integração</span>
+                <span class="vf-status is-info">Em análise</span>
+                <span class="vf-status is-primary">Em implantação</span>
+                <span class="vf-status">Inativo</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 8. Toolbar e filtros ==================== -->
+        <section class="vf-section" aria-labelledby="sec-toolbar">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-toolbar">8 · Toolbar e filtros</h2>
+              <p class="vf-section__description">Filtros à esquerda, ações à direita, chips rápidos e trilha de filtros aplicados.</p>
+            </div>
+          </div>
+          <div class="vf-stack">
+            <div class="vf-toolbar">
+              <div class="vf-toolbar__filters">
+                <input class="vf-input vf-search" type="search" placeholder="Buscar anúncio…" aria-label="Buscar anúncio">
+                <select class="vf-select lab-select-inline" aria-label="Filtrar por status">
+                  <option>Todos os status</option>
+                  <option>Ativos</option>
+                  <option>Pausados</option>
+                </select>
+                <div class="vf-filter-group">
+                  <span class="vf-filter-group__label">Período:</span>
+                  <button type="button" class="vf-filter-chip is-active" aria-pressed="true">30 dias</button>
+                  <button type="button" class="vf-filter-chip" aria-pressed="false">90 dias</button>
+                </div>
+                <button type="button" class="vf-filter-chip" aria-pressed="false">Com promoção</button>
+                <button type="button" class="vf-filter-chip" aria-pressed="false">Full <span class="vf-badge">128</span></button>
+              </div>
+              <div class="vf-toolbar__actions">
+                <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm">Exportar</button>
+                <button type="button" class="vf-btn vf-btn--primary vf-btn--sm">Novo anúncio</button>
+              </div>
+            </div>
+            <div class="vf-active-filters" role="group" aria-label="Filtros aplicados">
+              <span class="vf-active-filter">Status: Ativo <button type="button" class="vf-active-filter__remove" aria-label="Remover filtro Status: Ativo">✕</button></span>
+              <span class="vf-active-filter">Margem &lt; 10% <button type="button" class="vf-active-filter__remove" aria-label="Remover filtro Margem menor que 10%">✕</button></span>
+              <button type="button" class="vf-clear-filters">Limpar filtros</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 9. Tabela ==================== -->
+        <section class="vf-section" aria-labelledby="sec-table">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-table">9 · Tabela</h2>
+              <p class="vf-section__description">Header sticky, primeira coluna fixa, ordenação, truncamento com title, estados de linha e ações.</p>
+            </div>
+            <div class="vf-section__actions">
+              <div class="vf-segmented" role="group" aria-label="Densidade da tabela">
+                <button type="button" class="vf-segmented__item" data-table-density="vf-table--compact">Compacta</button>
+                <button type="button" class="vf-segmented__item is-active" data-table-density="">Padrão</button>
+                <button type="button" class="vf-segmented__item" data-table-density="vf-table--comfortable">Confortável</button>
+              </div>
+            </div>
+          </div>
+          <div class="vf-table-wrap lab-table-demo">
+            <table class="vf-table" id="lab-table">
+              <thead>
+                <tr>
+                  <th class="vf-table__sticky-cell">ID</th>
+                  <th>Anúncio</th>
+                  <th>Status</th>
+                  <th class="num"><button type="button" class="vf-table__sort is-desc">Preço</button></th>
+                  <th class="num"><button type="button" class="vf-table__sort">Margem</button></th>
+                  <th class="num"><button type="button" class="vf-table__sort">Vendas 30d</button></th>
+                  <th><span class="vf-visually-hidden">Ações</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="vf-mono vf-table__sticky-cell">MLB3481920456</td>
+                  <td class="vf-truncate" title="Fone Bluetooth ANC Pro com cancelamento ativo de ruído e estojo de recarga">Fone Bluetooth ANC Pro com cancelamento ativo de ruído e estojo de recarga</td>
+                  <td><span class="vf-status is-success">Ativo</span></td>
+                  <td class="num">R$ 249,90</td>
+                  <td class="num">24,1%</td>
+                  <td class="num">182</td>
+                  <td class="vf-table__actions">
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Editar">✎</button>
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Mais ações">⋯</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="vf-mono vf-table__sticky-cell">MLB2907114832</td>
+                  <td>Carregador Turbo 65W USB-C</td>
+                  <td><span class="vf-status is-success">Ativo</span></td>
+                  <td class="num">R$ 89,90</td>
+                  <td class="num">31,7%</td>
+                  <td class="num">421</td>
+                  <td class="vf-table__actions">
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Editar">✎</button>
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Mais ações">⋯</button>
+                  </td>
+                </tr>
+                <tr class="row--selected">
+                  <td class="vf-mono vf-table__sticky-cell">MLB3112087664</td>
+                  <td>Suporte veicular magnético</td>
+                  <td><span class="vf-status is-info">Em análise</span></td>
+                  <td class="num">R$ 45,50</td>
+                  <td class="num">18,9%</td>
+                  <td class="num">96</td>
+                  <td class="vf-table__actions">
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Editar">✎</button>
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Mais ações">⋯</button>
+                  </td>
+                </tr>
+                <tr class="row--warning">
+                  <td class="vf-mono vf-table__sticky-cell">MLB2778430119</td>
+                  <td>Cabo HDMI 2.1 8K 2m</td>
+                  <td><span class="vf-status is-warning">Estoque baixo</span></td>
+                  <td class="num">R$ 59,90</td>
+                  <td class="num">22,3%</td>
+                  <td class="num">64</td>
+                  <td class="vf-table__actions">
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Editar">✎</button>
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Mais ações">⋯</button>
+                  </td>
+                </tr>
+                <tr class="row--danger">
+                  <td class="vf-mono vf-table__sticky-cell">MLB3550991272</td>
+                  <td>Mouse gamer 12000 DPI</td>
+                  <td><span class="vf-status is-danger">Sem estoque</span></td>
+                  <td class="num">R$ 129,00</td>
+                  <td class="num">-4,2%</td>
+                  <td class="num">0</td>
+                  <td class="vf-table__actions">
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Editar">✎</button>
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Mais ações">⋯</button>
+                  </td>
+                </tr>
+                <tr class="row--disabled">
+                  <td class="vf-mono vf-table__sticky-cell">MLB2661203987</td>
+                  <td>Teclado mecânico compacto</td>
+                  <td><span class="vf-status">Pausado</span></td>
+                  <td class="num">R$ 199,90</td>
+                  <td class="num">27,5%</td>
+                  <td class="num">38</td>
+                  <td class="vf-table__actions">
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Editar">✎</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="vf-mono vf-table__sticky-cell">MLB3009475518</td>
+                  <td>Webcam Full HD com tripé</td>
+                  <td><span class="vf-status is-success">Ativo</span></td>
+                  <td class="num">R$ 149,90</td>
+                  <td class="num">25,0%</td>
+                  <td class="num">117</td>
+                  <td class="vf-table__actions">
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Editar">✎</button>
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Mais ações">⋯</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="vf-mono vf-table__sticky-cell">MLB2843367201</td>
+                  <td>Hub USB-C 7 em 1</td>
+                  <td><span class="vf-status is-success">Ativo</span></td>
+                  <td class="num">R$ 179,90</td>
+                  <td class="num">29,4%</td>
+                  <td class="num">203</td>
+                  <td class="vf-table__actions">
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Editar">✎</button>
+                    <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Mais ações">⋯</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <nav class="vf-pagination" aria-label="Paginação de anúncios">
+            <span class="vf-pagination__info">Mostrando 1–8 de 342 anúncios</span>
+            <label class="vf-page-size">
+              Por página
+              <select class="vf-select" aria-label="Itens por página">
+                <option>25</option>
+                <option>50</option>
+                <option>100</option>
+              </select>
+            </label>
+            <div class="vf-pagination__actions">
+              <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" disabled>Anterior</button>
+              <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm">Próxima</button>
+            </div>
+          </nav>
+
+          <p class="lab-note">Estados de corpo inteiro — empty e loading:</p>
+          <div class="lab-grid lab-grid--half">
+            <div class="vf-table-wrap">
+              <table class="vf-table">
+                <thead><tr><th scope="col">ID</th><th scope="col">Anúncio</th><th scope="col" class="num">Preço</th></tr></thead>
+                <tbody>
+                  <tr class="vf-table__empty"><td colspan="3">Nenhum anúncio corresponde aos filtros aplicados.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="vf-table-wrap" aria-busy="true">
+              <table class="vf-table">
+                <thead><tr><th scope="col">ID</th><th scope="col">Anúncio</th><th scope="col" class="num">Preço</th></tr></thead>
+                <tbody>
+                  <tr class="vf-table__loading"><td><div class="vf-skeleton vf-skeleton--row"></div></td><td><div class="vf-skeleton vf-skeleton--row"></div></td><td><div class="vf-skeleton vf-skeleton--row"></div></td></tr>
+                  <tr class="vf-table__loading"><td><div class="vf-skeleton vf-skeleton--row"></div></td><td><div class="vf-skeleton vf-skeleton--row"></div></td><td><div class="vf-skeleton vf-skeleton--row"></div></td></tr>
+                  <tr class="vf-table__loading"><td><div class="vf-skeleton vf-skeleton--row"></div></td><td><div class="vf-skeleton vf-skeleton--row"></div></td><td><div class="vf-skeleton vf-skeleton--row"></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 10. Tabs e segmented ==================== -->
+        <section class="vf-section" aria-labelledby="sec-tabs">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-tabs">10 · Tabs e segmented</h2>
+              <p class="vf-section__description">Tabs para trocar de contexto; segmented para alternar visualização. Overflow rola horizontal.</p>
+            </div>
+          </div>
+          <div class="vf-card">
+            <div class="vf-card__body vf-stack vf-stack--lg">
+              <div class="vf-tabs" role="tablist" aria-label="Seções do cliente">
+                <button type="button" class="vf-tab is-active" role="tab" aria-selected="true">Visão geral</button>
+                <button type="button" class="vf-tab" role="tab" aria-selected="false">Anúncios <span class="vf-badge">342</span></button>
+                <button type="button" class="vf-tab" role="tab" aria-selected="false">Pedidos</button>
+                <button type="button" class="vf-tab" role="tab" aria-selected="false">Diagnósticos <span class="vf-badge is-danger">3</span></button>
+                <button type="button" class="vf-tab" role="tab" aria-selected="false" disabled>Ads (sem acesso)</button>
+              </div>
+              <div class="lab-row">
+                <div class="vf-segmented" role="group" aria-label="Visualização">
+                  <button type="button" class="vf-segmented__item is-active" aria-pressed="true">Tabela</button>
+                  <button type="button" class="vf-segmented__item" aria-pressed="false">Cards</button>
+                  <button type="button" class="vf-segmented__item" aria-pressed="false">Gráfico</button>
+                </div>
+                <div class="vf-segmented" role="group" aria-label="Moeda">
+                  <button type="button" class="vf-segmented__item is-active" aria-pressed="true">R$</button>
+                  <button type="button" class="vf-segmented__item" aria-pressed="false">%</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 11. Feedback ==================== -->
+        <section class="vf-section" aria-labelledby="sec-feedback">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-feedback">11 · Feedback</h2>
+              <p class="vf-section__description">Banner de página com estrutura completa, alert inline e toast flutuante.</p>
+            </div>
+          </div>
+          <div class="vf-stack">
+            <div class="vf-banner is-success" role="status">
+              <span class="vf-banner__icon" aria-hidden="true">✓</span>
+              <div class="vf-banner__content">
+                <p class="vf-banner__title">Sincronização concluída</p>
+                <p class="vf-banner__description">342 anúncios atualizados às 14:32.</p>
+              </div>
+              <button type="button" class="vf-banner__close" aria-label="Fechar aviso">✕</button>
+            </div>
+            <div class="vf-banner is-warning">
+              <span class="vf-banner__icon" aria-hidden="true">!</span>
+              <div class="vf-banner__content">
+                <p class="vf-banner__title">8 pedidos vencem hoje</p>
+                <p class="vf-banner__description">Ainda não foram despachados e podem gerar penalidade de reputação.</p>
+                <div class="vf-banner__actions">
+                  <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm">Ver pedidos</button>
+                </div>
+              </div>
+            </div>
+            <div class="vf-banner is-danger" role="alert">
+              <span class="vf-banner__icon" aria-hidden="true">✕</span>
+              <div class="vf-banner__content">
+                <p class="vf-banner__title">Falha na integração</p>
+                <p class="vf-banner__description">O token do Mercado Livre expirou — reconecte a conta para retomar a sincronização.</p>
+                <div class="vf-banner__actions">
+                  <button type="button" class="vf-btn vf-btn--primary vf-btn--sm">Reconectar</button>
+                  <button type="button" class="vf-btn vf-btn--ghost vf-btn--sm">Detalhes</button>
+                </div>
+              </div>
+            </div>
+            <div class="vf-banner is-info vf-banner--compact">
+              <div class="vf-banner__content"><strong>Novidade:</strong> o fechamento financeiro agora inclui custos Full.</div>
+              <button type="button" class="vf-banner__close" aria-label="Fechar aviso">✕</button>
+            </div>
+            <div class="lab-row">
+              <span class="vf-alert is-success">Salvo</span>
+              <span class="vf-alert is-warning">Revisar</span>
+              <span class="vf-alert is-danger">3 erros</span>
+              <span class="vf-alert is-info">Beta</span>
+              <span class="vf-alert">Neutro</span>
+            </div>
+            <div class="lab-row">
+              <button type="button" class="vf-btn vf-btn--secondary" data-toast="success">Toast de sucesso</button>
+              <button type="button" class="vf-btn vf-btn--secondary" data-toast="danger">Toast de erro</button>
+              <button type="button" class="vf-btn vf-btn--secondary" data-toast="info">Toast informativo</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 12. Empty, loading e progresso ==================== -->
+        <section class="vf-section" aria-labelledby="sec-states">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-states">12 · Empty, loading e progresso</h2>
+              <p class="vf-section__description">Loading = buscando · Empty = não existe · No results = filtros · Error = falhou. Mesmo layout, mensagem e ação diferentes.</p>
+            </div>
+          </div>
+          <div class="lab-grid">
+            <div class="vf-card">
+              <div class="vf-card__body">
+                <div class="vf-empty">
+                  <span class="vf-empty__icon" aria-hidden="true">◎</span>
+                  <h3 class="vf-empty__title">Nenhum anúncio ainda</h3>
+                  <p class="vf-empty__description">Sincronize a conta para importar os anúncios do marketplace.</p>
+                  <div class="vf-empty__actions">
+                    <button type="button" class="vf-btn vf-btn--primary vf-btn--sm">Sincronizar agora</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="vf-card">
+              <div class="vf-card__body">
+                <div class="vf-empty">
+                  <span class="vf-empty__icon" aria-hidden="true">⌕</span>
+                  <h3 class="vf-empty__title">Nenhum resultado</h3>
+                  <p class="vf-empty__description">Os filtros aplicados não encontraram anúncios.</p>
+                  <div class="vf-empty__actions">
+                    <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm">Limpar filtros</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="vf-card">
+              <div class="vf-card__body">
+                <div class="vf-empty">
+                  <span class="vf-empty__icon is-danger" aria-hidden="true">✕</span>
+                  <h3 class="vf-empty__title">Não foi possível carregar</h3>
+                  <p class="vf-empty__description">Erro ao consultar a API do marketplace.</p>
+                  <div class="vf-empty__actions">
+                    <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm">Tentar novamente</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="vf-card">
+              <div class="vf-card__body">
+                <div class="vf-loading-state" aria-busy="true">
+                  <span class="vf-spinner vf-spinner--lg" role="status" aria-label="Carregando"></span>
+                  <span>Carregando fechamento…</span>
+                </div>
+              </div>
+            </div>
+            <div class="vf-card">
+              <div class="vf-card__body vf-stack">
+                <div class="vf-skeleton vf-skeleton--title"></div>
+                <div class="vf-skeleton vf-skeleton--row"></div>
+                <div class="vf-skeleton vf-skeleton--row"></div>
+                <div class="vf-skeleton vf-skeleton--row"></div>
+              </div>
+            </div>
+            <div class="vf-card">
+              <div class="vf-card__body lab-progress-demo">
+                <div class="vf-stack vf-stack--sm">
+                  <span class="lab-note">Importando planilha — 68%</span>
+                  <!-- [html-validate-disable-next prefer-native-element] -->
+                  <div class="vf-progress" role="progressbar" aria-valuenow="68" aria-valuemin="0" aria-valuemax="100" aria-label="Progresso da importação">
+                    <div class="vf-progress__bar lab-bar-68"></div>
+                  </div>
+                </div>
+                <div class="vf-stack vf-stack--sm">
+                  <span class="lab-note">Meta de margem — atingida</span>
+                  <!-- [html-validate-disable-next prefer-native-element] -->
+                  <div class="vf-progress vf-progress--sm" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Meta de margem">
+                    <div class="vf-progress__bar is-success lab-bar-100"></div>
+                  </div>
+                </div>
+                <div class="vf-stack vf-stack--sm">
+                  <span class="lab-note">Uso do plano — atenção</span>
+                  <!-- [html-validate-disable-next prefer-native-element] -->
+                  <div class="vf-progress vf-progress--sm" role="progressbar" aria-valuenow="92" aria-valuemin="0" aria-valuemax="100" aria-label="Uso do plano">
+                    <div class="vf-progress__bar is-warning lab-bar-92"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 13. Menu, popover e tooltip ==================== -->
+        <section class="vf-section" aria-labelledby="sec-float">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-float">13 · Menu, popover e tooltip</h2>
+              <p class="vf-section__description">Componentes apenas visuais — o posicionamento dinâmico fica por conta de cada tela.</p>
+            </div>
+          </div>
+          <div class="vf-card">
+            <div class="vf-card__body lab-float-demo">
+              <div class="lab-menu-anchor">
+                <button type="button" class="vf-btn vf-btn--secondary" id="lab-menu-trigger" aria-haspopup="true" aria-expanded="false">Ações ▾</button>
+                <div class="vf-menu" id="lab-menu" role="menu" aria-label="Ações do anúncio">
+                  <div class="vf-menu__label">Anúncio</div>
+                  <button type="button" class="vf-menu__item" role="menuitem">Editar <span class="vf-menu__shortcut">E</span></button>
+                  <button type="button" class="vf-menu__item" role="menuitem">Duplicar</button>
+                  <button type="button" class="vf-menu__item is-active" role="menuitem">Fixar no topo</button>
+                  <button type="button" class="vf-menu__item" role="menuitem" disabled>Exportar (sem permissão)</button>
+                  <div class="vf-menu__separator" role="separator"></div>
+                  <button type="button" class="vf-menu__item is-danger" role="menuitem">Pausar anúncio</button>
+                </div>
+              </div>
+              <div class="vf-popover">
+                <p class="vf-popover__title">Margem líquida</p>
+                Receita menos custo do produto, comissão do marketplace, frete e impostos do período.
+              </div>
+              <span class="vf-tooltip">Última sincronização: 13/07 14:32</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 14. Importação de planilha ==================== -->
+        <section class="vf-section" aria-labelledby="sec-upload">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-upload">14 · Importação de planilha</h2>
+              <p class="vf-section__description">Dropzone com estados normal, arrastando e com arquivo, além da lista de arquivos.</p>
+            </div>
+          </div>
+          <div class="lab-grid lab-grid--half">
+            <div class="vf-stack">
+              <button type="button" class="vf-dropzone" id="lab-dropzone" aria-label="Enviar planilha de custos">
+                <span class="vf-dropzone__icon" aria-hidden="true">⇪</span>
+                <span class="vf-dropzone__title">Arraste a planilha de custos aqui</span>
+                <span class="vf-dropzone__hint">.xlsx ou .csv até 10 MB</span>
+                <span class="vf-dropzone__browse">ou selecione um arquivo</span>
+              </button>
+              <div class="vf-dropzone has-file">
+                <span class="vf-dropzone__icon" aria-hidden="true">✓</span>
+                <p class="vf-dropzone__title">custos-julho.xlsx pronto para importar</p>
+                <p class="vf-dropzone__hint">2.148 linhas detectadas</p>
+              </div>
+            </div>
+            <div class="vf-stack">
+              <div class="vf-file-item">
+                <span class="vf-file-item__icon" aria-hidden="true">xlsx</span>
+                <div class="vf-file-item__meta">
+                  <p class="vf-file-item__name">base-custos-mercado-livre-julho-2026.xlsx</p>
+                  <p class="vf-file-item__info">1,8 MB · 2.148 linhas · importado às 09:14</p>
+                </div>
+                <div class="vf-file-item__actions">
+                  <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Baixar">↓</button>
+                  <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Remover">✕</button>
+                </div>
+              </div>
+              <div class="vf-file-item">
+                <span class="vf-file-item__icon" aria-hidden="true">csv</span>
+                <div class="vf-file-item__meta">
+                  <p class="vf-file-item__name">fechamento-shopee.csv</p>
+                  <p class="vf-file-item__info">Enviando — 68%</p>
+                  <!-- [html-validate-disable-next prefer-native-element] -->
+                  <div class="vf-progress vf-progress--sm" role="progressbar" aria-valuenow="68" aria-valuemin="0" aria-valuemax="100" aria-label="Progresso do envio">
+                    <div class="vf-progress__bar lab-bar-68"></div>
+                  </div>
+                </div>
+                <div class="vf-file-item__actions">
+                  <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Cancelar envio">✕</button>
+                </div>
+              </div>
+              <div class="vf-file-item is-error">
+                <span class="vf-file-item__icon" aria-hidden="true">xls</span>
+                <div class="vf-file-item__meta">
+                  <p class="vf-file-item__name">planilha-antiga.xls</p>
+                  <p class="vf-file-item__info">Formato não suportado — converta para .xlsx</p>
+                </div>
+                <div class="vf-file-item__actions">
+                  <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Remover">✕</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 15. Modal e drawer ==================== -->
+        <section class="vf-section" aria-labelledby="sec-overlay">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-overlay">15 · Modal e drawer</h2>
+              <p class="vf-section__description">Header/footer fixos, corpo com scroll interno, Esc e clique no backdrop fecham.</p>
+            </div>
+          </div>
+          <div class="vf-card">
+            <div class="vf-card__body lab-row">
+              <button type="button" class="vf-btn vf-btn--primary" data-open-modal="lab-modal-overlay">Abrir modal</button>
+              <button type="button" class="vf-btn vf-btn--secondary" data-open-modal="lab-modal-sm-overlay">Modal pequeno</button>
+              <button type="button" class="vf-btn vf-btn--secondary" id="lab-open-drawer">Abrir drawer</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 16. Densidades lado a lado ==================== -->
+        <section class="vf-section" aria-labelledby="sec-density">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-density">16 · Confortável × compacta</h2>
+              <p class="vf-section__description">O mesmo markup — só os tokens mudam via data-vf-density.</p>
+            </div>
+          </div>
+          <div class="lab-grid lab-grid--half">
+            <div class="lab-density-pane">
+              <p class="lab-density-pane__title">Confortável (padrão)</p>
+              <div class="vf-kpi-grid">
+                <div class="vf-kpi"><span class="vf-kpi__label">Pedidos</span><span class="vf-kpi__value">1.204</span></div>
+                <div class="vf-kpi"><span class="vf-kpi__label">Margem</span><span class="vf-kpi__value">23,8%</span></div>
+              </div>
+              <div class="vf-table-wrap">
+                <table class="vf-table">
+                  <thead><tr><th>SKU</th><th class="num">Preço</th><th class="num">Margem</th></tr></thead>
+                  <tbody>
+                    <tr><td class="vf-mono">SKU-1001</td><td class="num">R$ 89,90</td><td class="num">31,7%</td></tr>
+                    <tr><td class="vf-mono">SKU-1002</td><td class="num">R$ 45,50</td><td class="num">18,9%</td></tr>
+                    <tr><td class="vf-mono">SKU-1003</td><td class="num">R$ 129,00</td><td class="num">24,2%</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="lab-row">
+                <button type="button" class="vf-btn vf-btn--primary">Salvar</button>
+                <input class="vf-input lab-input-narrow" type="text" placeholder="Campo padrão" aria-label="Campo de exemplo">
+              </div>
+            </div>
+            <div class="lab-density-pane" data-vf-density="compact">
+              <p class="lab-density-pane__title">Compacta (data-vf-density="compact")</p>
+              <div class="vf-kpi-grid">
+                <div class="vf-kpi"><span class="vf-kpi__label">Pedidos</span><span class="vf-kpi__value">1.204</span></div>
+                <div class="vf-kpi"><span class="vf-kpi__label">Margem</span><span class="vf-kpi__value">23,8%</span></div>
+              </div>
+              <div class="vf-table-wrap">
+                <table class="vf-table">
+                  <thead><tr><th>SKU</th><th class="num">Preço</th><th class="num">Margem</th></tr></thead>
+                  <tbody>
+                    <tr><td class="vf-mono">SKU-1001</td><td class="num">R$ 89,90</td><td class="num">31,7%</td></tr>
+                    <tr><td class="vf-mono">SKU-1002</td><td class="num">R$ 45,50</td><td class="num">18,9%</td></tr>
+                    <tr><td class="vf-mono">SKU-1003</td><td class="num">R$ 129,00</td><td class="num">24,2%</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="lab-row">
+                <button type="button" class="vf-btn vf-btn--primary">Salvar</button>
+                <input class="vf-input lab-input-narrow" type="text" placeholder="Campo compacto" aria-label="Campo de exemplo compacto">
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 17. Contexto real: mini-dashboard ==================== -->
+        <section class="vf-section" aria-labelledby="sec-context">
+          <div class="vf-section__header">
+            <div>
+              <h2 class="vf-section__title" id="sec-context">17 · Contexto real</h2>
+              <p class="vf-section__description">Composição típica de uma tela de operação: header, KPIs, toolbar e tabela juntos.</p>
+            </div>
+          </div>
+          <div class="vf-stack vf-stack--lg">
+            <header class="vf-page-header">
+              <div class="vf-page-header__main">
+                <p class="vf-page-header__eyebrow">Central de operação</p>
+                <h1 class="vf-page-header__title">Loja Aurora — Mercado Livre</h1>
+                <p class="vf-page-header__description">Última sincronização há 12 minutos.</p>
+              </div>
+              <div class="vf-page-header__actions">
+                <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm">Sincronizar</button>
+                <button type="button" class="vf-btn vf-btn--primary vf-btn--sm">Fechamento</button>
+              </div>
+            </header>
+            <div class="vf-kpi-grid">
+              <div class="vf-kpi">
+                <span class="vf-kpi__label">Vendas hoje</span>
+                <span class="vf-kpi__value vf-kpi__value--currency"><span class="vf-kpi__currency">R$</span><span>8.412,90</span></span>
+                <span class="vf-kpi__trend is-success">+8,2% vs ontem</span>
+              </div>
+              <div class="vf-kpi">
+                <span class="vf-kpi__label">Pedidos</span>
+                <span class="vf-kpi__value">64</span>
+                <span class="vf-kpi__foot">12 aguardando despacho</span>
+              </div>
+              <div class="vf-kpi vf-kpi--danger">
+                <span class="vf-kpi__label">Margem negativa</span>
+                <span class="vf-kpi__value">3</span>
+                <span class="vf-kpi__foot is-danger">Revisar preços</span>
+              </div>
+              <div class="vf-kpi vf-kpi--featured">
+                <span class="vf-kpi__label">Margem média</span>
+                <span class="vf-kpi__value">23,8%</span>
+                <span class="vf-kpi__foot">Meta: 22%</span>
+              </div>
+            </div>
+            <div class="vf-toolbar">
+              <div class="vf-toolbar__filters">
+                <input class="vf-input vf-search" type="search" placeholder="Buscar…" aria-label="Buscar">
+                <button type="button" class="vf-filter-chip is-active" aria-pressed="true">Hoje</button>
+                <button type="button" class="vf-filter-chip" aria-pressed="false">7 dias</button>
+              </div>
+              <div class="vf-toolbar__actions">
+                <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm">Exportar</button>
+              </div>
+            </div>
+            <div class="vf-table-wrap">
+              <table class="vf-table vf-table--compact">
+                <thead><tr><th>Pedido</th><th>Cliente</th><th>Status</th><th class="num">Valor</th></tr></thead>
+                <tbody>
+                  <tr><td class="vf-mono">#2000012</td><td>M. Ferreira</td><td><span class="vf-status is-success">Despachado</span></td><td class="num">R$ 249,90</td></tr>
+                  <tr><td class="vf-mono">#2000013</td><td>J. Almeida</td><td><span class="vf-status is-warning">Aguardando</span></td><td class="num">R$ 89,90</td></tr>
+                  <tr><td class="vf-mono">#2000014</td><td>R. Santos</td><td><span class="vf-status is-warning">Aguardando</span></td><td class="num">R$ 425,00</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+    </div>
+  </div>
+
+  <div class="lab-customizer-backdrop" id="lab-customizer-backdrop"></div>
+  <aside class="lab-customizer" id="lab-customizer" aria-labelledby="lab-customizer-title" aria-hidden="true" inert>
+    <div class="lab-customizer__header">
+      <div>
+        <p class="vf-page-header__eyebrow">Playground local</p>
+        <h2 class="lab-customizer__title" id="lab-customizer-title">Ajustar tokens</h2>
+      </div>
+      <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" id="lab-close-customizer" aria-label="Fechar painel">✕</button>
+    </div>
+    <div class="lab-customizer__body">
+      <div class="lab-control-field">
+        <div class="lab-control-field__head">
+          <label class="vf-field__label" for="lab-primary-color">Cor primária</label>
+          <output class="lab-token-value" for="lab-primary-color" id="lab-primary-color-value">#5a2a8f</output>
+        </div>
+        <input class="lab-color-input" id="lab-primary-color" type="color" value="#5a2a8f">
+      </div>
+
+      <div class="lab-control-field">
+        <div class="lab-control-field__head">
+          <label class="vf-field__label" for="lab-font-size">Texto base</label>
+          <output class="lab-token-value" for="lab-font-size" id="lab-font-size-value">15px</output>
+        </div>
+        <input class="lab-range" id="lab-font-size" type="range" min="13" max="18" step="1" value="15">
+      </div>
+
+      <div class="lab-control-field">
+        <div class="lab-control-field__head">
+          <label class="vf-field__label" for="lab-spacing-scale">Escala de espaçamento</label>
+          <output class="lab-token-value" for="lab-spacing-scale" id="lab-spacing-scale-value">100%</output>
+        </div>
+        <input class="lab-range" id="lab-spacing-scale" type="range" min="75" max="150" step="5" value="100">
+      </div>
+
+      <div class="lab-control-field">
+        <div class="lab-control-field__head">
+          <label class="vf-field__label" for="lab-radius">Radius dos cards</label>
+          <output class="lab-token-value" for="lab-radius" id="lab-radius-value">10px</output>
+        </div>
+        <input class="lab-range" id="lab-radius" type="range" min="0" max="20" step="1" value="10">
+      </div>
+
+      <div class="lab-control-field">
+        <div class="lab-control-field__head">
+          <label class="vf-field__label" for="lab-card-padding">Padding dos cards</label>
+          <output class="lab-token-value" for="lab-card-padding" id="lab-card-padding-value">20px</output>
+        </div>
+        <input class="lab-range" id="lab-card-padding" type="range" min="12" max="36" step="2" value="20">
+      </div>
+
+      <div class="lab-control-field">
+        <div class="lab-control-field__head">
+          <label class="vf-field__label" for="lab-table-padding">Altura das linhas</label>
+          <output class="lab-token-value" for="lab-table-padding" id="lab-table-padding-value">9px</output>
+        </div>
+        <input class="lab-range" id="lab-table-padding" type="range" min="4" max="18" step="1" value="9">
+      </div>
+
+      <div class="lab-control-field">
+        <label class="vf-field__label" for="lab-content-width">Largura do conteúdo</label>
+        <select class="vf-select" id="lab-content-width">
+          <option value="1200">Padrão · 1200px</option>
+          <option value="1360">Ampla · 1360px</option>
+          <option value="1560" selected>Portal amplo · 1560px</option>
+          <option value="1760">Ultrawide · 1760px</option>
+        </select>
+      </div>
+
+      <div class="lab-control-field">
+        <label class="vf-field__label" for="lab-card-columns">Layout dos cards de exemplo</label>
+        <select class="vf-select" id="lab-card-columns">
+          <option value="auto" selected>Responsivo automático</option>
+          <option value="1">1 coluna</option>
+          <option value="2">2 colunas</option>
+          <option value="3">3 colunas</option>
+          <option value="4">4 colunas</option>
+        </select>
+      </div>
+
+      <div class="vf-banner is-info vf-banner--compact">
+        <div class="vf-banner__content">Os valores são aplicados apenas ao laboratório e salvos localmente para a próxima visita.</div>
+      </div>
+    </div>
+    <div class="lab-customizer__footer">
+      <button type="button" class="vf-btn vf-btn--secondary" id="lab-panel-reset">Restaurar padrão</button>
+      <button type="button" class="vf-btn vf-btn--primary" id="lab-panel-copy">Copiar variáveis CSS</button>
+    </div>
+  </aside>
+
+  <!-- Modal padrão -->
+  <div class="vf-overlay" id="lab-modal-overlay">
+    <div class="vf-modal" role="dialog" aria-modal="true" aria-labelledby="lab-modal-title">
+      <div class="vf-modal__header">
+        <h3 class="vf-modal__title" id="lab-modal-title">Confirmar sincronização</h3>
+        <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" data-close-modal aria-label="Fechar">✕</button>
+      </div>
+      <div class="vf-modal__body">
+        <div class="vf-stack">
+          <p class="lab-m0">Isso vai buscar os 342 anúncios da conta <span class="vf-mono">VF-0042</span> e atualizar preços, estoque e status. A operação leva cerca de 2 minutos.</p>
+          <div class="vf-banner is-info vf-banner--compact">
+            <div class="vf-banner__content">Anúncios editados manualmente não serão sobrescritos.</div>
+          </div>
+          <div class="vf-field">
+            <label class="vf-field__label" for="lab-modal-select">Escopo</label>
+            <select class="vf-select" id="lab-modal-select">
+              <option>Todos os anúncios</option>
+              <option>Somente ativos</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="vf-modal__footer">
+        <button type="button" class="vf-btn vf-btn--secondary" data-close-modal>Cancelar</button>
+        <button type="button" class="vf-btn vf-btn--primary" data-close-modal>Sincronizar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal pequeno (confirmação destrutiva) -->
+  <div class="vf-overlay" id="lab-modal-sm-overlay">
+    <div class="vf-modal vf-modal--sm" role="dialog" aria-modal="true" aria-labelledby="lab-modal-sm-title">
+      <div class="vf-modal__header">
+        <h3 class="vf-modal__title" id="lab-modal-sm-title">Excluir base de custos?</h3>
+        <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" data-close-modal aria-label="Fechar">✕</button>
+      </div>
+      <div class="vf-modal__body">
+        A base <strong>custos-julho.xlsx</strong> será removida e os anúncios vinculados perderão o custo cadastrado. Esta ação não pode ser desfeita.
+      </div>
+      <div class="vf-modal__footer">
+        <button type="button" class="vf-btn vf-btn--secondary" data-close-modal>Cancelar</button>
+        <button type="button" class="vf-btn vf-btn--danger" data-close-modal>Excluir base</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drawer -->
+  <div class="vf-drawer-backdrop" id="lab-drawer-backdrop"></div>
+  <aside class="vf-drawer" id="lab-drawer" role="dialog" aria-modal="true" aria-label="Detalhes do anúncio">
+    <div class="vf-drawer__header">
+      <h3 class="vf-drawer__title">Detalhes do anúncio</h3>
+      <button type="button" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" data-close-drawer aria-label="Fechar">✕</button>
+    </div>
+    <div class="vf-drawer__body">
+      <div class="vf-stack">
+        <div class="vf-field">
+          <span class="vf-field__label">ID</span>
+          <span class="vf-mono">MLB3481920456</span>
+        </div>
+        <div class="vf-field">
+          <span class="vf-field__label">Título</span>
+          <span>Fone Bluetooth ANC Pro</span>
+        </div>
+        <div class="vf-field">
+          <span class="vf-field__label">Status</span>
+          <span><span class="vf-status is-success">Ativo</span></span>
+        </div>
+        <hr class="vf-divider">
+        <div class="vf-field">
+          <label class="vf-field__label" for="lab-drawer-price">Preço</label>
+          <div class="vf-input-group">
+            <span class="vf-input-prefix">R$</span>
+            <input class="vf-input num" id="lab-drawer-price" type="text" value="249,90">
+          </div>
+        </div>
+        <div class="vf-field">
+          <label class="vf-field__label" for="lab-drawer-note">Anotação</label>
+          <textarea class="vf-textarea" id="lab-drawer-note" placeholder="Observações internas…"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="vf-drawer__footer">
+      <button type="button" class="vf-btn vf-btn--secondary" data-close-drawer>Fechar</button>
+      <button type="button" class="vf-btn vf-btn--primary" data-close-drawer>Salvar</button>
+    </div>
+  </aside>
+
+  <!-- Toasts -->
+  <div class="vf-toast-stack" id="lab-toast-stack" aria-live="polite"></div>
+
+  <script>
+    // JS mínimo, apenas para demonstração. Sem dependências, sem API.
+    (function () {
+      'use strict';
+
+      /* Densidade ------------------------------------------------ */
+      var densityRoot = document.getElementById('lab-density-root');
+      document.querySelectorAll('[data-density]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          document.querySelectorAll('[data-density]').forEach(function (b) {
+            b.classList.toggle('is-active', b === btn);
+            b.setAttribute('aria-pressed', String(b === btn));
+          });
+          if (btn.dataset.density === 'compact') {
+            densityRoot.setAttribute('data-vf-density', 'compact');
+          } else {
+            densityRoot.removeAttribute('data-vf-density');
+          }
+        });
+      });
+
+      /* Largura simulada ----------------------------------------- */
+      var viewport = document.getElementById('lab-viewport');
+      document.querySelectorAll('[data-width]').forEach(function (btn) {
+        if (btn.tagName !== 'BUTTON') return;
+        btn.addEventListener('click', function () {
+          document.querySelectorAll('button[data-width]').forEach(function (b) {
+            b.classList.toggle('is-active', b === btn);
+            b.setAttribute('aria-pressed', String(b === btn));
+          });
+          viewport.setAttribute('data-width', btn.dataset.width);
+        });
+      });
+
+      /* Densidade local da tabela --------------------------------- */
+      var table = document.getElementById('lab-table');
+      document.querySelectorAll('[data-table-density]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          document.querySelectorAll('[data-table-density]').forEach(function (b) {
+            b.classList.toggle('is-active', b === btn);
+          });
+          table.classList.remove('vf-table--compact', 'vf-table--comfortable');
+          if (btn.dataset.tableDensity) table.classList.add(btn.dataset.tableDensity);
+        });
+      });
+
+      /* Modais ----------------------------------------------------- */
+      document.querySelectorAll('[data-open-modal]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          document.getElementById(btn.dataset.openModal).classList.add('is-open');
+          document.body.classList.add('vf-no-scroll');
+        });
+      });
+
+      document.querySelectorAll('.vf-overlay').forEach(function (overlay) {
+        overlay.querySelectorAll('[data-close-modal]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            overlay.classList.remove('is-open');
+            document.body.classList.remove('vf-no-scroll');
+          });
+        });
+        overlay.addEventListener('click', function (e) {
+          if (e.target === overlay) {
+            overlay.classList.remove('is-open');
+            document.body.classList.remove('vf-no-scroll');
+          }
+        });
+      });
+
+      /* Drawer ------------------------------------------------------ */
+      var drawer = document.getElementById('lab-drawer');
+      var backdrop = document.getElementById('lab-drawer-backdrop');
+
+      function openDrawer() {
+        drawer.classList.add('is-open');
+        backdrop.classList.add('is-open');
+        document.body.classList.add('vf-no-scroll');
+      }
+
+      function closeDrawer() {
+        drawer.classList.remove('is-open');
+        backdrop.classList.remove('is-open');
+        document.body.classList.remove('vf-no-scroll');
+      }
+
+      document.getElementById('lab-open-drawer').addEventListener('click', openDrawer);
+      drawer.querySelectorAll('[data-close-drawer]').forEach(function (btn) {
+        btn.addEventListener('click', closeDrawer);
+      });
+      backdrop.addEventListener('click', closeDrawer);
+
+      /* Esc fecha tudo ---------------------------------------------- */
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        document.querySelectorAll('.vf-overlay.is-open').forEach(function (o) {
+          o.classList.remove('is-open');
+        });
+        closeDrawer();
+        closeMenu();
+        document.body.classList.remove('vf-no-scroll');
+      });
+
+      /* Menu --------------------------------------------------------- */
+      var menuTrigger = document.getElementById('lab-menu-trigger');
+      var menu = document.getElementById('lab-menu');
+
+      function closeMenu() {
+        menu.classList.remove('is-open');
+        menuTrigger.setAttribute('aria-expanded', 'false');
+      }
+
+      menuTrigger.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var open = menu.classList.toggle('is-open');
+        menuTrigger.setAttribute('aria-expanded', String(open));
+      });
+
+      document.addEventListener('click', function (e) {
+        if (!menu.contains(e.target) && e.target !== menuTrigger) closeMenu();
+      });
+
+      /* Toast --------------------------------------------------------- */
+      var toastStack = document.getElementById('lab-toast-stack');
+      var toastContent = {
+        success: { title: 'Alterações salvas', desc: '12 anúncios atualizados com sucesso.' },
+        danger: { title: 'Falha ao salvar', desc: 'O marketplace recusou a alteração de preço.' },
+        info: { title: 'Sincronização iniciada', desc: 'Você pode continuar trabalhando enquanto isso.' }
+      };
+
+      document.querySelectorAll('[data-toast]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var kind = btn.dataset.toast;
+          var data = toastContent[kind];
+          var toast = document.createElement('div');
+          toast.className = 'vf-toast is-' + kind;
+          toast.setAttribute('role', 'status');
+
+          var content = document.createElement('div');
+          content.className = 'vf-toast__content';
+          var title = document.createElement('p');
+          title.className = 'vf-toast__title';
+          title.textContent = data.title;
+          var desc = document.createElement('p');
+          desc.className = 'vf-toast__description';
+          desc.textContent = data.desc;
+          content.appendChild(title);
+          content.appendChild(desc);
+
+          var close = document.createElement('button');
+          close.type = 'button';
+          close.className = 'vf-toast__close';
+          close.setAttribute('aria-label', 'Fechar notificação');
+          close.textContent = '✕';
+          close.addEventListener('click', function () { toast.remove(); });
+
+          toast.appendChild(content);
+          toast.appendChild(close);
+          toastStack.appendChild(toast);
+          setTimeout(function () { toast.remove(); }, 5000);
+        });
+      });
+
+      /* Dropzone (só demonstração visual do estado is-dragging) ------- */
+      var dz = document.getElementById('lab-dropzone');
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        dz.addEventListener(ev, function (e) {
+          e.preventDefault();
+          dz.classList.add('is-dragging');
+        });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        dz.addEventListener(ev, function (e) {
+          e.preventDefault();
+          dz.classList.remove('is-dragging');
+        });
+      });
+    })();
+  </script>
+  <script src="layout.js"></script>
+  <script src="design-system-lab.js"></script>
+</body>
+</html>
