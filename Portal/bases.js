@@ -335,12 +335,16 @@ function abrirModalExcluirBase({ slug, nome, btn }) {
   if (danger) { danger.style.display = "none"; danger.textContent = ""; }
   confirmBtn.disabled = false;
   confirmBtn.textContent = "Excluir base";
-  modal.style.display = "flex";
+  modal.style.removeProperty("display");
+  modal.classList.add("is-open");
 }
 
 function fecharModalExcluirBase() {
   const modal = document.getElementById("vf-excluir-base-modal");
-  if (modal) modal.style.display = "none";
+  if (modal) {
+    modal.classList.remove("is-open");
+    modal.style.removeProperty("display");
+  }
   BASE_DELETE_PENDENTE = null;
 }
 
@@ -785,12 +789,16 @@ async function abrirModalVinculo(baseId) {
 
   setModalPermissaoVisivel(!VINCULOS_EDITAVEIS);
   setVinculoModalLoading(false);
-  modal.style.display = "flex";
+  modal.style.removeProperty("display");
+  modal.classList.add("is-open");
 }
 
 function fecharModalVinculo() {
   const modal = document.getElementById("vf-vinculo-base-modal");
-  if (modal) modal.style.display = "none";
+  if (modal) {
+    modal.classList.remove("is-open");
+    modal.style.removeProperty("display");
+  }
   VINCULO_BASE_ATUAL = null;
   setVinculoModalDanger("");
 }
@@ -1991,8 +1999,8 @@ document.addEventListener("keydown", (e) => {
   const modalExcluir = document.getElementById("vf-excluir-base-modal");
   const modalVinculo = document.getElementById("vf-vinculo-base-modal");
   if (e.key !== "Escape") return;
-  if (modalVinculo && modalVinculo.style.display !== "none") fecharModalVinculo();
-  if (modalExcluir && modalExcluir.style.display !== "none") fecharModalExcluirBase();
+  if (modalVinculo && modalVinculo.classList.contains("is-open")) fecharModalVinculo();
+  if (modalExcluir && modalExcluir.classList.contains("is-open")) fecharModalExcluirBase();
 });
 
 // ─── Init ───
