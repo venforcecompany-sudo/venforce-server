@@ -87,8 +87,13 @@
         listing_type_id: "#cam-listing-type",
         pictures: "#cam-pictures-list",
         attributes: "#cam-attrs",
+        precoAtacado: "#cam-wholesale-ranges",
       };
-      const sel = map[e.campo];
+      const sel =
+        map[e.campo] ||
+        (String(e.campo).indexOf("precoAtacado") === 0
+          ? "#cam-wholesale-ranges"
+          : null);
       if (!sel) return;
       const el = root.querySelector(sel);
       if (el) { el.classList.add("is-invalid", "is-error"); el.setAttribute("aria-invalid", "true"); }

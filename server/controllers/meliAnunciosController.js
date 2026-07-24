@@ -526,6 +526,10 @@ async function publicarAnuncio(req, res) {
       category_id: resultado.category_id,
       descricaoSalva: resultado.descricaoSalva,
       descricaoErro: resultado.descricaoErro,
+      precoAtacadoSolicitado: resultado.precoAtacadoSolicitado,
+      precoAtacadoSalvo: resultado.precoAtacadoSalvo,
+      precoAtacadoErro: resultado.precoAtacadoErro,
+      precoAtacadoFaixas: resultado.precoAtacadoFaixas,
       publicacaoId: resultado.publicacaoId,
       cliente: { slug: cliente.slug, nome: cliente.nome },
     });
@@ -535,6 +539,66 @@ async function publicarAnuncio(req, res) {
       ok: false,
       codigo: "ERRO_INTERNO",
       motivo: "Erro interno ao publicar o anúncio.",
+    });
+  }
+}
+
+async function retryPrecosAtacado(req, res) {
+  try {
+    const { itemId } = req.params;
+    const body = req.body || {};
+    const { clienteSlug } = body;
+
+    if (!clienteSlug) {
+      return res.status(400).json({ ok: false, motivo: "Informe o clienteSlug." });
+    }
+
+    const cliente = await anunciosService.resolverCliente(clienteSlug);
+    if (!cliente) {
+      return res.status(404).json({ ok: false, motivo: "Cliente não encontrado." });
+    }
+
+    const resultado = await criacaoService.retryPrecosAtacado({
+      clienteId: cliente.id,
+      itemId,
+      dados: body,
+    });
+
+    if (!resultado.ok) {
+      return res.status(resultado.http || 400).json({
+        ok: false,
+        codigo: resultado.codigo,
+        motivo: resultado.motivo,
+        erros: resultado.erros || [],
+        statusMl: resultado.statusMl || null,
+        item_id: resultado.item_id || String(itemId),
+        precoAtacadoSolicitado: true,
+        precoAtacadoSalvo: false,
+        precoAtacadoErro: {
+          codigo: resultado.codigo,
+          motivo: resultado.motivo,
+          erros: resultado.erros || [],
+          statusMl: resultado.statusMl || null,
+        },
+        precoAtacadoFaixas: resultado.precoAtacadoFaixas || [],
+      });
+    }
+
+    return res.json({
+      ok: true,
+      item_id: resultado.item_id,
+      precoAtacadoSolicitado: true,
+      precoAtacadoSalvo: true,
+      precoAtacadoErro: null,
+      precoAtacadoFaixas: resultado.precoAtacadoFaixas,
+      cliente: { slug: cliente.slug, nome: cliente.nome },
+    });
+  } catch (err) {
+    console.error("[anuncios-meli] retryPrecosAtacado:", err.message);
+    return res.status(500).json({
+      ok: false,
+      codigo: "ERRO_INTERNO",
+      motivo: "Erro interno ao cadastrar os preços de atacado.",
     });
   }
 }
@@ -555,4 +619,5 @@ module.exports = {
   criacaoSaleTerms,
   criacaoListingTypes,
   publicarAnuncio,
+  retryPrecosAtacado,
 };

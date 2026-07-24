@@ -57,6 +57,10 @@ router.get(
 );
 router.get("/criacao/listing-types", ctrl.criacaoListingTypes);
 router.post("/criacao/publicar", ctrl.publicarAnuncio);
+router.post(
+  "/criacao/:itemId/precos-atacado",
+  ctrl.retryPrecosAtacado
+);
 
 // Rota de aprovação — precisa vir antes de "/:itemId" pra não bater.
 // Admin-only enquanto o otimizador está em validação.

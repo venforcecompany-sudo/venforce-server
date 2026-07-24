@@ -18,6 +18,11 @@ const db =
 
 const SITE_ID = "MLB";
 const TITLE_MAX = 60;
+const PRECO_ATACADO_MAX_FAIXAS = 5;
+const PRECO_ATACADO_CONTEXTOS = [
+  "channel_marketplace",
+  "user_type_business",
+];
 
 // -----------------------------------------------------------------------------
 // Schema de auditoria das publicações criadas pelo VenForce
@@ -55,6 +60,12 @@ async function ensureSchema() {
     `CREATE INDEX IF NOT EXISTS idx_meli_pub_item
        ON meli_anuncio_publicacoes (item_id);`
   );
+  await db.query(`
+    ALTER TABLE meli_anuncio_publicacoes
+      ADD COLUMN IF NOT EXISTS preco_atacado_status TEXT,
+      ADD COLUMN IF NOT EXISTS preco_atacado_config_json JSONB,
+      ADD COLUMN IF NOT EXISTS preco_atacado_erro_json JSONB;
+  `);
 
   _schemaPronto = true;
 }
@@ -301,6 +312,101 @@ function validarDadosPublicacao(dados) {
     }
   }
 
+  erros.push(...validarPrecoAtacado(d.precoAtacado, price));
+
+  return erros;
+}
+
+function normalizarFaixasPrecoAtacado(precoAtacado) {
+  if (!precoAtacado || !precoAtacado.habilitado) return [];
+  return (Array.isArray(precoAtacado.faixas) ? precoAtacado.faixas : [])
+    .map((faixa) => ({
+      quantidadeMinima: Number(faixa && faixa.quantidadeMinima),
+      precoUnitario: Number(faixa && faixa.precoUnitario),
+    }))
+    .sort((a, b) => a.quantidadeMinima - b.quantidadeMinima);
+}
+
+function validarPrecoAtacado(precoAtacado, precoNormal) {
+  if (!precoAtacado || !precoAtacado.habilitado) return [];
+
+  const erros = [];
+  const faixasOriginais = Array.isArray(precoAtacado.faixas)
+    ? precoAtacado.faixas
+    : [];
+
+  if (!faixasOriginais.length) {
+    erros.push({
+      campo: "precoAtacado.faixas",
+      mensagem: "Adicione ao menos uma faixa de preço de atacado.",
+      sugestao: "Informe a quantidade mínima e o preço por unidade.",
+    });
+    return erros;
+  }
+
+  if (faixasOriginais.length > PRECO_ATACADO_MAX_FAIXAS) {
+    erros.push({
+      campo: "precoAtacado.faixas",
+      mensagem: `É permitido cadastrar no máximo ${PRECO_ATACADO_MAX_FAIXAS} faixas de preço de atacado.`,
+      sugestao: "Remova as faixas excedentes.",
+    });
+  }
+
+  const faixas = normalizarFaixasPrecoAtacado(precoAtacado);
+  const quantidades = new Set();
+  const precoBase = Number(precoNormal);
+
+  faixas.forEach((faixa, index) => {
+    if (
+      !Number.isInteger(faixa.quantidadeMinima) ||
+      faixa.quantidadeMinima <= 1
+    ) {
+      erros.push({
+        campo: `precoAtacado.faixas.${index}.quantidadeMinima`,
+        mensagem: "A quantidade mínima deve ser um número inteiro maior que 1.",
+        sugestao: "Informe 2 ou mais unidades.",
+      });
+    } else if (quantidades.has(faixa.quantidadeMinima)) {
+      erros.push({
+        campo: `precoAtacado.faixas.${index}.quantidadeMinima`,
+        mensagem: `A quantidade mínima ${faixa.quantidadeMinima} está repetida.`,
+        sugestao: "Use uma quantidade mínima diferente em cada faixa.",
+      });
+    }
+    quantidades.add(faixa.quantidadeMinima);
+
+    if (!Number.isFinite(faixa.precoUnitario) || faixa.precoUnitario <= 0) {
+      erros.push({
+        campo: `precoAtacado.faixas.${index}.precoUnitario`,
+        mensagem: "O preço por unidade deve ser maior que zero.",
+        sugestao: "Informe um valor numérico positivo.",
+      });
+    } else if (
+      Number.isFinite(precoBase) &&
+      faixa.precoUnitario >= precoBase
+    ) {
+      erros.push({
+        campo: `precoAtacado.faixas.${index}.precoUnitario`,
+        mensagem: "O preço de atacado deve ser menor que o preço normal.",
+        sugestao: "Reduza o preço por unidade desta faixa.",
+      });
+    }
+
+    if (
+      index > 0 &&
+      Number.isFinite(faixa.precoUnitario) &&
+      Number.isFinite(faixas[index - 1].precoUnitario) &&
+      faixa.precoUnitario >= faixas[index - 1].precoUnitario
+    ) {
+      erros.push({
+        campo: `precoAtacado.faixas.${index}.precoUnitario`,
+        mensagem:
+          "O preço por unidade deve diminuir conforme a quantidade aumenta.",
+        sugestao: "Use preços estritamente decrescentes entre as faixas.",
+      });
+    }
+  });
+
   return erros;
 }
 
@@ -422,12 +528,16 @@ async function obterStatusConta(clienteId) {
       mlConectado: false,
       tokenValido: false,
       podePublicar: false,
+      precoAtacadoElegivel: false,
     };
   }
 
   let me = null;
   try {
-    const resp = await mlFetch(clienteId, "/users/me");
+    const resp = await mlFetch(
+      clienteId,
+      `/users/${encodeURIComponent(mlUserId)}`
+    );
     if (!resp.ok) {
       return {
         ok: false,
@@ -436,6 +546,7 @@ async function obterStatusConta(clienteId) {
         mlConectado: true,
         tokenValido: false,
         podePublicar: false,
+        precoAtacadoElegivel: false,
         mlUserId: String(mlUserId),
         statusMl: resp.status,
       };
@@ -449,6 +560,7 @@ async function obterStatusConta(clienteId) {
       mlConectado: true,
       tokenValido: false,
       podePublicar: false,
+      precoAtacadoElegivel: false,
       mlUserId: String(mlUserId),
     };
   }
@@ -463,6 +575,7 @@ async function obterStatusConta(clienteId) {
   // Conta apta quando site_status está ativo (ou ausente) e list.allow !== false.
   const podePublicar =
     (siteStatus === "active" || siteStatus === "") && listAllow !== false;
+  const tags = Array.isArray(me && me.tags) ? me.tags.map(String) : [];
 
   return {
     ok: true,
@@ -476,6 +589,7 @@ async function obterStatusConta(clienteId) {
     statusConta: (me.status && me.status.site_status) || "unknown",
     listAllow,
     permalink: me.permalink || null,
+    precoAtacadoElegivel: tags.includes("business"),
   };
 }
 
@@ -597,6 +711,235 @@ async function obterTiposAnuncio(clienteId) {
 // -----------------------------------------------------------------------------
 // Persistência
 // -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Preços por quantidade B2B
+// -----------------------------------------------------------------------------
+function obterPrecoStandardBase(data) {
+  const prices = Array.isArray(data && data.prices) ? data.prices : [];
+  return (
+    prices.find((price) => {
+      if (!price || price.type !== "standard" || !price.id) return false;
+      const conditions = price.conditions || {};
+      const contexts = Array.isArray(conditions.context_restrictions)
+        ? conditions.context_restrictions
+        : [];
+      return (
+        contexts.length === 0 &&
+        (conditions.min_purchase_unit == null ||
+          conditions.min_purchase_unit === "")
+      );
+    }) || null
+  );
+}
+
+function obterFaixasB2B(data) {
+  const prices = Array.isArray(data && data.prices) ? data.prices : [];
+  return prices
+    .filter((price) => {
+      const conditions = (price && price.conditions) || {};
+      const contexts = Array.isArray(conditions.context_restrictions)
+        ? conditions.context_restrictions
+        : [];
+      return (
+        price &&
+        price.type === "standard" &&
+        conditions.min_purchase_unit != null &&
+        PRECO_ATACADO_CONTEXTOS.every((contexto) =>
+          contexts.includes(contexto)
+        )
+      );
+    })
+    .map((price) => ({
+      quantidadeMinima: Number(price.conditions.min_purchase_unit),
+      precoUnitario: Number(price.amount),
+      moeda: price.currency_id || null,
+    }))
+    .sort((a, b) => a.quantidadeMinima - b.quantidadeMinima);
+}
+
+function montarPayloadPrecoAtacado(precoStandardId, faixas, moeda) {
+  return {
+    prices: [
+      { id: String(precoStandardId) },
+      ...faixas.map((faixa) => ({
+        amount: faixa.precoUnitario,
+        currency_id: moeda,
+        conditions: {
+          context_restrictions: [...PRECO_ATACADO_CONTEXTOS],
+          min_purchase_unit: faixa.quantidadeMinima,
+        },
+      })),
+    ],
+  };
+}
+
+function erroPrecoAtacado(codigo, motivo, extra) {
+  return {
+    ok: false,
+    codigo,
+    motivo,
+    ...(extra || {}),
+  };
+}
+
+function faixasConfirmadas(faixasEsperadas, faixasRecebidas, moeda) {
+  if (faixasEsperadas.length !== faixasRecebidas.length) return false;
+  return faixasEsperadas.every((esperada, index) => {
+    const recebida = faixasRecebidas[index];
+    return (
+      recebida &&
+      recebida.quantidadeMinima === esperada.quantidadeMinima &&
+      recebida.precoUnitario === esperada.precoUnitario &&
+      recebida.moeda === moeda
+    );
+  });
+}
+
+async function cadastrarPrecosAtacado({
+  clienteId,
+  itemId,
+  precoAtacado,
+  precoNormal,
+  moeda,
+}) {
+  const id = String(itemId || "").trim();
+  if (!id) {
+    return erroPrecoAtacado(
+      "ITEM_ID_AUSENTE",
+      "O anúncio foi criado sem um ITEM_ID válido para cadastrar o preço de atacado."
+    );
+  }
+
+  let pricesResp;
+  try {
+    pricesResp = await mlFetch(
+      clienteId,
+      `/items/${encodeURIComponent(id)}/prices`,
+      { headers: { "show-all-prices": "true" } }
+    );
+  } catch (err) {
+    return erroPrecoAtacado(
+      "PRECO_ATACADO_CONSULTA",
+      err.message || "Não foi possível consultar o preço padrão do anúncio."
+    );
+  }
+  if (!pricesResp.ok) {
+    const mapped = mapearErroMl(pricesResp.data, pricesResp.status);
+    return erroPrecoAtacado(
+      "PRECO_ATACADO_CONSULTA",
+      "Não foi possível consultar o preço padrão do anúncio.",
+      { statusMl: pricesResp.status, erros: mapped.erros }
+    );
+  }
+
+  const standard = obterPrecoStandardBase(pricesResp.data);
+  if (!standard) {
+    return erroPrecoAtacado(
+      "PRECO_STANDARD_NAO_ENCONTRADO",
+      "O preço standard do anúncio não foi encontrado."
+    );
+  }
+
+  const precoStandard = Number(standard.amount);
+  const precoInformado = Number(precoNormal);
+  const precoBase = Number.isFinite(precoStandard)
+    ? precoStandard
+    : precoInformado;
+  const moedaStandard = String(standard.currency_id || "").trim();
+  const moedaInformada = String(moeda || "").trim();
+  const moedaBase = moedaStandard || moedaInformada;
+  if (
+    !moedaBase ||
+    (moedaStandard && moedaInformada && moedaStandard !== moedaInformada)
+  ) {
+    return erroPrecoAtacado(
+      "MOEDA_PRECO_ATACADO_INVALIDA",
+      "O preço normal e as faixas de atacado devem usar a mesma moeda."
+    );
+  }
+
+  const errosValidacao = validarPrecoAtacado(precoAtacado, precoBase);
+  if (errosValidacao.length) {
+    return erroPrecoAtacado(
+      "VALIDACAO_PRECO_ATACADO",
+      errosValidacao[0].mensagem,
+      { erros: errosValidacao, http: 400 }
+    );
+  }
+
+  const faixas = normalizarFaixasPrecoAtacado(precoAtacado);
+  const payload = montarPayloadPrecoAtacado(standard.id, faixas, moedaBase);
+  let postResp;
+  try {
+    postResp = await mlFetch(
+      clienteId,
+      `/items/${encodeURIComponent(id)}/prices/standard/quantity`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
+  } catch (err) {
+    return erroPrecoAtacado(
+      "PRECO_ATACADO_GRAVACAO",
+      err.message || "Não foi possível cadastrar os preços de atacado.",
+      { faixas }
+    );
+  }
+  if (!postResp.ok) {
+    const mapped = mapearErroMl(postResp.data, postResp.status);
+    return erroPrecoAtacado(
+      "PRECO_ATACADO_GRAVACAO",
+      "Não foi possível cadastrar os preços de atacado.",
+      {
+        statusMl: postResp.status,
+        erros: mapped.erros,
+        faixas,
+      }
+    );
+  }
+
+  let confirmResp;
+  try {
+    confirmResp = await mlFetch(
+      clienteId,
+      `/items/${encodeURIComponent(id)}/prices`,
+      { headers: { "show-all-prices": "true" } }
+    );
+  } catch (err) {
+    return erroPrecoAtacado(
+      "PRECO_ATACADO_CONFIRMACAO",
+      err.message || "Não foi possível confirmar os preços de atacado.",
+      { faixas }
+    );
+  }
+  if (!confirmResp.ok) {
+    return erroPrecoAtacado(
+      "PRECO_ATACADO_CONFIRMACAO",
+      "Não foi possível confirmar os preços de atacado cadastrados.",
+      { statusMl: confirmResp.status, faixas }
+    );
+  }
+
+  const confirmadas = obterFaixasB2B(confirmResp.data);
+  if (!faixasConfirmadas(faixas, confirmadas, moedaBase)) {
+    return erroPrecoAtacado(
+      "PRECO_ATACADO_DIVERGENTE",
+      "O Mercado Livre não confirmou todas as faixas de preço de atacado.",
+      { faixas, faixasConfirmadas: confirmadas }
+    );
+  }
+
+  return {
+    ok: true,
+    faixas: confirmadas.map(({ quantidadeMinima, precoUnitario }) => ({
+      quantidadeMinima,
+      precoUnitario,
+    })),
+    moeda: moedaBase,
+  };
+}
+
 async function salvarPublicacao({
   clienteId,
   clienteSlug,
@@ -610,13 +953,17 @@ async function salvarPublicacao({
   resposta,
   erro,
   createdBy,
+  precoAtacadoStatus,
+  precoAtacadoConfig,
+  precoAtacadoErro,
 }) {
   await ensureSchema();
   const { rows } = await db.query(
     `INSERT INTO meli_anuncio_publicacoes (
        cliente_id, cliente_slug, ml_user_id, item_id, permalink, status,
-       titulo, category_id, payload_json, resposta_json, erro_json, created_by
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       titulo, category_id, payload_json, resposta_json, erro_json, created_by,
+       preco_atacado_status, preco_atacado_config_json, preco_atacado_erro_json
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING id, item_id, permalink, status, created_at;`,
     [
       clienteId,
@@ -631,6 +978,42 @@ async function salvarPublicacao({
       resposta ? JSON.stringify(resposta) : null,
       erro ? JSON.stringify(erro) : null,
       createdBy || null,
+      precoAtacadoStatus || null,
+      precoAtacadoConfig ? JSON.stringify(precoAtacadoConfig) : null,
+      precoAtacadoErro ? JSON.stringify(precoAtacadoErro) : null,
+    ]
+  );
+  return rows[0] || null;
+}
+
+async function atualizarPrecoAtacadoPublicacao({
+  clienteId,
+  itemId,
+  status,
+  config,
+  erro,
+}) {
+  await ensureSchema();
+  const { rows } = await db.query(
+    `UPDATE meli_anuncio_publicacoes
+        SET preco_atacado_status = $3,
+            preco_atacado_config_json = $4,
+            preco_atacado_erro_json = $5,
+            updated_at = NOW()
+      WHERE id = (
+        SELECT id
+          FROM meli_anuncio_publicacoes
+         WHERE cliente_id = $1 AND item_id = $2
+         ORDER BY created_at DESC
+         LIMIT 1
+      )
+      RETURNING id;`,
+    [
+      clienteId,
+      String(itemId),
+      status,
+      config ? JSON.stringify(config) : null,
+      erro ? JSON.stringify(erro) : null,
     ]
   );
   return rows[0] || null;
@@ -723,6 +1106,30 @@ async function createMercadoLivreItem({
       http: 403,
     };
   }
+  if (
+    dados &&
+    dados.precoAtacado &&
+    dados.precoAtacado.habilitado &&
+    !statusConta.precoAtacadoElegivel
+  ) {
+    return {
+      ok: false,
+      codigo: "PRECO_ATACADO_NAO_ELEGIVEL",
+      motivo:
+        "Esta conta não está habilitada para preços de atacado do Mercado Livre.",
+      erros: [
+        {
+          codigo: "PRECO_ATACADO_NAO_ELEGIVEL",
+          campo: "precoAtacado",
+          mensagem:
+            "O vendedor precisa possuir a tag business para oferecer preço de atacado.",
+          sugestao:
+            "Desative o preço de atacado ou use uma conta elegível para vendas B2B.",
+        },
+      ],
+      http: 403,
+    };
+  }
 
   const errosValidacao = validarDadosPublicacao(dados);
   if (errosValidacao.length) {
@@ -790,7 +1197,31 @@ async function createMercadoLivreItem({
   const itemId = item.id;
   const permalink = item.permalink || null;
 
-  // 2) Descrição em etapa separada
+  // 2) Preços por quantidade B2B, quando solicitados.
+  const precoAtacadoSolicitado = !!(
+    dados &&
+    dados.precoAtacado &&
+    dados.precoAtacado.habilitado
+  );
+  let precoAtacadoResultado = null;
+  if (precoAtacadoSolicitado) {
+    try {
+      precoAtacadoResultado = await cadastrarPrecosAtacado({
+        clienteId,
+        itemId,
+        precoAtacado: dados.precoAtacado,
+        precoNormal: dados.price,
+        moeda: dados.currency_id,
+      });
+    } catch (err) {
+      precoAtacadoResultado = erroPrecoAtacado(
+        "PRECO_ATACADO_ERRO_INTERNO",
+        err.message || "Não foi possível cadastrar os preços de atacado."
+      );
+    }
+  }
+
+  // 3) Descrição em etapa separada
   let descricaoOk = !description;
   let descricaoErro = null;
   if (description && itemId) {
@@ -829,6 +1260,28 @@ async function createMercadoLivreItem({
     payload,
     resposta: item,
     createdBy,
+    precoAtacadoStatus: !precoAtacadoSolicitado
+      ? "nao_solicitado"
+      : precoAtacadoResultado && precoAtacadoResultado.ok
+        ? "salvo"
+        : "erro",
+    precoAtacadoConfig: precoAtacadoSolicitado
+      ? {
+          habilitado: true,
+          faixas: normalizarFaixasPrecoAtacado(dados.precoAtacado),
+        }
+      : null,
+    precoAtacadoErro:
+      precoAtacadoSolicitado &&
+      precoAtacadoResultado &&
+      !precoAtacadoResultado.ok
+        ? {
+            ...precoAtacadoResultado,
+            motivo:
+              "Anúncio criado, mas não foi possível cadastrar os preços de atacado.",
+            detalhe: precoAtacadoResultado.motivo,
+          }
+        : null,
   });
 
   await upsertCatalogoLocal(clienteId, clienteSlug, item);
@@ -842,8 +1295,123 @@ async function createMercadoLivreItem({
     category_id: item.category_id || payload.category_id,
     descricaoSalva: descricaoOk,
     descricaoErro: descricaoErro,
+    precoAtacadoSolicitado,
+    precoAtacadoSalvo: precoAtacadoSolicitado
+      ? !!(precoAtacadoResultado && precoAtacadoResultado.ok)
+      : null,
+    precoAtacadoErro:
+      precoAtacadoSolicitado &&
+      precoAtacadoResultado &&
+      !precoAtacadoResultado.ok
+        ? {
+            ...precoAtacadoResultado,
+            motivo:
+              "Anúncio criado, mas não foi possível cadastrar os preços de atacado.",
+            detalhe: precoAtacadoResultado.motivo,
+          }
+        : null,
+    precoAtacadoFaixas: precoAtacadoSolicitado
+      ? (precoAtacadoResultado && precoAtacadoResultado.faixas) ||
+        normalizarFaixasPrecoAtacado(dados.precoAtacado)
+      : [],
     publicacaoId: registro && registro.id,
     item,
+  };
+}
+
+async function retryPrecosAtacado({ clienteId, itemId, dados }) {
+  await ensureSchema();
+
+  const id = String(itemId || "").trim();
+  if (!id) {
+    return {
+      ok: false,
+      codigo: "ITEM_ID_AUSENTE",
+      motivo: "Informe o ITEM_ID para cadastrar os preços de atacado.",
+      http: 400,
+    };
+  }
+
+  const recebido =
+    dados && dados.precoAtacado
+      ? dados.precoAtacado
+      : {
+          habilitado: true,
+          faixas: dados && dados.faixas,
+        };
+  const config = {
+    habilitado: true,
+    faixas: normalizarFaixasPrecoAtacado({
+      ...recebido,
+      habilitado: true,
+    }),
+  };
+
+  const statusConta = await obterStatusConta(clienteId);
+  if (!statusConta.ok || !statusConta.tokenValido) {
+    const falha = {
+      ok: false,
+      codigo: statusConta.codigo || "NO_TOKEN",
+      motivo: statusConta.motivo || "Conta ML indisponível.",
+      http: 400,
+    };
+    await atualizarPrecoAtacadoPublicacao({
+      clienteId,
+      itemId: id,
+      status: "erro",
+      config,
+      erro: falha,
+    });
+    return falha;
+  }
+  if (!statusConta.precoAtacadoElegivel) {
+    const falha = {
+      ok: false,
+      codigo: "PRECO_ATACADO_NAO_ELEGIVEL",
+      motivo:
+        "O vendedor precisa possuir a tag business para oferecer preço de atacado.",
+      http: 403,
+    };
+    await atualizarPrecoAtacadoPublicacao({
+      clienteId,
+      itemId: id,
+      status: "erro",
+      config,
+      erro: falha,
+    });
+    return falha;
+  }
+
+  const resultado = await cadastrarPrecosAtacado({
+    clienteId,
+    itemId: id,
+    precoAtacado: config,
+  });
+
+  await atualizarPrecoAtacadoPublicacao({
+    clienteId,
+    itemId: id,
+    status: resultado.ok ? "salvo" : "erro",
+    config,
+    erro: resultado.ok ? null : resultado,
+  });
+
+  if (!resultado.ok) {
+    return {
+      ...resultado,
+      http: resultado.http || (resultado.statusMl >= 500 ? 502 : 400),
+      item_id: id,
+      precoAtacadoSalvo: false,
+      precoAtacadoFaixas: resultado.faixas || config.faixas,
+    };
+  }
+
+  return {
+    ok: true,
+    item_id: id,
+    precoAtacadoSalvo: true,
+    precoAtacadoErro: null,
+    precoAtacadoFaixas: resultado.faixas,
   };
 }
 
@@ -855,9 +1423,15 @@ module.exports = {
   obterSaleTermsCategoria,
   obterTiposAnuncio,
   validarDadosPublicacao,
+  validarPrecoAtacado,
+  normalizarFaixasPrecoAtacado,
   montarPayloadItem,
+  montarPayloadPrecoAtacado,
+  cadastrarPrecosAtacado,
   mapearErroMl,
   createMercadoLivreItem,
+  retryPrecosAtacado,
   ERROS_CONHECIDOS,
   TITLE_MAX,
+  PRECO_ATACADO_MAX_FAIXAS,
 };

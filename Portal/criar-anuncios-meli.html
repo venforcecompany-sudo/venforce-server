@@ -73,6 +73,27 @@
             </div>
           </section>
 
+          <section class="vf-card cam-card" id="cam-sec-wholesale" aria-labelledby="cam-title-wholesale">
+            <div class="vf-card__header">
+              <div>
+                <h2 class="vf-card__title" id="cam-title-wholesale"><svg class="cam-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>Preço de atacado</h2>
+                <p class="vf-card__description">Defina preços progressivos exclusivos para compradores empresariais.</p>
+              </div>
+              <label class="vf-switch">
+                <input type="checkbox" id="cam-wholesale-enabled" role="switch" aria-controls="cam-wholesale-config" disabled>
+                <span>Oferecer preço de atacado</span>
+              </label>
+            </div>
+            <div class="vf-card__body cam-card-body-stack">
+              <div id="cam-wholesale-eligibility" class="vf-alert cam-wholesale-eligibility" role="status" aria-live="polite">Selecione uma conta para verificar a elegibilidade B2B.</div>
+              <div id="cam-wholesale-config" class="cam-wholesale-config" hidden>
+                <p class="vf-field__hint" id="cam-wholesale-help">Adicione de uma a cinco faixas. A quantidade deve aumentar e o preço por unidade deve diminuir em cada faixa.</p>
+                <div id="cam-wholesale-ranges" class="cam-wholesale-ranges" aria-describedby="cam-wholesale-help"></div>
+                <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="cam-wholesale-add">Adicionar faixa</button>
+              </div>
+            </div>
+          </section>
+
           <section class="vf-card cam-card" id="cam-sec-attrs" aria-labelledby="cam-title-attrs">
             <div class="vf-card__header"><div><h2 class="vf-card__title" id="cam-title-attrs"><svg class="cam-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Categoria e atributos</h2><p class="vf-card__description">Os campos são definidos pelo Mercado Livre para a categoria selecionada.</p></div></div>
             <div class="vf-card__body"><div id="cam-attrs"></div></div>
@@ -100,7 +121,7 @@
 
           <div id="cam-errors" aria-live="assertive" hidden></div>
           <div id="cam-progress" class="vf-banner is-info cam-progress" role="status" aria-live="polite" hidden><div class="vf-banner__content"><p class="vf-banner__title" id="cam-progress-label">Publicando anúncio...</p><div class="vf-progress" role="progressbar" aria-labelledby="cam-progress-label" aria-valuemin="0" aria-valuemax="100" aria-valuenow="12"><div class="vf-progress__bar cam-progress-fill" id="cam-progress-fill" data-progress="12"></div></div></div></div>
-          <div id="cam-success" class="vf-banner is-success cam-success" role="status" aria-live="polite" hidden><div class="vf-banner__content"><p class="vf-banner__title cam-success-title">Anúncio publicado com sucesso</p><div class="cam-success-meta"><div><strong>Item ID:</strong> <span id="cam-success-id" class="vf-mono">—</span></div><div><strong>Status:</strong> <span id="cam-success-status">—</span></div><div class="cam-success-link-row"><strong>Link:</strong> <a id="cam-success-link" href="#" target="_blank" rel="noopener">—</a></div></div><div class="vf-banner__actions cam-success-actions"><button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="cam-copy-link">Copiar link</button><a class="vf-btn vf-btn--primary vf-btn--sm" id="cam-open-link" href="#" target="_blank" rel="noopener">Visualizar anúncio</a><button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="cam-new-listing">Criar outro</button></div></div></div>
+          <div id="cam-success" class="vf-banner is-success cam-success" role="status" aria-live="polite" hidden><div class="vf-banner__content"><p class="vf-banner__title cam-success-title">Anúncio publicado com sucesso</p><div class="cam-success-meta"><div><strong>Item ID:</strong> <span id="cam-success-id" class="vf-mono">—</span></div><div><strong>Status:</strong> <span id="cam-success-status">—</span></div><div class="cam-success-link-row"><strong>Link:</strong> <a id="cam-success-link" href="#" target="_blank" rel="noopener">—</a></div></div><div id="cam-wholesale-result" class="vf-alert cam-wholesale-result" hidden><div><strong id="cam-wholesale-result-title"></strong><p id="cam-wholesale-result-description" class="cam-wholesale-result-description"></p><ul id="cam-wholesale-result-ranges" class="cam-wholesale-result-ranges"></ul></div><button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="cam-wholesale-retry" hidden>Tentar cadastrar novamente</button></div><div class="vf-banner__actions cam-success-actions"><button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="cam-copy-link">Copiar link</button><a class="vf-btn vf-btn--primary vf-btn--sm" id="cam-open-link" href="#" target="_blank" rel="noopener">Visualizar anúncio</a><button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" id="cam-new-listing">Criar outro</button></div></div></div>
           <div class="vf-form-actions cam-actions"><span id="cam-publish-hint" class="vf-field__hint">Selecione uma conta conectada para publicar.</span><button type="button" class="vf-btn vf-btn--primary vf-btn--lg" id="cam-publish" disabled>Publicar anúncio</button></div>
         </div>
       </div>

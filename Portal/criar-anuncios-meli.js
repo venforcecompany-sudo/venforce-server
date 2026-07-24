@@ -28,6 +28,8 @@
     attrsForm: null,
     imagesForm: null,
     variations: [],
+    wholesaleRanges: [],
+    wholesaleRetry: null,
     publishing: false,
   };
 
@@ -207,6 +209,8 @@
   async function onClienteChange() {
     var slug = (el("cam-cliente").value || "").trim();
     CAM.conta = null;
+    setWholesaleEligibility(false, "Verificando a elegibilidade B2B da conta...");
+    resetWholesaleConfig();
     setPublishEnabled(false);
 
     var userBox = el("cam-ml-user");
@@ -218,6 +222,10 @@
 
     if (!slug) {
       statusBox.textContent = "Selecione um cliente";
+      setWholesaleEligibility(
+        false,
+        "Selecione uma conta para verificar a elegibilidade B2B."
+      );
       el("cam-publish-hint").textContent =
         "Selecione uma conta conectada para publicar.";
       return;
@@ -228,6 +236,12 @@
     );
     var data = resp.data || {};
     CAM.conta = data;
+    setWholesaleEligibility(
+      data.precoAtacadoElegivel === true,
+      data.precoAtacadoElegivel === true
+        ? "Conta elegível para preços B2B por quantidade."
+        : "Esta conta não possui a tag business exigida para preços de atacado."
+    );
 
     if (!data.mlConectado) {
       statusBox.textContent = "Sem token ML";
@@ -296,6 +310,19 @@
     button.disabled = !enabled || CAM.publishing;
     button.classList.toggle("is-loading", CAM.publishing);
     button.setAttribute("aria-busy", CAM.publishing ? "true" : "false");
+  }
+
+  function setWholesaleEligibility(eligible, message) {
+    var toggle = el("cam-wholesale-enabled");
+    var status = el("cam-wholesale-eligibility");
+    toggle.disabled = !eligible;
+    status.textContent = message;
+    status.className =
+      "vf-alert cam-wholesale-eligibility " + (eligible ? "is-success" : "is-info");
+    if (!eligible) {
+      toggle.checked = false;
+      el("cam-wholesale-config").hidden = true;
+    }
   }
 
   // ─── Categorias ────────────────────────────────────────────────────────────
@@ -583,6 +610,182 @@
     });
   }
 
+  // ─── Preço de atacado B2B ──────────────────────────────────────────────────
+  function resetWholesaleConfig() {
+    CAM.wholesaleRanges = [];
+    CAM.wholesaleRetry = null;
+    var toggle = el("cam-wholesale-enabled");
+    if (toggle) toggle.checked = false;
+    var config = el("cam-wholesale-config");
+    if (config) config.hidden = true;
+    var result = el("cam-wholesale-result");
+    if (result) result.hidden = true;
+    renderWholesaleRanges();
+  }
+
+  function syncWholesaleFromDom() {
+    CAM.wholesaleRanges = CAM.wholesaleRanges.map(function (range, idx) {
+      var qtyInput = document.querySelector(
+        '.cam-wholesale-qty[data-idx="' + idx + '"]'
+      );
+      var priceInput = document.querySelector(
+        '.cam-wholesale-price[data-idx="' + idx + '"]'
+      );
+      return {
+        quantidadeMinima:
+          qtyInput && qtyInput.value !== "" ? Number(qtyInput.value) : null,
+        precoUnitario:
+          priceInput && priceInput.value !== "" ? Number(priceInput.value) : null,
+      };
+    });
+  }
+
+  function renderWholesaleRanges() {
+    var box = el("cam-wholesale-ranges");
+    if (!box) return;
+
+    if (!CAM.wholesaleRanges.length) {
+      box.innerHTML = emptyState(
+        "Nenhuma faixa adicionada. Adicione ao menos uma faixa para usar preço de atacado."
+      );
+    } else {
+      box.innerHTML = CAM.wholesaleRanges
+        .map(function (range, idx) {
+          return (
+            '<div class="cam-wholesale-row" data-idx="' +
+            idx +
+            '">' +
+            '<div class="cam-wholesale-row-title">Faixa #' +
+            (idx + 1) +
+            "</div>" +
+            '<div class="vf-field"><label class="vf-field__label" for="cam-wholesale-qty-' +
+            idx +
+            '">Quantidade mínima</label><input type="number" id="cam-wholesale-qty-' +
+            idx +
+            '" class="vf-input cam-wholesale-qty" data-idx="' +
+            idx +
+            '" min="2" step="1" value="' +
+            escapeHtml(range.quantidadeMinima != null ? range.quantidadeMinima : "") +
+            '" placeholder="Ex.: 10"></div>' +
+            '<div class="vf-field"><label class="vf-field__label" for="cam-wholesale-price-' +
+            idx +
+            '">Preço por unidade</label><div class="vf-input-group"><span class="vf-input-prefix">R$</span><input type="number" id="cam-wholesale-price-' +
+            idx +
+            '" class="vf-input cam-wholesale-price" data-idx="' +
+            idx +
+            '" min="0.01" step="0.01" value="' +
+            escapeHtml(range.precoUnitario != null ? range.precoUnitario : "") +
+            '" placeholder="0,00"></div></div>' +
+            '<button type="button" class="vf-btn vf-btn--ghost vf-btn--sm cam-wholesale-remove" data-idx="' +
+            idx +
+            '" aria-label="Remover faixa ' +
+            (idx + 1) +
+            '">Remover</button></div>'
+          );
+        })
+        .join("");
+    }
+
+    var addButton = el("cam-wholesale-add");
+    addButton.disabled = CAM.wholesaleRanges.length >= 5;
+    addButton.textContent =
+      CAM.wholesaleRanges.length >= 5
+        ? "Limite de 5 faixas atingido"
+        : "Adicionar faixa";
+  }
+
+  function collectWholesaleRanges() {
+    syncWholesaleFromDom();
+    return CAM.wholesaleRanges
+      .map(function (range) {
+        return {
+          quantidadeMinima: range.quantidadeMinima,
+          precoUnitario: range.precoUnitario,
+        };
+      })
+      .sort(function (a, b) {
+        return a.quantidadeMinima - b.quantidadeMinima;
+      });
+  }
+
+  function validateWholesale(normalPrice) {
+    var errors = [];
+    if (!el("cam-wholesale-enabled").checked) return errors;
+
+    if (!CAM.conta || CAM.conta.precoAtacadoElegivel !== true) {
+      errors.push({
+        campo: "precoAtacado",
+        mensagem: "A conta selecionada não é elegível para preço de atacado.",
+        sugestao: "Selecione uma conta Mercado Livre com a tag business.",
+      });
+      return errors;
+    }
+
+    var ranges = collectWholesaleRanges();
+    if (ranges.length < 1 || ranges.length > 5) {
+      errors.push({
+        campo: "precoAtacado",
+        mensagem: "Informe de uma a cinco faixas de preço de atacado.",
+        sugestao: "Adicione ao menos uma faixa e respeite o limite de cinco.",
+      });
+      return errors;
+    }
+
+    var quantities = {};
+    ranges.forEach(function (range, idx) {
+      if (
+        !Number.isFinite(range.quantidadeMinima) ||
+        !Number.isInteger(range.quantidadeMinima) ||
+        range.quantidadeMinima <= 1
+      ) {
+        errors.push({
+          campo: "precoAtacado",
+          mensagem: "A quantidade mínima da faixa " + (idx + 1) + " deve ser um inteiro maior que 1.",
+          sugestao: "Informe 2 ou mais unidades.",
+        });
+      } else if (quantities[range.quantidadeMinima]) {
+        errors.push({
+          campo: "precoAtacado",
+          mensagem: "Existem faixas com a mesma quantidade mínima.",
+          sugestao: "Use uma quantidade diferente em cada faixa.",
+        });
+      } else {
+        quantities[range.quantidadeMinima] = true;
+      }
+
+      if (!Number.isFinite(range.precoUnitario) || range.precoUnitario <= 0) {
+        errors.push({
+          campo: "precoAtacado",
+          mensagem: "O preço por unidade da faixa " + (idx + 1) + " é inválido.",
+          sugestao: "Informe um preço maior que zero.",
+        });
+      } else if (Number.isFinite(normalPrice) && range.precoUnitario >= normalPrice) {
+        errors.push({
+          campo: "precoAtacado",
+          mensagem: "Todo preço de atacado deve ser menor que o preço normal.",
+          sugestao: "Reduza o preço por unidade da faixa " + (idx + 1) + ".",
+        });
+      }
+    });
+
+    for (var i = 1; i < ranges.length; i += 1) {
+      if (
+        Number.isFinite(ranges[i - 1].precoUnitario) &&
+        Number.isFinite(ranges[i].precoUnitario) &&
+        ranges[i].precoUnitario >= ranges[i - 1].precoUnitario
+      ) {
+        errors.push({
+          campo: "precoAtacado",
+          mensagem: "O preço por unidade deve diminuir conforme a quantidade aumenta.",
+          sugestao: "Revise as faixas em ordem crescente de quantidade.",
+        });
+        break;
+      }
+    }
+
+    return errors;
+  }
+
   // ─── Validação / publicação ────────────────────────────────────────────────
   function validarLocal() {
     var erros = [];
@@ -617,6 +820,8 @@
         sugestao: "Informe um valor válido.",
       });
     }
+
+    erros = erros.concat(validateWholesale(price));
 
     var qty = Number(el("cam-qty").value);
     if (!Number.isFinite(qty) || qty <= 0 || !Number.isInteger(qty)) {
@@ -693,6 +898,12 @@
     var sku = (el("cam-sku").value || "").trim();
     if (sku) payload.seller_custom_field = sku;
     if (variations.length) payload.variations = variations;
+    if (el("cam-wholesale-enabled").checked) {
+      payload.precoAtacado = {
+        habilitado: true,
+        faixas: collectWholesaleRanges(),
+      };
+    }
 
     return payload;
   }
@@ -707,6 +918,177 @@
 
   function hideProgress() {
     el("cam-progress").hidden = true;
+  }
+
+  function formatCurrency(value) {
+    var amount = Number(value);
+    if (!Number.isFinite(amount)) return "—";
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: el("cam-currency").value || "BRL",
+    }).format(amount);
+  }
+
+  function normalizeConfirmedWholesaleRanges(ranges) {
+    return (Array.isArray(ranges) ? ranges : [])
+      .map(function (range) {
+        var conditions = range && range.conditions ? range.conditions : {};
+        return {
+          quantidadeMinima: Number(
+            range &&
+              (range.quantidadeMinima != null
+                ? range.quantidadeMinima
+                : conditions.min_purchase_unit)
+          ),
+          precoUnitario: Number(
+            range &&
+              (range.precoUnitario != null ? range.precoUnitario : range.amount)
+          ),
+        };
+      })
+      .filter(function (range) {
+        return (
+          Number.isFinite(range.quantidadeMinima) &&
+          Number.isFinite(range.precoUnitario)
+        );
+      })
+      .sort(function (a, b) {
+        return a.quantidadeMinima - b.quantidadeMinima;
+      });
+  }
+
+  function wholesaleErrorMessage(error) {
+    if (!error) return "";
+    if (typeof error === "string") return error;
+    return error.motivo || error.mensagem || error.message || "";
+  }
+
+  function showWholesaleResult(data, fallbackRanges) {
+    var result = el("cam-wholesale-result");
+    var retryButton = el("cam-wholesale-retry");
+    var rangesList = el("cam-wholesale-result-ranges");
+    var requested = data && data.precoAtacadoSolicitado === true;
+    if (!requested) {
+      result.hidden = true;
+      CAM.wholesaleRetry = null;
+      return;
+    }
+
+    var saved = data.precoAtacadoSalvo === true;
+    result.hidden = false;
+    result.className =
+      "vf-alert cam-wholesale-result " + (saved ? "is-success" : "is-warning");
+    retryButton.hidden = saved;
+    el("cam-wholesale-result-title").textContent = saved
+      ? "Preços de atacado cadastrados e confirmados."
+      : "Anúncio criado, mas não foi possível cadastrar os preços de atacado.";
+    el("cam-wholesale-result-description").textContent = saved
+      ? "As faixas abaixo foram confirmadas no Mercado Livre para compradores empresariais."
+      : wholesaleErrorMessage(data.precoAtacadoErro) ||
+        "Você pode tentar novamente sem recriar o anúncio.";
+
+    var confirmedRanges = normalizeConfirmedWholesaleRanges(
+      data.precoAtacadoFaixas
+    );
+    var displayRanges = confirmedRanges.length
+      ? confirmedRanges
+      : saved
+        ? normalizeConfirmedWholesaleRanges(fallbackRanges)
+        : [];
+    rangesList.innerHTML = displayRanges
+      .map(function (range) {
+        return (
+          "<li>A partir de " +
+          escapeHtml(range.quantidadeMinima) +
+          " unidades: " +
+          escapeHtml(formatCurrency(range.precoUnitario)) +
+          " por unidade</li>"
+        );
+      })
+      .join("");
+    rangesList.hidden = !displayRanges.length;
+
+    if (saved) {
+      CAM.wholesaleRetry = null;
+    }
+  }
+
+  async function retryWholesalePrices() {
+    if (CAM.publishing || !CAM.wholesaleRetry) return;
+
+    var retryData = CAM.wholesaleRetry;
+    CAM.publishing = true;
+    setPublishEnabled(false);
+    var retryButton = el("cam-wholesale-retry");
+    retryButton.disabled = true;
+    retryButton.classList.add("is-loading");
+    retryButton.setAttribute("aria-busy", "true");
+    setProgress(45, "Cadastrando novamente os preços de atacado...");
+
+    try {
+      var resp = await api(
+        "/anuncios-meli/criacao/" +
+          encodeURIComponent(retryData.itemId) +
+          "/precos-atacado",
+        {
+          method: "POST",
+          body: {
+            clienteSlug: retryData.clienteSlug,
+            faixas: retryData.faixas,
+          },
+        }
+      );
+
+      if (
+        !resp.ok ||
+        !resp.data ||
+        !resp.data.ok ||
+        resp.data.precoAtacadoSalvo !== true
+      ) {
+        var failedData = resp.data || {};
+        showWholesaleResult(
+          {
+            precoAtacadoSolicitado: true,
+            precoAtacadoSalvo: false,
+            precoAtacadoErro:
+              failedData.precoAtacadoErro ||
+              failedData.motivo ||
+              "Não foi possível cadastrar os preços de atacado.",
+          },
+          retryData.faixas
+        );
+        toast("O anúncio continua criado. Revise o erro e tente novamente.");
+        return;
+      }
+
+      setProgress(100, "Preços de atacado confirmados!");
+      showWholesaleResult(
+        {
+          precoAtacadoSolicitado: true,
+          precoAtacadoSalvo: true,
+          precoAtacadoFaixas: resp.data.precoAtacadoFaixas,
+        },
+        retryData.faixas
+      );
+      toast("Preços de atacado cadastrados com sucesso.");
+    } catch (err) {
+      showWholesaleResult(
+        {
+          precoAtacadoSolicitado: true,
+          precoAtacadoSalvo: false,
+          precoAtacadoErro:
+            err.message || "Não foi possível cadastrar os preços de atacado.",
+        },
+        retryData.faixas
+      );
+    } finally {
+      CAM.publishing = false;
+      setPublishEnabled(Boolean(CAM.conta && CAM.conta.podePublicar));
+      retryButton.disabled = false;
+      retryButton.classList.remove("is-loading");
+      retryButton.setAttribute("aria-busy", "false");
+      setTimeout(hideProgress, 900);
+    }
   }
 
   async function publicar() {
@@ -745,11 +1127,28 @@
     setProgress(18, "Validando dados e montando payload...");
 
     try {
-      setProgress(45, "Enviando anúncio ao Mercado Livre (POST /items)...");
+      setProgress(
+        45,
+        payload.precoAtacado
+          ? "Criando anúncio e cadastrando preços de atacado..."
+          : "Enviando anúncio ao Mercado Livre (POST /items)..."
+      );
       var resp = await api("/anuncios-meli/criacao/publicar", {
         method: "POST",
         body: payload,
       });
+
+      var partialWholesale =
+        resp.data &&
+        resp.data.item_id &&
+        (resp.data.precoAtacadoSolicitado === true || Boolean(payload.precoAtacado)) &&
+        resp.data.precoAtacadoSalvo === false;
+      if (partialWholesale) {
+        setProgress(100, "Anúncio criado com pendência no preço de atacado.");
+        showSuccess(resp.data, payload);
+        toast("Anúncio criado. O preço de atacado precisa ser reenviado.");
+        return;
+      }
 
       if (!resp.ok || !resp.data || !resp.data.ok) {
         hideProgress();
@@ -765,13 +1164,18 @@
         return;
       }
 
-      setProgress(82, "Salvando descrição do anúncio...");
+      setProgress(
+        82,
+        payload.precoAtacado
+          ? "Confirmando anúncio e preços por quantidade..."
+          : "Salvando descrição do anúncio..."
+      );
       await new Promise(function (r) {
         setTimeout(r, 350);
       });
       setProgress(100, "Anúncio criado com sucesso!");
 
-      showSuccess(resp.data);
+      showSuccess(resp.data, payload);
       toast("Anúncio publicado: " + resp.data.item_id);
     } catch (err) {
       hideProgress();
@@ -786,7 +1190,7 @@
     }
   }
 
-  function showSuccess(data) {
+  function showSuccess(data, payload) {
     el("cam-success").hidden = false;
     el("cam-success-id").textContent = data.item_id || "—";
     el("cam-success-status").textContent = data.status || "—";
@@ -796,6 +1200,23 @@
     a.textContent = link;
     var open = el("cam-open-link");
     open.href = link;
+    var wholesaleRequested = Boolean(payload && payload.precoAtacado);
+    var requestedRanges = wholesaleRequested ? payload.precoAtacado.faixas : [];
+    var wholesaleData = Object.assign({}, data, {
+      precoAtacadoSolicitado:
+        data.precoAtacadoSolicitado === true || wholesaleRequested,
+    });
+    if (
+      wholesaleData.precoAtacadoSolicitado === true &&
+      wholesaleData.precoAtacadoSalvo !== true
+    ) {
+      CAM.wholesaleRetry = {
+        itemId: data.item_id,
+        clienteSlug: payload.clienteSlug,
+        faixas: requestedRanges,
+      };
+    }
+    showWholesaleResult(wholesaleData, requestedRanges);
     el("cam-success").scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
@@ -808,6 +1229,7 @@
     el("cam-qty").value = "1";
     el("cam-description").value = "";
     el("cam-sku").value = "";
+    resetWholesaleConfig();
     CAM.variations = [];
     renderVariations();
     if (CAM.imagesForm) CAM.imagesForm.setPictures([]);
@@ -833,6 +1255,36 @@
       el("cam-title-count").textContent = String(el("cam-title").value.length);
     });
 
+    el("cam-wholesale-enabled").addEventListener("change", function () {
+      var enabled = el("cam-wholesale-enabled").checked;
+      el("cam-wholesale-config").hidden = !enabled;
+      if (enabled && !CAM.wholesaleRanges.length) {
+        CAM.wholesaleRanges.push({
+          quantidadeMinima: null,
+          precoUnitario: null,
+        });
+      }
+      renderWholesaleRanges();
+    });
+
+    el("cam-wholesale-add").addEventListener("click", function () {
+      syncWholesaleFromDom();
+      if (CAM.wholesaleRanges.length >= 5) return;
+      CAM.wholesaleRanges.push({
+        quantidadeMinima: null,
+        precoUnitario: null,
+      });
+      renderWholesaleRanges();
+    });
+
+    el("cam-wholesale-ranges").addEventListener("click", function (ev) {
+      var btn = ev.target.closest(".cam-wholesale-remove");
+      if (!btn) return;
+      syncWholesaleFromDom();
+      CAM.wholesaleRanges.splice(Number(btn.getAttribute("data-idx")), 1);
+      renderWholesaleRanges();
+    });
+
     el("cam-var-add").addEventListener("click", function () {
       syncVariationsFromDom();
       CAM.variations.push({
@@ -853,6 +1305,7 @@
     });
 
     el("cam-publish").addEventListener("click", publicar);
+    el("cam-wholesale-retry").addEventListener("click", retryWholesalePrices);
     el("cam-copy-link").addEventListener("click", function () {
       var link = el("cam-success-link").href;
       if (!link || link === "#") return;
@@ -877,6 +1330,7 @@
       window.DynamicAttributesForm.mount(el("cam-attrs"), { atributos: [] });
     }
     renderVariations();
+    renderWholesaleRanges();
   }
 
   // ─── Boot ──────────────────────────────────────────────────────────────────
