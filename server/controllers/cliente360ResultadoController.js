@@ -5,6 +5,7 @@
 // NENHUMA regra financeira aqui — toda conta mora nos motores puros.
 
 const resultadoService = require("../services/cliente360/cliente360ResultadoService");
+const carteiraService = require("../services/cliente360/cliente360CarteiraService");
 const simulacaoService = require("../services/cliente360/cliente360SimulacaoService");
 const serieService = require("../services/cliente360/cliente360SerieService");
 const placarService = require("../services/cliente360/cliente360PlacarService");
@@ -33,6 +34,20 @@ function tratarErro(res, err, ctx) {
   const status = err?.statusCode || 500;
   if (status >= 500) console.error(`[cliente360Resultado] ${ctx}:`, err?.message);
   return responder(res, status, { ok: false, erro: err?.message || "Erro interno." });
+}
+
+// GET /operacao/cliente-360/carteira/resultado
+//   ?competencia=YYYY-MM&compararCom=YYYY-MM&marketplace=meli&margemAlvo=0.15
+async function obterCarteiraExecutiva(req, res) {
+  try {
+    const data = await carteiraService.getCarteiraExecutiva({
+      competencia: req.query.competencia,
+      compararCom: req.query.compararCom,
+      margemAlvo: req.query.margemAlvo,
+      marketplace: req.query.marketplace,
+    });
+    return responder(res, 200, data);
+  } catch (err) { return tratarErro(res, err, "obterCarteiraExecutiva"); }
 }
 
 // GET /operacao/cliente-360/:slug/resultado
@@ -147,6 +162,7 @@ async function removerAcao(req, res) {
 }
 
 module.exports = {
+  obterCarteiraExecutiva,
   obterResultado,
   simularResultado,
   obterElasticidades,

@@ -1,12 +1,12 @@
 {
   "name": "venforce-frontend-react",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Primeira migração gradual do Portal VenForce para React + Vite. Escopo: apenas a Cliente 360.",
+  "description": "Migração gradual do Portal VenForce para React + Vite, com Cliente 360 V2 e Central Executiva.",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "node scripts/clean-assets.mjs && vite build",
+    "dev": "node scripts/patch-layout.mjs && vite",
+    "build": "node scripts/patch-layout.mjs && node scripts/clean-assets.mjs && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "dev:full": "vite --config vite.full.config.js",
