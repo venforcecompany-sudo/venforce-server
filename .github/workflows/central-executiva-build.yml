@@ -1,0 +1,75 @@
+name: Central Executiva Build
+
+on:
+  push:
+    branches:
+      - feat/central-executiva-contas
+    paths:
+      - "frontend-react/**"
+      - "server/services/cliente360/**"
+      - "server/controllers/cliente360ResultadoController.js"
+      - "server/routes/cliente360ResultadoRoutes.js"
+      - "server/tests/cliente360Carteira.test.js"
+      - ".github/workflows/central-executiva-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: central-executiva-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validar-e-buildar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: feat/central-executiva-contas
+          fetch-depth: 0
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend-react/package-lock.json
+
+      - name: Testar agregador executivo
+        working-directory: server
+        run: node tests/cliente360Carteira.test.js
+
+      - name: Instalar dependências do front
+        working-directory: frontend-react
+        run: npm ci
+
+      - name: Testar front React
+        working-directory: frontend-react
+        run: npm test
+
+      - name: Gerar páginas React no Portal
+        working-directory: frontend-react
+        run: npm run build
+
+      - name: Verificar artefatos obrigatórios
+        run: |
+          test -f Portal/central-executiva-react.html
+          test -f Portal/cliente-360-react.html
+          test -d Portal/assets/frontend-react
+          grep -q "central-executiva-react.html" Portal/layout.js
+
+      - name: Commitar artefatos do build
+        run: |
+          if git diff --quiet -- Portal/layout.js Portal/central-executiva-react.html Portal/cliente-360-react.html Portal/assets; then
+            echo "Nenhum artefato alterado."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Portal/layout.js Portal/central-executiva-react.html Portal/cliente-360-react.html Portal/assets
+          git commit -m "build(central-executiva): publish validated Portal assets [skip ci]"
+          git push origin HEAD:feat/central-executiva-contas
