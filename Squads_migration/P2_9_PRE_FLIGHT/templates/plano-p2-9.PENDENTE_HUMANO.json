@@ -1,0 +1,17 @@
+{
+  "_leiame": "CÓPIA DE TRABALHO do formato canônico (Squads_migration/SQUADS_MIGRATION_TEMPLATE.json). Preencha as 4 listas com o mapeamento REAL fornecido pela operação (ver P2_9_PRE_FLIGHT/01_DADOS_HUMANOS_NECESSARIOS.md e 02_TEMPLATE_MAPEAMENTO.md). NÃO invente squads, membros, vínculos ou responsáveis. Rode SEMPRE o dry-run (sem --apply) e revise os avisos antes de --apply. Ferramenta: node server/sql/squads-migrate.js --plan <este-arquivo> [--apply --actor <userIdAdmin>]. Chaves _* são ignoradas.",
+  "versao": 1,
+  "descricao": "P2.9 — migração inicial de Squads (PENDENTE_HUMANO — não aplicar assim)",
+
+  "_doc_squads": "Unidades operacionais. slug minúsculo sem espaço (normalizado). nome obrigatório. ativo opcional (default true). Idempotente por slug. FONTE: 03_CHECKLIST_GESTAO.md perguntas 1-2.",
+  "squads": [],
+
+  "_doc_membros": "usuario: email OU id. funcao: 'membro' (default) | 'coordenador'. principal: true no máx. 1x por usuário (senão a 1ª membership é auto-promovida). Membership para squad inativo é recusada. FONTE: 01 seção 3.",
+  "membros": [],
+
+  "_doc_clientes": "cliente: slug OU id. squad: slug. motivo: opcional (vai para o histórico). Cliente já em outro squad = TRANSFERÊNCIA (histórico preservado). Squad inativo é recusado. Cliente que fica sem Squad NÃO entra aqui. FONTE: 01 seção 2.",
+  "clientes": [],
+
+  "_doc_responsaveis": "OPCIONAL. NÃO é autorização. cliente: slug OU id. usuario: email OU id. papel: 'gestor' | 'auxiliar' | 'designer'. FONTE: 01 seção 4.",
+  "responsaveis": []
+}
