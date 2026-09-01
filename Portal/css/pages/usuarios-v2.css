@@ -160,6 +160,20 @@
 .vu-toast-danger  { border-left-color: var(--vf-danger); }
 
 @media (max-width: 900px) {
+  /* `flex: 1 0 100%` na nota só desce para a própria linha se o container
+     PUDER quebrar; sem `flex-wrap` ela fica na mesma linha com base 100% e
+     `flex-shrink: 0`, e o cabeçalho estoura a página (medido: +59px em 900,
+     +71px em 640). O `.vu-section-hd` é o único `.vu-*` flex sem wrap. */
+  .vu-section-hd { flex-wrap: wrap; }
   .vu-section-note { flex: 1 0 100%; }
   .vu-actions { justify-content: flex-start; }
+
+  /* Mesmo passe de atividade-v2.css e callbacks-v2.css: abaixo de 900px o
+     `table-layout: fixed` + larguras de coluna não cabem (a coluna de ações
+     sozinha pede 340px), então a tabela é medida pelo conteúdo. Sem isto a
+     tela transborda +75px em 360px. */
+  .vu-table { table-layout: auto; }
+  .vu-col-status,
+  .vu-col-date,
+  .vu-col-actions { width: auto; }
 }

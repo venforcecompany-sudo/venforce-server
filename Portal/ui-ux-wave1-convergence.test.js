@@ -417,9 +417,21 @@ async function run() {
         if (!/Hanken|Manrope/i.test(f)) throw new Error(`fonte inesperada no body: ${f}`);
       });
 
-      await check(`${tela.nome} — sem overflow horizontal em 1440px`, async () => {
-        const over = await cdp.evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
-        if (over > 1) throw new Error(`overflow horizontal de ${over}px`);
+      // A Wave 1 registrou RESPONSIVIDADE como PARCIAL porque o ambiente dela
+      // "não permitiu redimensionar a janela abaixo do desktop" (§17 do
+      // readiness). Aqui dá: Emulation.setDeviceMetricsOverride cobre a faixa
+      // inteira, incluindo os breakpoints que só herdavam a V2 sem re-teste.
+      await check(`${tela.nome} — sem overflow horizontal de 1920 a 360px`, async () => {
+        const larguras = [1920, 1440, 1366, 1200, 900, 640, 360];
+        const ruins = [];
+        for (const w of larguras) {
+          await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: 900, deviceScaleFactor: 1, mobile: false });
+          await sleep(120);
+          const over = await cdp.evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
+          if (over > 1) ruins.push(`${w}px:+${over}`);
+        }
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+        if (ruins.length) throw new Error(`overflow horizontal em ${ruins.join(", ")}`);
       });
     }
 
