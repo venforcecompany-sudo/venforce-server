@@ -44,7 +44,8 @@ frente, 0 atrás). Decisão confirmada com o solicitante antes de qualquer merge
 | **PESSOA 1** | `origin/frontend/v3-ui-ux-revamp-wave1` = `43816ecef2c6d328fabb1e8b176085182f697ce1` (`43816ec`) |
 | **PESSOA 2** | **nenhuma branch pendente** — `backend/v3-rollout-preflight-account-audit` e `frontend/v3-final-qa-cutover-prep` entraram na `main` pela Convergência #4 |
 | **BRANCH DE INTEGRAÇÃO** | `integration/v3-convergence-5` |
-| **HEAD FINAL** | `e6811173dcb4eb34def4f39f8c17f00c2355dc74` (`e681117`) |
+| **ÚLTIMO COMMIT DE CÓDIGO** | `e6811173dcb4eb34def4f39f8c17f00c2355dc74` (`e681117`) |
+| **HEAD FINAL** | o commit `docs(convergence-5)` deste arquivo, imediatamente acima de `e681117` — todos os testes reportados aqui foram rodados em `e681117`, e o commit de documentação não toca código |
 
 Os refs bateram exatamente no `git fetch`; nenhum avanço inesperado.
 
@@ -393,7 +394,8 @@ COMMITS:                       a2da97c  merge(convergence-5): integra frontend U
                                e681117  fix(pessoas): corrige regressao de responsividade <900px
 
 PUSH:                          SIM
-HEAD REMOTO DA CONVERGÊNCIA:   e6811173dcb4eb34def4f39f8c17f00c2355dc74
+ÚLTIMO COMMIT DE CÓDIGO:       e6811173dcb4eb34def4f39f8c17f00c2355dc74 (e681117)
+HEAD REMOTO DA CONVERGÊNCIA:   o commit docs(convergence-5) acima de e681117
 READINESS:                     Squads_migration/VENFORCE_V3_CONVERGENCE_5_READINESS.md
 
 PODE PROMOVER PARA MAIN:       SIM
