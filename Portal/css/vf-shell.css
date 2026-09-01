@@ -547,17 +547,11 @@
    As duas regras abaixo ficam FORA de propósito, até F6.3 unificar tudo.
    ════════════════════════════════════════════════════════════════════════ */
 
-/* `display` declarado no próprio componente vence o `[hidden]` do
-   user-agent (origem de autor ganha da origem do UA). Sem estes guards,
-   esconder o shell, o main ou o painel de estado por atributo não some. */
-.vf-shell[hidden],
-.vf-shell__contextbar[hidden],
-.vf-shell__main[hidden],
-.vf-shell__state[hidden] { display: none; }
-
-/* A correção de FORMA do `.vf-status` (● ◇ ○ — §16.4/M8) foi absorvida por
-   vf-components-v2.css §6 na Wave 1 de UI/UX (docs/ui-ux/…AUDIT_WAVE1.md, A1).
-   Lá a regra ganha por ordem no próprio arquivo, sem precisar sair de camada. */
+/* O guard de `[hidden]` que vivia aqui (.vf-shell[hidden], .vf-shell__main…)
+   virou a regra global `[hidden] { display: none !important }` em
+   vf-tokens-v2.css §14, e a correção de FORMA do `.vf-status` (● ◇ ○ —
+   §16.4/M8) foi absorvida por vf-components-v2.css §6 — ambas na Wave 1 de
+   UI/UX (docs/ui-ux/VENFORCE_V3_UI_UX_AUDIT_WAVE1.md, A1). */
 
 /* Bootstrap (atividade.html, callbacks.html, usuarios.html — telas antigas
    que ainda dependem de componentes dele) chega como <link> SEM camada.

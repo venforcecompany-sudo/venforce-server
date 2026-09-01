@@ -286,6 +286,15 @@
   box-sizing: border-box;
 }
 
+/* `[hidden]` tem de vencer o `display` de qualquer componente de autor
+   (a origem de autor ganha da origem do UA — sem isto, esconder um
+   .vf-banner / .vf-card / .vf-shell__main por atributo não some).
+   Padrão de reset consolidado (Normalize); único ponto onde a fundação
+   usa !important fora de prefers-reduced-motion. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   font-family: var(--vf-font-body);

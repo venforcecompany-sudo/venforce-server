@@ -1,0 +1,165 @@
+/* Portal/css/pages/usuarios-v2.css
+ * Tela Pessoas (usuarios). Migração Wave 1 UI/UX (B4): sai de style.css,
+ * Bootstrap e do vocabulário V1 (.vf-role-pill, .vf-status-pill,
+ * .vf-action-btn, modal/toast próprios). Aqui fica só o que é da tela:
+ * o agrupamento por papel, o chip de vínculo e o toast. Componentes
+ * (card, tabela, modal, banner, tag, status, botões) vêm da Fundação V2. */
+
+/* ── Seções por papel ─────────────────────────────────────────────── */
+.vu-section {
+  margin-top: var(--vf-sp-6);
+}
+.vu-section:first-child {
+  margin-top: 0;
+}
+
+.vu-section-hd {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  padding: 0 var(--vf-card-pad-x) var(--vf-sp-2);
+  border-bottom: 1px solid var(--vf-border);
+}
+
+.vu-section-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--vf-radius-pill);
+  flex: 0 0 auto;
+  background: var(--vf-neutral);
+}
+.vu-dot-admin  { background: var(--vf-primary); }
+.vu-dot-membro { background: var(--vf-info); }
+.vu-dot-seller { background: var(--vf-success); }
+.vu-dot-shopee { background: var(--vf-warning); }
+
+.vu-section-label {
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-xs);
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: var(--vf-ls-caps);
+  text-transform: uppercase;
+  color: var(--vf-text);
+}
+
+.vu-section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--vf-radius-pill);
+  background: var(--vf-bg-2);
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--vf-text-secondary);
+}
+
+.vu-section-note {
+  font-size: var(--vf-fs-2xs);
+  color: var(--vf-text-muted);
+}
+
+.vu-section-body {
+  padding: var(--vf-sp-3) var(--vf-card-pad-x) 0;
+}
+
+/* Grupo vazio */
+.vu-vazio {
+  margin: 0;
+  padding: var(--vf-sp-4) 0;
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text-muted);
+}
+
+/* ── Tabela ───────────────────────────────────────────────────────── */
+.vu-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  min-width: 0;
+}
+.vu-table { width: 100%; table-layout: fixed; }
+.vu-table td { vertical-align: middle; }
+.vu-table th, .vu-table td { overflow: hidden; text-overflow: ellipsis; }
+.vu-col-status  { width: 92px; }
+.vu-col-date    { width: 108px; }
+/* Ações: cabe select + Desativar + Remover numa linha */
+.vu-col-actions { width: 340px; }
+
+.vu-cell-muted { color: var(--vf-text-muted); }
+.vu-cell-date {
+  color: var(--vf-text-muted);
+  font-family: var(--vf-font-mono);
+  font-size: var(--vf-fs-2xs);
+  white-space: nowrap;
+}
+
+/* Ações por linha — calmas, não competem com o dado */
+.vu-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.vu-role-select {
+  width: auto;
+  min-width: 104px;
+  flex: 0 1 auto;
+}
+
+/* Chip de vínculo seller */
+.vu-vinculo-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 var(--vf-sp-2);
+  border-radius: var(--vf-radius-sm);
+  background: var(--vf-success-bg);
+  color: var(--vf-success-strong);
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-semibold);
+  white-space: nowrap;
+}
+.vu-sem-vinculo {
+  font-size: var(--vf-fs-xs);
+  font-style: italic;
+  color: var(--vf-text-muted);
+}
+
+/* ── Toast ────────────────────────────────────────────────────────── */
+.vu-toast {
+  position: fixed;
+  right: var(--vf-sp-4);
+  bottom: var(--vf-sp-4);
+  z-index: var(--vf-z-toast);
+  max-width: min(360px, calc(100vw - 2 * var(--vf-sp-4)));
+  padding: var(--vf-sp-3) var(--vf-sp-4);
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-left: 3px solid var(--vf-neutral);
+  border-radius: var(--vf-radius);
+  box-shadow: var(--vf-shadow-popover);
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity var(--vf-duration) var(--vf-ease),
+    transform var(--vf-duration) var(--vf-ease);
+}
+.vu-toast-show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.vu-toast-ok      { border-left-color: var(--vf-success); }
+.vu-toast-danger  { border-left-color: var(--vf-danger); }
+
+@media (max-width: 900px) {
+  .vu-section-note { flex: 1 0 100%; }
+  .vu-actions { justify-content: flex-start; }
+}
