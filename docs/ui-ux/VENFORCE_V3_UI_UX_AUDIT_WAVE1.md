@@ -183,13 +183,15 @@ endurecimento do Design System que destrava todas as ondas seguintes.
 
 ### 5.4 Antes → Depois (o que a Wave 1 muda no DS)
 
-| Item | Antes | Depois (Wave 1) |
+| Item | Antes | Depois (Wave 1 — implementado) |
 |---|---|---|
-| Correções fora de `@layer` do shell | 3 regras órfãs em `vf-shell.css` | migradas para `vf-components-v2.css` (§16 do arquivo), `vf-shell.css` só referencia |
-| page-header vanilla | remontado à mão por página | `.vf-page-header` já cobre; documentar o esqueleto no `design-system-lab.html` |
-| métricas densas | só `.vf-kpi` (largo) | novo `.vf-metric-row` / `.vf-metric` (denso, tabular, sem card individual) |
-| tooltip de métrica | só visual | `.vf-info-dot` (alvo 16px, `aria-describedby`, texto ≤140 car.) |
-| tokens | `style.css` compete no `:root` | páginas migradas deixam de carregar `style.css`; `:root` fica só na V2 |
+| `.vf-status` por forma (● ◇ ○) | regra órfã fora de `@layer` em `vf-shell.css` | migrada para `vf-components-v2.css §6` — ganha por ordem no próprio arquivo |
+| guard de `[hidden]` | `.vf-shell[hidden]…` pontual fora de `@layer` | vira `[hidden] { display: none !important }` global em `vf-tokens-v2.css §14` — fecha o bug para todo componente de autor (`.vf-banner`, `.vf-card`…) |
+| fix de cor do link Bootstrap | `.vf-shell__item` fora de `@layer` | **mantido** — é genuinamente shell-scoped e some sozinho quando as telas migradas param de carregar Bootstrap |
+| page-header vanilla | remontado à mão por página | `.vf-page-header` já cobre; esqueleto exemplificado no `design-system-lab.html` |
+| métricas densas | só `.vf-kpi` (largo) | novo `.vf-metric-row` / `.vf-metric` (`flex:1 1 0`, Manrope tabular 18px) |
+| tooltip de métrica | só visual | `.vf-info` / `.vf-info-dot` / `.vf-info__tip` — CSS puro, abre no hover e no `:focus-within` |
+| tokens | `style.css` compete no `:root` | páginas migradas (atividade, pessoas, callbacks, clientes) deixam de carregar `style.css` e Bootstrap; `:root` fica só na V2 |
 
 **Zero tokens novos de cor/tipografia.** `.vf-metric-row` e `.vf-info-dot` consomem
 tokens existentes.
@@ -259,26 +261,37 @@ o que mudou`. Nunca "botão some, tela parada".
 
 ## 7. Plano da Wave 1
 
-### Fase A — Design System (baixo risco, sem mudança de comportamento)
-1. **A1** — migrar as 3 correções fora de `@layer` de `vf-shell.css` → `vf-components-v2.css`.
-2. **A2** — adicionar `.vf-metric-row` / `.vf-metric` (strip denso) ao catálogo.
-3. **A3** — adicionar `.vf-info-dot` (tooltip de métrica) ao catálogo.
-4. **A4** — atualizar `design-system-lab.html` com os 3 padrões + o esqueleto de page-header vanilla.
+### Fase A — Design System (baixo risco, sem mudança de comportamento) ✅
+1. **A1** — `.vf-status` por forma migra para `vf-components-v2.css §6`; guard de
+   `[hidden]` vira regra global em `vf-tokens-v2.css §14`. ✅
+2. **A2** — `.vf-metric-row` / `.vf-metric` (strip denso) no catálogo. ✅
+3. **A3** — `.vf-info` / `.vf-info-dot` / `.vf-info__tip` (tooltip de métrica). ✅
+4. **A4** — `design-system-lab.html` com exemplos dos 3 padrões. ✅
 
 ### Fase B — Telas (ordem de execução)
-5. **B1 — Shell / Contexto** — só polish: revisar item ativo, agrupamento da nav,
-   hierarquia do bloco de contexto em ≤1200 (reparenting), foco de teclado. Sem rewrite.
-6. **B2 — Carteira** — passe de densidade na `.vf-portfolio-list`; afordância de
-   busca/ordenação; sem quebrar `carteira.js` nem `carteira-ui.test.js` (P01–P13).
-7. **B3 — Atividade** — migrar `.vf-act-*` + `.vf-card-header` + `.vf-form-group` →
-   DS; resumo vira `.vf-metric-row`; filtros viram `.vf-toolbar`; estados viram
-   `.vf-empty`/`.vf-loading-state`; remover 5 inline styles; **dropar `style.css`**.
-8. **B4 — Pessoas (`usuarios.html`)** — migrar V1 → DS; preparar estrutura visual
-   para Pessoa / Role / Squad / Responsabilidades / Status (§26 — só UI, sem
-   contrato, sem implementar rollout). **Dropar `style.css`**.
-9. **B5 — Clientes e Contas** — tornar óbvia a árvore `Cliente ▸ Conta 1 ▸ Conta 2`
-   (marketplace, seller, grant, base, status); remover 13 inline styles; §25.
-10. **B6 — Callbacks** — migração leve V1 → DS (admin pequeno).
+5. **B3 — Atividade** ✅ — `.vf-act-*` + `.vf-card-header` + `.vf-form-group` → DS;
+   resumo vira `.vf-metric-row`; estados `.vf-empty`/`.vf-loading-state`; prévia
+   de detalhes deixa de ser JSON cru; **larga `style.css` + Bootstrap**;
+   `atividade-v2.css` novo.
+6. **B4 — Pessoas (`usuarios.html`)** ✅ — V1 → DS; papel via `.vf-tag`, status via
+   `.vf-status`, modal `.vf-overlay`/`.vf-modal`, toast com tokens; título vira
+   "Pessoas"; **larga `style.css` + Bootstrap**; `usuarios-v2.css` novo. A base
+   visual (agrupamento por papel) já acomoda Squad/Responsabilidades quando o
+   contrato existir — sem inventar dados (§26).
+7. **B6 — Callbacks** ✅ — mesma família da Atividade; status `.vf-status`
+   is-success/is-danger; **larga `style.css` + Bootstrap**; `callbacks-v2.css` novo.
+8. **B5 — Clientes e Contas** ✅ — estrutura já era V2; fecha a cauda: **larga
+   `style.css`**, regras de tabela migram para `clientes-v2.css`, linhas sem
+   inline style, `.vf-spinner` no lugar de `.loading-dots`. A árvore
+   Cliente ▸ Conta (coluna "Contas" com ML/Shopee e ● conectada / ○ nenhuma) já
+   está visualmente clara para Squads (§25).
+9. **B2 — Carteira** ✅ — passe de densidade na `.vf-portfolio-list` (margem de
+   grupo e padding de linha mais justos; hover na linha inteira). Só CSS de página.
+10. **B1 — Shell / Contexto** — **auditoria, sem alteração de código.** A casca V3
+    está madura e 20 telas dependem dela; nenhuma mudança trouxe ganho real que
+    justificasse o risco nesta onda. As melhorias de forma do `.vf-status`
+    (contexto) e o guard de `[hidden]` (painéis de estado) chegam via Fase A.
+    Recomendações concretas de Wave 2 na §Wave 2.
 
 ### Fora da Wave 1 (→ Wave 2)
 Relatórios, Automações, Central de Vendas, Ads, Anúncios, Margem, Bases,
@@ -340,4 +353,13 @@ Pessoa 2 / uma branch de backend.
 
 ## 12. Achados de backend durante a auditoria
 
-_(nenhum até agora — atualizar conforme a implementação avança)_
+**Nenhum.** A Wave 1 tocou só `Portal/**` (HTML/CSS/JS de tela) e `docs/`.
+Zero arquivo em `server/**`, schema, migrations, contratos ou integrações.
+
+## 13. Dívida de infra de teste registrada (não corrigida nesta branch)
+
+Os `Portal/*-shell-ui.test.js` fazem `childProcess.spawn("google-chrome", …)`
+sem opção de PATH/binário — não rodam em Windows sem um `google-chrome`
+executável real no PATH (que este ambiente não tem, e sem privilégio para
+symlink). O fix (shim de spawn) pertence à infra de teste / convergência, não
+a uma branch de UI. Em CI Linux a suíte roda normalmente.
