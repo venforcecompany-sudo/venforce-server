@@ -1,0 +1,109 @@
+/* Portal/css/pages/atividade-v2.css
+ * Só o que é específico da tela Atividade. Estrutura, cards, tabela,
+ * KPIs (agora .vf-metric-row), estados e paginação vêm inteiros da
+ * Fundação Global V2. Migração Wave 1 UI/UX (B3): a tela deixou de
+ * depender de style.css e do vocabulário .vf-act-* de KPI/empty/badge. */
+
+/* Larguras de coluna — a tabela é escaneável: data e status fixos,
+   ação e detalhes com o espaço que sobra. */
+.vf-act-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.vf-act-col-time   { width: 140px; }
+.vf-act-col-user   { width: 200px; }
+.vf-act-col-status { width: 96px; }
+.vf-act-col-ip     { width: 120px; }
+.vf-act-col-action { width: 220px; }
+.vf-act-col-detail { width: auto; }
+
+.vf-act-table td { vertical-align: top; }
+
+/* Linha escondida pelo refinamento local (campo "Refinar nesta página") */
+.vf-act-row-hidden { display: none; }
+
+/* Célula de usuário — nome sobre e-mail */
+.vf-act-user { display: flex; flex-direction: column; min-width: 0; }
+.vf-act-user strong {
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vf-act-user-email {
+  font-size: var(--vf-fs-2xs);
+  color: var(--vf-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ação e IP são identificadores técnicos → mono (Numeric-vs-Identifier Rule) */
+.vf-act-td-action { word-break: break-all; }
+.vf-act-td-ip { white-space: nowrap; }
+
+.vf-act-muted { color: var(--vf-text-muted); }
+
+/* Célula de detalhes — prévia de 1 linha + JSON expansível */
+.vf-act-detail { display: flex; flex-direction: column; gap: var(--vf-sp-1); min-width: 0; }
+.vf-act-detail-preview {
+  margin: 0;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vf-act-json { font-size: var(--vf-fs-xs); }
+.vf-act-json-sum {
+  cursor: pointer;
+  color: var(--vf-primary-strong);
+  font-weight: var(--vf-fw-medium);
+  list-style: none;
+}
+.vf-act-json-sum::-webkit-details-marker { display: none; }
+.vf-act-json-sum::before { content: "▸ "; }
+.vf-act-json[open] .vf-act-json-sum::before { content: "▾ "; }
+.vf-act-json-pre {
+  margin: var(--vf-sp-2) 0 0;
+  padding: var(--vf-sp-2) var(--vf-sp-3);
+  max-height: 240px;
+  overflow: auto;
+  background: var(--vf-bg-2);
+  border-radius: var(--vf-radius-sm);
+  font-family: var(--vf-font-mono);
+  font-size: var(--vf-fs-2xs);
+  line-height: var(--vf-lh-normal);
+  color: var(--vf-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Paginação no rodapé do card */
+.vf-act-page-info {
+  margin-right: auto;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Aviso do refinamento local sem resultado */
+.vf-act-refine-empty {
+  margin: 0;
+  padding: var(--vf-sp-4) var(--vf-card-pad-x);
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text-muted);
+  text-align: center;
+}
+
+/* A tabela e os estados ficam colados às bordas do card (sem padding do body) */
+.vf-page-atividade #atividade-content { min-width: 0; }
+.vf-page-atividade #state-table { border: 0; border-radius: 0; }
+.vf-page-atividade #state-table .vf-table thead th { top: 0; }
+
+@media (max-width: 900px) {
+  .vf-act-table { table-layout: auto; }
+  .vf-act-col-time, .vf-act-col-user, .vf-act-col-status,
+  .vf-act-col-ip, .vf-act-col-action { width: auto; }
+}

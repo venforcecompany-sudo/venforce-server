@@ -41,15 +41,22 @@ function formatDateTimeBR(value) {
   return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
 }
 
-/** Texto único para busca / pré-visualização */
+/** Texto único para busca / pré-visualização — "chave: valor · chave: valor",
+ * nunca JSON cru na interface (auditoria UI/UX Wave 1 §34). */
 function detalhesPlainText(raw) {
   if (raw == null || raw === "") return "";
-  if (typeof raw === "object") return JSON.stringify(raw);
-  try {
-    return JSON.stringify(JSON.parse(String(raw)));
-  } catch {
-    return String(raw);
+  let obj = raw;
+  if (typeof raw !== "object") {
+    try { obj = JSON.parse(String(raw)); } catch { return String(raw); }
   }
+  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+    const parts = Object.entries(obj).map(([k, v]) => {
+      const val = v != null && typeof v === "object" ? JSON.stringify(v) : String(v);
+      return `${k}: ${val}`;
+    });
+    return parts.join(" · ");
+  }
+  return typeof obj === "string" ? obj : JSON.stringify(obj);
 }
 
 /** JSON formatado para bloco expansível */
@@ -152,12 +159,12 @@ function showError(msg) {
 function statusBadgeHtml(statusRaw) {
   const s = String(statusRaw || "").toLowerCase();
   if (s === "sucesso") {
-    return `<span class="vf-act-badge vf-act-badge--ok">Sucesso</span>`;
+    return `<span class="vf-tag is-success">Sucesso</span>`;
   }
   if (s === "falha") {
-    return `<span class="vf-act-badge vf-act-badge--err">Erro</span>`;
+    return `<span class="vf-tag is-danger">Erro</span>`;
   }
-  return `<span class="vf-act-badge vf-act-badge--neutral">${escapeHTML(statusRaw || "—")}</span>`;
+  return `<span class="vf-tag is-neutral">${escapeHTML(statusRaw || "—")}</span>`;
 }
 
 function getFilters() {
@@ -279,9 +286,9 @@ function renderAtividade(logs, page, meta) {
     tr.innerHTML = `
       <td class="vf-act-td-time">${escapeHTML(when)}</td>
       <td>${userCell}</td>
-      <td class="vf-act-mono vf-act-td-action">${escapeHTML(acao)}</td>
+      <td class="vf-mono vf-act-td-action">${escapeHTML(acao)}</td>
       <td class="vf-act-td-status">${statusBadgeHtml(l.status)}</td>
-      <td class="vf-act-mono vf-act-td-ip">${escapeHTML(ip)}</td>
+      <td class="vf-mono vf-act-td-ip">${escapeHTML(ip)}</td>
       <td class="vf-act-td-detail">${detailCell}</td>
     `;
     tbody.appendChild(tr);
@@ -298,6 +305,10 @@ function renderAtividade(logs, page, meta) {
 document.getElementById("btn-filtrar").addEventListener("click", () => {
   currentPage = 1;
   loadAtividade(1);
+});
+
+document.getElementById("btn-atualizar")?.addEventListener("click", () => {
+  loadAtividade(currentPage);
 });
 
 document.getElementById("filter-limit")?.addEventListener("change", () => {
