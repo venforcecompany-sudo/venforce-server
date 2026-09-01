@@ -555,15 +555,9 @@
 .vf-shell__main[hidden],
 .vf-shell__state[hidden] { display: none; }
 
-/* Correção de acessibilidade do .vf-status (§16.4/M8) — vf-components-v2.css
-   desenha SEMPRE o mesmo círculo preenchido, mudando só a cor; o
-   vocabulário ● ○ ⚠ carrega significado por FORMA e é achatado em cor.
-   Migra para vf-components-v2.css numa unidade própria em F6.4 — custo real:
-   4 linhas. Aplicada fora de @layer pelo mesmo motivo do bloco acima: dentro
-   de `@layer shell` ela perderia silenciosamente para `.vf-status::before`. */
-.vf-status.is-empty { color: var(--vf-text-muted); }
-.vf-status.is-empty::before { background: transparent; border: 1.5px solid var(--vf-neutral); }
-.vf-status.is-warning::before { border-radius: 0; transform: rotate(45deg); }
+/* A correção de FORMA do `.vf-status` (● ◇ ○ — §16.4/M8) foi absorvida por
+   vf-components-v2.css §6 na Wave 1 de UI/UX (docs/ui-ux/…AUDIT_WAVE1.md, A1).
+   Lá a regra ganha por ordem no próprio arquivo, sem precisar sair de camada. */
 
 /* Bootstrap (atividade.html, callbacks.html, usuarios.html — telas antigas
    que ainda dependem de componentes dele) chega como <link> SEM camada.
