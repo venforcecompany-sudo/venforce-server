@@ -144,23 +144,18 @@ function renderCallbacks(logs, page, meta) {
 
     const ok = status >= 200 && status <= 299;
     const statusHtml = ok
-      ? `<span class="base-status--active">${status || "2xx"}</span>`
-      : `<span style="display:inline-flex;align-items:center;gap:.4rem;font-size:.8125rem;font-weight:500;color:var(--vf-danger);">
-           <span style="width:6px;height:6px;border-radius:50%;background:var(--vf-danger);flex-shrink:0;"></span>
-           ${status || "—"}
-         </span>`;
+      ? `<span class="vf-status is-success">${status || "2xx"}</span>`
+      : `<span class="vf-status is-danger">${status || "—"}</span>`;
 
     const tr = document.createElement("tr");
-    tr.classList.add("animate-fade-up");
-    tr.style.animationDelay = `${i * 0.03}s`;
     tr.innerHTML = `
-      <td style="color:var(--vf-text-l);font-family:var(--vf-mono);font-size:.8rem;">${String((page - 1) * logs.length + (i + 1)).padStart(2, "0")}</td>
-      <td style="color:var(--vf-text-m);font-size:.875rem;">${escapeHTML(when)}</td>
+      <td class="vf-mono vf-cb-n">${String((page - 1) * logs.length + (i + 1)).padStart(2, "0")}</td>
+      <td class="vf-cb-muted">${escapeHTML(when)}</td>
       <td><strong>${escapeHTML(base)}</strong></td>
-      <td style="color:var(--vf-text-m);font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(endpoint)}</td>
-      <td style="text-align:center;">${statusHtml}</td>
-      <td style="color:var(--vf-text-m);font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(ip)}</td>
-      <td style="text-align:right;color:var(--vf-text-m);font-family:var(--vf-mono);font-size:.8rem;">${escapeHTML(durTxt)}</td>
+      <td class="vf-mono vf-cb-muted">${escapeHTML(endpoint)}</td>
+      <td>${statusHtml}</td>
+      <td class="vf-mono vf-cb-muted">${escapeHTML(ip)}</td>
+      <td class="num vf-cb-muted">${escapeHTML(durTxt)}</td>
     `;
     tbody.appendChild(tr);
   });

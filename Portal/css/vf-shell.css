@@ -547,23 +547,11 @@
    As duas regras abaixo ficam FORA de propósito, até F6.3 unificar tudo.
    ════════════════════════════════════════════════════════════════════════ */
 
-/* `display` declarado no próprio componente vence o `[hidden]` do
-   user-agent (origem de autor ganha da origem do UA). Sem estes guards,
-   esconder o shell, o main ou o painel de estado por atributo não some. */
-.vf-shell[hidden],
-.vf-shell__contextbar[hidden],
-.vf-shell__main[hidden],
-.vf-shell__state[hidden] { display: none; }
-
-/* Correção de acessibilidade do .vf-status (§16.4/M8) — vf-components-v2.css
-   desenha SEMPRE o mesmo círculo preenchido, mudando só a cor; o
-   vocabulário ● ○ ⚠ carrega significado por FORMA e é achatado em cor.
-   Migra para vf-components-v2.css numa unidade própria em F6.4 — custo real:
-   4 linhas. Aplicada fora de @layer pelo mesmo motivo do bloco acima: dentro
-   de `@layer shell` ela perderia silenciosamente para `.vf-status::before`. */
-.vf-status.is-empty { color: var(--vf-text-muted); }
-.vf-status.is-empty::before { background: transparent; border: 1.5px solid var(--vf-neutral); }
-.vf-status.is-warning::before { border-radius: 0; transform: rotate(45deg); }
+/* O guard de `[hidden]` que vivia aqui (.vf-shell[hidden], .vf-shell__main…)
+   virou a regra global `[hidden] { display: none !important }` em
+   vf-tokens-v2.css §14, e a correção de FORMA do `.vf-status` (● ◇ ○ —
+   §16.4/M8) foi absorvida por vf-components-v2.css §6 — ambas na Wave 1 de
+   UI/UX (docs/ui-ux/VENFORCE_V3_UI_UX_AUDIT_WAVE1.md, A1). */
 
 /* Bootstrap (atividade.html, callbacks.html, usuarios.html — telas antigas
    que ainda dependem de componentes dele) chega como <link> SEM camada.

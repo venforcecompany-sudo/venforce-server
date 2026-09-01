@@ -8,16 +8,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Fundação Global V2: Hanken Grotesk (corpo) · Manrope (display) · IBM Plex Mono (códigos) -->
   <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <!-- 1. Layout compartilhado (sidebar/topbar/estados globais indispensáveis) -->
-  <link rel="stylesheet" href="style.css">
-  <!-- 2. Fundação Global V2 (tokens → componentes → página) -->
+  <!-- Fundação Global V2 (tokens → componentes → página) + Shell V3 -->
   <link rel="stylesheet" href="css/vf-tokens-v2.css">
   <link rel="stylesheet" href="css/vf-components-v2.css">
   <link rel="stylesheet" href="css/pages/clientes-v2.css">
   <link rel="stylesheet" href="css/vf-shell.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
 </head>
-<body class="vf-page vf-page-dashboard vf-page-clientes" data-vf-scope="global" data-vf-module="clientes-contas">
+<body class="vf-page vf-page-clientes" data-vf-scope="global" data-vf-module="clientes-contas">
 
   <!-- F5 — .vf-main-with-sidebar era a margem fixa de 240px do layout.js
        (style.css). O Shell V3 tem grade própria (.vf-shell); manter a classe
@@ -25,7 +23,7 @@
   <div>
     <main class="vf-content">
       <div class="vf-page-shell">
-        <div class="vf-page-container">
+        <div class="vf-page-container vf-page-container--wide">
 
           <header class="vf-page-header">
             <div class="vf-page-header__main">
@@ -59,7 +57,7 @@
                   <div class="vf-clientes-create-submit">
                     <button id="btn-criar-cliente" class="vf-btn vf-btn--primary">
                       <span id="btn-criar-cliente-text">Criar cliente</span>
-                      <span id="btn-criar-cliente-spinner" class="btn-spinner" style="display:none;"></span>
+                      <span id="btn-criar-cliente-spinner" class="vf-spinner vf-spinner--sm" style="display:none;"></span>
                     </button>
                   </div>
                 </div>
@@ -78,8 +76,8 @@
 
           <!-- ── CLIENTES CADASTRADOS ── -->
           <section id="clientes-content">
-            <div id="state-loading" class="vf-loading-state">
-              <div class="loading-dots"><span></span><span></span><span></span></div>
+            <div id="state-loading" class="vf-loading-state" role="status" aria-live="polite">
+              <span class="vf-spinner" aria-hidden="true"></span>
               <p>Carregando clientes…</p>
             </div>
 
@@ -140,7 +138,7 @@
         <div id="vf-base-picker-loading" class="vf-field__hint">Carregando bases elegíveis…</div>
         <div id="vf-base-picker-field" class="vf-field" style="display:none;">
           <label class="vf-field__label" for="vf-base-picker-select">Base compatível com este marketplace</label>
-          <select id="vf-base-picker-select" class="vf-input"></select>
+          <select id="vf-base-picker-select" class="vf-select"></select>
         </div>
         <p id="vf-base-picker-empty" class="vf-field__hint" style="display:none;">Nenhuma base deste marketplace foi encontrada. Crie/importe a base em /bases.html primeiro.</p>
         <div id="vf-base-picker-danger" class="vf-alert is-danger" style="display:none;margin-top:12px;"></div>

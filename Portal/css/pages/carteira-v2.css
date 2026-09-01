@@ -93,8 +93,11 @@
   padding: 0;
 }
 
+/* Densidade (Wave 1 UI/UX B2): um portfólio com dezenas de clientes precisa
+   caber mais linhas por viewport. Grupo e linha ficam mais justos sem
+   comprimir a tipografia de leitura. */
 .vf-portfolio-group {
-  margin: var(--vf-sp-6) 0 var(--vf-sp-2);
+  margin: var(--vf-sp-5) 0 var(--vf-sp-2);
   font-size: var(--vf-fs-2xs);
   font-weight: var(--vf-fw-bold);
   letter-spacing: var(--vf-ls-caps);
@@ -112,8 +115,13 @@
 }
 
 .vf-portfolio-row {
-  padding: var(--vf-sp-4) 0;
+  padding: var(--vf-sp-3) var(--vf-sp-2);
+  margin: 0 calc(-1 * var(--vf-sp-2));
   border-bottom: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius-sm);
+}
+.vf-portfolio-row:hover {
+  background: var(--vf-surface-hover);
 }
 
 .vf-portfolio-row:last-child {
