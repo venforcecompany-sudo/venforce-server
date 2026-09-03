@@ -114,6 +114,25 @@
   letter-spacing: normal;
 }
 
+/* Squad principal (P2.9): marca DISCRETA de default de UX. Deliberadamente
+   sem cor de status — "principal" não é aviso, não é sucesso e não concede
+   nada; é só a informação de qual squad o backend registrou como padrão
+   deste usuário. Um destaque forte aqui sugeriria que os outros grupos
+   valem menos, e eles têm exatamente o mesmo acesso. */
+.vf-portfolio-group__tag {
+  display: inline-block;
+  margin-inline-start: var(--vf-sp-1);
+  padding: 0 var(--vf-sp-1);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius-sm);
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-medium);
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--vf-text-muted);
+  vertical-align: baseline;
+}
+
 .vf-portfolio-row {
   padding: var(--vf-sp-3) var(--vf-sp-2);
   margin: 0 calc(-1 * var(--vf-sp-2));
