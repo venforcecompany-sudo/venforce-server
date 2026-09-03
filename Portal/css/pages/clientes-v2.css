@@ -214,3 +214,26 @@
   font-size: var(--vf-fs-xs);
   color: var(--vf-text-muted);
 }
+
+/* ── Tabela de clientes ──────────────────────────────────────────────
+ * Migração Wave 1 UI/UX (B5): antes vinha de style.css (.vf-page-clientes
+ * .vf-table …). Agora a tela não carrega style.css. */
+.vf-page-clientes .vf-table {
+  min-width: 1080px;
+}
+.vf-page-clientes .vf-table thead th:last-child,
+.vf-page-clientes .vf-table tbody td:last-child {
+  min-width: 200px;
+  text-align: right;
+}
+
+/* Células técnicas / discretas da linha (slug, contagem) */
+.vf-page-clientes .vf-cli-cell-muted {
+  color: var(--vf-text-muted);
+  font-size: var(--vf-fs-xs);
+}
+.vf-page-clientes .vf-cli-cell-slug {
+  color: var(--vf-text-secondary);
+  font-family: var(--vf-font-mono);
+  font-size: var(--vf-fs-xs);
+}

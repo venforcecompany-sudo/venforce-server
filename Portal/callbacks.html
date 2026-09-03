@@ -4,135 +4,132 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Venforce — Callbacks</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/vf-tokens-v2.css">
   <link rel="stylesheet" href="css/vf-components-v2.css">
+  <link rel="stylesheet" href="css/pages/callbacks-v2.css">
   <link rel="stylesheet" href="css/vf-shell.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235A2A8F'/><text x='16' y='22' font-size='18' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='bold'>V</text></svg>">
 </head>
-<body class="vf-page" data-vf-scope="global" data-vf-module="callbacks">
+<body class="vf-page vf-page-callbacks" data-vf-scope="global" data-vf-module="callbacks">
 
-  <!-- F5 — .vf-main-with-sidebar era a margem fixa de 240px do layout.js
-       (style.css). O Shell V3 tem grade própria (.vf-shell); manter a classe
-       somaria 240px de vazio DENTRO da coluna de conteúdo. Wrapper neutro. -->
   <div>
     <main class="vf-content">
+      <div class="vf-page-shell">
+        <div class="vf-page-container vf-page-container--wide">
 
-      <div class="vf-page-header">
-        <h2>Callbacks</h2>
-        <p>Histórico de requisições recebidas pela API.</p>
+          <header class="vf-page-header">
+            <div class="vf-page-header__main">
+              <p class="vf-page-header__eyebrow">Administração</p>
+              <h1 class="vf-page-header__title">Callbacks</h1>
+              <p class="vf-page-header__description">Requisições recebidas pela API — base, endpoint, status e duração.</p>
+            </div>
+          </header>
+
+          <section class="vf-card">
+            <div class="vf-card__header">
+              <h2 class="vf-card__title">Filtros</h2>
+            </div>
+            <div class="vf-card__body">
+              <div class="vf-form-grid">
+                <div class="vf-field">
+                  <label class="vf-field__label" for="filter-base">Base</label>
+                  <select id="filter-base" class="vf-select">
+                    <option value="">Todas as bases</option>
+                  </select>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="filter-status">Status</label>
+                  <select id="filter-status" class="vf-select">
+                    <option value="">Todos</option>
+                    <option value="success">Sucesso (2xx)</option>
+                    <option value="error">Erro (4xx/5xx)</option>
+                  </select>
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="filter-de">De</label>
+                  <input type="date" id="filter-de" class="vf-input">
+                </div>
+                <div class="vf-field">
+                  <label class="vf-field__label" for="filter-ate">Até</label>
+                  <input type="date" id="filter-ate" class="vf-input">
+                </div>
+              </div>
+            </div>
+            <div class="vf-card__footer">
+              <button id="btn-filtrar" type="button" class="vf-btn vf-btn--primary">Filtrar</button>
+            </div>
+          </section>
+
+          <section class="vf-card">
+            <div class="vf-card__header">
+              <h2 class="vf-card__title">Logs</h2>
+              <span class="vf-badge" id="callbacks-count" style="display:none;">0</span>
+            </div>
+
+            <div id="callbacks-content">
+              <div id="state-loading" class="vf-loading-state" role="status" aria-live="polite">
+                <span class="vf-spinner" aria-hidden="true"></span>
+                <p>Carregando logs…</p>
+              </div>
+
+              <div id="state-table" class="vf-table-wrap" style="display:none;">
+                <table class="vf-table vf-table--compact vf-cb-table">
+                  <thead>
+                    <tr>
+                      <th class="vf-cb-col-n">#</th>
+                      <th class="vf-cb-col-time">Data / hora</th>
+                      <th>Base</th>
+                      <th>Endpoint</th>
+                      <th class="vf-cb-col-status">Status</th>
+                      <th class="vf-cb-col-ip">IP</th>
+                      <th class="num vf-cb-col-dur">Duração</th>
+                    </tr>
+                  </thead>
+                  <tbody id="callbacks-tbody"></tbody>
+                </table>
+              </div>
+
+              <div id="state-empty" class="vf-empty" style="display:none;">
+                <div class="vf-empty__icon" aria-hidden="true">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                </div>
+                <h3 class="vf-empty__title">Nenhum callback no período</h3>
+                <p class="vf-empty__description">Ajuste os filtros ou amplie o intervalo de datas.</p>
+              </div>
+
+              <div id="state-error" class="vf-empty" style="display:none;">
+                <div class="vf-empty__icon is-danger" aria-hidden="true">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3l9 16H3z"/><path d="M12 9v4"/><path d="M12 17h.01"/>
+                  </svg>
+                </div>
+                <h3 class="vf-empty__title">Não foi possível carregar</h3>
+                <p class="vf-empty__description" id="error-message">Erro ao carregar dados.</p>
+                <div class="vf-empty__actions">
+                  <button id="btn-retry" type="button" class="vf-btn vf-btn--primary">Tentar novamente</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="vf-card__footer">
+              <span id="page-text" class="vf-cb-page-info">Página 1</span>
+              <button id="btn-prev" type="button" class="vf-btn vf-btn--secondary vf-btn--sm">← Anterior</button>
+              <button id="btn-next" type="button" class="vf-btn vf-btn--secondary vf-btn--sm">Próximo →</button>
+            </div>
+          </section>
+
+        </div>
       </div>
-
-      <!-- ── FILTROS ── -->
-      <div class="vf-card" style="margin-bottom:24px;">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 3H2l8 9v7l4 2v-9l8-9z"/>
-            </svg>
-            Filtros
-          </h5>
-        </div>
-        <div style="padding:1.25rem 1.75rem;">
-          <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:1rem;align-items:end;">
-            <div class="vf-form-group" style="margin:0;">
-              <label for="filter-base">Base</label>
-              <select id="filter-base" class="vf-input">
-                <option value="">Todas as bases</option>
-              </select>
-            </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="filter-status">Status</label>
-              <select id="filter-status" class="vf-input">
-                <option value="">Todos</option>
-                <option value="success">Sucesso (2xx)</option>
-                <option value="error">Erro (4xx/5xx)</option>
-              </select>
-            </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="filter-de">De</label>
-              <input type="date" id="filter-de" class="vf-input">
-            </div>
-            <div class="vf-form-group" style="margin:0;">
-              <label for="filter-ate">Até</label>
-              <input type="date" id="filter-ate" class="vf-input">
-            </div>
-          </div>
-          <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-            <button id="btn-filtrar" class="vf-btn-primary" style="width:auto;margin:0;min-width:140px;">Filtrar</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── LOGS ── -->
-      <div class="vf-card">
-        <div class="vf-card-header">
-          <h5>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-              <polyline points="10 9 9 9 8 9"/>
-            </svg>
-            Logs
-          </h5>
-          <span class="vf-badge" id="callbacks-count" style="display:none;">0</span>
-        </div>
-
-        <div id="callbacks-content" style="min-height:200px;">
-          <div id="state-loading" class="vf-loading">
-            <div class="loading-dots"><span></span><span></span><span></span></div>
-            <p>Carregando logs…</p>
-          </div>
-          <div id="state-table" class="vf-table-wrapper" style="display:none;">
-            <table class="vf-table">
-              <thead>
-                <tr>
-                  <th style="width:50px;">#</th>
-                  <th style="width:190px;">Data/Hora</th>
-                  <th>Base</th>
-                  <th>Endpoint</th>
-                  <th style="width:120px;text-align:center;">Status</th>
-                  <th style="width:150px;">IP</th>
-                  <th style="width:120px;text-align:right;">Duração</th>
-                </tr>
-              </thead>
-              <tbody id="callbacks-tbody"></tbody>
-            </table>
-          </div>
-          <div id="state-empty" class="vf-empty-state" style="display:none;">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-            </svg>
-            <p>Nenhum log encontrado para os filtros selecionados.</p>
-          </div>
-          <div id="state-error" class="vf-error-state" style="display:none;">
-            <p id="error-message">Erro ao carregar dados.</p>
-            <button id="btn-retry" class="vf-btn-retry">Tentar novamente</button>
-          </div>
-        </div>
-
-        <div style="padding:1rem 1.75rem;border-top:1px solid var(--vf-border);display:flex;align-items:center;justify-content:space-between;gap:1rem;">
-          <button id="btn-prev" class="vf-btn-secondary" style="padding:0.6rem 0.9rem;">← Anterior</button>
-          <div id="page-text" style="font-size:.875rem;color:var(--vf-text-m);font-weight:500;">Página 1</div>
-          <button id="btn-next" class="vf-btn-secondary" style="padding:0.6rem 0.9rem;">Próximo →</button>
-        </div>
-      </div>
-
     </main>
   </div>
 
   <script type="module" src="vf-shell.js"></script>
-  <!-- F5 — o JS desta página chama initLayout(). O Shell V3 é ES module
-       (deferido) e não corre a tempo de defini-lo antes de um script
-       clássico. No-op, sem tocar no JS da página. -->
   <script>window.initLayout = window.initLayout || function () {};</script>
   <script src="callbacks.js"></script>
 </body>
 </html>
-

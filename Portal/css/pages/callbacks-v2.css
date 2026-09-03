@@ -1,0 +1,33 @@
+/* Portal/css/pages/callbacks-v2.css
+ * Tela Callbacks. Migração Wave 1 UI/UX (B6): sai de style.css e Bootstrap;
+ * estrutura, filtros, tabela e estados vêm da Fundação Global V2. Aqui só
+ * larguras de coluna e as células técnicas do log. */
+
+.vf-cb-table { table-layout: fixed; width: 100%; }
+.vf-cb-table td { vertical-align: middle; }
+.vf-cb-table th, .vf-cb-table td { overflow: hidden; text-overflow: ellipsis; }
+
+.vf-cb-col-n      { width: 48px; }
+.vf-cb-col-time   { width: 168px; }
+.vf-cb-col-status { width: 92px; }
+.vf-cb-col-ip     { width: 132px; }
+.vf-cb-col-dur    { width: 104px; }
+
+.vf-cb-muted { color: var(--vf-text-muted); }
+.vf-cb-n     { color: var(--vf-text-placeholder); }
+
+.vf-cb-page-info {
+  margin-right: auto;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A tabela e os estados encostam nas bordas do card */
+.vf-page-callbacks #state-table { border: 0; border-radius: 0; }
+
+@media (max-width: 900px) {
+  .vf-cb-table { table-layout: auto; }
+  .vf-cb-col-n, .vf-cb-col-time, .vf-cb-col-status,
+  .vf-cb-col-ip, .vf-cb-col-dur { width: auto; }
+}

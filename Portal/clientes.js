@@ -253,17 +253,17 @@ function renderClientes(clientes) {
     tr.dataset.slug = slug;
 
     tr.innerHTML = `
-      <td style="color:var(--vf-text-muted);font-family:var(--vf-font-mono);font-size:.8rem;">${String(i + 1).padStart(2, "0")}</td>
+      <td class="vf-cli-cell-slug">${String(i + 1).padStart(2, "0")}</td>
       <td><strong>${escapeHTML(c.nome || "—")}</strong></td>
-      <td style="color:var(--vf-text-secondary);font-size:.875rem;font-family:var(--vf-font-mono);">${escapeHTML(slug || "—")}</td>
+      <td class="vf-cli-cell-slug">${escapeHTML(slug || "—")}</td>
       <td>
-        <span class="vf-status ${ativo ? "is-success" : "is-danger"}">${ativo ? "Ativo" : "Inativo"}</span>
+        <span class="vf-status ${ativo ? "is-success" : ""}">${ativo ? "Ativo" : "Inativo"}</span>
       </td>
-      <td id="resumo-contas-${escapeHTML(slug)}"><span style="color:var(--vf-text-muted);font-size:.8rem;">…</span></td>
+      <td id="resumo-contas-${escapeHTML(slug)}"><span class="vf-cli-cell-muted">…</span></td>
       <td>
         <div class="vf-table__actions">
           <button class="vf-btn vf-btn--sm vf-btn--secondary vf-clientes-toggle-btn" data-action="toggle-expand" data-slug="${escapeHTML(slug)}" aria-expanded="false" title="Detalhes">⌄</button>
-          <button class="vf-btn vf-btn--sm vf-btn--danger" data-action="delete" data-slug="${escapeHTML(slug)}">Excluir</button>
+          <button class="vf-btn vf-btn--sm vf-btn--secondary" data-action="delete" data-slug="${escapeHTML(slug)}">Excluir</button>
         </div>
       </td>
     `;
@@ -313,7 +313,7 @@ async function carregarResumoContas(slug) {
     const contas = Array.isArray(data.contas) ? data.contas : [];
     renderResumoContasCelula(celContas, contas);
   } catch {
-    celContas.innerHTML = `<span style="color:var(--vf-text-muted);font-size:.8rem;">—</span>`;
+    celContas.innerHTML = `<span class="vf-cli-cell-muted">—</span>`;
   }
 }
 
