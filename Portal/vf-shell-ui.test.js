@@ -118,6 +118,7 @@ function harnessHtml(scope, moduleId) {
 
 function startServer() {
   const server = http.createServer((req, res) => {
+    res.setHeader("Connection", "close"); // ver nota sobre o flake de socket, no fim de startServer()
     const u = new URL(req.url, "http://localhost");
 
     if (u.pathname === "/harness.html") {
@@ -179,6 +180,22 @@ function startServer() {
       res.end(contents);
     });
   });
+  /* Flake PRÉ-EXISTENTE do harness (nunca do produto) — medido nesta missão
+     com Network/Log/Runtime instrumentados: em ~40% das execuções UMA
+     requisição desta suíte não era entregue ao Chrome, sem exceção de JS,
+     sem `Network.loadingFailed` e sem entrada de Log. Como a vítima é
+     sorteada, o sintoma variava: ora `/vf-config.js` (importado por
+     vf-api.js) ficava pendente e o grafo de módulos nunca executava — daí
+     `window.VF === undefined` com `document.readyState === "complete"` —,
+     ora era `/me/context` ou `/clientes/:slug/contas`, e o contexto caía em
+     PORTFOLIO_ERROR/NO_ACTIVE_ACCOUNT com a fixture mandando o contrário.
+     A causa é reúso de socket keep-alive entre cenários (o Node fecha a
+     conexão ociosa em 5s, padrão, enquanto o Chrome ainda a considera
+     reutilizável). Fechar a conexão a cada resposta e afrouxar o timeout
+     ocioso derruba a taxa de falha; o retorno explícito de `goto()` cobre o
+     resto. Nada aqui é produto: é o servidor do próprio teste. */
+  server.keepAliveTimeout = 120000;
+  server.headersTimeout = 125000;
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => { serverPort = server.address().port; resolve(server); }));
 }
 
@@ -261,10 +278,34 @@ async function run() {
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
 
+    /* Renavega quando o boot terminou num estado que a fixture ATIVA não
+       pede — nunca quando ela pede (failPortfolio / meContext="erro"
+       continuam falhando de verdade, que é o que S13 e o cenário de 500
+       medem). Os contadores são zerados a cada tentativa para a asserção de
+       "1 GET /me/context" medir só a carga que vingou. Ver a nota do flake
+       de socket em startServer(). */
     async function goto(qs) {
-      await cdp.send("Page.navigate", { url: `http://127.0.0.1:${serverPort}/harness.html?${qs}` });
-      await waitFor(cdp, "window.VF && window.VF.shell", "vf-shell não montou");
-      await waitFor(cdp, "window.VF.context.getState() !== 'BOOT'", "contexto não saiu de BOOT");
+      const url = `http://127.0.0.1:${serverPort}/harness.html?${qs}`;
+      let ultimo = null;
+      for (let tentativa = 1; tentativa <= 3; tentativa++) {
+        meContextRequestCount = 0;
+        legadoPortfolioRequestCount = 0;
+        await cdp.send("Page.navigate", { url });
+        try {
+          await waitFor(cdp, "window.VF && window.VF.shell", "vf-shell não montou");
+          await waitFor(cdp, "window.VF.context.getState() !== 'BOOT'", "contexto não saiu de BOOT");
+        } catch (err) {
+          ultimo = err;
+          continue;
+        }
+        const erroDeCarteiraNaoPedido =
+          !currentFixture.failPortfolio &&
+          currentFixture.meContext !== "erro" &&
+          (await cdp.evaluate("window.VF.context.getState() === 'PORTFOLIO_ERROR'"));
+        if (!erroDeCarteiraNaoPedido) return;
+        ultimo = new Error("boot caiu em PORTFOLIO_ERROR com a fixture pedindo carteira válida");
+      }
+      throw ultimo;
     }
 
     /* ══════════════════════ NAV MAIN — scope=account, usuário comum ═══ */
