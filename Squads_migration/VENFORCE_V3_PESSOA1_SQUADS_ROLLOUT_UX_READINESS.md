@@ -490,6 +490,41 @@ Uma medição adicional vale registrar: fechar a conexão a cada resposta
 módulos, e uma conexão nova por recurso multiplica a churn de TCP contra o
 limite de 6 conexões por host. Ficou só o afrouxamento do timeout.
 
+### Segundo flake, causa diferente: os testes não eram herméticos
+
+`vf-shell-f5-lote-ui` continuou falhando ~1 em 5 depois do conserto acima —
+mas **sempre na mesma página**: `design-system-lab.html`, a mais pesada
+(98KB de HTML + `style.css` de 151KB + 42 recursos) e a última do lote.
+"Sempre a mesma" já descartava sorteio de socket. Instrumentando o tempo de
+cada espera, todas resolviam em menos de 1s nas execuções boas: não era
+lentidão, era travamento.
+
+**Causa:** o interceptador usa `Fetch.enable` com `urlPattern: "*"` e
+deixava passar **para a internet real** tudo que não fosse o host de
+produção — inclusive a folha de estilo das fontes do Google, que quase toda
+página do Portal carrega. E o sintoma de uma folha pendente não é "a fonte
+não carregou": **folha de estilo pendente bloqueia a execução dos `<script>`
+seguintes**, então `/vf-shell.js` nunca rodava e o teste acusava "o Shell V3
+não montou".
+
+**Correção:** só `127.0.0.1` continua de verdade; recurso externo recebe CSS
+vazio. Seguro nessa suíte, que mede montagem do Shell, escopo e exceções de
+JS — nunca tipografia. Junto, `respond()` deixou de propagar erro: um throw
+dentro de um handler de evento `async` sem catch deixa a requisição
+interceptada **pausada para sempre**. Resultado: 8 execuções seguidas, 52/52.
+
+**Duas ressalvas medidas, para quem for replicar:**
+
+1. A **mesma** mudança foi tentada em `e2e-jornada-completa` e **piorou**
+   (3 falhas em 5, sempre em `ads.html`). Foi revertida; lá basta o
+   `keepAliveTimeout` (5/5 verdes).
+2. Outras **8 suítes** têm o mesmo furo de rede externa
+   (`ads-anuncios`, `automacoes`, `central-margem-ui`, `diagnostico-inicial`,
+   `financeiro-v3`, `login-ui`, `ui-ux-wave1-convergence`, `vf-shell-hardening`,
+   além da `e2e`). Nenhuma flakeou nesta missão, e algumas medem **layout** —
+   trocar a fonte real por fallback muda métrica de texto e pode quebrar
+   asserção legítima. Aplicar caso a caso, medindo, nunca em lote.
+
 ---
 
 ## 17. Decisões abertas
