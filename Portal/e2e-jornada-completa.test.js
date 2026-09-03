@@ -70,7 +70,6 @@ function meContextDe(portfolio) {
 
 function startServer() {
   const server = http.createServer((req, res) => {
-    res.setHeader("Connection", "close"); // ver nota do flake de socket no fim de startServer()
     const u = new URL(req.url, "http://localhost");
     const target = path.resolve(PORTAL_DIR, u.pathname.replace(/^\/+/, ""));
     if (!target.startsWith(path.resolve(PORTAL_DIR) + path.sep)) { res.writeHead(403).end("forbidden"); return; }
@@ -87,8 +86,13 @@ function startServer() {
      asserções CDP. O reúso de conexão keep-alive ociosa (o Node fecha em 5s
      por padrão, o Chrome ainda a considera reutilizável) fazia uma
      requisição qualquer morrer no meio — e o sintoma aparecia longe da
-     causa, ora como página que não montou, ora como contexto que não
-     resolveu. Nada disto é produto: é o servidor do próprio teste. */
+     causa, ora como página que não montou o Shell, ora como contexto nulo
+     numa tela seguinte. Nada disto é produto: é o servidor do próprio teste.
+
+     Aqui vale SÓ afrouxar o timeout ocioso: `Connection: close`, que também
+     ajudava no harness leve, foi medido como PIOR nesta suíte — ela carrega
+     páginas reais do Portal, com dezenas de módulos, e uma conexão nova por
+     recurso multiplica a churn de TCP contra o limite de 6 por host. */
   server.keepAliveTimeout = 120000;
   server.headersTimeout = 125000;
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));

@@ -118,7 +118,6 @@ function harnessHtml(scope, moduleId) {
 
 function startServer() {
   const server = http.createServer((req, res) => {
-    res.setHeader("Connection", "close"); // ver nota sobre o flake de socket, no fim de startServer()
     const u = new URL(req.url, "http://localhost");
 
     if (u.pathname === "/harness.html") {
@@ -189,11 +188,18 @@ function startServer() {
      `window.VF === undefined` com `document.readyState === "complete"` —,
      ora era `/me/context` ou `/clientes/:slug/contas`, e o contexto caía em
      PORTFOLIO_ERROR/NO_ACTIVE_ACCOUNT com a fixture mandando o contrário.
-     A causa é reúso de socket keep-alive entre cenários (o Node fecha a
-     conexão ociosa em 5s, padrão, enquanto o Chrome ainda a considera
-     reutilizável). Fechar a conexão a cada resposta e afrouxar o timeout
-     ocioso derruba a taxa de falha; o retorno explícito de `goto()` cobre o
-     resto. Nada aqui é produto: é o servidor do próprio teste. */
+
+     Causa: reúso de socket keep-alive ocioso. Entre um cenário e o seguinte
+     passam vários segundos de asserções CDP, e o Node fecha a conexão
+     ociosa em 5s (padrão) enquanto o Chrome ainda a considera reutilizável.
+     Manter a conexão viva por mais tempo que a suíte inteira remove a
+     corrida; o retorno explícito de `goto()` cobre o resto.
+
+     Fechar a conexão a cada resposta (`Connection: close`) também resolvia
+     AQUI, mas foi descartado: em e2e-jornada-completa, que carrega páginas
+     reais do Portal com dezenas de módulos, forçar uma conexão nova por
+     recurso PIORAVA a taxa de falha. Nada disto é produto: é o servidor do
+     próprio teste. */
   server.keepAliveTimeout = 120000;
   server.headersTimeout = 125000;
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => { serverPort = server.address().port; resolve(server); }));

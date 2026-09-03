@@ -338,10 +338,6 @@ function contasDoCenarioPorSlug(cenario) {
 
 function startServer() {
   const server = http.createServer((req, res) => {
-    // Ver a nota do flake de socket em Portal/vf-shell-ui.test.js: entre um
-    // cenário e o seguinte passam segundos de asserções CDP, e o reúso de
-    // conexão keep-alive ociosa fazia requisições morrerem no meio.
-    res.setHeader("Connection", "close");
     const u = new URL(req.url, "http://localhost");
     const cenario = currentFixture.cenario;
     const fixture = CENARIOS[cenario] || CENARIOS.a;
@@ -398,6 +394,11 @@ function startServer() {
       res.end(contents);
     });
   });
+  // Flake de harness diagnosticado em Portal/vf-shell-ui.test.js: o Node
+  // fecha a conexão keep-alive ociosa em 5s enquanto o Chrome ainda a
+  // considera reutilizável, e entre cenários passam segundos de asserções
+  // CDP. Sem isto, uma requisição qualquer morre no meio e o sintoma
+  // aparece longe da causa.
   server.keepAliveTimeout = 120000;
   server.headersTimeout = 125000;
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => { serverPort = server.address().port; resolve(server); }));
