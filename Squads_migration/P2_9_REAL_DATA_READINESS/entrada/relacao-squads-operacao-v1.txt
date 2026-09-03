@@ -1,0 +1,197 @@
+# ═══════════════════════════════════════════════════════════════════
+#  P2.9 — RELAÇÃO REAL DOS 6 SQUADS (recebida da operação)
+#  FORMATO V2 — preserva as funções operacionais reais da empresa.
+# ═══════════════════════════════════════════════════════════════════
+#
+#  ESTE ARQUIVO É A TRANSCRIÇÃO FIEL da relação humana recebida.
+#  NÃO é o gabarito em branco — esse continua em
+#  `relacao-squads.PENDENTE_HUMANO.txt` e NÃO foi alterado.
+#
+#  O QUE ELE RESOLVE .... USUÁRIO → SQUAD e a função operacional de cada um.
+#  O QUE ELE NÃO RESOLVE  CLIENTE → SQUAD (continua pendente) e a identidade
+#                         técnica das pessoas (email/id).
+#
+# ─────────────────────── ESTRUTURA REAL ───────────────────────
+#  A empresa NÃO é "Squad → Gestor → membros". É:
+#
+#     Squad → Coordenador
+#           → Gestor
+#           → Auxiliar
+#           → Auxiliar 2 (quando houver)
+#           → Design
+#
+#  COORDENADOR e GESTOR são pessoas e funções DISTINTAS. O tooling V1
+#  tratava Gestor como `squad_members.funcao = "coordenador"`; isso estava
+#  semanticamente errado e foi corrigido nesta fase.
+#
+# ─────────────────── MAPEAMENTO PARA O MODELO ───────────────────
+#  DUAS DIMENSÕES SEPARADAS, e a separação é preservada de propósito:
+#
+#   SQUAD MEMBERSHIP (`squad_members.funcao`) = acesso/participação
+#     Coordenador ......... funcao = coordenador
+#     Gestor .............. funcao = membro
+#     Auxiliar/Auxiliar 2 . funcao = membro
+#     Design .............. funcao = membro
+#
+#   CLIENT RESPONSIBILITY (`cliente_responsaveis.papel`) = gestor|auxiliar|designer
+#     POR CLIENTE — e NÃO por Squad. Como Cliente→Squad ainda não chegou,
+#     NENHUM `cliente_responsaveis` é criado nesta fase. A função
+#     organizacional de cada pessoa fica preservada AQUI, neste arquivo,
+#     para virar `responsaveis[]` quando a carteira chegar.
+#
+#   NENHUM enum novo foi criado em `squad_members.funcao`. Ele continua
+#   `('membro','coordenador')` — ver 05_ESTADO_SCHEMA_SQUADS.md.
+#
+# ───────────────────────── MARCADORES ─────────────────────────
+#   PENDENTE_*                    → dado ainda não conhecido (bloqueia plano)
+#   AUSENTE_NA_ESTRUTURA          → o cargo NÃO EXISTE neste Squad (não é falta)
+#   PENDENTE_CONFIRMACAO          → não sabemos se está vazio ou fora do recorte
+#   PENDENTE_RELACAO_CLIENTE_SQUAD→ carteira ainda não recebida
+#
+# ────────────────────────── VALIDAÇÃO ──────────────────────────
+#   node server/sql/squads-preflight-relacao.js \
+#     --relacao Squads_migration/P2_9_REAL_DATA_READINESS/entrada/relacao-squads-operacao-v1.txt
+#
+#   Com inventário (resolve nome → email/id):
+#   node server/sql/squads-preflight-relacao.js \
+#     --relacao <este-arquivo> --inventario inventario.json --memberships
+#
+#  NÃO INVENTE PESSOA AUSENTE. NÃO INVENTE CARTEIRA.
+# ═══════════════════════════════════════════════════════════════════
+
+
+# ══════════════════════════ SQUAD 1 ══════════════════════════
+SQUAD: Squad 1
+SLUG: squad-1
+ROTULO_ORIGINAL: squad 1
+ROTULO_STATUS: CONFIRMADO
+COORDENADOR: Micael
+GESTOR: Eliabe
+AUXILIAR: Gustavo
+AUXILIAR_2: Fernando
+DESIGN: Gabrielly
+PRINCIPAL:
+CLIENTES: PENDENTE_RELACAO_CLIENTE_SQUAD
+MEMBROS:
+
+
+# ══════════════════════════ SQUAD 2 ══════════════════════════
+SQUAD: Squad 2
+SLUG: squad-2
+ROTULO_ORIGINAL: squad 2
+ROTULO_STATUS: CONFIRMADO
+COORDENADOR: Klayvert
+GESTOR: Adrian
+AUXILIAR: Juliana
+AUXILIAR_2: Vinícius
+DESIGN: Caique
+PRINCIPAL:
+CLIENTES: PENDENTE_RELACAO_CLIENTE_SQUAD
+MEMBROS:
+
+
+# ══════════════════════════ SQUAD 3 ══════════════════════════
+SQUAD: Squad 3
+SLUG: squad-3
+ROTULO_ORIGINAL: squad 3
+ROTULO_STATUS: CONFIRMADO
+COORDENADOR: Klayvert
+GESTOR: Diogo
+AUXILIAR: Mayara
+AUXILIAR_2: Thiago
+DESIGN: Cavazzoto
+PRINCIPAL:
+CLIENTES: PENDENTE_RELACAO_CLIENTE_SQUAD
+MEMBROS:
+
+
+# ══════════════════════════ SQUAD 4 ══════════════════════════
+SQUAD: Squad 4
+SLUG: squad-4
+ROTULO_ORIGINAL: squad 4
+ROTULO_STATUS: CONFIRMADO
+COORDENADOR: Fernando
+GESTOR: Anderson
+AUXILIAR: Giovanna
+AUXILIAR_2: Yuri
+DESIGN: Carol
+PRINCIPAL:
+CLIENTES: PENDENTE_RELACAO_CLIENTE_SQUAD
+MEMBROS:
+
+
+# ══════════════════════════ SQUAD 5 ══════════════════════════
+# Auxiliar 2 NÃO foi informado. Enquanto não houver indicação contrária,
+# isso significa "este Squad não tem Auxiliar 2", NÃO "dado faltando".
+SQUAD: Squad 5
+SLUG: squad-5
+ROTULO_ORIGINAL: squad 5
+ROTULO_STATUS: CONFIRMADO
+COORDENADOR: Micael
+GESTOR: Witor
+AUXILIAR: Felipe
+AUXILIAR_2: AUSENTE_NA_ESTRUTURA
+DESIGN: Sophia
+PRINCIPAL:
+CLIENTES: PENDENTE_RELACAO_CLIENTE_SQUAD
+MEMBROS:
+
+
+# ═══════════════════ SEXTO BLOCO (6º SQUAD?) ═══════════════════
+# ATENÇÃO — ESTE BLOCO NÃO TEM RÓTULO CONFIRMADO.
+#
+# Na planilha fornecida ele também está escrito "squad 5" — o MESMO rótulo
+# do bloco anterior. Pelo requisito de produto existem exatamente 6 Squads,
+# então é MUITO PROVÁVEL que este seja o Squad 6.
+#
+# Essa probabilidade NÃO é dado. O nome fica como marcador PENDENTE_* e a
+# hipótese "Squad 6" fica registrada em NOME_HIPOTESE — que o pré-validador
+# NUNCA converte em linha de plano. Nada é persistido a partir de suposição.
+#
+# Design NÃO APARECE no recorte fornecido. Não sabemos se o Squad não tem
+# Design ou se a informação ficou fora da captura → PENDENTE_CONFIRMACAO
+# (diferente do Auxiliar 2, que sabemos não informado → AUSENTE_NA_ESTRUTURA).
+SQUAD: PENDENTE_CONFIRMACAO_DO_ROTULO
+NOME_HIPOTESE: Squad 6
+ROTULO_ORIGINAL: squad 5
+ROTULO_STATUS: SQUAD_6_PENDENTE_CONFIRMACAO_DO_ROTULO
+COORDENADOR: Klayvert
+GESTOR: Matheus
+AUXILIAR: Victor
+AUXILIAR_2: AUSENTE_NA_ESTRUTURA
+DESIGN: PENDENTE_CONFIRMACAO
+PRINCIPAL:
+CLIENTES: PENDENTE_RELACAO_CLIENTE_SQUAD
+MEMBROS:
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  MULTI-SQUAD — SQUAD PRINCIPAL AINDA NÃO DECIDIDO
+#
+#  O produto permite usuário ∈ N Squads, mas exige EXATAMENTE 1 principal.
+#  A ORDEM DESTE ARQUIVO NÃO DEFINE O PRINCIPAL. O pré-validador se RECUSA
+#  a escolher o primeiro silenciosamente.
+#
+#  Pessoas em 2+ Squads nesta relação:
+#    Klayvert  → Squad 2 (Coordenador) · Squad 3 (Coordenador) · 6º bloco (Coordenador)
+#    Micael    → Squad 1 (Coordenador) · Squad 5 (Coordenador)
+#    Fernando  → Squad 1 (Auxiliar 2)  · Squad 4 (Coordenador)
+#
+#  COMO DECIDIR: no Squad que for o principal da pessoa, liste o nome dela
+#  em `PRINCIPAL:`. Exemplo — se o principal do Klayvert é o Squad 2:
+#
+#     SQUAD: Squad 2
+#     PRINCIPAL:
+#       - Klayvert
+#
+#  Cada pessoa pode aparecer em `PRINCIPAL:` de NO MÁXIMO 1 Squad.
+# ═══════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════
+#  CLIENTE → SQUAD: PENDENTE_RELACAO_CLIENTE_SQUAD
+#
+#  A relação recebida NÃO contém carteira. Não há inferência autorizada por
+#  gestor histórico, responsável legado, marketplace, Grant, Base, nome,
+#  atividade ou ClickUp — ver 09_RESPONSABILIDADES_EVIDENCIAS.md
+#  (evidência auxiliar ≠ dado de rollout).
+# ═══════════════════════════════════════════════════════════════════
