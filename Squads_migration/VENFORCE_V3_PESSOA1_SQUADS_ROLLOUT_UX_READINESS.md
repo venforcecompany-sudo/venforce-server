@@ -198,7 +198,7 @@ detalhe na §16.
 | G3 | `squadPrincipalId()` lê `principal` do payload ou `getSquadPrincipalId()` do store (validado contra a lista em mão). O principal **ordena à frente e rotula**, e nada mais. Dois principais marcados = anomalia = ninguém é principal, porque desempatar seria escolher pela ordem do array. | `carteira.js` |
 | G4 | `?squad=` que não existe na carteira cai para `Todos` — mesmo tratamento que `?ordem=sync` já recebia sem dado de sync. | `carteira.js` |
 | G5 | Texto do vazio passa a depender de o usuário ter squad, na Carteira e no painel do Shell. | `carteira.js`, `vf-shell.js` |
-| G6 | `top: auto` junto com a troca de `position`; `flex: 0 0 auto` na busca em ≤900px; `gap` no rótulo da barra. | `vf-shell.css`, `carteira-v2.css` |
+| G6 | `top: auto` junto com a troca de `position`; `flex: 0 0 auto` na busca em ≤900px; `gap` no rótulo da barra. **Presas por teste** em 900px e 390px (§15). | `vf-shell.css`, `carteira-v2.css` |
 | G7 | `keepAliveTimeout` folgado + renavegação explícita em `goto()`. | 3 harnesses |
 
 **Não implementado de propósito:** nada que dependa de decisão de produto —
@@ -208,7 +208,7 @@ ver §17.
 
 ## 6. Cenários de Squad testados
 
-Suíte nova `Portal/squads-rollout-ux-ui.test.js`, 36 verificações, Chrome
+Suíte nova `Portal/squads-rollout-ux-ui.test.js`, 42 verificações, Chrome
 headless via CDP puro, **100% fixtures**. Os 6 squads operacionais + o bucket
 `Squad 8 · Legado`. Diferença deliberada em relação a `carteira-ui.test.js`:
 **nada** é injetado em `getSquads` — o caminho medido é o de produção, com
@@ -230,6 +230,7 @@ entre esses dois payloads que o rollout põe à prova.
 | **L** · portfolio vazio | Estado, não erro; com squad pode falar de squad, sem squad não culpa squad — na Carteira e no painel do Shell. |
 | **M** · `/me/context` falha | Erro explícito, `main` escondido, nunca "você não tem clientes", nunca estado vazio. |
 | **N** · `/me/portfolio` falha | Queda para `/me/context` sem banner de erro, **com o agrupamento por Squad vivo** e o principal respeitado. |
+| **responsivo** · 900 e 390px | O bloco de contexto não vaza da barra; a busca não vira campo de 240px de altura; zero overflow; Squad 8, `SEM SQUAD` e a marca do principal continuam legíveis. Prende as correções da §5/G6 — ver abaixo. |
 | extra | Filtro de Squad não encosta em `getContext()` nem tira o contexto de `READY`; enforcement OFF (com e sem squad convivendo) não quebra; zero requisição fora das fixtures; zero erro de console. |
 
 ---
@@ -415,6 +416,17 @@ operação (conta ML2 escolhida pelo chip).
 Agrupamento conferido visualmente em todas as larguras, incluindo o caso
 completo `SQUAD 1 [principal] · SQUAD 5 · SQUAD 8 · LEGADO · SEM SQUAD`.
 
+**As duas medidas em negrito viraram asserção automática.** O QA visual roda
+num script descartável e seus screenshots não sobrevivem à máquina; um
+conserto que só existe numa captura de tela é um conserto sem rede de
+proteção — e foi exatamente por não haver medição da Carteira dentro do Shell
+em tela estreita que as duas regressões da Wave 1 atravessaram a bateria
+inteira sem ninguém notar. `squads-rollout-ux-ui` agora mede, em 900px e
+390px, que o bloco de contexto não vaza da barra e que a busca não vira um
+campo de 240px de altura. Verificado que o teste MORDE: com os dois CSS
+revertidos para `fd2671a`, ele falha com o diagnóstico exato — "bloco vaza
+50px abaixo da barra".
+
 Teclado: `/` foca a busca, `↑/↓` navegam entre linhas, `Esc` devolve o foco ao
 gatilho do dropdown (coberto por `vf-shell-ui`).
 
@@ -428,10 +440,10 @@ de dado não é evidência.
 
 ## 16. Testes
 
-21 suítes, **~496 verificações**, todas verdes na branch:
+20 suítes, **~502 verificações**, todas verdes na branch:
 
 ```
-squads-rollout-ux-ui              36   ← NOVA
+squads-rollout-ux-ui              42   ← NOVA
 carteira-ui                       30
 vf-shell-ui                       25
 vf-shell-hardening               101
@@ -552,7 +564,7 @@ estamos, em todas as seis.
 
 A jornada `Login → Meu trabalho → Carteira (agrupada/filtrável por Squad) →
 Cliente → ClienteConta → Visão → Módulos` está auditada, corrigida onde havia
-regra determinística quebrada, e presa por 36 verificações novas em cima do
+regra determinística quebrada, e presa por 42 verificações novas em cima do
 payload que o backend já sabe emitir.
 
 Quando o mapeamento real chegar, a Carteira vai:
