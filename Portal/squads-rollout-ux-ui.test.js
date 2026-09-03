@@ -259,7 +259,24 @@ const CENARIO_ENFORCEMENT_OFF = {
   ],
 };
 
+/* ── Responsivo · o pior caso de agrupamento numa tela só ─────────────
+   Principal + squad comum + bucket legado + resíduo sem squad, para as
+   asserções de tela estreita medirem tudo de uma vez. Cenário próprio de
+   propósito: os de cima já são asserido linha a linha e mexer neles para
+   caber mais um caso enfraqueceria os dois. */
+const CENARIO_RESPONSIVO = {
+  squads: [membership(S1, true), membership(S5)],
+  clientes: [
+    cliente(901, "vitoria", "Vitória Comercial", S1, { responsavelDireto: true }),
+    cliente(902, "salinas", "Salinas Distribuidora", S5),
+    cliente(903, "olinda", "Olinda Comércio Antigo", S8),
+    cliente(904, "petropolis", "Petrópolis Importadora Antiga", S8),
+    cliente(905, "antigo", "Antigo Sem Squad", null),
+  ],
+};
+
 const CENARIOS = {
+  responsivo: CENARIO_RESPONSIVO,
   a: CENARIO_A,
   b: CENARIO_B,
   c: CENARIO_C,
@@ -879,6 +896,71 @@ async function run() {
       assert.strictEqual(await cdp.evaluate("document.querySelectorAll('.vf-empty').length"), 0,
         "erro técnico nunca pode aparecer como estado vazio");
     });
+
+    /* ═════════ Responsividade — as duas regressões da Wave 1 ═════════════
+       Corrigidas nesta branch e, até aqui, sem NADA que as prendesse: as
+       duas passavam por baixo de toda a bateria porque nenhuma suíte media
+       a Carteira dentro do Shell em tela estreita. Ambas foram achadas no
+       QA visual e confirmadas idênticas em origin/main (pré-existentes).
+
+       O agrupamento por Squad é justamente o que se vai conferir no celular
+       no dia do rollout, então estas asserções moram aqui e não numa suíte
+       genérica de layout. */
+    async function medirEmLargura(w, h) {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 500 });
+      await goto("responsivo");
+      await esperarLinhas(5);
+      await cdp.evaluate("window.scrollTo(0, 0)");
+      await sleep(200);
+      return cdp.evaluate(`(function(){
+        function caixa(sel){ var e = document.querySelector(sel); if (!e) return null; var r = e.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom) }; }
+        var barra = caixa('.vf-shell__contextbar');
+        var bloco = caixa('.vf-shell__context');
+        var busca = document.getElementById('cart-busca');
+        return {
+          naBarra: !!(barra && document.querySelector('.vf-shell__contextbar .vf-shell__context')),
+          barra: barra,
+          bloco: bloco,
+          alturaBusca: busca ? Math.round(busca.getBoundingClientRect().height) : null,
+          overflow: document.documentElement.scrollWidth - window.innerWidth,
+          grupos: Array.prototype.map.call(document.querySelectorAll('.vf-portfolio-group'), function(g){ return g.textContent.replace(/\s+/g, ' ').trim(); })
+        };
+      })()`);
+    }
+
+    for (const [largura, altura] of [[900, 800], [390, 780]]) {
+      const m = await medirEmLargura(largura, altura);
+
+      await check(`responsividade ${largura}px — bloco de contexto NÃO vaza para fora da barra`, async () => {
+        // A regra base do bloco é `position: sticky; top: 59px`. Ao ser
+        // reparentado para a barra ele vira `relative`, e ali um `top`
+        // herdado DESLOCA a pintura sem ocupar espaço no fluxo: a barra
+        // media 106px enquanto o bloco era pintado 59px abaixo, caindo em
+        // cima do `main`. Medido em 390px antes do conserto: barra
+        // 253→359, bloco 320→409.
+        assert.ok(m.naBarra, `em ${largura}px o contexto deveria estar reparentado na barra`);
+        assert.ok(m.bloco.top >= m.barra.top, `bloco começa acima da barra (${m.bloco.top} < ${m.barra.top})`);
+        assert.ok(m.bloco.bottom <= m.barra.bottom, `bloco vaza ${m.bloco.bottom - m.barra.bottom}px abaixo da barra — volta a cair em cima do conteúdo`);
+      });
+
+      await check(`responsividade ${largura}px — busca não vira um campo de 240px de altura`, async () => {
+        // Em coluna (`.vf-toolbar` vira `flex-direction: column` em ≤900px)
+        // o `flex-basis: 240px` da busca passa a valer na ALTURA. Antes do
+        // conserto: 240px de campo e ~350-396px de barra inteira.
+        assert.ok(m.alturaBusca !== null, "o campo de busca deveria existir");
+        assert.ok(m.alturaBusca > 0 && m.alturaBusca < 60, `campo de busca com altura implausível: ${m.alturaBusca}px`);
+      });
+
+      await check(`responsividade ${largura}px — sem overflow horizontal, agrupamento de Squad intacto`, async () => {
+        assert.ok(m.overflow <= 0, `overflow horizontal de ${m.overflow}px`);
+        const texto = m.grupos.join(" | ");
+        assert.ok(/SQUAD 8 · LEGADO/.test(texto), `o bucket legado sumiu em ${largura}px: ${texto}`);
+        assert.ok(/SEM SQUAD/.test(texto), `o grupo sem squad sumiu em ${largura}px: ${texto}`);
+        assert.ok(/principal/i.test(texto), `a marca do squad principal sumiu em ${largura}px: ${texto}`);
+      });
+    }
+
+    await cdp.send("Emulation.clearDeviceMetricsOverride", {});
 
     /* ═════════ Higiene ═══════════════════════════════════════════════════ */
     await check("nenhuma requisição escapou para fora das fixtures (zero rede de produção)", async () => {
