@@ -49,6 +49,7 @@ const path = require("path");
 
 const { normalizarSlug } = require("../services/squads/squadService");
 const migImport = require("../services/squads/squadsMigracaoImportService");
+const { ROLES_COBRADAS_NA_AUDITORIA } = require("../services/squads/rolesInternas");
 
 /* ───────────────────────────── marcadores ───────────────────────────── */
 
@@ -934,14 +935,11 @@ function regrasEstruturais(relacao, inventario, analiseExterna) {
       const ref = pes.resolucao && pes.resolucao.ref;
       if (ref) refsAlocadas.add(String(ref).toLowerCase());
     }
-    // ATENÇÃO: ROLES_INTERNAS existe em TRÊS cópias divergentes no código —
-    //   squadsMigracaoService.js:14   ["user","membro","interno"]          ← auditoria (gate `pronto`)
-    //   authorizationService.js:17    ["user","membro","interno"]          ← autorização
-    //   squadsMigracaoImportService.js:31 ["user","membro","interno","admin"]  ← importador (+admin)
-    // Aqui usamos a do AUDITORIA, porque é ela que decide `pronto` e, portanto,
-    // o rollout gate. admin é bypass e NÃO precisa de membership.
-    // Ver 12_ROLLOUT_GATE_ATUAL.md (risco T-2).
-    const ROLES_INTERNAS = new Set(["user", "membro", "interno"]);
+    // P2.9 T-2 RESOLVIDO: as copias divergentes viraram uma fonte canonica em
+    // services/squads/rolesInternas.js. Aqui usamos o conjunto COBRADO PELA
+    // AUDITORIA, porque e ele que decide `pronto` e, portanto, o rollout gate.
+    // admin e bypass e NAO precisa de membership.
+    const ROLES_INTERNAS = ROLES_COBRADAS_NA_AUDITORIA.set;
     for (const u of inventario.usuarios || []) {
       if (u.ativo === false) continue;
       if (!ROLES_INTERNAS.has(String(u.role || "").toLowerCase())) continue;
@@ -1025,7 +1023,7 @@ function criarDbFalso(inventario) {
 function gerarEsqueleto(inventario) {
   const inv = inventario || {};
   const clientes = (inv.clientes || []).filter((c) => c.ativo !== false);
-  const ROLES_INTERNAS = new Set(["user", "membro", "interno"]);
+  const ROLES_INTERNAS = ROLES_COBRADAS_NA_AUDITORIA.set;
   const internos = (inv.usuarios || []).filter(
     (u) => u.ativo !== false && ROLES_INTERNAS.has(String(u.role || "").toLowerCase()));
 

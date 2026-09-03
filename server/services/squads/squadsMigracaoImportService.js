@@ -22,13 +22,17 @@
 //   - membership/atribuição para squad INATIVO é recusada (não dá carteira)
 
 const pool = require("../../config/database");
-const { ensureSquadsTables } = require("./squadsRepository");
+const { ensureSquadsTables, prepararSchemaSquads } = require("./squadsRepository");
 const { normalizarSlug } = require("./squadService");
 const { auditoria } = require("./squadsMigracaoService");
+const { ROLES_ELEGIVEIS_MEMBERSHIP } = require("./rolesInternas");
 
 const FUNCOES_SQUAD = new Set(["membro", "coordenador"]);
 const PAPEIS_RESP = new Set(["gestor", "auxiliar", "designer"]);
-const ROLES_INTERNAS = new Set(["user", "membro", "interno", "admin"]);
+// Quem PODE receber membership. Fonte canônica única — ver rolesInternas.js.
+// INCLUI `admin` deliberadamente: um admin coordenar um Squad é legítimo. Este
+// conjunto é diferente do cobrado pela auditoria, e a diferença é intencional.
+const ROLES_INTERNAS = ROLES_ELEGIVEIS_MEMBERSHIP.set;
 
 /* ────────────────────────────── helpers ────────────────────────────── */
 
@@ -148,9 +152,17 @@ function agrupar(rows, chave) {
 /* ────────────────────────────── validação ────────────────────────────── */
 
 // Retorna { ok, erros, avisos, plano, entidades, planejado }.
-async function validarPlano(planoBruto, db = pool) {
-  await ensureSquadsTables(db);
+//
+// `garantirSchema: false` → modo ZERO-WRITE (P2.9, BLOQUEADOR T-3): não aplica
+// DDL, apenas confere o schema com `to_regclass`. Schema ausente vira ERRO, não
+// criação silenciosa. O default preserva o comportamento histórico.
+async function validarPlano(planoBruto, db = pool, { garantirSchema = true } = {}) {
+  const schema = await prepararSchemaSquads(db, { garantirSchema });
   const col = novoColetor();
+  if (!schema.ok) {
+    col.erro("schema", `schema de Squads ausente (${schema.ausentes.join(", ")}) — rode a migração antes. Modo zero-write não cria tabela.`);
+    return { ok: false, erros: col.erros, avisos: col.avisos, plano: planoBruto };
+  }
 
   const plano = planoBruto && typeof planoBruto === "object" ? planoBruto : {};
   for (const campo of ["squads", "membros", "clientes"]) {
@@ -341,8 +353,8 @@ async function totaisAtuais(db) {
   return rows[0];
 }
 
-async function snapshot(db) {
-  const [aud, tot] = await Promise.all([auditoria(db), totaisAtuais(db)]);
+async function snapshot(db, { garantirSchema = true } = {}) {
+  const [aud, tot] = await Promise.all([auditoria(db, { garantirSchema }), totaisAtuais(db)]);
   return { auditoria: aud, totais: tot };
 }
 
@@ -350,11 +362,18 @@ async function snapshot(db) {
 
 // Aplica o plano numa ÚNICA transação (tudo ou nada) e idempotente.
 // { dryRun } default true. Só escreve com { dryRun: false }.
-async function importar(planoBruto, { actorId = null, dryRun = true } = {}, db = pool) {
-  await ensureSquadsTables(db);
+//
+// `garantirSchema` (P2.9, T-3): em dry-run, passar `false` torna a operação
+// inteira ZERO-WRITE — nem o DDL de schema é emitido. Num `--apply` a garantia
+// do schema é escrita legítima e continua acontecendo, independente da flag.
+async function importar(planoBruto, { actorId = null, dryRun = true, garantirSchema } = {}, db = pool) {
+  const garantir = garantirSchema === undefined ? true : Boolean(garantirSchema);
+  // O apply escreve de qualquer forma; recusar o schema ali só quebraria o apply.
+  const garantirEfetivo = dryRun ? garantir : true;
+  if (garantirEfetivo) await ensureSquadsTables(db);
 
-  const antes = await snapshot(db);
-  const validacao = await validarPlano(planoBruto, db);
+  const antes = await snapshot(db, { garantirSchema: garantirEfetivo });
+  const validacao = await validarPlano(planoBruto, db, { garantirSchema: garantirEfetivo });
 
   const base = {
     dryRun,

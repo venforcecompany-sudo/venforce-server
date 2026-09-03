@@ -52,6 +52,10 @@ const LIMPO = {
   AUDIT_VINCULOS_DUPLICADOS: [],
   AUDIT_RESPONSAVEL_FORA_DO_SQUAD: [],
   AUDIT_MEMBRO_USUARIO_INATIVO: [],
+  // P2.9 T-4: contadores de NÃO-VACUIDADE. O estado LIMPO deste arquivo é uma
+  // base povoada e íntegra — precisa de Squad e membership de verdade, senão
+  // cai na regra de vacuidade e `pronto` vira false por outro motivo.
+  AUDIT_TOTAIS_VACUIDADE: [{ squads_ativos: 2, memberships_ativas: 2 }],
 };
 
 async function comAuditoria(overrides, fn) {

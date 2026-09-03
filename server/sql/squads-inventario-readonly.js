@@ -32,6 +32,7 @@
 const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
+const { ROLES_COBRADAS_NA_AUDITORIA } = require("../services/squads/rolesInternas");
 
 function linha(t = "") { process.stdout.write(t + "\n"); }
 
@@ -244,7 +245,7 @@ function classificarD4(inv) {
 }
 
 function resumir(inv) {
-  const ROLES_INTERNAS = new Set(["user", "membro", "interno"]); // igual à auditoria (gate)
+  const ROLES_INTERNAS = ROLES_COBRADAS_NA_AUDITORIA.set; // fonte canonica — a mesma do gate
   const internos = (inv.usuarios || []).filter(
     (u) => u.ativo && ROLES_INTERNAS.has(String(u.role || "").toLowerCase()));
   return {

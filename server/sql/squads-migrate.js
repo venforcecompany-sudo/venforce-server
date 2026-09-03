@@ -103,10 +103,12 @@ async function main() {
 
   const migImport = require("../services/squads/squadsMigracaoImportService");
 
+  // P2.9 T-3: `--audit` existe para ser inofensivo. Antes ele aplicava DDL via
+  // ensureSquadsTables; agora só CONFERE o schema com to_regclass.
   if (args.audit) {
-    const snap = await migImport.snapshot(require("../config/database"));
+    const snap = await migImport.snapshot(require("../config/database"), { garantirSchema: false });
     linha(JSON.stringify(snap, null, 2));
-    process.exit(0);
+    process.exit(snap?.auditoria?.schemaAusente ? 2 : 0);
   }
 
   if (!args.plan) {
@@ -127,7 +129,13 @@ async function main() {
     process.exit(1);
   }
 
-  const r = await migImport.importar(plano, { actorId: args.actor, dryRun: !args.apply });
+  // P2.9 T-3: sem --apply, a operação inteira é ZERO-WRITE — nem o DDL de
+  // schema é emitido. "Simular" não pode mudar nada, especialmente em produção.
+  const r = await migImport.importar(plano, {
+    actorId: args.actor,
+    dryRun: !args.apply,
+    garantirSchema: Boolean(args.apply),
+  });
 
   if (args.json) {
     linha(JSON.stringify(r, null, 2));
