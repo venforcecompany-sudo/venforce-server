@@ -281,6 +281,21 @@ button.vf-portfolio-row__name.is-clickable:hover {
   border: 0;
 }
 
+/* A toolbar da Carteira é `.vf-toolbar` + `.vf-portfolio-toolbar`, e
+   vf-components-v2.css vira a PRIMEIRA para `flex-direction: column` em
+   ≤900px. Aí o eixo principal passa a ser a VERTICAL, e o
+   `flex: 1 1 240px` que dava à busca a largura certa em linha passou a
+   valer como ALTURA: o campo de busca ficava com 240px de altura (medido
+   com CDP em 900px e 390px) e a barra inteira com ~350px. Em coluna a
+   largura já vem do `align-items: stretch`, então a busca não precisa de
+   base nenhuma no eixo principal. */
+@media (max-width: 900px) {
+  .vf-portfolio-toolbar .vf-input {
+    flex: 0 0 auto;
+    max-width: none;
+  }
+}
+
 @media (max-width: 640px) {
   .vf-portfolio-toolbar {
     flex-direction: column;
