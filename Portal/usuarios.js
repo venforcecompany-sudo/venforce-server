@@ -48,12 +48,12 @@ function toast(msg, tipo = "ok") {
 function setFeedback(msg, tipo = "neutral") {
   const el = document.getElementById("usuarios-feedback");
   if (!el) return;
-  el.classList.remove("show", "vf-alert-success", "vf-alert-danger");
+  el.className = "vf-banner";
   el.textContent = "";
-  if (!msg) return;
-  if (tipo === "success") el.classList.add("vf-alert-success");
-  if (tipo === "danger")  el.classList.add("vf-alert-danger");
-  el.classList.add("show");
+  if (!msg) { el.hidden = true; return; }
+  if (tipo === "success") el.classList.add("is-success");
+  if (tipo === "danger")  el.classList.add("is-danger");
+  el.hidden = false;
   el.textContent = msg;
 }
 
@@ -139,28 +139,28 @@ function grupoDeRole(role) {
 /* ── BADGE DE STATUS ─────────────────────────────────────── */
 function statusBadge(ativo) {
   return ativo
-    ? `<span class="vf-status-pill vf-status-pill-success">Ativo</span>`
-    : `<span class="vf-status-pill vf-status-pill-warning">Inativo</span>`;
+    ? `<span class="vf-status is-success">Ativo</span>`
+    : `<span class="vf-status">Inativo</span>`;
 }
 
 /* ── BADGE DE ROLE ───────────────────────────────────────── */
 function roleBadge(role) {
-  const cls = role === "admin"           ? "is-admin"
-            : role === "seller"          ? "is-seller"
-            : role === "shopee_reviewer" ? "is-shopee"
-            : "";
+  const cls = role === "admin"           ? "is-primary"
+            : role === "seller"          ? "is-info"
+            : role === "shopee_reviewer" ? "is-warning"
+            : "is-neutral";
   const label = role === "admin"           ? "admin"
               : role === "seller"          ? "seller"
               : role === "shopee_reviewer" ? "shopee reviewer"
               : "membro";
-  return `<span class="vf-role-pill ${cls}">${label}</span>`;
+  return `<span class="vf-tag ${cls}">${label}</span>`;
 }
 
 /* ── SELECT DE ROLE ──────────────────────────────────────── */
 function roleSelect(u) {
   const grupo = grupoDeRole(u.role);
   return `
-    <select class="vu-role-select" data-uid="${esc(u.id)}" aria-label="Alterar role de ${esc(u.nome)}">
+    <select class="vu-role-select vf-select vf-select--sm" data-uid="${esc(u.id)}" aria-label="Alterar papel de ${esc(u.nome)}">
       <option value="admin"           ${grupo === "admin"           ? "selected" : ""}>Admin</option>
       <option value="membro"          ${grupo === "membro"          ? "selected" : ""}>Membro</option>
       <option value="seller"          ${grupo === "seller"          ? "selected" : ""}>Seller</option>
@@ -182,6 +182,11 @@ function vinculoChip(vinculos) {
   ).join(" ");
 }
 
+/* ── CLASSES DOS BOTÕES DE AÇÃO POR LINHA ────────────────── */
+const BTN_TOGGLE_ON  = "vf-btn vf-btn--secondary vf-btn--sm"; // Desativar
+const BTN_TOGGLE_OFF = "vf-btn vf-btn--primary vf-btn--sm";   // Ativar
+const BTN_REMOVE     = "vf-btn vf-btn--secondary vf-btn--sm";
+
 /* ── RENDERIZAR UMA SEÇÃO ────────────────────────────────── */
 function renderSecao(grupo, lista, vinculoMap, bodyId, countId) {
   const countEl = document.getElementById(countId);
@@ -200,15 +205,15 @@ function renderSecao(grupo, lista, vinculoMap, bodyId, countId) {
   const cabecalho = isSeller
     ? `<tr>
          <th>Nome</th><th>E-mail</th><th>Vínculo</th>
-         <th style="width:90px;">Status</th>
-         <th style="width:130px;">Criado em</th>
-         <th style="width:210px;">Role / Ações</th>
+         <th class="vu-col-status">Status</th>
+         <th class="vu-col-date">Criado em</th>
+         <th class="vu-col-actions">Papel / ações</th>
        </tr>`
     : `<tr>
-         <th>Nome</th><th>E-mail</th><th>Role</th>
-         <th style="width:90px;">Status</th>
-         <th style="width:130px;">Criado em</th>
-         <th style="width:210px;">Ações</th>
+         <th>Nome</th><th>E-mail</th><th>Papel</th>
+         <th class="vu-col-status">Status</th>
+         <th class="vu-col-date">Criado em</th>
+         <th class="vu-col-actions">Ações</th>
        </tr>`;
 
   const linhas = lista.map(u => {
@@ -226,23 +231,23 @@ function renderSecao(grupo, lista, vinculoMap, bodyId, countId) {
       : `<td>${roleBadge(u.role)}</td>`;
 
     const toggleLabel = ativo ? "Desativar" : "Ativar";
-    const toggleCls   = ativo ? "vf-action-btn" : "vf-action-btn vf-action-btn-secondary";
+    const toggleCls   = ativo ? BTN_TOGGLE_ON : BTN_TOGGLE_OFF;
 
     return `
-      <tr class="animate-fade-up">
+      <tr>
         <td><strong>${esc(nome)}</strong></td>
-        <td style="color:var(--vf-text-m);">${esc(email)}</td>
+        <td class="vu-cell-muted">${esc(email)}</td>
         ${sellerInfo}
         <td>${statusBadge(ativo)}</td>
-        <td style="color:var(--vf-text-m);font-family:var(--vf-mono);font-size:.78rem;">${esc(criadoTxt)}</td>
+        <td class="vu-cell-date">${esc(criadoTxt)}</td>
         <td>
-          <div class="vf-table-actions vu-actions">
+          <div class="vf-table__actions vu-actions">
             ${roleSelect(u)}
             <button type="button" class="${toggleCls}" data-action="toggle"
                     data-id="${esc(id)}" data-ativo="${ativo ? '1' : '0'}">
               ${toggleLabel}
             </button>
-            <button type="button" class="vf-action-btn vf-action-btn-danger" data-action="delete"
+            <button type="button" class="${BTN_REMOVE}" data-action="delete"
                     data-id="${esc(id)}" data-nome="${esc(nome)}" data-email="${esc(email)}"
                     ${isSelf ? "disabled" : ""}>
               Remover
@@ -254,7 +259,7 @@ function renderSecao(grupo, lista, vinculoMap, bodyId, countId) {
 
   bodyEl.innerHTML = `
     <div class="vu-table-wrap">
-      <table class="vf-table vu-table">
+      <table class="vf-table vf-table--compact vu-table">
         <thead>${cabecalho}</thead>
         <tbody>${linhas}</tbody>
       </table>
@@ -406,13 +411,15 @@ function abrirModalRemoverUsuario({ id, btn, nome, email }) {
   if (danger) { danger.style.display = "none"; danger.textContent = ""; }
 
   const confirmBtn = document.getElementById("vf-remover-usuario-confirm");
-  if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "Remover usuário"; }
+  if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "Remover acesso"; }
 
-  document.getElementById("vf-remover-usuario-modal").style.display = "flex";
+  document.getElementById("vf-remover-usuario-modal").classList.add("is-open");
+  document.body.classList.add("vf-no-scroll");
 }
 
 function fecharModalRemoverUsuario() {
-  document.getElementById("vf-remover-usuario-modal").style.display = "none";
+  document.getElementById("vf-remover-usuario-modal").classList.remove("is-open");
+  document.body.classList.remove("vf-no-scroll");
   _MODAL_ABERTO = false; _REMOVER_ID = null; _REMOVER_BTN = null;
 }
 
@@ -431,7 +438,7 @@ async function confirmarRemocaoUsuario() {
   } catch (err) {
     const msg = err?.message || "Não foi possível remover o usuário.";
     if (danger) { danger.style.display = "block"; danger.textContent = msg; }
-    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "Remover usuário"; }
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "Remover acesso"; }
   }
 }
 

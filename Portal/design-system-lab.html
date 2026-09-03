@@ -814,6 +814,54 @@
               </div>
             </div>
           </div>
+
+          <p class="lab-note" id="sec-metric-row">Strip de métricas denso — 5+ números numa linha (<code>.vf-metric-row</code>):</p>
+          <div class="vf-metric-row">
+            <div class="vf-metric">
+              <span class="vf-metric__label">Investimento</span>
+              <span class="vf-metric__value vf-metric__value--currency"><span class="vf-metric__currency">R$</span><span>8.240</span></span>
+            </div>
+            <div class="vf-metric">
+              <span class="vf-metric__label">
+                Receita Ads
+                <span class="vf-info">
+                  <button type="button" class="vf-info-dot" aria-label="Receita atribuída a Ads: faturamento de pedidos que passaram por um anúncio patrocinado na janela de atribuição."></button>
+                  <span class="vf-info__tip" role="tooltip">Faturamento de pedidos que passaram por um anúncio patrocinado na janela de atribuição.</span>
+                </span>
+              </span>
+              <span class="vf-metric__value vf-metric__value--currency"><span class="vf-metric__currency">R$</span><span>41.180</span></span>
+            </div>
+            <div class="vf-metric">
+              <span class="vf-metric__label">
+                ROAS
+                <span class="vf-info">
+                  <button type="button" class="vf-info-dot" aria-label="ROAS: receita atribuída a Ads dividida pelo investimento em Ads."></button>
+                  <span class="vf-info__tip" role="tooltip">Receita atribuída a Ads ÷ investimento em Ads.</span>
+                </span>
+              </span>
+              <span class="vf-metric__value">5,0</span>
+              <span class="vf-metric__foot is-success">acima da meta (3,0)</span>
+            </div>
+            <div class="vf-metric vf-metric--warning">
+              <span class="vf-metric__label">
+                TACOS
+                <span class="vf-info">
+                  <button type="button" class="vf-info-dot" aria-label="TACOS: investimento em Ads dividido pelo faturamento total da conta, não só o atribuído."></button>
+                  <span class="vf-info__tip" role="tooltip">Investimento em Ads ÷ faturamento total da conta (não só o atribuído).</span>
+                </span>
+              </span>
+              <span class="vf-metric__value">14,2%</span>
+              <span class="vf-metric__foot is-warning">meta: até 12%</span>
+            </div>
+            <div class="vf-metric">
+              <span class="vf-metric__label">Campanhas ativas</span>
+              <span class="vf-metric__value">9</span>
+            </div>
+            <div class="vf-metric">
+              <span class="vf-metric__label">ACOS médio</span>
+              <span class="vf-metric__value">20,0%</span>
+            </div>
+          </div>
         </section>
 
         <!-- ==================== 7. Tags, badges e status ==================== -->
@@ -847,7 +895,9 @@
                 <span class="vf-status is-info">Em análise</span>
                 <span class="vf-status is-primary">Em implantação</span>
                 <span class="vf-status">Inativo</span>
+                <span class="vf-status is-empty">Sem dado</span>
               </div>
+              <p class="lab-note">O estado carrega significado por <strong>forma</strong>, não só por cor: ● cheio = ativo/ok · ◇ losango = alerta · ○ vazado = sem dado.</p>
             </div>
           </div>
         </section>

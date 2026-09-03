@@ -938,6 +938,171 @@ h4 {
   border-left: 3px solid var(--vf-danger);
 }
 
+/* ------------------------------------------------------------
+ * 5b. STRIP DE MÉTRICAS DENSO  (Wave 1 UI/UX — A2)
+ * Para 5+ números numa linha só. O `.vf-kpi` é card individual e fica
+ * largo demais a partir de 5; aqui a moldura é uma régua de 1px e os
+ * itens dividem a largura. Valor em Manrope tabular, um passo abaixo do
+ * KPI (18px vs 26px). Consome só tokens existentes.
+ * Uso: <div class="vf-metric-row"> <div class="vf-metric"> …
+ * ------------------------------------------------------------ */
+
+.vf-metric-row {
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+}
+
+.vf-metric {
+  flex: 1 1 0;
+  min-width: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--vf-sp-3) var(--vf-sp-4);
+  border-left: 1px solid var(--vf-border);
+}
+
+.vf-metric:first-child {
+  border-left: 0;
+}
+
+.vf-metric__label {
+  display: flex;
+  align-items: center;
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: var(--vf-ls-caps);
+  text-transform: uppercase;
+  color: var(--vf-text-secondary);
+}
+
+.vf-metric__value {
+  font-family: var(--vf-font-display);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--vf-fs-lg);
+  font-weight: var(--vf-fw-bold);
+  line-height: var(--vf-lh-tight);
+  letter-spacing: var(--vf-ls-tight);
+  color: var(--vf-text);
+}
+
+.vf-metric__value--currency {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.vf-metric__currency {
+  font-family: var(--vf-font-body);
+  font-size: 0.62em;
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: 0;
+  color: var(--vf-text-secondary);
+}
+
+.vf-metric__foot {
+  font-size: var(--vf-fs-2xs);
+  color: var(--vf-text-muted);
+}
+
+.vf-metric__foot.is-success { color: var(--vf-success); }
+.vf-metric__foot.is-warning { color: var(--vf-warning); }
+.vf-metric__foot.is-danger  { color: var(--vf-danger); }
+
+/* Filete de alerta, sem pintar o item inteiro (igual ao KPI) */
+.vf-metric--warning { box-shadow: inset 3px 0 0 var(--vf-warning); }
+.vf-metric--danger  { box-shadow: inset 3px 0 0 var(--vf-danger); }
+
+@media (max-width: 640px) {
+  .vf-metric {
+    flex-basis: calc(50% - 0.5px);
+    min-width: 0;
+  }
+  .vf-metric:nth-child(odd) { border-left: 0; }
+  .vf-metric:nth-child(n+3) { border-top: 1px solid var(--vf-border); }
+}
+
+/* ------------------------------------------------------------
+ * 5c. TOOLTIP DE MÉTRICA  (Wave 1 UI/UX — A3)
+ * Alvo "i" ao lado de um rótulo pouco óbvio (ROAS, TACOS, MC,
+ * conciliação, escopoConta). CSS puro: abre no hover E no foco de
+ * teclado (`:focus-within`), sem JS. O texto é complementar — nunca
+ * informação essencial (DESIGN.md §Tooltip).
+ * Uso:
+ *   <span class="vf-info">
+ *     <button type="button" class="vf-info-dot" aria-label="ROAS: receita
+ *       atribuída a Ads ÷ investimento em Ads"></button>
+ *     <span class="vf-info__tip" role="tooltip">ROAS: receita atribuída…</span>
+ *   </span>
+ * ------------------------------------------------------------ */
+
+.vf-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.vf-info-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: var(--vf-sp-1);
+  padding: 0;
+  border: 1px solid var(--vf-border-strong);
+  border-radius: var(--vf-radius-pill);
+  background: var(--vf-surface);
+  font-family: var(--vf-font-body);
+  font-size: 10px;
+  font-weight: var(--vf-fw-bold);
+  font-style: normal;
+  line-height: 1;
+  color: var(--vf-text-muted);
+  cursor: help;
+}
+
+.vf-info-dot::before { content: "i"; }
+
+.vf-info-dot:hover {
+  border-color: var(--vf-primary);
+  color: var(--vf-primary-strong);
+}
+
+.vf-info__tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 240px;
+  padding: var(--vf-sp-1) var(--vf-sp-2);
+  border-radius: var(--vf-radius-sm);
+  background: var(--vf-text);
+  color: var(--vf-surface);
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-medium);
+  line-height: var(--vf-lh-snug);
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  z-index: var(--vf-z-tooltip);
+  transition: opacity var(--vf-duration-fast) var(--vf-ease),
+    visibility var(--vf-duration-fast) var(--vf-ease);
+}
+
+.vf-info:hover .vf-info__tip,
+.vf-info:focus-within .vf-info__tip {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* ============================================================
  * 6. TAGS, BADGES E STATUS
  * Tag    → categoria/filtro (retangular, sem dot)
@@ -1020,6 +1185,20 @@ h4 {
 .vf-status.is-danger::before { background: var(--vf-danger); }
 .vf-status.is-info { color: var(--vf-info-strong); }
 .vf-status.is-info::before { background: var(--vf-info); }
+
+/* Vocabulário por FORMA, não só por cor (§16.4/M8, DESIGN.md):
+   ● cheio = ativo/ok · ◇ losango = alerta · ○ vazado = sem dado.
+   Absorve a correção que vivia FORA de `@layer` em vf-shell.css (F6.4):
+   aqui a regra ganha por ordem no mesmo arquivo, sem precisar sair de camada. */
+.vf-status.is-warning::before {
+  border-radius: 0;
+  transform: rotate(45deg);
+}
+.vf-status.is-empty { color: var(--vf-text-muted); }
+.vf-status.is-empty::before {
+  background: transparent;
+  border: 1.5px solid var(--vf-neutral);
+}
 
 /* ============================================================
  * 7. TOOLBAR E FILTROS
