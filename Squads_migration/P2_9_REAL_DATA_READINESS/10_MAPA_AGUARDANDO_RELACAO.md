@@ -57,19 +57,33 @@ MEMBROS:
 - **Não repetir o Gestor em `MEMBROS:`** — ele já entra por `GESTOR:`.
 - Também aceita `.json` com o mesmo formato
   (`{ "squads": [ { nome, slug, gestor, clientes[], membros[] } ] }`).
+- **Formato V2** (o que a operação usa desde que a relação real chegou):
+  `COORDENADOR`, `GESTOR`, `AUXILIAR`, `AUXILIAR_2`, `DESIGN`, `PRINCIPAL`,
+  `ROTULO_ORIGINAL`, `ROTULO_STATUS`, `NOME_HIPOTESE`. O formato V1 acima
+  continua parseável. Ver `entrada/relacao-squads-operacao-v1.txt`.
 
-### Como o Gestor vira dado
+### Como Coordenador e Gestor viram dado
+
+> **CORRIGIDO — a relação real chegou.** Esta seção dizia que o **Gestor** virava
+> `{ "funcao": "coordenador", "principal": true }`. **Estava errado em duas
+> coisas:** o Gestor não é o Coordenador, e o `principal` não pode ser deduzido.
+> Ver `15_MEMBERSHIPS_RECEBIDAS.md`.
 
 `squads` não tem coluna de gestor, e `cliente_responsaveis` **não aceita** o
-papel `coordenador` (o CHECK só admite `gestor|auxiliar|designer`). No modelo,
-quem responde por um Squad é representado pela **membership**:
+papel `coordenador` (o CHECK só admite `gestor|auxiliar|designer`). O que o
+modelo representa na membership é o **Coordenador**:
 
 ```json
-{ "squad": "<slug>", "usuario": "<gestor>", "funcao": "coordenador", "principal": true }
+{ "squad": "<slug>", "usuario": "<coordenador>", "funcao": "coordenador" }
+{ "squad": "<slug>", "usuario": "<gestor>",      "funcao": "membro" }
+{ "squad": "<slug>", "usuario": "<auxiliar>",    "funcao": "membro" }
+{ "squad": "<slug>", "usuario": "<design>",      "funcao": "membro" }
 ```
 
-Isso é o que `01_DADOS_HUMANOS_NECESSARIOS.md` §4 já definia: *"coordenador é
-atributo da membership, não da responsabilidade"*. A conversão é automática.
+`principal` só é escrito quando a decisão **existe**: Squad único → determinístico;
+2+ Squads → `PENDENTE_SQUAD_PRINCIPAL` até declaração humana em `PRINCIPAL:`.
+Omitir o campo é deliberado — o importador auto-promoveria a 1ª membership, e
+essa escolha silenciosa é exatamente o que o pré-validador proíbe.
 
 ---
 
@@ -164,8 +178,10 @@ PENDENTE_ESPERADO (19):
 | **Gestor do Squad** | **HUMANO** | gestão |
 | **Cliente → Squad** | **HUMANO** | gestão |
 | **Membros → Squad** | **HUMANO** | gestão |
-| `funcao` (`membro`/`coordenador`) | máquina (Gestor→coordenador) | derivado |
-| `principal` | máquina (1º Squad do usuário) | derivado |
+| `funcao` (`membro`/`coordenador`) | máquina (**Coordenador**→coordenador; Gestor/Auxiliar/Design→membro) | derivado |
+| `principal` | máquina **só com 1 Squad**; com 2+ é **HUMANO** (`PRINCIPAL:`) | derivado/gestão |
+| **Coordenador do Squad** | **HUMANO** | gestão |
+| **Auxiliar / Auxiliar 2 / Design** | **HUMANO** | gestão |
 | `motivo` do histórico | máquina (`"migração inicial P2.9"`) | fixo |
 | `responsaveis[]` | **HUMANO**, opcional | gestão — ver `09_...md` §6 |
 

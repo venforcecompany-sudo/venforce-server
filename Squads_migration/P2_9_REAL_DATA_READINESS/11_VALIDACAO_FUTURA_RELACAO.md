@@ -22,6 +22,18 @@ reimplementado. O validador novo o **reutiliza literalmente**, offline.
 | mesmo Cliente em 2 Squads no plano | erro |
 | Usuário inexistente · role não interna · usuário inativo | erro · aviso · aviso |
 | `funcao` inválida (fora de `membro`/`coordenador`) | erro |
+| Squad sem Coordenador | pendência (`SQUAD_SEM_COORDENADOR`) |
+| Coordenador **igual** ao Gestor no mesmo Squad | erro (`COORDENADOR_IGUAL_AO_GESTOR`) |
+| Mesmo Coordenador em vários Squads | **válido** — `INFO`, nunca erro |
+| Gestor mapeado como `coordenador` | erro (`GESTOR_MAPEADO_COMO_COORDENADOR`) — cinto anti-regressão |
+| Usuário em 2+ Squads sem principal declarado | pendência (`PENDENTE_SQUAD_PRINCIPAL`) — **a ordem não decide** |
+| Principal declarado em 2 Squads / fora do Squad | erro |
+| Nome humano sem email/id | pendência (`USUARIO_SEM_EMAIL_OU_ID`) + invariante do plano |
+| Nome ambíguo / não encontrado no inventário | erro — **zero fuzzy-match** |
+| Rótulo de Squad não confirmado | pendência (`SQUAD_ROTULO_NAO_CONFIRMADO`) — o Squad não entra no plano |
+| Dois blocos com o mesmo rótulo de planilha | pendência (`SQUAD_ROTULO_DUPLICADO_NA_PLANILHA`) |
+| Cargo marcado `AUSENTE_NA_ESTRUTURA` | `INFO` — ausência não é dado faltando |
+| `responsaveis[]` sem nenhuma carteira no plano | erro (`RESPONSAVEIS_SEM_CARTEIRA`) |
 | usuário marcado principal em 2+ Squads | erro |
 | membership duplicada no plano | erro |
 | `papel` inválido em `responsaveis` | erro |

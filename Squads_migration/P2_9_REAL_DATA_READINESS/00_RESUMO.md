@@ -17,12 +17,42 @@
 
 ---
 
+## 0. ATUALIZAÇÃO — A RELAÇÃO DOS MEMBROS CHEGOU
+
+> **A composição humana dos 6 Squads foi recebida.** A fronteira desta fase se
+> moveu: **Usuário → Squad está resolvido**; **Cliente → Squad continua pendente**.
+>
+> A estrutura real da empresa é **`Coordenador → Gestor → Auxiliar → Auxiliar 2
+> → Design`**, não "Squad → Gestor → membros". **Coordenador e Gestor são pessoas
+> e funções distintas** — o tooling V1 convertia Gestor em
+> `squad_members.funcao = "coordenador"`, o que estava **semanticamente errado** e
+> foi corrigido.
+>
+> | Item | Estado |
+> |---|---|
+> | Relação recebida | **PROCESSADA** — 6 blocos, 23 pessoas, 24 memberships |
+> | Membership map | **PARCIALMENTE RESOLVIDO** |
+> | Client map | **PENDENTE** (`PENDENTE_RELACAO_CLIENTE_SQUAD`) |
+> | Rollout | **NO-GO** · APPLY **NÃO** · banco **NÃO ALTERADO** |
+>
+> **Leia:** `15_MEMBERSHIPS_RECEBIDAS.md` (a composição e a matriz) e
+> `16_DECISOES_HUMANAS_PENDENTES.md` (as 5 decisões que sobraram).
+> **Entrada:** `entrada/relacao-squads-operacao-v1.txt`.
+>
+> As seções abaixo descrevem o estado **anterior** à relação e ficam preservadas
+> como registro; onde um pressuposto foi corrigido, há nota no ponto.
+
+---
+
 ## 1. A fronteira
 
-**O que sabemos:** existem exatamente **6 Squads**, cada um com **1 Gestor
+> **SUPERSEDIDO em parte** — ver §0. A composição dos Squads chegou; o que
+> permanece verdadeiro aqui é a ausência de Cliente→Squad e o bloqueador T-1.
+
+**O que sabíamos:** existem exatamente **6 Squads**, cada um com **1 Gestor
 conhecido pela operação**.
 
-**O que não sabemos:** os nomes oficiais, a identidade dos Gestores, quais
+**O que não sabíamos:** os nomes oficiais, a identidade dos Gestores, quais
 Clientes pertencem a cada Squad, e quais usuários compõem cada Squad.
 
 Buscamos essas informações no repositório antes de declará-las ausentes. Todos
@@ -66,9 +96,9 @@ Demais bloqueadores (T-2 a T-7) em `12_ROLLOUT_GATE_ATUAL.md` §2.
 | `server/sql/squads-inventario-readonly.js` | inventário completo dos BLOCOS A, B, C, E, F, G, H, I em **1 comando** | `BEGIN; SET TRANSACTION READ ONLY;` … `ROLLBACK`. Nunca `COMMIT`, nunca DDL, nunca lê `access_token`/`refresh_token` |
 | `server/sql/squads-preflight-relacao.js` | converte a relação humana → formato canônico, valida (BLOCOS J, K, L), gera o mapa pré-preenchido | **100% offline**. Não carrega `.env`, não abre conexão |
 | `server/tests/squadsInventarioReadonly.test.js` | 38 verificações | inclui prova **estática** de que o extrator não escreve |
-| `server/tests/squadsPreflightRelacao.test.js` | 74 verificações | inclui round-trip esqueleto→parser→validação |
+| `server/tests/squadsPreflightRelacao.test.js` | **191** verificações | round-trip esqueleto→parser→validação, estrutura real V2, recusa de principal implícito, resolução determinística de identidade, prova de zero-escrita |
 
-**112 verificações novas. Suíte completa do backend: 176 arquivos verdes**
+**229 verificações novas. Suíte completa do backend: 176 arquivos verdes**
 (174 do baseline + 2 novos), com os 4 pré-existentes conhecidos em `TEST_SKIP`.
 **Zero regressão.**
 
@@ -83,8 +113,10 @@ relacao-squads.txt  →  squads-preflight-relacao.js  →  plano-p2-9.json  → 
 O validador novo **reutiliza literalmente** `validarPlano()` do tooling P2.3,
 injetando um adaptador de banco falso alimentado pelo inventário. A lógica de
 validação executada é **a real** — não uma cópia. Só foram **adicionadas** as
-regras que o tooling não tem: os 6 Squads, 1 Gestor por Squad, marcadores
-temporários e completude Cliente/Usuário.
+regras que o tooling não tem: os 6 Squads, 1 Coordenador **e** 1 Gestor por
+Squad (distintos), marcadores temporários, completude Cliente/Usuário, resolução
+determinística de nome humano → email/id, e a **recusa de escolher o Squad
+principal** de quem está em 2+ Squads.
 
 ---
 
@@ -106,8 +138,11 @@ temporários e completude Cliente/Usuário.
 | 11 | `11_VALIDACAO_FUTURA_RELACAO.md` | K, L | **completo** — 74 verificações |
 | 12 | `12_ROLLOUT_GATE_ATUAL.md` | N | **completo** — matriz reavaliada + T-1..T-7 |
 | 13 | `13_SIMULACAO_ENFORCEMENT_ATUAL.md` | M | **completo** — provado por código |
-| 14 | **`14_O_QUE_FALTA_QUANDO_RELACAO_CHEGAR.md`** | — | **← o handoff. Comece por ele.** |
-| — | `entrada/relacao-squads.PENDENTE_HUMANO.txt` | J | gabarito que a operação preenche |
+| 14 | `14_O_QUE_FALTA_QUANDO_RELACAO_CHEGAR.md` | — | handoff da fase anterior |
+| 15 | **`15_MEMBERSHIPS_RECEBIDAS.md`** | — | **← a relação real processada: composição, mapeamento de cargos, matriz PESSOA×SQUAD** |
+| 16 | **`16_DECISOES_HUMANAS_PENDENTES.md`** | — | **← o handoff atual. Comece por ele.** |
+| — | `entrada/relacao-squads-operacao-v1.txt` | — | **a relação REAL recebida** (formato V2) |
+| — | `entrada/relacao-squads.PENDENTE_HUMANO.txt` | J | gabarito em branco (preservado; V1) |
 
 ---
 
@@ -128,8 +163,11 @@ temporários e completude Cliente/Usuário.
 
 ```
 ROLLOUT GATE HOJE:   NO-GO
-MOTIVO PRINCIPAL:    aguardando relação Cliente→Squad e Usuário→Squad
-                     (6 dos 14 itens do GO/NO-GO destravam só com isso)
+MOTIVO PRINCIPAL:    aguardando relação CLIENTE→SQUAD
+                     (Usuário→Squad JÁ CHEGOU — ver 15_MEMBERSHIPS_RECEBIDAS.md)
+AINDA PENDENTE:      rótulo do 6º bloco · Design do 6º bloco ·
+                     Squad principal de 3 pessoas multi-Squad ·
+                     email/id das 23 pessoas · a carteira
 OUTROS BLOQUEADORES: T-1 (banco), T-5 (JWT/Render), T-6 (deploy), T-7 (plantão)
 
 SE ENFORCEMENT FOSSE LIGADO HOJE:  nada muda — o gate segura, ninguém perde acesso.

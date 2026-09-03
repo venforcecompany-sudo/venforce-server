@@ -45,9 +45,16 @@ Dois pontos:
 
 - **Não existe papel `coordenador` aqui.** O CHECK aceita só
   `gestor|auxiliar|designer`. "Coordenador" é atributo da **membership**
-  (`squad_members.funcao`), não da responsabilidade. **É por isso que o Gestor
-  de um Squad, na conversão para o plano canônico, vira
-  `membros[].funcao = "coordenador"`** — ver `11_VALIDACAO_FUTURA_RELACAO.md`.
+  (`squad_members.funcao`), não da responsabilidade.
+- > **CORRIGIDO — a relação real chegou.** Este documento afirmava que *"o
+  > Gestor de um Squad, na conversão para o plano canônico, vira
+  > `membros[].funcao = 'coordenador'`"*. **Isso estava errado.** A estrutura
+  > real da empresa é `Coordenador → Gestor → Auxiliar → Auxiliar 2 → Design`, e
+  > **Coordenador e Gestor são pessoas e funções distintas**. Só o Coordenador
+  > vira `funcao = "coordenador"`; o Gestor entra como `funcao = "membro"` e a
+  > função organizacional dele fica preservada para virar
+  > `cliente_responsaveis.papel = "gestor"` quando Cliente→Squad chegar.
+  > Ver `15_MEMBERSHIPS_RECEBIDAS.md` §1–2.
 - As colunas P2.4 (`encerrado_em`, `motivo`) guardam **histórico**. O pacote
   anterior nunca as consultava (só `ativo = true`) — gap fechado aqui.
 
