@@ -70,6 +70,7 @@ function meContextDe(portfolio) {
 
 function startServer() {
   const server = http.createServer((req, res) => {
+    res.setHeader("Connection", "close"); // ver nota do flake de socket no fim de startServer()
     const u = new URL(req.url, "http://localhost");
     const target = path.resolve(PORTAL_DIR, u.pathname.replace(/^\/+/, ""));
     if (!target.startsWith(path.resolve(PORTAL_DIR) + path.sep)) { res.writeHead(403).end("forbidden"); return; }
@@ -81,6 +82,15 @@ function startServer() {
       res.end(contents);
     });
   });
+  /* Mesmo flake de harness diagnosticado em Portal/vf-shell-ui.test.js: esta
+     é a suíte com MAIS navegações reais, e entre elas passam segundos de
+     asserções CDP. O reúso de conexão keep-alive ociosa (o Node fecha em 5s
+     por padrão, o Chrome ainda a considera reutilizável) fazia uma
+     requisição qualquer morrer no meio — e o sintoma aparecia longe da
+     causa, ora como página que não montou, ora como contexto que não
+     resolveu. Nada disto é produto: é o servidor do próprio teste. */
+  server.keepAliveTimeout = 120000;
+  server.headersTimeout = 125000;
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
