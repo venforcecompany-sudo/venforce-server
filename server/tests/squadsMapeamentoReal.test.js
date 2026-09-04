@@ -449,6 +449,222 @@ function testarModuloEhOffline() {
     !/\b(INSERT|UPDATE|DELETE|CREATE TABLE|ALTER TABLE|DROP TABLE)\b/i.test(fonte));
 }
 
+
+/* ═══════════════ 8. decisões humanas aprovadas ═══════════════
+ *
+ * A relação operacional é uma planilha de PRIMEIROS NOMES, e um nome não é uma
+ * identidade: "Fernando" são duas pessoas; "Victor" não é o "Vitor" que existe
+ * no banco. Esta camada aceita a decisão humana como FONTE (o QUE se quer) e
+ * continua exigindo do banco a CORRESPONDÊNCIA (a QUEM isso corresponde). Ela
+ * só pode RESTRINGIR: decisão nenhuma cria usuário, inventa id ou afrouxa uma
+ * ambiguidade — quando o email confirmado não resolve exatamente um usuário
+ * ativo, a membership é BLOQUEADA. */
+
+const DEC_USUARIOS = [
+  { id: 5, nome: "Fernando Salgado", email: "fernando.salgado@x.com", role: "admin", ativo: true },
+  { id: 45, nome: "Fernando Montoro", email: "fernando.montoro@x.com", role: "membro", ativo: true },
+  { id: 6, nome: "Vitor Capeli", email: "vitor.capeli@x.com", role: "admin", ativo: true },
+  { id: 24, nome: "Micael Almeida", email: "micael.almeida@x.com", role: "user", ativo: true },
+];
+
+function testarIdentidadePorEmailConfirmado() {
+  console.log("\n8 · identidade resolve pelo email confirmado, nunca pelo primeiro nome");
+  const squads = seisSquads();
+  squads[3].papeis.coordenador = "Fernando";
+  const decisoes = {
+    versao: 1,
+    identidades: [{ nome: "Fernando", email: "fernando.salgado@x.com", pessoa: "Fernando Salgado" }],
+  };
+  const r = M.mapear({ ...cenario({ usuarios: DEC_USUARIOS, squads }), decisoes });
+  const f = r.identidades.find((i) => i.nomeRelacao === "Fernando");
+  ok("resolve para o usuário do email confirmado", f.userId === 5);
+  ok("a classe registra que quem decidiu foi o humano", f.classe === "DECISAO_HUMANA_EMAIL");
+  ok("o email da decisão fica como evidência", f.emailDecisao === "fernando.salgado@x.com");
+  ok("sem ambiguidade herdada do matcher por nome", r.bloqueios.every((b) => b.tipo !== "USUARIO_AMBIGUO"));
+}
+
+function testarEmailQueNaoResolveBloqueiaAMembership() {
+  console.log("\n8b · email confirmado que não resolve exatamente 1 usuário BLOQUEIA");
+  const squads = seisSquads();
+  squads[3].papeis.coordenador = "Fernando";
+  const decisoes = {
+    versao: 1,
+    identidades: [{ nome: "Fernando", email: "fernando.fantasma@x.com", pessoa: "Fernando Fantasma" }],
+  };
+  const r = M.mapear({ ...cenario({ usuarios: DEC_USUARIOS, squads }), decisoes });
+  const f = r.identidades.find((i) => i.nomeRelacao === "Fernando");
+  ok("nenhum usuário é resolvido", f.userId === null);
+  ok("a classe diz por quê", f.classe === "DECISAO_EMAIL_NAO_RESOLVE");
+  ok("há bloqueio explícito com o email", r.bloqueios.some((b) => b.tipo === "EMAIL_DECISAO_NAO_RESOLVE" && b.email === "fernando.fantasma@x.com"));
+  ok("nenhuma membership é emitida para o assento", r.planoP29.membros.length === 0);
+  ok("e o modo estrito recusa emitir", r.emitivel === false);
+}
+
+function testarEmailNaoRessuscitaUsuarioInativo() {
+  console.log("\n8c · decisão humana não alcança usuário inativo");
+  const squads = seisSquads();
+  squads[3].papeis.coordenador = "Fernando";
+  const usuarios = [{ id: 5, nome: "Fernando Salgado", email: "fernando.salgado@x.com", role: "admin", ativo: false }];
+  const decisoes = { versao: 1, identidades: [{ nome: "Fernando", email: "fernando.salgado@x.com" }] };
+  const r = M.mapear({ ...cenario({ usuarios, squads }), decisoes });
+  const f = r.identidades.find((i) => i.nomeRelacao === "Fernando");
+  ok("o usuário inativo não é resolvido", f.userId === null);
+  ok("fica bloqueado, não silencioso", r.bloqueios.some((b) => b.tipo === "EMAIL_DECISAO_NAO_RESOLVE"));
+}
+
+function testarSplitDeAssentoSeparaHomonimos() {
+  console.log("\n8d · o mesmo nome em dois assentos são duas pessoas");
+  const squads = seisSquads();
+  squads[0].papeis.auxiliar2 = "Fernando";
+  squads[3].papeis.coordenador = "Fernando";
+  const decisoes = {
+    versao: 1,
+    identidades: [
+      { nome: "Fernando", assentos: [{ squad: "squad-1", papel: "auxiliar2" }], email: "fernando.montoro@x.com", pessoa: "Fernando Montoro" },
+      { nome: "Fernando", assentos: [{ squad: "squad-4", papel: "coordenador" }], email: "fernando.salgado@x.com", pessoa: "Fernando Salgado" },
+    ],
+  };
+  const r = M.mapear({ ...cenario({ usuarios: DEC_USUARIOS, squads }), decisoes });
+  const montoro = r.planoP29.membros.find((m) => m.squad === "squad-1");
+  const salgado = r.planoP29.membros.find((m) => m.squad === "squad-4");
+  ok("o assento do Squad 1 é do Montoro", montoro.usuario === "fernando.montoro@x.com");
+  ok("o assento do Squad 4 é do Salgado", salgado.usuario === "fernando.salgado@x.com");
+  ok("nenhum dos dois vira multi-Squad", r.identidades.filter((i) => i.nomeRelacao === "Fernando").every((i) => i.multiSquad === false));
+  ok("cada um é principal do seu único Squad", montoro.principal === true && salgado.principal === true);
+  ok("nenhum bloqueio de principal pendente", r.bloqueios.every((b) => b.tipo !== "SQUAD_PRINCIPAL_PENDENTE"));
+}
+
+function testarUsuarioNaoCriadoEhExcluidoSemBloquear() {
+  console.log("\n8e · usuário ainda não criado sai do APPLY sem bloquear os demais");
+  const squads = seisSquads();
+  squads[5].papeis.auxiliar = "Victor";
+  squads[3].papeis.coordenador = "Fernando";
+  const decisoes = {
+    versao: 1,
+    identidades: [{ nome: "Fernando", email: "fernando.salgado@x.com" }],
+    usuariosNaoCriados: [{ nome: "Victor", assentos: [{ squad: "squad-6", papel: "auxiliar" }] }],
+  };
+  const r = M.mapear({ ...cenario({ usuarios: DEC_USUARIOS, squads }), decisoes });
+  const v = r.identidades.find((i) => i.nomeRelacao === "Victor");
+  ok("Victor NÃO casa com o Vitor admin que existe no banco", v.userId === null);
+  ok("é marcado como excluído por decisão humana", v.classe === "EXCLUIDO_USUARIO_NAO_CRIADO");
+  ok("nenhuma membership é emitida para ele", r.planoP29.membros.every((m) => m.squad !== "squad-6"));
+  ok("a exclusão não vira bloqueio", r.bloqueios.length === 0);
+  ok("e as demais memberships seguem emitíveis", r.emitivel === true && r.planoP29.membros.length === 1);
+  ok("a composição humana continua registrada", v.assentosPrevistos.length === 1 && v.assentosPrevistos[0].squad === "squad-6");
+}
+
+function testarSquadPrincipalDecididoPeloHumano() {
+  console.log("\n8f · Squad principal decidido pelo humano fecha o bloqueio");
+  const squads = seisSquads();
+  squads[0].papeis.coordenador = "Micael";
+  squads[4].papeis.coordenador = "Micael";
+  const decisoes = { versao: 1, squadPrincipal: [{ nome: "Micael", squad: "squad-1" }] };
+  const r = M.mapear({ ...cenario({ usuarios: DEC_USUARIOS, squads }), decisoes });
+  const doMicael = r.planoP29.membros.filter((m) => m.usuario === "micael.almeida@x.com");
+  ok("as duas memberships continuam no plano", doMicael.length === 2);
+  ok("exatamente uma é principal", doMicael.filter((m) => m.principal === true).length === 1);
+  ok("e é a decidida pelo humano", doMicael.find((m) => m.principal === true).squad === "squad-1");
+  ok("nenhuma fica marcada como pendente", doMicael.every((m) => m._principalPendente !== true));
+  ok("o bloqueio de principal desaparece", r.bloqueios.every((b) => b.tipo !== "SQUAD_PRINCIPAL_PENDENTE"));
+  ok("o modo estrito volta a emitir", r.emitivel === true);
+}
+
+function testarPrincipalForaDosSquadsDaPessoaEhRecusado() {
+  console.log("\n8g · principal em Squad que a pessoa não ocupa é recusado");
+  const squads = seisSquads();
+  squads[0].papeis.coordenador = "Micael";
+  squads[4].papeis.coordenador = "Micael";
+  const decisoes = { versao: 1, squadPrincipal: [{ nome: "Micael", squad: "squad-3" }] };
+  const r = M.mapear({ ...cenario({ usuarios: DEC_USUARIOS, squads }), decisoes });
+  ok("o principal inválido é bloqueado", r.bloqueios.some((b) => b.tipo === "SQUAD_PRINCIPAL_INVALIDO" && b.squad === "squad-3"));
+  ok("nenhuma membership é promovida a principal", r.planoP29.membros.every((m) => m.principal !== true));
+  ok("o modo estrito recusa emitir", r.emitivel === false);
+}
+
+function testarDecisaoNuncaCriaUsuario() {
+  console.log("\n8h · nenhuma decisão cria usuário ou inventa identidade");
+  const squads = seisSquads();
+  squads[5].papeis.auxiliar = "Victor";
+  const decisoes = {
+    versao: 1,
+    usuariosNaoCriados: [{ nome: "Victor", assentos: [{ squad: "squad-6", papel: "auxiliar" }] }],
+  };
+  const r = M.mapear({ ...cenario({ usuarios: DEC_USUARIOS, squads }), decisoes });
+  const emailsDoBanco = new Set(DEC_USUARIOS.map((u) => u.email));
+  ok("toda membership aponta para email que existe no banco",
+    r.planoP29.membros.every((m) => emailsDoBanco.has(m.usuario)));
+  ok("o plano não contém nenhuma operação sobre usuários",
+    !/criar_usuario/i.test(JSON.stringify(r.planoP29)));
+}
+
+function testarSemDecisoesOComportamentoAntigoEhIntacto() {
+  console.log("\n8i · sem decisões, o comportamento anterior é bit a bit o mesmo");
+  const squads = seisSquads();
+  squads[0].papeis.coordenador = "Micael";
+  squads[4].papeis.coordenador = "Micael";
+  const c = cenario({ usuarios: DEC_USUARIOS, squads });
+  const antes = M.mapear(c);
+  const depois = M.mapear({ ...c, decisoes: null });
+  ok("o resultado é idêntico com e sem o parâmetro",
+    JSON.stringify(antes.identidades) === JSON.stringify(depois.identidades) &&
+    JSON.stringify(antes.bloqueios) === JSON.stringify(depois.bloqueios));
+  ok("e o principal continua PENDENTE quando ninguém decidiu",
+    antes.bloqueios.some((b) => b.tipo === "SQUAD_PRINCIPAL_PENDENTE"));
+}
+
+function testarCliAceitaArquivoDeDecisoes() {
+  console.log("\n8j · a CLI recebe as decisões como ARQUIVO, não como código");
+  const a = M.parseArgs(["node", "x.js", "--inventario", "i.json", "--auditoria", "a.json",
+    "--relacao", "r.json", "--decisoes", "d.json", "--saida-dir", "out"]);
+  ok("o caminho das decisões é lido do argumento", a.decisoes === "d.json");
+  ok("sem o argumento, decisões ficam nulas",
+    M.parseArgs(["node", "x.js", "--relacao", "r.json"]).decisoes === null);
+}
+
+function testarDecisaoQueNaoPousaNaoDesapareceEmSilencio() {
+  console.log("\n8k · decisão que não encontra assento é denunciada, não ignorada");
+  const squads = seisSquads();
+  squads[3].papeis.coordenador = "Fernando";
+  const decisoes = {
+    versao: 1,
+    identidades: [
+      { nome: "Fernando", assentos: [{ squad: "squad-4", papel: "coordenador" }], email: "fernando.salgado@x.com" },
+      { nome: "Fernando", assentos: [{ squad: "squad-2", papel: "gestor" }], email: "fernando.montoro@x.com" },
+    ],
+    usuariosNaoCriados: [{ nome: "Ninguem", assentos: [{ squad: "squad-5", papel: "design" }] }],
+    squadPrincipal: [{ nome: "Fantasma", squad: "squad-1" }],
+  };
+  const r = M.mapear({ ...cenario({ usuarios: DEC_USUARIOS, squads }), decisoes });
+  ok("a decisão de identidade sem assento correspondente é reportada",
+    r.bloqueios.some((b) => b.tipo === "DECISAO_SEM_ASSENTO" && b.email === "fernando.montoro@x.com"));
+  ok("a exclusão sem assento correspondente também é reportada",
+    r.bloqueios.some((b) => b.tipo === "DECISAO_SEM_ASSENTO" && b.nome === "Ninguem"));
+  ok("o principal de quem não está na relação também é reportado",
+    r.bloqueios.some((b) => b.tipo === "DECISAO_SEM_ASSENTO" && b.nome === "Fantasma"));
+  ok("e o modo estrito recusa emitir", r.emitivel === false);
+  ok("a decisão que POUSA continua valendo",
+    r.planoP29.membros.length === 1 && r.planoP29.membros[0].usuario === "fernando.salgado@x.com");
+}
+
+function testarPlanoCarregaORecusoQuandoHaBloqueio() {
+  console.log("\n8l · o plano emitido diz, nele mesmo, que não está liberado");
+  const squads = seisSquads();
+  squads[1].papeis.coordenador = "Klayvert";
+  const usuarios = [
+    { id: 22, nome: "Klayvert Rodrigues", email: "klayvert@a.com", role: "user", ativo: true },
+    { id: 35, nome: "Klayvert Rodrigues", email: "klayvert@b.com", role: "user", ativo: true },
+  ];
+  const r = M.mapear(cenario({ usuarios, squads }));
+  ok("o plano registra que NÃO é emitível", r.planoP29._emitivel === false);
+  ok("e carrega os bloqueios que o impedem",
+    Array.isArray(r.planoP29._bloqueios) && r.planoP29._bloqueios.length === r.bloqueios.length);
+
+  const limpo = M.mapear(cenario({ usuarios: [usuarios[0]], squads }));
+  ok("sem bloqueio, o plano se declara emitível", limpo.planoP29._emitivel === true);
+  ok("e a lista de bloqueios fica vazia", limpo.planoP29._bloqueios.length === 0);
+}
+
 (async () => {
   testarNormalizacao();
   testarClusterSufixoAutovalidado();
@@ -473,5 +689,17 @@ function testarModuloEhOffline() {
   testarTodoClienteEmExatamenteUmSquad();
   testarConflitoDeRelacaoNaoEhSilencioso();
   testarModuloEhOffline();
+  testarIdentidadePorEmailConfirmado();
+  testarEmailQueNaoResolveBloqueiaAMembership();
+  testarEmailNaoRessuscitaUsuarioInativo();
+  testarSplitDeAssentoSeparaHomonimos();
+  testarUsuarioNaoCriadoEhExcluidoSemBloquear();
+  testarSquadPrincipalDecididoPeloHumano();
+  testarPrincipalForaDosSquadsDaPessoaEhRecusado();
+  testarDecisaoNuncaCriaUsuario();
+  testarSemDecisoesOComportamentoAntigoEhIntacto();
+  testarCliAceitaArquivoDeDecisoes();
+  testarDecisaoQueNaoPousaNaoDesapareceEmSilencio();
+  testarPlanoCarregaORecusoQuandoHaBloqueio();
   console.log(`\n✔ squadsMapeamentoReal: ${checks} verificações OK\n`);
 })().catch((e) => { console.error(e); process.exit(1); });

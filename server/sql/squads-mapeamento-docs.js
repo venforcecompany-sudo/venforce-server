@@ -9,6 +9,14 @@
 //   node server/sql/squads-mapeamento-docs.js \
 //     --inventario inv.json --auditoria aud.json --relacao rel.json \
 //     --dry-run dry.txt --saida-dir Squads_migration/P2_9_REAL_MAPPING
+//
+// ⚠️ CONGELADO. Este gerador escreve os documentos 00–16, que são o registro
+// do que se sabia em 03/09/2026 — ANTES das decisões humanas aprovadas. Ele
+// não conhece `--decisoes`, e indexa identidade por `nomeRelacao`, que deixou
+// de ser único quando "Fernando" virou duas pessoas (Montoro #45 e Salgado
+// #5). Rodá-lo de novo sobrescreveria história com dado errado.
+// O estado corrente vive em 17, 18 e 19, escritos à mão sobre os artefatos
+// regerados por `squads-mapeamento-real.js --decisoes`.
 
 const fs = require("fs");
 const path = require("path");

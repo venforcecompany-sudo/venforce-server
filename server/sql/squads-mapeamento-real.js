@@ -11,7 +11,13 @@
 //   node server/sql/squads-consolidacao-auditoria.js  --saida auditoria.json
 //   node server/sql/squads-mapeamento-real.js \
 //     --inventario inventario.json --auditoria auditoria.json \
-//     --relacao relacao-squads-v2.json --saida-dir <dir>
+//     --relacao relacao-squads-v2.json \
+//     [--decisoes decisoes-humanas-aprovadas.json] --saida-dir <dir>
+//
+// --decisoes traz o documento humano aprovado (identidade por email confirmado,
+// usuários ainda não criados, Squad principal). Ele só RESTRINGE: nunca cria
+// usuário, nunca inventa id, e email que não resolve exatamente um usuário
+// ativo BLOQUEIA a membership em vez de adivinhá-la.
 //
 // ─────────────────────── PRINCÍPIOS DE SEGURANÇA ───────────────────────
 //
@@ -759,33 +765,150 @@ function planoConsolidacao({ clusters, clientes, auditoria }) {
   };
 }
 
-/* ══════════════════════ 7. IDENTIDADES DE USUÁRIO ══════════════════════ */
+/**
+ * Chave de um ASSENTO da relação: um lugar concreto (Squad × papel), não uma
+ * pessoa. A planilha traz primeiros nomes, e um nome pode ocupar dois assentos
+ * sendo DUAS pessoas — por isso o assento, e não o nome, é a unidade mínima.
+ */
+function chaveAssento(squad, papel) { return `${squad}::${papel}`; }
 
-function resolverIdentidades({ relacao, usuarios }) {
-  const ativos = (usuarios || []).filter((u) => u.ativo);
-  const nomes = new Map();
+/**
+ * Indexa o documento de decisões humanas aprovadas. É pura transcrição: nada
+ * aqui consulta o banco, infere pessoa ou completa informação faltante.
+ *
+ *   identidades[]       { nome, email, pessoa?, assentos?[] }  ← quem é quem
+ *   usuariosNaoCriados[]{ nome, assentos?[] }                  ← ainda sem conta
+ *   squadPrincipal[]    { nome, squad }                        ← default persistido
+ *
+ * `assentos` ausente significa "vale para todos os assentos deste nome".
+ */
+function normalizarDecisoes(decisoes) {
+  const vazio = {
+    presente: false,
+    emailPorAssento: new Map(), emailPorNome: new Map(),
+    naoCriadoPorAssento: new Map(), naoCriadoPorNome: new Map(),
+    principalPorNome: new Map(),
+  };
+  if (!decisoes || typeof decisoes !== "object") return vazio;
+
+  const d = { ...vazio, presente: true };
+  for (const it of decisoes.identidades || []) {
+    if (!it || !it.nome) continue;
+    const valor = { nome: it.nome, email: it.email ?? null, pessoa: it.pessoa ?? null };
+    if (Array.isArray(it.assentos) && it.assentos.length) {
+      for (const a of it.assentos) d.emailPorAssento.set(chaveAssento(a.squad, a.papel), valor);
+    } else {
+      d.emailPorNome.set(it.nome, valor);
+    }
+  }
+  for (const it of decisoes.usuariosNaoCriados || []) {
+    if (!it || !it.nome) continue;
+    if (Array.isArray(it.assentos) && it.assentos.length) {
+      for (const a of it.assentos) d.naoCriadoPorAssento.set(chaveAssento(a.squad, a.papel), it.nome);
+    } else {
+      d.naoCriadoPorNome.set(it.nome, it.nome);
+    }
+  }
+  for (const it of decisoes.squadPrincipal || []) {
+    if (!it || !it.nome || !it.squad) continue;
+    d.principalPorNome.set(it.nome, it.squad);
+  }
+  return d;
+}
+
+/** Assentos ocupados na relação, em ordem de planilha. */
+function assentosDaRelacao(relacao) {
+  const out = [];
   for (const s of relacao.squads || []) {
     for (const [papel, valor] of Object.entries(s.papeis || {})) {
       if (!valor || valor === "AUSENTE_NA_ESTRUTURA") continue;
-      if (!nomes.has(valor)) nomes.set(valor, []);
-      nomes.get(valor).push({ squad: s.slug, papel });
+      out.push({ nome: valor, squad: s.slug, papel });
     }
+  }
+  return out;
+}
+
+/**
+ * Agrupa assentos em IDENTIDADES. Sem decisão humana, todos os assentos de um
+ * mesmo nome formam uma identidade só — exatamente o comportamento anterior.
+ * Com decisão, um nome pode se desdobrar em várias (Fernando) ou sair inteiro
+ * do APPLY (Victor, sem conta).
+ */
+function agruparAssentos(assentos, dec) {
+  const grupos = [];
+  const porChave = new Map();
+  const registrar = (chave, base, assento) => {
+    if (!porChave.has(chave)) {
+      const g = { ...base, ocorrencias: [] };
+      porChave.set(chave, g);
+      grupos.push(g);
+    }
+    porChave.get(chave).ocorrencias.push({ squad: assento.squad, papel: assento.papel });
+  };
+
+  for (const a of assentos) {
+    const ka = chaveAssento(a.squad, a.papel);
+    const naoCriado = dec.naoCriadoPorAssento.get(ka) || dec.naoCriadoPorNome.get(a.nome);
+    if (naoCriado) {
+      registrar(`NAO_CRIADO::${a.nome}`, { nome: a.nome, tipo: "NAO_CRIADO" }, a);
+      continue;
+    }
+    const email = dec.emailPorAssento.get(ka) || dec.emailPorNome.get(a.nome);
+    if (email && email.nome === a.nome) {
+      registrar(`EMAIL::${a.nome}::${String(email.email).toLowerCase()}`,
+        { nome: a.nome, tipo: "EMAIL", email: email.email, pessoa: email.pessoa }, a);
+      continue;
+    }
+    registrar(`NOME::${a.nome}`, { nome: a.nome, tipo: "MATCHER" }, a);
+  }
+  return grupos;
+}
+
+/* ══════════════════════ 7. IDENTIDADES DE USUÁRIO ══════════════════════ */
+
+function resolverIdentidades({ relacao, usuarios, decisoes = null }) {
+  const ativos = (usuarios || []).filter((u) => u.ativo);
+  const dec = normalizarDecisoes(decisoes);
+  const grupos = agruparAssentos(assentosDaRelacao(relacao), dec);
+
+  /* ── 0ª passada: DECISÃO HUMANA. O email confirmado é chave de login, não
+   * aproximação — resolve por igualdade exata e por nada mais. Zero ou dois
+   * usuários ativos no email significa que a decisão NÃO corresponde ao banco:
+   * a membership é bloqueada, nunca adivinhada. ── */
+  const porEmail = new Map();
+  for (const u of ativos) {
+    const k = String(u.email || "").trim().toLowerCase();
+    if (!k) continue;
+    if (!porEmail.has(k)) porEmail.set(k, []);
+    porEmail.get(k).push(u);
+  }
+  const reservados = new Set();
+  for (const g of grupos) {
+    if (g.tipo !== "EMAIL") continue;
+    g.resolvidos = porEmail.get(String(g.email || "").trim().toLowerCase()) || [];
+    if (g.resolvidos.length === 1) reservados.add(g.resolvidos[0].id);
   }
 
   // 1ª passada: candidatos EM CAMADAS. Igualdade de token vem antes de
   // qualquer aproximação — sem isso "Witor" empatava com "Vitor", que é outra
   // pessoa, e a ambiguidade era inventada pelo próprio matcher.
   const tokensDe = (u) => [...tokens(u.nome), ...tokens(String(u.email || "").split("@")[0])];
+  // Usuário já reivindicado por decisão humana não volta a ser candidato de
+  // ninguém: o casamento pessoa↔usuário é injetivo.
+  const disponiveis = reservados.size ? ativos.filter((u) => !reservados.has(u.id)) : ativos;
   const bruto = [];
-  for (const [nome, ocorrencias] of nomes) {
-    const alvo = normalizar(nome);
-    let cands = ativos.filter((u) => tokensDe(u).includes(alvo));
+  for (const g of grupos) {
+    if (g.tipo !== "MATCHER") continue;
+    const alvo = normalizar(g.nome);
+    let cands = disponiveis.filter((u) => tokensDe(u).includes(alvo));
     let camada = "TOKEN_EXATO";
     if (cands.length === 0) {
-      cands = ativos.filter((u) => tokensDe(u).some((t) => proximo(t, alvo)));
+      cands = disponiveis.filter((u) => tokensDe(u).some((t) => proximo(t, alvo)));
       camada = "TOKEN_APROXIMADO";
     }
-    bruto.push({ nome, ocorrencias, candidatos: cands, camada });
+    g.candidatos = cands;
+    g.camada = camada;
+    bruto.push({ nome: g.nome, grupo: g, ocorrencias: g.ocorrencias, candidatos: cands, camada });
   }
 
   /**
@@ -823,34 +946,74 @@ function resolverIdentidades({ relacao, usuarios }) {
   }
 
   const resultado = [];
-  for (const b of bruto) {
-    const cands = atual.get(b.nome);
-    const porExclusao = porExclusaoSet.has(b.nome);
-    const aproximadoEmAdmin = b.camada === "TOKEN_APROXIMADO" && cands.length === 1 &&
+  for (const g of grupos) {
+    const base = {
+      nomeRelacao: g.nome,
+      ocorrencias: g.ocorrencias,
+      multiSquad: g.ocorrencias.length > 1,
+    };
+
+    if (g.tipo === "NAO_CRIADO") {
+      resultado.push({
+        ...base,
+        classe: "EXCLUIDO_USUARIO_NAO_CRIADO",
+        camada: "DECISAO_HUMANA",
+        userId: null, email: null, role: null, candidatos: [],
+        assentosPrevistos: g.ocorrencias,
+        motivo: "decisão humana: a pessoa faz parte da estrutura do Squad mas ainda não possui usuário — nenhuma identidade é inventada e a membership fica fora deste APPLY",
+      });
+      continue;
+    }
+
+    if (g.tipo === "EMAIL") {
+      const um = g.resolvidos.length === 1 ? g.resolvidos[0] : null;
+      resultado.push({
+        ...base,
+        classe: um ? "DECISAO_HUMANA_EMAIL" : "DECISAO_EMAIL_NAO_RESOLVE",
+        camada: "DECISAO_HUMANA",
+        userId: um ? um.id : null,
+        email: um ? um.email : null,
+        role: um ? um.role : null,
+        emailDecisao: g.email,
+        pessoaDecisao: g.pessoa || null,
+        candidatos: g.resolvidos.map((c) => ({ id: c.id, nome: c.nome, email: c.email, role: c.role })),
+        ...(um ? {} : {
+          motivo: `o email confirmado "${g.email}" não resolve exatamente um usuário ATIVO (${g.resolvidos.length} encontrados) — membership bloqueada`,
+        }),
+      });
+      continue;
+    }
+
+    const cands = atual.get(g.nome);
+    const porExclusao = porExclusaoSet.has(g.nome);
+    const aproximadoEmAdmin = g.camada === "TOKEN_APROXIMADO" && cands.length === 1 &&
       String(cands[0].role || "").toLowerCase() === "admin";
 
     const classe = aproximadoEmAdmin ? "MATCH_AMBIGUO"
       : cands.length === 0 ? "NAO_ENCONTRADO"
         : cands.length > 1 ? "MATCH_AMBIGUO"
           : porExclusao ? "MATCH_POR_EXCLUSAO"
-            : b.camada === "TOKEN_APROXIMADO" ? "MATCH_APROXIMADO"
+            : g.camada === "TOKEN_APROXIMADO" ? "MATCH_APROXIMADO"
               : "MATCH_EXATO";
     const resolvido = classe === "MATCH_EXATO" || classe === "MATCH_POR_EXCLUSAO" || classe === "MATCH_APROXIMADO";
 
     resultado.push({
-      nomeRelacao: b.nome,
-      ocorrencias: b.ocorrencias,
+      ...base,
       classe,
-      camada: b.camada,
+      camada: g.camada,
       userId: resolvido ? cands[0].id : null,
       email: resolvido ? cands[0].email : null,
       role: resolvido ? cands[0].role : null,
-      candidatos: b.candidatos.map((c) => ({ id: c.id, nome: c.nome, email: c.email, role: c.role })),
-      multiSquad: b.ocorrencias.length > 1,
+      candidatos: g.candidatos.map((c) => ({ id: c.id, nome: c.nome, email: c.email, role: c.role })),
       ...(aproximadoEmAdmin ? { motivo: `único candidato (#${cands[0].id}) casou só por aproximação e é conta admin — exige confirmação humana` } : {}),
     });
   }
-  return resultado.sort((a, b) => a.nomeRelacao.localeCompare(b.nomeRelacao, "pt-BR"));
+
+  // ordem estável: pelo nome, e entre homônimos desdobrados pela ordem da planilha
+  return resultado
+    .map((r, i) => [r, i])
+    .sort((a, b) => a[0].nomeRelacao.localeCompare(b[0].nomeRelacao, "pt-BR") || a[1] - b[1])
+    .map(([r]) => r);
 }
 
 /**
@@ -889,20 +1052,76 @@ function proximo(a, b) {
 
 const FUNCAO_SQUAD = { coordenador: "coordenador", gestor: "membro", auxiliar: "membro", auxiliar2: "membro", design: "membro" };
 
-function montarPlanoP29({ relacao, identidades, mapaClientes, estrito }) {
-  const porNome = new Map(identidades.map((i) => [i.nomeRelacao, i]));
+function montarPlanoP29({ relacao, identidades, mapaClientes, estrito, decisoes = null }) {
+  const dec = normalizarDecisoes(decisoes);
+  // O plano é montado por ASSENTO, não por nome: dois assentos com o mesmo
+  // primeiro nome podem ser duas pessoas diferentes.
+  const porAssento = new Map();
+  for (const ident of identidades) {
+    for (const o of ident.ocorrencias || []) porAssento.set(chaveAssento(o.squad, o.papel), ident);
+  }
   const bloqueios = [];
 
   const squads = (relacao.squads || []).map((s) => ({ slug: s.slug, nome: s.nome, ativo: true }));
   squads.push({ slug: SQUAD_LEGADO.slug, nome: SQUAD_LEGADO.nome, ativo: true });
 
+  // Uma decisão humana que não pousa em nenhum assento da relação é a falha
+  // mais perigosa desta camada: some sem erro e o APPLY sai com o dado antigo.
+  // Toda decisão tem de encontrar o lugar que diz endereçar — ou aparecer aqui.
+  if (dec.presente) {
+    const assentos = new Map(assentosDaRelacao(relacao).map((a) => [chaveAssento(a.squad, a.papel), a.nome]));
+    const nomesNaRelacao = new Set([...assentos.values()]);
+    const semAssento = (extra) => bloqueios.push({ tipo: "DECISAO_SEM_ASSENTO", ...extra });
+    const conferir = (it, extra) => {
+      if (Array.isArray(it.assentos) && it.assentos.length) {
+        for (const a of it.assentos) {
+          if (assentos.get(chaveAssento(a.squad, a.papel)) !== it.nome) {
+            semAssento({ nome: it.nome, squad: a.squad, papel: a.papel, ...extra });
+          }
+        }
+      } else if (!nomesNaRelacao.has(it.nome)) {
+        semAssento({ nome: it.nome, ...extra });
+      }
+    };
+    for (const it of decisoes?.identidades || []) if (it?.nome) conferir(it, { email: it.email ?? null, origem: "identidades" });
+    for (const it of decisoes?.usuariosNaoCriados || []) if (it?.nome) conferir(it, { origem: "usuariosNaoCriados" });
+    for (const it of decisoes?.squadPrincipal || []) {
+      if (it?.nome && !nomesNaRelacao.has(it.nome)) semAssento({ nome: it.nome, squad: it.squad, origem: "squadPrincipal" });
+    }
+  }
+
+  // Squad principal decidido pelo humano: preferência/default persistido, NÃO
+  // autorização. Só vale se o Squad nomeado for um dos que a pessoa ocupa —
+  // um principal fora da estrutura seria dado inventado, então bloqueia.
+  const principalDecidido = new Map(); // identidade -> squad slug válido
+  for (const ident of identidades) {
+    const alvo = dec.principalPorNome.get(ident.nomeRelacao);
+    if (!alvo) continue;
+    if ((ident.ocorrencias || []).some((o) => o.squad === alvo)) {
+      principalDecidido.set(ident, alvo);
+    } else {
+      bloqueios.push({ tipo: "SQUAD_PRINCIPAL_INVALIDO", nome: ident.nomeRelacao, userId: ident.userId ?? null,
+        squad: alvo, squadsDaPessoa: (ident.ocorrencias || []).map((o) => o.squad) });
+      principalDecidido.set(ident, null); // decidido porém inválido: ninguém vira principal
+    }
+  }
+
   const membros = [];
   for (const s of relacao.squads || []) {
     for (const [papel, valor] of Object.entries(s.papeis || {})) {
       if (!valor || valor === "AUSENTE_NA_ESTRUTURA") continue;
-      const ident = porNome.get(valor);
+      const ident = porAssento.get(chaveAssento(s.slug, papel));
       if (!ident || ident.classe === "NAO_ENCONTRADO") {
         bloqueios.push({ tipo: "USUARIO_NAO_ENCONTRADO", nome: valor, squad: s.slug, papel });
+        continue;
+      }
+      // Decisão humana explícita: a pessoa existe na estrutura, o usuário não.
+      // Fica fora do APPLY sem bloquear as demais memberships — fail-closed,
+      // porque nada é criado e nada é adivinhado.
+      if (ident.classe === "EXCLUIDO_USUARIO_NAO_CRIADO") continue;
+      if (ident.classe === "DECISAO_EMAIL_NAO_RESOLVE") {
+        bloqueios.push({ tipo: "EMAIL_DECISAO_NAO_RESOLVE", nome: valor, squad: s.slug, papel,
+          email: ident.emailDecisao, encontrados: (ident.candidatos || []).map((c) => c.id) });
         continue;
       }
       if (ident.classe === "MATCH_AMBIGUO") {
@@ -910,10 +1129,15 @@ function montarPlanoP29({ relacao, identidades, mapaClientes, estrito }) {
           candidatos: ident.candidatos.map((c) => c.id) });
         continue;
       }
-      const principal = ident.multiSquad ? null : true;
-      if (principal === null) {
+      let principal;
+      if (principalDecidido.has(ident)) {
+        principal = principalDecidido.get(ident) === s.slug ? true : false;
+      } else if (ident.multiSquad) {
+        principal = null;
         bloqueios.push({ tipo: "SQUAD_PRINCIPAL_PENDENTE", nome: valor, userId: ident.userId,
           squads: ident.ocorrencias.map((o) => o.squad) });
+      } else {
+        principal = true;
       }
       membros.push({
         squad: s.slug, usuario: ident.email, funcao: FUNCAO_SQUAD[papel] || "membro",
@@ -942,6 +1166,11 @@ function montarPlanoP29({ relacao, identidades, mapaClientes, estrito }) {
   };
 
   const emitivel = estrito ? bloqueios.length === 0 : bloqueios.filter((b) => b.tipo !== "SQUAD_PRINCIPAL_PENDENTE").length === 0;
+  // O veredito viaja DENTRO do artefato. Um plano bloqueado que circula sem
+  // dizer que está bloqueado é a forma mais fácil de um `--apply` acontecer
+  // por engano — o arquivo carrega, ele mesmo, o motivo de não estar liberado.
+  plano._emitivel = emitivel;
+  plano._bloqueios = bloqueios;
   return { plano, bloqueios, emitivel };
 }
 
@@ -1025,14 +1254,14 @@ function verificarInvariantes({ clientes, clusters, matches, mapaClientes, confl
 
 /* ══════════════════════ 10. ORQUESTRAÇÃO ══════════════════════ */
 
-function mapear({ inventario, auditoria, relacao, estrito = true }) {
+function mapear({ inventario, auditoria, relacao, decisoes = null, estrito = true }) {
   const clientes = indexarClientes(inventario, auditoria);
   const { clusters, naoMergear } = detectarClusters({ clientes, auditoria, relacao });
   const matches = casarRelacao({ relacao, clientes, clusters });
   const { mapa, conflitos } = montarMapaClientes({ clientes, clusters, matches });
-  const identidades = resolverIdentidades({ relacao, usuarios: inventario.usuarios });
+  const identidades = resolverIdentidades({ relacao, usuarios: inventario.usuarios, decisoes });
   const pc = planoConsolidacao({ clusters, clientes, auditoria });
-  const { plano, bloqueios, emitivel } = montarPlanoP29({ relacao, identidades, mapaClientes: mapa, estrito });
+  const { plano, bloqueios, emitivel } = montarPlanoP29({ relacao, identidades, mapaClientes: mapa, estrito, decisoes });
   const invariantes = verificarInvariantes({
     clientes, clusters, matches, mapaClientes: mapa, conflitos, planoConsolidacao: pc, planoP29: plano });
 
@@ -1060,12 +1289,13 @@ function mapear({ inventario, auditoria, relacao, estrito = true }) {
 /* ─────────────────────────────── CLI ─────────────────────────────── */
 
 function parseArgs(argv) {
-  const a = { inventario: null, auditoria: null, relacao: null, saidaDir: null, estrito: true, help: false };
+  const a = { inventario: null, auditoria: null, relacao: null, decisoes: null, saidaDir: null, estrito: true, help: false };
   for (let i = 2; i < argv.length; i++) {
     const t = argv[i];
     if (t === "--inventario") a.inventario = argv[++i];
     else if (t === "--auditoria") a.auditoria = argv[++i];
     else if (t === "--relacao") a.relacao = argv[++i];
+    else if (t === "--decisoes") a.decisoes = argv[++i];
     else if (t === "--saida-dir") a.saidaDir = argv[++i];
     else if (t === "--nao-estrito") a.estrito = false;
     else if (t === "-h" || t === "--help") a.help = true;
@@ -1083,7 +1313,8 @@ function main() {
   const ler = (p) => JSON.parse(fs.readFileSync(path.resolve(p), "utf8"));
   const r = mapear({
     inventario: ler(a.inventario), auditoria: ler(a.auditoria),
-    relacao: ler(a.relacao), estrito: a.estrito,
+    relacao: ler(a.relacao), decisoes: a.decisoes ? ler(a.decisoes) : null,
+    estrito: a.estrito,
   });
 
   if (a.saidaDir) {
@@ -1112,6 +1343,7 @@ module.exports = {
   indexarClientes, detectarClusters, pontuarCanonicidade, radicalComumDo,
   casarNome, casarRelacao, montarMapaClientes, planoConsolidacao,
   resolverIdentidades, montarPlanoP29, verificarInvariantes, mapear,
+  normalizarDecisoes, agruparAssentos, assentosDaRelacao, chaveAssento, parseArgs,
   CLASSE, CONF, SQUAD_LEGADO, FUNCAO_SQUAD,
 };
 
