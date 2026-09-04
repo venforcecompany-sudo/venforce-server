@@ -439,6 +439,16 @@
      erra o cálculo — medido com CDP: `top: -139.75px`, dropdown inteiro
      nascendo ACIMA do viewport, inalcançável para clique real (Bug B). */
   position: relative;
+  /* `top: auto` OBRIGATÓRIO junto com a troca de `position`. A regra base
+     do bloco é `position: sticky; top: 59px` (grudar abaixo do logo na
+     sidebar). Ao virar `relative` aqui, aquele `top: 59px` continua valendo
+     — e em `relative` ele DESLOCA a pintura sem ocupar espaço no fluxo: a
+     barra media 106px de altura enquanto o bloco era pintado 59px abaixo,
+     vazando por cima do `main` (medido com CDP em 390px: barra 253→359,
+     bloco 320→409, e o rótulo "Operação" caindo em cima do cabeçalho
+     "GESTÃO GLOBAL" da página). Vale em toda a faixa ≤1200px, que é
+     exatamente onde contextoNaBarra() reparenta o bloco. */
+  top: auto;
   display: flex;
   align-items: center;
   gap: var(--vf-sp-2);
@@ -447,7 +457,12 @@
   background: none;
   border: 0;
 }
-.vf-shell__contextbar .vf-shell__context-label { margin: 0; flex: 0 0 auto; }
+/* `gap` porque o `justify-content: space-between` da regra base só separa
+   "CLIENTE" de "contexto ativo" enquanto o rótulo ocupa a largura da
+   sidebar. Aqui ele é `flex: 0 0 auto` (encolhe até o conteúdo), não sobra
+   espaço para distribuir e as duas palavras encostam: "Clientecontexto
+   ativo". */
+.vf-shell__contextbar .vf-shell__context-label { margin: 0; flex: 0 0 auto; gap: var(--vf-sp-1); }
 .vf-shell__contextbar .vf-ctx-selector { width: auto; min-width: 190px; flex: 0 1 auto; }
 .vf-shell__contextbar .vf-shell__integrations { flex: 1 0 100%; flex-direction: row; gap: var(--vf-sp-3); }
 .vf-shell__contextbar .vf-shell__dropdown {

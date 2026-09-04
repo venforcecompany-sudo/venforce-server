@@ -139,6 +139,86 @@ export function createCarteira(options = {}) {
     options.getSquads ||
     (() => (squadsDoPayload.length ? squadsDoPayload : ctxStore.getSquads ? ctxStore.getSquads() : []));
 
+  /* ── Squad principal (P2.9) ───────────────────────────────────────────
+     DEFAULT DE UX, nunca autorização: ele ordena e rotula, jamais filtra e
+     jamais restringe os outros squads. Só existe quando o backend o diz —
+     `principal` por membership em /me/portfolio, `squadPrincipalId` em
+     /me/context. Ordem do array, menor id e função no squad NÃO elegem
+     ninguém: existem usuários reais multi-squad (Klayvert em 2/3/6, Micael
+     em 1/5, Fernando em 1/4) cujo principal ainda depende de decisão
+     humana, e preencher esse vazio sozinho seria inventar. */
+  function squadPrincipalId() {
+    const lista = getSquads();
+    const marcados = lista.filter((s) => s && s.principal === true);
+    // Dois principais é anomalia de dado: desempatar seria escolher pela
+    // ordem do array, exatamente o que não pode acontecer. Sem principal.
+    if (marcados.length === 1) return marcados[0].id;
+    if (marcados.length > 1) return null;
+    const doContexto = ctxStore.getSquadPrincipalId ? ctxStore.getSquadPrincipalId() : null;
+    if (doContexto == null) return null;
+    // Um principal que não está entre os squads em mão não rotula nada.
+    return lista.some((s) => s && String(s.id) === String(doContexto)) ? doContexto : null;
+  }
+
+  /* ── Os squads que ESTA carteira precisa representar ───────────────────
+     Duas listas diferentes carregam a palavra "squad" no payload
+     (server/services/meService.js) e confundi-las era um bug real:
+
+       · `squads[]`         → MEMBERSHIPS do usuário (squadsDoUsuario)
+       · `clientes[].squad` → o squad REAL do cliente (squadsAtivosDeClientes)
+
+     Elas não coincidem. Admin tem bypass de carteira e pode ter ZERO
+     memberships enquanto enxerga clientes de vários squads; e o bucket
+     "Squad 8 · Legado" recebe clientes antigos sem que ninguém seja membro
+     dele. Agrupar/filtrar só pelas memberships fazia um squad com nome no
+     payload virar "SEM SQUAD" e sumir do filtro.
+
+     A união é aditiva e não inventa nada: memberships na ordem do backend
+     (com o principal à frente, quando existir), e depois os squads que só
+     aparecem nos clientes, por id. */
+  function squadsDaCarteira(clientes) {
+    const principal = squadPrincipalId();
+    const membros = getSquads().filter((s) => s && s.id != null);
+    const ordenados = principal == null
+      ? membros.slice()
+      : membros
+          .filter((s) => String(s.id) === String(principal))
+          .concat(membros.filter((s) => String(s.id) !== String(principal)));
+
+    const vistos = new Set();
+    const out = [];
+    ordenados.forEach((s) => {
+      const chave = String(s.id);
+      if (vistos.has(chave)) return;
+      vistos.add(chave);
+      out.push({ id: s.id, nome: s.nome, principal: principal != null && String(s.id) === String(principal) });
+    });
+
+    const extras = [];
+    (clientes || []).forEach((c) => {
+      if (!c || c.squadId == null || vistos.has(String(c.squadId))) return;
+      vistos.add(String(c.squadId));
+      extras.push({
+        id: c.squadId,
+        // O nome vem do próprio cliente quando o payload rico o traz. Na
+        // queda (/me/context não manda `squad`) sobra só o id — e "Squad #8"
+        // é honesto: sabemos QUAL squad é, só não sabemos o nome dele.
+        nome: (c.squad && c.squad.nome) || `Squad #${c.squadId}`,
+        principal: false,
+      });
+    });
+    extras.sort((a, b) => Number(a.id) - Number(b.id) || String(a.id).localeCompare(String(b.id)));
+    return out.concat(extras);
+  }
+
+  /* Cliente sem squad é ESTADO LEGÍTIMO enquanto SQUADS_ENFORCEMENT=OFF —
+     é o banco de hoje. Ele ganha uma chave própria (nunca o id de outro
+     grupo) para nunca ser misturado em silêncio com um squad real. */
+  const SEM_SQUAD = " sem-squad";
+  function chaveSquad(c) {
+    return c && c.squadId != null ? String(c.squadId) : SEM_SQUAD;
+  }
+
   let busca = "";
   let filtro = "todos"; // todos · pendencia · sem-operacao
   let ordem = "atencao"; // atencao · nome · sync · meus
@@ -224,8 +304,13 @@ export function createCarteira(options = {}) {
 
   /* ── filtro/ordenação/agrupamento ────────────────────────────────────── */
 
-  function agrupandoPorSquad() {
-    return getSquads().length > 1 && squad === "todos";
+  // §10.6 — com 1 squad NADA aparece: um filtro de uma opção só é ruído e um
+  // cabeçalho único gasta uma linha para repetir o que vale para a lista
+  // inteira. "1 squad" aqui é o que a CARTEIRA representa, não a contagem de
+  // memberships: um usuário de um squad só que também enxerga clientes do
+  // bucket legado tem, de fato, dois grupos na tela.
+  function agrupandoPorSquad(clientes) {
+    return squadsDaCarteira(clientes).length > 1 && squad === "todos";
   }
 
   function visiveis(clientes) {
@@ -239,10 +324,9 @@ export function createCarteira(options = {}) {
     });
 
     const ordemStatus = { critico: 0, atencao: 1, pronto: 2 };
-    const squads = getSquads();
     const ordemSquad = {};
-    squads.forEach((s, i) => { ordemSquad[s.id] = i; });
-    const porSquad = agrupandoPorSquad();
+    squadsDaCarteira(clientes).forEach((s, i) => { ordemSquad[String(s.id)] = i; });
+    const porSquad = agrupandoPorSquad(clientes);
 
     function dentroDoGrupo(a, b) {
       if (ordem === "nome") return a.nome.localeCompare(b.nome, "pt-BR");
@@ -251,10 +335,18 @@ export function createCarteira(options = {}) {
       return (ordemStatus[a.statusOperacional] ?? 9) - (ordemStatus[b.statusOperacional] ?? 9) || a.nome.localeCompare(b.nome, "pt-BR");
     }
 
+    // Sem squad fecha a lista: é o resíduo do enforcement OFF, não um squad.
+    const FIM = Number.MAX_SAFE_INTEGER;
+    function posicao(c) {
+      const chave = chaveSquad(c);
+      if (chave === SEM_SQUAD) return FIM;
+      return ordemSquad[chave] ?? FIM - 1;
+    }
+
     lista = lista.slice().sort((a, b) => {
       if (porSquad) {
-        const da = ordemSquad[a.squadId] ?? 99;
-        const db = ordemSquad[b.squadId] ?? 99;
+        const da = posicao(a);
+        const db = posicao(b);
         if (da !== db) return da - db; // squad primeiro; a ordenação escolhida vale DENTRO dele (M36)
       }
       return dentroDoGrupo(a, b);
@@ -327,18 +419,41 @@ export function createCarteira(options = {}) {
     if (btn) btn.addEventListener("click", () => window.location.reload());
   }
 
-  function renderVazio(comFiltro) {
-    host.innerHTML =
-      cabecalho("0 clientes") +
+  /* Carteira vazia é ESTADO, não erro (M12 já separa isso de
+     PORTFOLIO_ERROR) — mas a explicação precisa ser verdadeira. Com
+     SQUADS_ENFORCEMENT=OFF um usuário pode legitimamente não ter squad
+     nenhum, e o admin tem bypass sem membership: para os dois, "nenhum
+     cliente atribuído aos SEUS SQUADS" culpa um vínculo que não existe e
+     manda procurar um coordenador de squad que não há. */
+  function vazioDaCarteira() {
+    return getSquads().length
+      ? { titulo: "Nenhum cliente atribuído aos seus squads", descricao: "Fale com o coordenador do seu squad." }
+      : { titulo: "Nenhum cliente na sua carteira", descricao: "Fale com o seu coordenador para receber acesso a uma carteira." };
+  }
+
+  const VAZIO_DE_FILTRO = { titulo: "Nenhum cliente para os filtros atuais", descricao: "Ajuste a busca ou os filtros." };
+
+  function htmlVazio(estado) {
+    return (
       '<div class="vf-empty"><p class="vf-empty__title">' +
-      (comFiltro ? "Nenhum cliente para os filtros atuais" : "Nenhum cliente atribuído aos seus squads") +
-      "</p><p class=\"vf-empty__description\">" +
-      (comFiltro ? "Ajuste a busca ou os filtros." : "Fale com o coordenador do seu squad.") +
-      "</p></div>";
+      fmt.escapeHTML(estado.titulo) +
+      '</p><p class="vf-empty__description">' +
+      fmt.escapeHTML(estado.descricao) +
+      "</p></div>"
+    );
+  }
+
+  function renderVazio(comFiltro) {
+    host.innerHTML = cabecalho("0 clientes") + htmlVazio(comFiltro ? VAZIO_DE_FILTRO : vazioDaCarteira());
   }
 
   function renderLista(clientes) {
-    const squads = getSquads();
+    const squads = squadsDaCarteira(clientes);
+    // Um `?squad=` colado numa URL (ou herdado de outro usuário) que não
+    // corresponde a nenhum squad desta carteira deixava a lista vazia com o
+    // seletor exibindo "Todos" — filtro invisível, o pior dos dois mundos.
+    // Mesmo tratamento já dado a `?ordem=sync` sem dado de sync.
+    if (squad !== "todos" && !squads.some((s) => String(s.id) === String(squad))) squad = "todos";
     const comAtencao = clientes.filter((c) => (c.pendencias || []).length).length;
     const descricao =
       `${clientes.length} cliente${clientes.length === 1 ? "" : "s"}` +
@@ -380,7 +495,15 @@ export function createCarteira(options = {}) {
       squads.length > 1
         ? '<label class="vf-toolbar__field">Squad <select id="cart-squad" class="vf-select vf-select--sm">' +
           '<option value="todos">Todos</option>' +
-          squads.map((s) => `<option value="${fmt.escapeHTML(String(s.id))}"${String(squad) === String(s.id) ? " selected" : ""}>${fmt.escapeHTML(s.nome)}</option>`).join("") +
+          squads
+            .map((s) => {
+              // O principal é IDENTIFICADO, não pré-selecionado: nascer
+              // filtrado esconderia carteira autorizada sem dizer que
+              // escondeu (ver a decisão aberta sobre filtro por principal).
+              const rotulo = s.nome + (s.principal ? " (principal)" : "");
+              return `<option value="${fmt.escapeHTML(String(s.id))}"${String(squad) === String(s.id) ? " selected" : ""}>${fmt.escapeHTML(rotulo)}</option>`;
+            })
+            .join("") +
           "</select></label>"
         : "";
     return (
@@ -416,26 +539,33 @@ export function createCarteira(options = {}) {
 
     const lista = visiveis(clientes);
     if (!lista.length) {
-      box.innerHTML =
-        '<div class="vf-empty"><p class="vf-empty__title">' +
-        (clientes.length ? "Nenhum cliente para os filtros atuais" : "Nenhum cliente atribuído aos seus squads") +
-        '</p><p class="vf-empty__description">' +
-        (clientes.length ? "Ajuste a busca ou os filtros." : "Fale com o coordenador do seu squad.") +
-        "</p></div>";
+      // Um squad autorizado sem cliente visível não é falta de acesso nem
+      // erro: é um filtro sem resultado, e é o que a tela precisa dizer.
+      box.innerHTML = htmlVazio(clientes.length ? VAZIO_DE_FILTRO : vazioDaCarteira());
       return;
     }
 
-    const squads = getSquads();
-    const agrupar = agrupandoPorSquad();
+    const squads = squadsDaCarteira(clientes);
+    const agrupar = agrupandoPorSquad(clientes);
     let html = "";
-    let squadAtual = null;
+    // `null` e não SEM_SQUAD: a primeira linha da lista TEM de abrir um
+    // grupo. Com o valor inicial igual à chave do primeiro cliente, uma
+    // carteira que começa por clientes sem squad ficava sem o cabeçalho
+    // dele — e os clientes apareciam soltos, como se pertencessem ao
+    // grupo seguinte.
+    let chaveAtual = null;
 
     lista.forEach((c) => {
-      if (agrupar && c.squadId !== squadAtual) {
-        squadAtual = c.squadId;
-        const s = squads.find((x) => x.id === squadAtual);
-        const n = lista.filter((x) => x.squadId === squadAtual).length;
-        html += `<h2 class="vf-portfolio-group">${fmt.escapeHTML(s ? s.nome.toUpperCase() : "SEM SQUAD")} <small>${n} cliente${n === 1 ? "" : "s"}</small></h2>`;
+      const chave = chaveSquad(c);
+      if (agrupar && chave !== chaveAtual) {
+        chaveAtual = chave;
+        const s = chave === SEM_SQUAD ? null : squads.find((x) => String(x.id) === chave);
+        const n = lista.filter((x) => chaveSquad(x) === chave).length;
+        const rotulo = chave === SEM_SQUAD ? "SEM SQUAD" : (s ? s.nome : `Squad #${chave}`).toUpperCase();
+        // "Principal" INFORMA, nunca restringe: o grupo continua sendo um
+        // grupo como os outros, com os mesmos clientes e o mesmo acesso.
+        const marca = s && s.principal ? ' <span class="vf-portfolio-group__tag">principal</span>' : "";
+        html += `<h2 class="vf-portfolio-group">${fmt.escapeHTML(rotulo)}${marca} <small>${n} cliente${n === 1 ? "" : "s"}</small></h2>`;
       }
       html += linhaCliente(c);
     });

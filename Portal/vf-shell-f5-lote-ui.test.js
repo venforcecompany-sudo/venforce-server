@@ -106,6 +106,15 @@ function startServer() {
       res.end(contents);
     });
   });
+  /* Mesmo flake de harness diagnosticado em Portal/vf-shell-ui.test.js: esta
+     suíte abre 13 páginas REAIS em sequência, e entre elas passam segundos
+     de asserções CDP. O Node fecha a conexão keep-alive ociosa em 5s
+     (padrão) enquanto o Chrome ainda a considera reutilizável, e a
+     requisição seguinte morre no meio — o sintoma que aparecia aqui era
+     "o Shell V3 não montou", porque a vítima sorteada era um dos módulos
+     ES da página. Nada disto é produto: é o servidor do próprio teste. */
+  server.keepAliveTimeout = 120000;
+  server.headersTimeout = 125000;
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
@@ -171,8 +180,13 @@ async function check(name, fn) {
 
 function wireInterception(cdp) {
   const excecoes = [];
+  /* Nunca propaga. Um throw aqui roda dentro de um handler de evento async
+     sem catch: a requisição interceptada fica PAUSADA para sempre e a página
+     nunca termina de carregar — o erro real (seja qual for) apareceria
+     depois, disfarçado de "o Shell V3 não montou". Interceptação morta
+     (navegação trocou a página no meio) é o caso comum e é benigna. */
   const respond = async (m, p) => {
-    try { await cdp.send(m, p); } catch (err) { if (!/Invalid InterceptionId/.test(err.message || "")) throw err; }
+    try { await cdp.send(m, p); } catch (_) { /* interceptação já morreu */ }
   };
   cdp.onEvent = async (method, params) => {
     // Exceção NÃO TRATADA é o que este teste persegue; falha de rede
@@ -184,7 +198,29 @@ function wireInterception(cdp) {
     }
     if (method !== "Fetch.requestPaused") return;
     const url = params.request.url;
-    if (!url.includes(PROD_HOST)) { await respond("Fetch.continueRequest", { requestId: params.requestId }); return; }
+    // O harness serve o Portal em 127.0.0.1; SÓ ele continua de verdade.
+    // Um recurso externo (as fontes do Google, presentes em quase toda
+    // página) saindo para a internet real torna a suíte refém da rede da
+    // máquina — e o sintoma não seria "a fonte não carregou": uma folha de
+    // estilo PENDENTE bloqueia a execução dos <script> seguintes, então o
+    // módulo /vf-shell.js nunca roda e o teste acusa "o Shell V3 não
+    // montou". Foi o flake residual desta suíte (~1 em 5, sempre na
+    // design-system-lab.html, a página mais pesada e a última do lote).
+    // Devolver CSS vazio mantém a página funcional: os testes daqui medem
+    // montagem do Shell, escopo e exceções de JS, nunca tipografia.
+    if (!url.includes(PROD_HOST)) {
+      if (!/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(url)) {
+        await respond("Fetch.fulfillRequest", {
+          requestId: params.requestId,
+          responseCode: 200,
+          responseHeaders: [{ name: "content-type", value: "text/css" }],
+          body: "",
+        });
+        return;
+      }
+      await respond("Fetch.continueRequest", { requestId: params.requestId });
+      return;
+    }
     const cors = [
       { name: "access-control-allow-origin", value: "*" },
       { name: "access-control-allow-headers", value: "authorization,content-type" },

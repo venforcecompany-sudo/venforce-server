@@ -151,6 +151,10 @@ const ESTADOS = {
     acao: { label: "Tentar novamente", cmd: "retry" },
     alerta: true,
   },
+  // O texto depende de o usuário TER squad: com SQUADS_ENFORCEMENT=OFF ele
+  // pode legitimamente não ter nenhum, e o admin tem bypass sem membership.
+  // Para os dois, "atribuído aos SEUS SQUADS" culpa um vínculo inexistente e
+  // manda procurar um coordenador de squad que não há — ver textoNoPortfolio().
   NO_PORTFOLIO: {
     tom: "info",
     titulo: "Nenhum cliente atribuído aos seus squads",
@@ -811,6 +815,20 @@ export function createVfShell(options = {}) {
 
   /* ── Gating por escopo (MASTER_SPEC §5.4) ────────────────────────────── */
 
+  /* Carteira vazia continua sendo ESTADO (nunca erro — M12 já separa os
+     dois); o que muda é a EXPLICAÇÃO. Só quem tem squad pode ser mandado ao
+     coordenador do squad dele. `getSquads()` vem de /me/context e é `[]`
+     tanto para quem ainda não foi mapeado (enforcement OFF) quanto para o
+     admin, que enxerga por bypass e não precisa ser membro de nada. */
+  function textoNoPortfolio() {
+    const squads = ctxStore.getSquads ? ctxStore.getSquads() : [];
+    if (squads && squads.length) return null;
+    return {
+      titulo: "Nenhum cliente na sua carteira",
+      texto: "Fale com o seu coordenador para receber acesso a uma carteira.",
+    };
+  }
+
   function aplicarGating(snap) {
     const escopo = doc.body.dataset.vfScope || "global";
     const estado = snap.state;
@@ -832,12 +850,13 @@ export function createVfShell(options = {}) {
       return;
     }
 
-    const def = ESTADOS[estado];
+    let def = ESTADOS[estado];
     if (!def) {
       stateHost.innerHTML = "";
       stateHost.hidden = true;
       return;
     }
+    if (estado === "NO_PORTFOLIO") def = Object.assign({}, def, textoNoPortfolio());
 
     stateHost.hidden = false;
     const acao = def.acao
