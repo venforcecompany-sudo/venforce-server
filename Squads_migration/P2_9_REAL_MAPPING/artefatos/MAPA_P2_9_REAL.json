@@ -1,0 +1,3456 @@
+{
+  "geradoEm": "2026-09-04T18:24:35.087Z",
+  "resumo": {
+    "clientesReais": 83,
+    "clientesAtivos": 83,
+    "nomesNaRelacao": 52,
+    "porClasse": {
+      "MATCH_EXATO": 26,
+      "MATCH_ALIAS_COMPROVADO": 12,
+      "MATCH_CLUSTER_LEGADO": 8,
+      "NAO_EXISTE_NO_BANCO": 5,
+      "MATCH_AMBIGUO": 1
+    },
+    "clusters": 11,
+    "aliases": 16,
+    "canonicosProjetados": 67,
+    "clientesPorSquad": {
+      "squad-2": 10,
+      "squad-8-legado": 26,
+      "squad-4": 18,
+      "squad-1": 11,
+      "squad-6": 5,
+      "squad-5": 6,
+      "squad-3": 7
+    },
+    "identidades": {
+      "MATCH_EXATO": 14,
+      "EXCLUIDO_USUARIO_NAO_CRIADO": 4,
+      "DECISAO_HUMANA_EMAIL": 6
+    },
+    "invariantesFalhas": 0
+  },
+  "mapaClientes": [
+    {
+      "clienteId": 9,
+      "slug": "mwm",
+      "nome": "MWM",
+      "squad": "squad-2",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "MWM",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 11,
+      "slug": "calhas_kairos",
+      "nome": "Calhas Kairos",
+      "squad": "squad-2",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "Calhas",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 13,
+      "slug": "cegil",
+      "nome": "Cegil",
+      "squad": "squad-2",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Cegil",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 14,
+      "slug": "maximus_feramentas",
+      "nome": "Maximus Feramentas",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 15,
+      "slug": "influencia_jeans",
+      "nome": "Influencia Jeans",
+      "squad": "squad-4",
+      "origem": "MATCH_CLUSTER_LEGADO",
+      "nomeRelacao": "Influencia Jeans",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 16,
+      "slug": "up_vendas",
+      "nome": "Up Vendas",
+      "squad": "squad-2",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Up Vendas",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 17,
+      "slug": "deluche",
+      "nome": "Deluche",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 19,
+      "slug": "vent_solues",
+      "nome": "Vent soluções",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 21,
+      "slug": "adb_supply",
+      "nome": "ADB Supply",
+      "squad": "squad-2",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "ADB Supply",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 23,
+      "slug": "emprio_luz",
+      "nome": "Empório Luz",
+      "squad": "squad-2",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Empório Luz",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 25,
+      "slug": "maria_eduarda",
+      "nome": "Maria Eduarda",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 28,
+      "slug": "pro_fit",
+      "nome": "Pro Fit",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 29,
+      "slug": "loja_da_isa",
+      "nome": "Loja da Isa",
+      "squad": "squad-1",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Loja da Isa",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 30,
+      "slug": "dm",
+      "nome": "DM",
+      "squad": "squad-1",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "DM Comércio",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 32,
+      "slug": "wbs_medical",
+      "nome": "WBS Medical",
+      "squad": "squad-1",
+      "origem": "MATCH_CLUSTER_LEGADO",
+      "nomeRelacao": "WBS",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 33,
+      "slug": "carpei",
+      "nome": "Carpei",
+      "squad": "squad-1",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Carpei",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 34,
+      "slug": "j_meira",
+      "nome": "J Meira",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 35,
+      "slug": "extra",
+      "nome": "Extra",
+      "squad": "squad-1",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Extra",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 36,
+      "slug": "mercadao_enxovais",
+      "nome": "Mercadao enxovais",
+      "squad": "squad-1",
+      "origem": "MATCH_CLUSTER_LEGADO",
+      "nomeRelacao": "Mercadao",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 37,
+      "slug": "jf_shopp",
+      "nome": "JF Shopp",
+      "squad": "squad-1",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "JF",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 38,
+      "slug": "lps_fitness",
+      "nome": "LPS Fitness",
+      "squad": "squad-6",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "LPS Fitness",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 39,
+      "slug": "alma",
+      "nome": "Alma",
+      "squad": "squad-5",
+      "origem": "MATCH_CLUSTER_LEGADO",
+      "nomeRelacao": "Alma",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 40,
+      "slug": "dua_cosmeticos",
+      "nome": "Dua Cosmeticos",
+      "squad": "squad-4",
+      "origem": "MATCH_CLUSTER_LEGADO",
+      "nomeRelacao": "Dua cosmeticos",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 41,
+      "slug": "brilha_kids",
+      "nome": "Brilha Kids",
+      "squad": "squad-3",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Brilha Kids",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 48,
+      "slug": "comprou_enviou_chegou",
+      "nome": "Comprou Enviou Chegou",
+      "squad": "squad-4",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "Comprou Enviou",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 49,
+      "slug": "kirius",
+      "nome": "Kirius",
+      "squad": "squad-4",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "Kirus",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 50,
+      "slug": "pedro_baby",
+      "nome": "Pedro Baby",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 51,
+      "slug": "envm",
+      "nome": "ENVM",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 52,
+      "slug": "tenda_medieval",
+      "nome": "Tenda Medieval",
+      "squad": "squad-1",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "Tenda",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 53,
+      "slug": "macedo_materiais_construo",
+      "nome": "Macedo Materiais Construção",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 54,
+      "slug": "mm_importes",
+      "nome": "MM Importes",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 55,
+      "slug": "maya",
+      "nome": "Maya",
+      "squad": "squad-4",
+      "origem": "MATCH_CLUSTER_LEGADO",
+      "nomeRelacao": "Maya",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 56,
+      "slug": "exclusiva_jeans",
+      "nome": "Exclusiva Jeans",
+      "squad": "squad-4",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Exclusiva Jeans",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 57,
+      "slug": "mais_estilo",
+      "nome": "Mais Estilo",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 58,
+      "slug": "luli",
+      "nome": "Luli",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 59,
+      "slug": "trevo",
+      "nome": "Trevo",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 60,
+      "slug": "influencia_jeans_2",
+      "nome": "influencia_jeans 2",
+      "squad": "squad-4",
+      "origem": "ALIAS_HERDA_CANONICO",
+      "nomeRelacao": "Influencia Jeans",
+      "papel": "ALIAS",
+      "canonicalClienteId": 15
+    },
+    {
+      "clienteId": 62,
+      "slug": "wbs_2",
+      "nome": "wbs 2",
+      "squad": "squad-1",
+      "origem": "ALIAS_HERDA_CANONICO",
+      "nomeRelacao": "WBS",
+      "papel": "ALIAS",
+      "canonicalClienteId": 32
+    },
+    {
+      "clienteId": 63,
+      "slug": "j_meira_2",
+      "nome": "J Meira 2",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "ALIAS",
+      "canonicalClienteId": 34
+    },
+    {
+      "clienteId": 64,
+      "slug": "j_meira_3",
+      "nome": "J Meira 3",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "ALIAS",
+      "canonicalClienteId": 34
+    },
+    {
+      "clienteId": 65,
+      "slug": "mercadao_enxovais_2",
+      "nome": "Mercadao enxovais 2",
+      "squad": "squad-1",
+      "origem": "ALIAS_HERDA_CANONICO",
+      "nomeRelacao": "Mercadao",
+      "papel": "ALIAS",
+      "canonicalClienteId": 36
+    },
+    {
+      "clienteId": 66,
+      "slug": "alma_2",
+      "nome": "Alma 2",
+      "squad": "squad-5",
+      "origem": "ALIAS_HERDA_CANONICO",
+      "nomeRelacao": "Alma",
+      "papel": "ALIAS",
+      "canonicalClienteId": 39
+    },
+    {
+      "clienteId": 67,
+      "slug": "dua_cosmeticos_2",
+      "nome": "Dua Cosmeticos 2",
+      "squad": "squad-4",
+      "origem": "ALIAS_HERDA_CANONICO",
+      "nomeRelacao": "Dua cosmeticos",
+      "papel": "ALIAS",
+      "canonicalClienteId": 40
+    },
+    {
+      "clienteId": 68,
+      "slug": "maya_2",
+      "nome": "maya 2",
+      "squad": "squad-4",
+      "origem": "ALIAS_HERDA_CANONICO",
+      "nomeRelacao": "Maya",
+      "papel": "ALIAS",
+      "canonicalClienteId": 55
+    },
+    {
+      "clienteId": 69,
+      "slug": "maya_3",
+      "nome": "maya 3",
+      "squad": "squad-4",
+      "origem": "ALIAS_HERDA_CANONICO",
+      "nomeRelacao": "Maya",
+      "papel": "ALIAS",
+      "canonicalClienteId": 55
+    },
+    {
+      "clienteId": 70,
+      "slug": "maya_4",
+      "nome": "maya 4",
+      "squad": "squad-4",
+      "origem": "ALIAS_HERDA_CANONICO",
+      "nomeRelacao": "Maya",
+      "papel": "ALIAS",
+      "canonicalClienteId": 55
+    },
+    {
+      "clienteId": 71,
+      "slug": "maya_5",
+      "nome": "maya 5",
+      "squad": "squad-4",
+      "origem": "ALIAS_HERDA_CANONICO",
+      "nomeRelacao": "Maya",
+      "papel": "ALIAS",
+      "canonicalClienteId": 55
+    },
+    {
+      "clienteId": 75,
+      "slug": "jfx",
+      "nome": "JFX",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 82,
+      "slug": "luli_1",
+      "nome": "Luli_1",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "ALIAS",
+      "canonicalClienteId": 58
+    },
+    {
+      "clienteId": 85,
+      "slug": "a_venda",
+      "nome": "a_venda",
+      "squad": "squad-4",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "AVENDA",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 86,
+      "slug": "shopping_86",
+      "nome": "shopping_86",
+      "squad": "squad-4",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Shopping 86",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 90,
+      "slug": "shalom_industria",
+      "nome": "Shalom_industria",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 93,
+      "slug": "castro_company",
+      "nome": "Castro Company",
+      "squad": "squad-5",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Castro Company",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 94,
+      "slug": "demo-shopee",
+      "nome": "Cliente Demo Shopee",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 97,
+      "slug": "brasil_tek",
+      "nome": "BrasilTek",
+      "squad": "squad-2",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "BrasilTek",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 98,
+      "slug": "er_2",
+      "nome": "er2",
+      "squad": "squad-5",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "ER2",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 99,
+      "slug": "paula_anselmo",
+      "nome": "Paula e Anselmo",
+      "squad": "squad-4",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Paula e Anselmo",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 100,
+      "slug": "zenite_loja",
+      "nome": "Zenite",
+      "squad": "squad-4",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Zenite",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 101,
+      "slug": "infinite_solucoes",
+      "nome": "Infinite Solucoes",
+      "squad": "squad-3",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "Infinite",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 102,
+      "slug": "fenix_equipamentos1",
+      "nome": "Fenix Equipamentos1",
+      "squad": "squad-6",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "Fênix",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 104,
+      "slug": "red_fish",
+      "nome": "Red Fish",
+      "squad": "squad-6",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Red Fish",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 105,
+      "slug": "elizamarket",
+      "nome": "Eliza.Market",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 106,
+      "slug": "teste_x01",
+      "nome": "Teste_x01",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 107,
+      "slug": "mm_comercio",
+      "nome": "MM Comercio",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 108,
+      "slug": "rios_shop",
+      "nome": "Rios Shop",
+      "squad": "squad-3",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Rios Shop",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 109,
+      "slug": "teste_01",
+      "nome": "Teste 01",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "ALIAS",
+      "canonicalClienteId": 126
+    },
+    {
+      "clienteId": 110,
+      "slug": "tevixcomercio",
+      "nome": "tevix.comercio",
+      "squad": "squad-2",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "Tevix",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 111,
+      "slug": "inmatec",
+      "nome": "in.matec",
+      "squad": "squad-2",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "Eletro in Matec",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 112,
+      "slug": "zorzaloja",
+      "nome": "zorza.loja",
+      "squad": "squad-3",
+      "origem": "MATCH_CLUSTER_LEGADO",
+      "nomeRelacao": "Zorza",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 113,
+      "slug": "toque_ouro",
+      "nome": "Toque ouro",
+      "squad": "squad-6",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Toque de Ouro",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 114,
+      "slug": "beleza_chic",
+      "nome": "Beleza Chic",
+      "squad": "squad-3",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Beleza Chic",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 115,
+      "slug": "plispack_embalagens",
+      "nome": "PlisPack Embalagens",
+      "squad": "squad-3",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "Plispack",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 116,
+      "slug": "william_modas",
+      "nome": "William Modas",
+      "squad": "squad-4",
+      "origem": "ALIAS_HERDA_CANONICO",
+      "nomeRelacao": "WM",
+      "papel": "ALIAS",
+      "canonicalClienteId": 123
+    },
+    {
+      "clienteId": 117,
+      "slug": "giro_max",
+      "nome": "Giro Max",
+      "squad": "squad-5",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Giromax",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 119,
+      "slug": "rikam_loja",
+      "nome": "Rikam Loja",
+      "squad": "squad-5",
+      "origem": "MATCH_ALIAS_COMPROVADO",
+      "nomeRelacao": "Rikam",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 120,
+      "slug": "fitassul_comercio",
+      "nome": "Fitassul Comercio",
+      "squad": "squad-6",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Fitassul Comércio",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 121,
+      "slug": "zorza_shopee",
+      "nome": "zorza_shopee",
+      "squad": "squad-3",
+      "origem": "ALIAS_HERDA_CANONICO",
+      "nomeRelacao": "Zorza",
+      "papel": "ALIAS",
+      "canonicalClienteId": 112
+    },
+    {
+      "clienteId": 122,
+      "slug": "canastra",
+      "nome": "cafe",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 123,
+      "slug": "wmmodas",
+      "nome": "wm.modas",
+      "squad": "squad-4",
+      "origem": "MATCH_CLUSTER_LEGADO",
+      "nomeRelacao": "WM",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 124,
+      "slug": "jw_presentes",
+      "nome": "jw presentes",
+      "squad": "squad-2",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "J&W Presentes",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 125,
+      "slug": "power_game",
+      "nome": "Power Game",
+      "squad": "squad-1",
+      "origem": "MATCH_EXATO",
+      "nomeRelacao": "Power Game",
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 126,
+      "slug": "teste1",
+      "nome": "teste1",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "CANONICO"
+    },
+    {
+      "clienteId": 127,
+      "slug": "teste2",
+      "nome": "teste2",
+      "squad": "squad-8-legado",
+      "origem": "FORA_DA_RELACAO",
+      "nomeRelacao": null,
+      "papel": "ALIAS",
+      "canonicalClienteId": 126
+    }
+  ],
+  "clusters": [
+    {
+      "chave": "influencia_jeans",
+      "radicalComum": "influencia jeans",
+      "canonicalClienteId": 15,
+      "canonicalSlug": "influencia_jeans",
+      "canonicalNome": "Influencia Jeans",
+      "aliasClienteIds": [
+        60
+      ],
+      "aliases": [
+        {
+          "id": 60,
+          "slug": "influencia_jeans_2",
+          "nome": "influencia_jeans 2"
+        }
+      ],
+      "membros": [
+        {
+          "id": 15,
+          "slug": "influencia_jeans",
+          "nome": "Influencia Jeans",
+          "score": 1397,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 25,
+            "volumeDados": 77,
+            "idMaisAntigo": 185
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 1,
+          "linhasReferenciadas": 372,
+          "temApiKey": true
+        },
+        {
+          "id": 60,
+          "slug": "influencia_jeans_2",
+          "nome": "influencia_jeans 2",
+          "score": 304,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 25,
+            "volumeDados": 29,
+            "idMaisAntigo": 140
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 2,
+          "linhasReferenciadas": 8,
+          "temApiKey": true
+        }
+      ],
+      "evidencias": [
+        {
+          "entre": [
+            60,
+            15
+          ],
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "confianca": "FORTE",
+          "detalhe": "\"influencia_jeans 2\" reduz ao radical \"influencia jeans\", que É o nome/slug do cliente #15 — sufixo confirmado por existir o original"
+        }
+      ],
+      "corroboradoPelaRelacao": true,
+      "confianca": "CONFIRMADO",
+      "acao": "PLAN_ONLY"
+    },
+    {
+      "chave": "wbs_medical",
+      "radicalComum": "wbs",
+      "canonicalClienteId": 32,
+      "canonicalSlug": "wbs_medical",
+      "canonicalNome": "WBS Medical",
+      "aliasClienteIds": [
+        62
+      ],
+      "aliases": [
+        {
+          "id": 62,
+          "slug": "wbs_2",
+          "nome": "wbs 2"
+        }
+      ],
+      "membros": [
+        {
+          "id": 32,
+          "slug": "wbs_medical",
+          "nome": "WBS Medical",
+          "score": 1307,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 29,
+            "idMaisAntigo": 168
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 8,
+          "temApiKey": true
+        },
+        {
+          "id": 62,
+          "slug": "wbs_2",
+          "nome": "wbs 2",
+          "score": 273,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 25,
+            "idMaisAntigo": 138
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 6,
+          "temApiKey": true
+        }
+      ],
+      "evidencias": [
+        {
+          "entre": [
+            32,
+            62
+          ],
+          "tipo": "EXTERNAL_ACCOUNT_ID",
+          "confianca": "CONFIRMADO",
+          "detalhe": "cliente_contas com o mesmo external_account_id 234836231 (meli) sob clientes distintos"
+        }
+      ],
+      "corroboradoPelaRelacao": true,
+      "confianca": "CONFIRMADO",
+      "acao": "PLAN_ONLY"
+    },
+    {
+      "chave": "j_meira",
+      "radicalComum": "j meira",
+      "canonicalClienteId": 34,
+      "canonicalSlug": "j_meira",
+      "canonicalNome": "J Meira",
+      "aliasClienteIds": [
+        63,
+        64
+      ],
+      "aliases": [
+        {
+          "id": 63,
+          "slug": "j_meira_2",
+          "nome": "J Meira 2"
+        },
+        {
+          "id": 64,
+          "slug": "j_meira_3",
+          "nome": "J Meira 3"
+        }
+      ],
+      "membros": [
+        {
+          "id": 34,
+          "slug": "j_meira",
+          "nome": "J Meira",
+          "score": 1175,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 0,
+            "grants": 0,
+            "bases": 0,
+            "volumeDados": 9,
+            "idMaisAntigo": 166
+          },
+          "contasAtivas": 0,
+          "grants": 0,
+          "bases": 0,
+          "linhasReferenciadas": 1,
+          "temApiKey": true
+        },
+        {
+          "id": 63,
+          "slug": "j_meira_2",
+          "nome": "J Meira 2",
+          "score": 137,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 0,
+            "grants": 0,
+            "bases": 0,
+            "volumeDados": 0,
+            "idMaisAntigo": 137
+          },
+          "contasAtivas": 0,
+          "grants": 0,
+          "bases": 0,
+          "linhasReferenciadas": 0,
+          "temApiKey": true
+        },
+        {
+          "id": 64,
+          "slug": "j_meira_3",
+          "nome": "J Meira 3",
+          "score": 136,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 0,
+            "grants": 0,
+            "bases": 0,
+            "volumeDados": 0,
+            "idMaisAntigo": 136
+          },
+          "contasAtivas": 0,
+          "grants": 0,
+          "bases": 0,
+          "linhasReferenciadas": 0,
+          "temApiKey": true
+        }
+      ],
+      "evidencias": [
+        {
+          "entre": [
+            63,
+            34
+          ],
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "confianca": "FORTE",
+          "detalhe": "\"J Meira 2\" reduz ao radical \"j meira\", que É o nome/slug do cliente #34 — sufixo confirmado por existir o original"
+        },
+        {
+          "entre": [
+            63,
+            64
+          ],
+          "tipo": "RADICAL_LEGADO_COMUM",
+          "confianca": "FORTE",
+          "detalhe": "ambos reduzem ao mesmo radical legado \"j meira\""
+        },
+        {
+          "entre": [
+            34,
+            64
+          ],
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "confianca": "FORTE",
+          "detalhe": "\"J Meira 3\" reduz ao radical \"j meira\", que É o nome/slug do cliente #34 — sufixo confirmado por existir o original"
+        }
+      ],
+      "corroboradoPelaRelacao": false,
+      "confianca": "FORTE",
+      "acao": "PLAN_ONLY"
+    },
+    {
+      "chave": "mercadao_enxovais",
+      "radicalComum": "mercadao enxovais",
+      "canonicalClienteId": 36,
+      "canonicalSlug": "mercadao_enxovais",
+      "canonicalNome": "Mercadao enxovais",
+      "aliasClienteIds": [
+        65
+      ],
+      "aliases": [
+        {
+          "id": 65,
+          "slug": "mercadao_enxovais_2",
+          "nome": "Mercadao enxovais 2"
+        }
+      ],
+      "membros": [
+        {
+          "id": 36,
+          "slug": "mercadao_enxovais",
+          "nome": "Mercadao enxovais",
+          "score": 1364,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 120,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 30,
+            "idMaisAntigo": 164
+          },
+          "contasAtivas": 2,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 9,
+          "temApiKey": true
+        },
+        {
+          "id": 65,
+          "slug": "mercadao_enxovais_2",
+          "nome": "Mercadao enxovais 2",
+          "score": 322,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 60,
+            "grants": 100,
+            "bases": 0,
+            "volumeDados": 27,
+            "idMaisAntigo": 135
+          },
+          "contasAtivas": 1,
+          "grants": 2,
+          "bases": 0,
+          "linhasReferenciadas": 7,
+          "temApiKey": true
+        }
+      ],
+      "evidencias": [
+        {
+          "entre": [
+            36,
+            65
+          ],
+          "tipo": "ML_USER_ID",
+          "confianca": "CONFIRMADO",
+          "detalhe": "mesmo ml_user_id 8682183 marcado PRIMÁRIO nos dois clientes — a mesma conta de marketplace está cadastrada duas vezes"
+        },
+        {
+          "entre": [
+            36,
+            65
+          ],
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "confianca": "FORTE",
+          "detalhe": "\"Mercadao enxovais 2\" reduz ao radical \"mercadao enxovais\", que É o nome/slug do cliente #36 — sufixo confirmado por existir o original"
+        }
+      ],
+      "corroboradoPelaRelacao": true,
+      "confianca": "CONFIRMADO",
+      "acao": "PLAN_ONLY"
+    },
+    {
+      "chave": "alma",
+      "radicalComum": "alma",
+      "canonicalClienteId": 39,
+      "canonicalSlug": "alma",
+      "canonicalNome": "Alma",
+      "aliasClienteIds": [
+        66
+      ],
+      "aliases": [
+        {
+          "id": 66,
+          "slug": "alma_2",
+          "nome": "Alma 2"
+        }
+      ],
+      "membros": [
+        {
+          "id": 39,
+          "slug": "alma",
+          "nome": "Alma",
+          "score": 1419,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 25,
+            "volumeDados": 123,
+            "idMaisAntigo": 161
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 2,
+          "linhasReferenciadas": 12689,
+          "temApiKey": true
+        },
+        {
+          "id": 66,
+          "slug": "alma_2",
+          "nome": "Alma 2",
+          "score": 320,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 76,
+            "idMaisAntigo": 134
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 339,
+          "temApiKey": true
+        }
+      ],
+      "evidencias": [
+        {
+          "entre": [
+            66,
+            39
+          ],
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "confianca": "FORTE",
+          "detalhe": "\"Alma 2\" reduz ao radical \"alma\", que É o nome/slug do cliente #39 — sufixo confirmado por existir o original"
+        }
+      ],
+      "corroboradoPelaRelacao": true,
+      "confianca": "CONFIRMADO",
+      "acao": "PLAN_ONLY"
+    },
+    {
+      "chave": "dua_cosmeticos",
+      "radicalComum": "dua cosmeticos",
+      "canonicalClienteId": 40,
+      "canonicalSlug": "dua_cosmeticos",
+      "canonicalNome": "Dua Cosmeticos",
+      "aliasClienteIds": [
+        67
+      ],
+      "aliases": [
+        {
+          "id": 67,
+          "slug": "dua_cosmeticos_2",
+          "nome": "Dua Cosmeticos 2"
+        }
+      ],
+      "membros": [
+        {
+          "id": 40,
+          "slug": "dua_cosmeticos",
+          "nome": "Dua Cosmeticos",
+          "score": 1404,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 25,
+            "volumeDados": 109,
+            "idMaisAntigo": 160
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 1,
+          "linhasReferenciadas": 4352,
+          "temApiKey": true
+        },
+        {
+          "id": 67,
+          "slug": "dua_cosmeticos_2",
+          "nome": "Dua Cosmeticos 2",
+          "score": 264,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 21,
+            "idMaisAntigo": 133
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 4,
+          "temApiKey": true
+        }
+      ],
+      "evidencias": [
+        {
+          "entre": [
+            67,
+            40
+          ],
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "confianca": "FORTE",
+          "detalhe": "\"Dua Cosmeticos 2\" reduz ao radical \"dua cosmeticos\", que É o nome/slug do cliente #40 — sufixo confirmado por existir o original"
+        }
+      ],
+      "corroboradoPelaRelacao": true,
+      "confianca": "CONFIRMADO",
+      "acao": "PLAN_ONLY"
+    },
+    {
+      "chave": "maya",
+      "radicalComum": "maya",
+      "canonicalClienteId": 55,
+      "canonicalSlug": "maya",
+      "canonicalNome": "Maya",
+      "aliasClienteIds": [
+        71,
+        68,
+        69,
+        70
+      ],
+      "aliases": [
+        {
+          "id": 71,
+          "slug": "maya_5",
+          "nome": "maya 5"
+        },
+        {
+          "id": 68,
+          "slug": "maya_2",
+          "nome": "maya 2"
+        },
+        {
+          "id": 69,
+          "slug": "maya_3",
+          "nome": "maya 3"
+        },
+        {
+          "id": 70,
+          "slug": "maya_4",
+          "nome": "maya 4"
+        }
+      ],
+      "membros": [
+        {
+          "id": 55,
+          "slug": "maya",
+          "nome": "Maya",
+          "score": 1269,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 14,
+            "idMaisAntigo": 145
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 2,
+          "temApiKey": true
+        },
+        {
+          "id": 71,
+          "slug": "maya_5",
+          "nome": "maya 5",
+          "score": 257,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 18,
+            "idMaisAntigo": 129
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 3,
+          "temApiKey": true
+        },
+        {
+          "id": 68,
+          "slug": "maya_2",
+          "nome": "maya 2",
+          "score": 256,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 14,
+            "idMaisAntigo": 132
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 2,
+          "temApiKey": true
+        },
+        {
+          "id": 69,
+          "slug": "maya_3",
+          "nome": "maya 3",
+          "score": 255,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 14,
+            "idMaisAntigo": 131
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 2,
+          "temApiKey": true
+        },
+        {
+          "id": 70,
+          "slug": "maya_4",
+          "nome": "maya 4",
+          "score": 254,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 14,
+            "idMaisAntigo": 130
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 2,
+          "temApiKey": true
+        }
+      ],
+      "evidencias": [
+        {
+          "entre": [
+            68,
+            55
+          ],
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "confianca": "FORTE",
+          "detalhe": "\"maya 2\" reduz ao radical \"maya\", que É o nome/slug do cliente #55 — sufixo confirmado por existir o original"
+        },
+        {
+          "entre": [
+            68,
+            69
+          ],
+          "tipo": "RADICAL_LEGADO_COMUM",
+          "confianca": "FORTE",
+          "detalhe": "ambos reduzem ao mesmo radical legado \"maya\""
+        },
+        {
+          "entre": [
+            68,
+            70
+          ],
+          "tipo": "RADICAL_LEGADO_COMUM",
+          "confianca": "FORTE",
+          "detalhe": "ambos reduzem ao mesmo radical legado \"maya\""
+        },
+        {
+          "entre": [
+            68,
+            71
+          ],
+          "tipo": "RADICAL_LEGADO_COMUM",
+          "confianca": "FORTE",
+          "detalhe": "ambos reduzem ao mesmo radical legado \"maya\""
+        },
+        {
+          "entre": [
+            55,
+            69
+          ],
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "confianca": "FORTE",
+          "detalhe": "\"maya 3\" reduz ao radical \"maya\", que É o nome/slug do cliente #55 — sufixo confirmado por existir o original"
+        },
+        {
+          "entre": [
+            55,
+            70
+          ],
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "confianca": "FORTE",
+          "detalhe": "\"maya 4\" reduz ao radical \"maya\", que É o nome/slug do cliente #55 — sufixo confirmado por existir o original"
+        },
+        {
+          "entre": [
+            55,
+            71
+          ],
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "confianca": "FORTE",
+          "detalhe": "\"maya 5\" reduz ao radical \"maya\", que É o nome/slug do cliente #55 — sufixo confirmado por existir o original"
+        }
+      ],
+      "corroboradoPelaRelacao": true,
+      "confianca": "CONFIRMADO",
+      "acao": "PLAN_ONLY"
+    },
+    {
+      "chave": "luli",
+      "radicalComum": "luli",
+      "canonicalClienteId": 58,
+      "canonicalSlug": "luli",
+      "canonicalNome": "Luli",
+      "aliasClienteIds": [
+        82
+      ],
+      "aliases": [
+        {
+          "id": 82,
+          "slug": "luli_1",
+          "nome": "Luli_1"
+        }
+      ],
+      "membros": [
+        {
+          "id": 58,
+          "slug": "luli",
+          "nome": "Luli",
+          "score": 1215,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 0,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 23,
+            "idMaisAntigo": 142
+          },
+          "contasAtivas": 0,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 5,
+          "temApiKey": true
+        },
+        {
+          "id": 82,
+          "slug": "luli_1",
+          "nome": "Luli_1",
+          "score": 177,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 0,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 9,
+            "idMaisAntigo": 118
+          },
+          "contasAtivas": 0,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 1,
+          "temApiKey": true
+        }
+      ],
+      "evidencias": [
+        {
+          "entre": [
+            58,
+            82
+          ],
+          "tipo": "ML_USER_ID",
+          "confianca": "CONFIRMADO",
+          "detalhe": "mesmo ml_user_id 3310587126 marcado PRIMÁRIO nos dois clientes — a mesma conta de marketplace está cadastrada duas vezes"
+        },
+        {
+          "entre": [
+            58,
+            82
+          ],
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "confianca": "FORTE",
+          "detalhe": "\"Luli_1\" reduz ao radical \"luli\", que É o nome/slug do cliente #58 — sufixo confirmado por existir o original"
+        }
+      ],
+      "corroboradoPelaRelacao": false,
+      "confianca": "CONFIRMADO",
+      "acao": "PLAN_ONLY"
+    },
+    {
+      "chave": "zorzaloja",
+      "radicalComum": null,
+      "canonicalClienteId": 112,
+      "canonicalSlug": "zorzaloja",
+      "canonicalNome": "zorza.loja",
+      "aliasClienteIds": [
+        121
+      ],
+      "aliases": [
+        {
+          "id": 121,
+          "slug": "zorza_shopee",
+          "nome": "zorza_shopee"
+        }
+      ],
+      "membros": [
+        {
+          "id": 112,
+          "slug": "zorzaloja",
+          "nome": "zorza.loja",
+          "score": 1241,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 25,
+            "volumeDados": 18,
+            "idMaisAntigo": 88
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 1,
+          "linhasReferenciadas": 3,
+          "temApiKey": true
+        },
+        {
+          "id": 121,
+          "slug": "zorza_shopee",
+          "nome": "zorza_shopee",
+          "score": 1079,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 0,
+            "grants": 0,
+            "bases": 0,
+            "volumeDados": 0,
+            "idMaisAntigo": 79
+          },
+          "contasAtivas": 0,
+          "grants": 0,
+          "bases": 0,
+          "linhasReferenciadas": 0,
+          "temApiKey": true
+        }
+      ],
+      "evidencias": [
+        {
+          "entre": [
+            121,
+            112
+          ],
+          "tipo": "SUFIXO_MARKETPLACE_CASCA_VAZIA",
+          "confianca": "FORTE",
+          "detalhe": "\"zorza_shopee\" é o cadastro legado do marketplace \"shopee\" de \"zorza.loja\" e não tem conta, grant, base nem linha referenciada — casca vazia"
+        }
+      ],
+      "corroboradoPelaRelacao": false,
+      "confianca": "FORTE",
+      "acao": "PLAN_ONLY"
+    },
+    {
+      "chave": "wmmodas",
+      "radicalComum": null,
+      "canonicalClienteId": 123,
+      "canonicalSlug": "wmmodas",
+      "canonicalNome": "wm.modas",
+      "aliasClienteIds": [
+        116
+      ],
+      "aliases": [
+        {
+          "id": 116,
+          "slug": "william_modas",
+          "nome": "William Modas"
+        }
+      ],
+      "membros": [
+        {
+          "id": 123,
+          "slug": "wmmodas",
+          "nome": "wm.modas",
+          "score": 1166,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 0,
+            "grants": 50,
+            "bases": 25,
+            "volumeDados": 14,
+            "idMaisAntigo": 77
+          },
+          "contasAtivas": 0,
+          "grants": 1,
+          "bases": 1,
+          "linhasReferenciadas": 2,
+          "temApiKey": true
+        },
+        {
+          "id": 116,
+          "slug": "william_modas",
+          "nome": "William Modas",
+          "score": 1143,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 0,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 9,
+            "idMaisAntigo": 84
+          },
+          "contasAtivas": 0,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 1,
+          "temApiKey": true
+        }
+      ],
+      "evidencias": [
+        {
+          "entre": [
+            116,
+            123
+          ],
+          "tipo": "ML_USER_ID",
+          "confianca": "CONFIRMADO",
+          "detalhe": "mesmo ml_user_id 3589758095 marcado PRIMÁRIO nos dois clientes — a mesma conta de marketplace está cadastrada duas vezes"
+        }
+      ],
+      "corroboradoPelaRelacao": false,
+      "confianca": "CONFIRMADO",
+      "acao": "PLAN_ONLY"
+    },
+    {
+      "chave": "teste1",
+      "radicalComum": null,
+      "canonicalClienteId": 126,
+      "canonicalSlug": "teste1",
+      "canonicalNome": "teste1",
+      "aliasClienteIds": [
+        127,
+        109
+      ],
+      "aliases": [
+        {
+          "id": 127,
+          "slug": "teste2",
+          "nome": "teste2"
+        },
+        {
+          "id": 109,
+          "slug": "teste_01",
+          "nome": "Teste 01"
+        }
+      ],
+      "membros": [
+        {
+          "id": 126,
+          "slug": "teste1",
+          "nome": "teste1",
+          "score": 1267,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 120,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 23,
+            "idMaisAntigo": 74
+          },
+          "contasAtivas": 2,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 5,
+          "temApiKey": true
+        },
+        {
+          "id": 127,
+          "slug": "teste2",
+          "nome": "teste2",
+          "score": 1197,
+          "componentes": {
+            "semSufixoLegado": 1000,
+            "contasAtivas": 60,
+            "grants": 50,
+            "bases": 0,
+            "volumeDados": 14,
+            "idMaisAntigo": 73
+          },
+          "contasAtivas": 1,
+          "grants": 1,
+          "bases": 0,
+          "linhasReferenciadas": 2,
+          "temApiKey": true
+        },
+        {
+          "id": 109,
+          "slug": "teste_01",
+          "nome": "Teste 01",
+          "score": 116,
+          "componentes": {
+            "semSufixoLegado": 0,
+            "contasAtivas": 0,
+            "grants": 0,
+            "bases": 0,
+            "volumeDados": 25,
+            "idMaisAntigo": 91
+          },
+          "contasAtivas": 0,
+          "grants": 0,
+          "bases": 0,
+          "linhasReferenciadas": 6,
+          "temApiKey": true
+        }
+      ],
+      "evidencias": [
+        {
+          "entre": [
+            109,
+            126
+          ],
+          "tipo": "EXTERNAL_ACCOUNT_ID",
+          "confianca": "CONFIRMADO",
+          "detalhe": "cliente_contas com o mesmo external_account_id 484819600 (meli) sob clientes distintos"
+        },
+        {
+          "entre": [
+            109,
+            127
+          ],
+          "tipo": "EXTERNAL_ACCOUNT_ID",
+          "confianca": "CONFIRMADO",
+          "detalhe": "cliente_contas com o mesmo external_account_id 484819600 (meli) sob clientes distintos"
+        },
+        {
+          "entre": [
+            126,
+            127
+          ],
+          "tipo": "ML_USER_ID",
+          "confianca": "CONFIRMADO",
+          "detalhe": "mesmo ml_user_id 484819600 marcado PRIMÁRIO nos dois clientes — a mesma conta de marketplace está cadastrada duas vezes"
+        }
+      ],
+      "corroboradoPelaRelacao": false,
+      "confianca": "CONFIRMADO",
+      "acao": "PLAN_ONLY"
+    }
+  ],
+  "naoMergear": [
+    {
+      "clientes": [
+        102,
+        105
+      ],
+      "motivo": "ml_user_id 2661771367 aparece como grant SECUNDÁRIO em um cliente e PRIMÁRIO em outro, com nomes sem parentesco — assinatura de grant cruzado (defeito de dado), não de identidade",
+      "confianca": "NAO_MERGEAR",
+      "classe": "GRANT_CRUZADO_DEFEITO"
+    }
+  ],
+  "matches": [
+    {
+      "nomeRelacao": "Carpei",
+      "squadSlug": "squad-1",
+      "squadNumero": 1,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 33,
+      "clienteSlug": "carpei",
+      "clienteNome": "Carpei",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 33,
+          "slug": "carpei",
+          "nome": "Carpei"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Power Game",
+      "squadSlug": "squad-1",
+      "squadNumero": 1,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 125,
+      "clienteSlug": "power_game",
+      "clienteNome": "Power Game",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 125,
+          "slug": "power_game",
+          "nome": "Power Game"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "DM Comércio",
+      "squadSlug": "squad-1",
+      "squadNumero": 1,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L4B_CLIENTE_PREFIXO_DA_RELACAO",
+      "clienteId": 30,
+      "clienteSlug": "dm",
+      "clienteNome": "DM",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 30,
+          "slug": "dm",
+          "nome": "DM"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Extra",
+      "squadSlug": "squad-1",
+      "squadNumero": 1,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 35,
+      "clienteSlug": "extra",
+      "clienteNome": "Extra",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 35,
+          "slug": "extra",
+          "nome": "Extra"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "JF",
+      "squadSlug": "squad-1",
+      "squadNumero": 1,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 37,
+      "clienteSlug": "jf_shopp",
+      "clienteNome": "JF Shopp",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 37,
+          "slug": "jf_shopp",
+          "nome": "JF Shopp"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "WBS",
+      "squadSlug": "squad-1",
+      "squadNumero": 1,
+      "classe": "MATCH_CLUSTER_LEGADO",
+      "camada": "L2_RADICAL_DO_CLUSTER",
+      "clienteId": 32,
+      "clienteSlug": "wbs_medical",
+      "clienteNome": "WBS Medical",
+      "cluster": {
+        "canonicalClienteId": 32,
+        "aliases": [
+          62
+        ],
+        "confianca": "CONFIRMADO"
+      },
+      "candidatos": [
+        {
+          "id": 32,
+          "slug": "wbs_medical",
+          "nome": "WBS Medical"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Loja da Isa",
+      "squadSlug": "squad-1",
+      "squadNumero": 1,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 29,
+      "clienteSlug": "loja_da_isa",
+      "clienteNome": "Loja da Isa",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 29,
+          "slug": "loja_da_isa",
+          "nome": "Loja da Isa"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Mercadao",
+      "squadSlug": "squad-1",
+      "squadNumero": 1,
+      "classe": "MATCH_CLUSTER_LEGADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 36,
+      "clienteSlug": "mercadao_enxovais",
+      "clienteNome": "Mercadao enxovais",
+      "cluster": {
+        "canonicalClienteId": 36,
+        "aliases": [
+          65
+        ],
+        "confianca": "CONFIRMADO"
+      },
+      "candidatos": [
+        {
+          "id": 36,
+          "slug": "mercadao_enxovais",
+          "nome": "Mercadao enxovais"
+        },
+        {
+          "id": 65,
+          "slug": "mercadao_enxovais_2",
+          "nome": "Mercadao enxovais 2"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Tenda",
+      "squadSlug": "squad-1",
+      "squadNumero": 1,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 52,
+      "clienteSlug": "tenda_medieval",
+      "clienteNome": "Tenda Medieval",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 52,
+          "slug": "tenda_medieval",
+          "nome": "Tenda Medieval"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "ADB Supply",
+      "squadSlug": "squad-2",
+      "squadNumero": 2,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 21,
+      "clienteSlug": "adb_supply",
+      "clienteNome": "ADB Supply",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 21,
+          "slug": "adb_supply",
+          "nome": "ADB Supply"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "BrasilTek",
+      "squadSlug": "squad-2",
+      "squadNumero": 2,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 97,
+      "clienteSlug": "brasil_tek",
+      "clienteNome": "BrasilTek",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 97,
+          "slug": "brasil_tek",
+          "nome": "BrasilTek"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "J&W Presentes",
+      "squadSlug": "squad-2",
+      "squadNumero": 2,
+      "classe": "MATCH_EXATO",
+      "camada": "L1B_IGUALDADE_COMPACTA",
+      "clienteId": 124,
+      "clienteSlug": "jw_presentes",
+      "clienteNome": "jw presentes",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 124,
+          "slug": "jw_presentes",
+          "nome": "jw presentes"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "GS",
+      "squadSlug": "squad-2",
+      "squadNumero": 2,
+      "classe": "NAO_EXISTE_NO_BANCO",
+      "camada": null,
+      "clienteId": null,
+      "candidatos": [],
+      "motivo": "nenhuma camada de casamento encontrou cliente real com este nome"
+    },
+    {
+      "nomeRelacao": "Calhas",
+      "squadSlug": "squad-2",
+      "squadNumero": 2,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 11,
+      "clienteSlug": "calhas_kairos",
+      "clienteNome": "Calhas Kairos",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 11,
+          "slug": "calhas_kairos",
+          "nome": "Calhas Kairos"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Cegil",
+      "squadSlug": "squad-2",
+      "squadNumero": 2,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 13,
+      "clienteSlug": "cegil",
+      "clienteNome": "Cegil",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 13,
+          "slug": "cegil",
+          "nome": "Cegil"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Eletro in Matec",
+      "squadSlug": "squad-2",
+      "squadNumero": 2,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L6_EVIDENCIA_DE_BASE",
+      "clienteId": 111,
+      "clienteSlug": "inmatec",
+      "clienteNome": "in.matec",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 111,
+          "slug": "inmatec",
+          "nome": "in.matec"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Empório Luz",
+      "squadSlug": "squad-2",
+      "squadNumero": 2,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 23,
+      "clienteSlug": "emprio_luz",
+      "clienteNome": "Empório Luz",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 23,
+          "slug": "emprio_luz",
+          "nome": "Empório Luz"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "MWM",
+      "squadSlug": "squad-2",
+      "squadNumero": 2,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 9,
+      "clienteSlug": "mwm",
+      "clienteNome": "MWM",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 9,
+          "slug": "mwm",
+          "nome": "MWM"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Tevix",
+      "squadSlug": "squad-2",
+      "squadNumero": 2,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 110,
+      "clienteSlug": "tevixcomercio",
+      "clienteNome": "tevix.comercio",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 110,
+          "slug": "tevixcomercio",
+          "nome": "tevix.comercio"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Up Vendas",
+      "squadSlug": "squad-2",
+      "squadNumero": 2,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 16,
+      "clienteSlug": "up_vendas",
+      "clienteNome": "Up Vendas",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 16,
+          "slug": "up_vendas",
+          "nome": "Up Vendas"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "ADS",
+      "squadSlug": "squad-3",
+      "squadNumero": 3,
+      "classe": "NAO_EXISTE_NO_BANCO",
+      "camada": null,
+      "clienteId": null,
+      "candidatos": [],
+      "motivo": "nenhuma camada de casamento encontrou cliente real com este nome"
+    },
+    {
+      "nomeRelacao": "Beleza Chic",
+      "squadSlug": "squad-3",
+      "squadNumero": 3,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 114,
+      "clienteSlug": "beleza_chic",
+      "clienteNome": "Beleza Chic",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 114,
+          "slug": "beleza_chic",
+          "nome": "Beleza Chic"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Brilha Kids",
+      "squadSlug": "squad-3",
+      "squadNumero": 3,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 41,
+      "clienteSlug": "brilha_kids",
+      "clienteNome": "Brilha Kids",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 41,
+          "slug": "brilha_kids",
+          "nome": "Brilha Kids"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Infinite",
+      "squadSlug": "squad-3",
+      "squadNumero": 3,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 101,
+      "clienteSlug": "infinite_solucoes",
+      "clienteNome": "Infinite Solucoes",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 101,
+          "slug": "infinite_solucoes",
+          "nome": "Infinite Solucoes"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "MW",
+      "squadSlug": "squad-3",
+      "squadNumero": 3,
+      "classe": "NAO_EXISTE_NO_BANCO",
+      "camada": null,
+      "clienteId": null,
+      "candidatos": [],
+      "motivo": "nenhuma camada de casamento encontrou cliente real com este nome"
+    },
+    {
+      "nomeRelacao": "MM",
+      "squadSlug": "squad-3",
+      "squadNumero": 3,
+      "classe": "MATCH_AMBIGUO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": null,
+      "candidatos": [
+        {
+          "id": 107,
+          "slug": "mm_comercio",
+          "nome": "MM Comercio",
+          "contasAtivas": 1,
+          "grants": 1,
+          "linhasReferenciadas": 2
+        },
+        {
+          "id": 54,
+          "slug": "mm_importes",
+          "nome": "MM Importes",
+          "contasAtivas": 1,
+          "grants": 1,
+          "linhasReferenciadas": 5
+        }
+      ],
+      "motivo": "a camada L4_PREFIXO_DE_TOKENS encontrou 2 candidatos de empresas distintas — resolver por máquina seria adivinhar"
+    },
+    {
+      "nomeRelacao": "Plispack",
+      "squadSlug": "squad-3",
+      "squadNumero": 3,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 115,
+      "clienteSlug": "plispack_embalagens",
+      "clienteNome": "PlisPack Embalagens",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 115,
+          "slug": "plispack_embalagens",
+          "nome": "PlisPack Embalagens"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Rios Shop",
+      "squadSlug": "squad-3",
+      "squadNumero": 3,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 108,
+      "clienteSlug": "rios_shop",
+      "clienteNome": "Rios Shop",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 108,
+          "slug": "rios_shop",
+          "nome": "Rios Shop"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Zorza",
+      "squadSlug": "squad-3",
+      "squadNumero": 3,
+      "classe": "MATCH_CLUSTER_LEGADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 112,
+      "clienteSlug": "zorzaloja",
+      "clienteNome": "zorza.loja",
+      "cluster": {
+        "canonicalClienteId": 112,
+        "aliases": [
+          121
+        ],
+        "confianca": "FORTE"
+      },
+      "candidatos": [
+        {
+          "id": 112,
+          "slug": "zorzaloja",
+          "nome": "zorza.loja"
+        },
+        {
+          "id": 121,
+          "slug": "zorza_shopee",
+          "nome": "zorza_shopee"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "AVENDA",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "MATCH_EXATO",
+      "camada": "L1B_IGUALDADE_COMPACTA",
+      "clienteId": 85,
+      "clienteSlug": "a_venda",
+      "clienteNome": "a_venda",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 85,
+          "slug": "a_venda",
+          "nome": "a_venda"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Comprou Enviou",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 48,
+      "clienteSlug": "comprou_enviou_chegou",
+      "clienteNome": "Comprou Enviou Chegou",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 48,
+          "slug": "comprou_enviou_chegou",
+          "nome": "Comprou Enviou Chegou"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Dua cosmeticos",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "MATCH_CLUSTER_LEGADO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 40,
+      "clienteSlug": "dua_cosmeticos",
+      "clienteNome": "Dua Cosmeticos",
+      "cluster": {
+        "canonicalClienteId": 40,
+        "aliases": [
+          67
+        ],
+        "confianca": "CONFIRMADO"
+      },
+      "candidatos": [
+        {
+          "id": 40,
+          "slug": "dua_cosmeticos",
+          "nome": "Dua Cosmeticos"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Exclusiva Jeans",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 56,
+      "clienteSlug": "exclusiva_jeans",
+      "clienteNome": "Exclusiva Jeans",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 56,
+          "slug": "exclusiva_jeans",
+          "nome": "Exclusiva Jeans"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Influencia Jeans",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "MATCH_CLUSTER_LEGADO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 15,
+      "clienteSlug": "influencia_jeans",
+      "clienteNome": "Influencia Jeans",
+      "cluster": {
+        "canonicalClienteId": 15,
+        "aliases": [
+          60
+        ],
+        "confianca": "CONFIRMADO"
+      },
+      "candidatos": [
+        {
+          "id": 15,
+          "slug": "influencia_jeans",
+          "nome": "Influencia Jeans"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Kirus",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L7_DISTANCIA_1_COMPACTA",
+      "clienteId": 49,
+      "clienteSlug": "kirius",
+      "clienteNome": "Kirius",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 49,
+          "slug": "kirius",
+          "nome": "Kirius"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Maya",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "MATCH_CLUSTER_LEGADO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 55,
+      "clienteSlug": "maya",
+      "clienteNome": "Maya",
+      "cluster": {
+        "canonicalClienteId": 55,
+        "aliases": [
+          71,
+          68,
+          69,
+          70
+        ],
+        "confianca": "CONFIRMADO"
+      },
+      "candidatos": [
+        {
+          "id": 55,
+          "slug": "maya",
+          "nome": "Maya"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Nikolly Fashion",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "NAO_EXISTE_NO_BANCO",
+      "camada": null,
+      "clienteId": null,
+      "candidatos": [],
+      "motivo": "nenhuma camada de casamento encontrou cliente real com este nome"
+    },
+    {
+      "nomeRelacao": "Paula e Anselmo",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 99,
+      "clienteSlug": "paula_anselmo",
+      "clienteNome": "Paula e Anselmo",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 99,
+          "slug": "paula_anselmo",
+          "nome": "Paula e Anselmo"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Shopping 86",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 86,
+      "clienteSlug": "shopping_86",
+      "clienteNome": "shopping_86",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 86,
+          "slug": "shopping_86",
+          "nome": "shopping_86"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "WM",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "MATCH_CLUSTER_LEGADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 123,
+      "clienteSlug": "wmmodas",
+      "clienteNome": "wm.modas",
+      "cluster": {
+        "canonicalClienteId": 123,
+        "aliases": [
+          116
+        ],
+        "confianca": "CONFIRMADO"
+      },
+      "candidatos": [
+        {
+          "id": 123,
+          "slug": "wmmodas",
+          "nome": "wm.modas"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Zenite",
+      "squadSlug": "squad-4",
+      "squadNumero": 4,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 100,
+      "clienteSlug": "zenite_loja",
+      "clienteNome": "Zenite",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 100,
+          "slug": "zenite_loja",
+          "nome": "Zenite"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Alma",
+      "squadSlug": "squad-5",
+      "squadNumero": 5,
+      "classe": "MATCH_CLUSTER_LEGADO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 39,
+      "clienteSlug": "alma",
+      "clienteNome": "Alma",
+      "cluster": {
+        "canonicalClienteId": 39,
+        "aliases": [
+          66
+        ],
+        "confianca": "CONFIRMADO"
+      },
+      "candidatos": [
+        {
+          "id": 39,
+          "slug": "alma",
+          "nome": "Alma"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Castro Company",
+      "squadSlug": "squad-5",
+      "squadNumero": 5,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 93,
+      "clienteSlug": "castro_company",
+      "clienteNome": "Castro Company",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 93,
+          "slug": "castro_company",
+          "nome": "Castro Company"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "ER2",
+      "squadSlug": "squad-5",
+      "squadNumero": 5,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 98,
+      "clienteSlug": "er_2",
+      "clienteNome": "er2",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 98,
+          "slug": "er_2",
+          "nome": "er2"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Giromax",
+      "squadSlug": "squad-5",
+      "squadNumero": 5,
+      "classe": "MATCH_EXATO",
+      "camada": "L1B_IGUALDADE_COMPACTA",
+      "clienteId": 117,
+      "clienteSlug": "giro_max",
+      "clienteNome": "Giro Max",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 117,
+          "slug": "giro_max",
+          "nome": "Giro Max"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Rikam",
+      "squadSlug": "squad-5",
+      "squadNumero": 5,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 119,
+      "clienteSlug": "rikam_loja",
+      "clienteNome": "Rikam Loja",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 119,
+          "slug": "rikam_loja",
+          "nome": "Rikam Loja"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Thiago Moreno",
+      "squadSlug": "squad-5",
+      "squadNumero": 5,
+      "classe": "NAO_EXISTE_NO_BANCO",
+      "camada": null,
+      "clienteId": null,
+      "candidatos": [],
+      "motivo": "nenhuma camada de casamento encontrou cliente real com este nome"
+    },
+    {
+      "nomeRelacao": "Fênix",
+      "squadSlug": "squad-6",
+      "squadNumero": 6,
+      "classe": "MATCH_ALIAS_COMPROVADO",
+      "camada": "L4_PREFIXO_DE_TOKENS",
+      "clienteId": 102,
+      "clienteSlug": "fenix_equipamentos1",
+      "clienteNome": "Fenix Equipamentos1",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 102,
+          "slug": "fenix_equipamentos1",
+          "nome": "Fenix Equipamentos1"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Fitassul Comércio",
+      "squadSlug": "squad-6",
+      "squadNumero": 6,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 120,
+      "clienteSlug": "fitassul_comercio",
+      "clienteNome": "Fitassul Comercio",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 120,
+          "slug": "fitassul_comercio",
+          "nome": "Fitassul Comercio"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "LPS Fitness",
+      "squadSlug": "squad-6",
+      "squadNumero": 6,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 38,
+      "clienteSlug": "lps_fitness",
+      "clienteNome": "LPS Fitness",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 38,
+          "slug": "lps_fitness",
+          "nome": "LPS Fitness"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Red Fish",
+      "squadSlug": "squad-6",
+      "squadNumero": 6,
+      "classe": "MATCH_EXATO",
+      "camada": "L1_IGUALDADE_EXATA",
+      "clienteId": 104,
+      "clienteSlug": "red_fish",
+      "clienteNome": "Red Fish",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 104,
+          "slug": "red_fish",
+          "nome": "Red Fish"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Toque de Ouro",
+      "squadSlug": "squad-6",
+      "squadNumero": 6,
+      "classe": "MATCH_EXATO",
+      "camada": "L1C_IGUALDADE_COMPACTA_SEM_CONECTIVOS",
+      "clienteId": 113,
+      "clienteSlug": "toque_ouro",
+      "clienteNome": "Toque ouro",
+      "cluster": null,
+      "candidatos": [
+        {
+          "id": 113,
+          "slug": "toque_ouro",
+          "nome": "Toque ouro"
+        }
+      ]
+    }
+  ],
+  "identidades": [
+    {
+      "nomeRelacao": "Adrian",
+      "ocorrencias": [
+        {
+          "squad": "squad-2",
+          "papel": "gestor"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 9,
+      "email": "adrian.neves@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 9,
+          "nome": "Adrian Gomes Pereira Neves",
+          "email": "adrian.neves@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Anderson",
+      "ocorrencias": [
+        {
+          "squad": "squad-4",
+          "papel": "gestor"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 11,
+      "email": "anderson.santos@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 11,
+          "nome": "Anderson Santos",
+          "email": "anderson.santos@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Caique",
+      "ocorrencias": [
+        {
+          "squad": "squad-2",
+          "papel": "design"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "EXCLUIDO_USUARIO_NAO_CRIADO",
+      "camada": "DECISAO_HUMANA",
+      "userId": null,
+      "email": null,
+      "role": null,
+      "candidatos": [],
+      "assentosPrevistos": [
+        {
+          "squad": "squad-2",
+          "papel": "design"
+        }
+      ],
+      "motivo": "decisão humana: a pessoa faz parte da estrutura do Squad mas ainda não possui usuário — nenhuma identidade é inventada e a membership fica fora deste APPLY"
+    },
+    {
+      "nomeRelacao": "Carol",
+      "ocorrencias": [
+        {
+          "squad": "squad-4",
+          "papel": "design"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "EXCLUIDO_USUARIO_NAO_CRIADO",
+      "camada": "DECISAO_HUMANA",
+      "userId": null,
+      "email": null,
+      "role": null,
+      "candidatos": [],
+      "assentosPrevistos": [
+        {
+          "squad": "squad-4",
+          "papel": "design"
+        }
+      ],
+      "motivo": "decisão humana: a pessoa faz parte da estrutura do Squad mas ainda não possui usuário — nenhuma identidade é inventada e a membership fica fora deste APPLY"
+    },
+    {
+      "nomeRelacao": "Cavazzoto",
+      "ocorrencias": [
+        {
+          "squad": "squad-3",
+          "papel": "design"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
+      "userId": 47,
+      "email": "gabrielly.cavazotto@vendexcompany.com",
+      "role": "membro",
+      "emailDecisao": "gabrielly.cavazotto@vendexcompany.com",
+      "pessoaDecisao": "Gabrielly Cavazzoto",
+      "candidatos": [
+        {
+          "id": 47,
+          "nome": "Gabrielly Cavazotto",
+          "email": "gabrielly.cavazotto@vendexcompany.com",
+          "role": "membro"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Diogo",
+      "ocorrencias": [
+        {
+          "squad": "squad-3",
+          "papel": "gestor"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 32,
+      "email": "diogo-pinheiro2001@hotmail.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 32,
+          "nome": "Diogo Henrique Pinheiro",
+          "email": "diogo-pinheiro2001@hotmail.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Eliabe",
+      "ocorrencias": [
+        {
+          "squad": "squad-1",
+          "papel": "gestor"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 13,
+      "email": "eliabe.almeida@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 13,
+          "nome": "Eliabe Almeida",
+          "email": "eliabe.almeida@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Felipe",
+      "ocorrencias": [
+        {
+          "squad": "squad-5",
+          "papel": "auxiliar"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 37,
+      "email": "felipe.pitta@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 37,
+          "nome": "Felipe Pitta",
+          "email": "felipe.pitta@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Fernando",
+      "ocorrencias": [
+        {
+          "squad": "squad-1",
+          "papel": "auxiliar2"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
+      "userId": 45,
+      "email": "fernando.montoro@vendexcompany.com",
+      "role": "membro",
+      "emailDecisao": "fernando.montoro@vendexcompany.com",
+      "pessoaDecisao": "Fernando Montoro",
+      "candidatos": [
+        {
+          "id": 45,
+          "nome": "Fernando Montoro",
+          "email": "fernando.montoro@vendexcompany.com",
+          "role": "membro"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Fernando",
+      "ocorrencias": [
+        {
+          "squad": "squad-4",
+          "papel": "coordenador"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
+      "userId": 5,
+      "email": "fernando.salgado@vendexcompany.com",
+      "role": "admin",
+      "emailDecisao": "fernando.salgado@vendexcompany.com",
+      "pessoaDecisao": "Fernando Salgado",
+      "candidatos": [
+        {
+          "id": 5,
+          "nome": "Fernando Salgado",
+          "email": "fernando.salgado@vendexcompany.com",
+          "role": "admin"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Gabrielly",
+      "ocorrencias": [
+        {
+          "squad": "squad-1",
+          "papel": "design"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
+      "userId": 16,
+      "email": "gabrielly.ribeiro@vendexcompany.com",
+      "role": "user",
+      "emailDecisao": "gabrielly.ribeiro@vendexcompany.com",
+      "pessoaDecisao": "Gabrielly Ribeiro",
+      "candidatos": [
+        {
+          "id": 16,
+          "nome": "Gabrielly Ribeiro",
+          "email": "gabrielly.ribeiro@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Giovanna",
+      "ocorrencias": [
+        {
+          "squad": "squad-4",
+          "papel": "auxiliar"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 17,
+      "email": "giovanna.santos@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 17,
+          "nome": "Giovanna Santos",
+          "email": "giovanna.santos@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Gustavo",
+      "ocorrencias": [
+        {
+          "squad": "squad-1",
+          "papel": "auxiliar"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 46,
+      "email": "gustavo.nakamura@vendexcompany.com",
+      "role": "membro",
+      "candidatos": [
+        {
+          "id": 46,
+          "nome": "Gustavo Nakamura",
+          "email": "gustavo.nakamura@vendexcompany.com",
+          "role": "membro"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Juliana",
+      "ocorrencias": [
+        {
+          "squad": "squad-2",
+          "papel": "auxiliar"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 21,
+      "email": "juliana.discher@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 21,
+          "nome": "Juliana Discher",
+          "email": "juliana.discher@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Klayvert",
+      "ocorrencias": [
+        {
+          "squad": "squad-2",
+          "papel": "coordenador"
+        },
+        {
+          "squad": "squad-3",
+          "papel": "coordenador"
+        },
+        {
+          "squad": "squad-6",
+          "papel": "coordenador"
+        }
+      ],
+      "multiSquad": true,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
+      "userId": 35,
+      "email": "klayvert.rodrigues@vendexcompany.com.br",
+      "role": "user",
+      "emailDecisao": "klayvert.rodrigues@vendexcompany.com.br",
+      "pessoaDecisao": "Klayvert Rodrigues",
+      "candidatos": [
+        {
+          "id": 35,
+          "nome": "Klayvert Rodrigues",
+          "email": "klayvert.rodrigues@vendexcompany.com.br",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Matheus",
+      "ocorrencias": [
+        {
+          "squad": "squad-6",
+          "papel": "gestor"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 23,
+      "email": "matheus.leopoldo@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 23,
+          "nome": "Matheus Leopoldo",
+          "email": "matheus.leopoldo@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Mayara",
+      "ocorrencias": [
+        {
+          "squad": "squad-3",
+          "papel": "auxiliar"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 38,
+      "email": "mayara.cerbi@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 38,
+          "nome": "Mayara Cerbi",
+          "email": "mayara.cerbi@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Micael",
+      "ocorrencias": [
+        {
+          "squad": "squad-1",
+          "papel": "coordenador"
+        },
+        {
+          "squad": "squad-5",
+          "papel": "coordenador"
+        }
+      ],
+      "multiSquad": true,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 24,
+      "email": "micael.almeida@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 24,
+          "nome": "Micael Almeida",
+          "email": "micael.almeida@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Sophia",
+      "ocorrencias": [
+        {
+          "squad": "squad-5",
+          "papel": "design"
+        },
+        {
+          "squad": "squad-6",
+          "papel": "design"
+        }
+      ],
+      "multiSquad": true,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 28,
+      "email": "sophia.costa@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 28,
+          "nome": "Sophia Costa",
+          "email": "sophia.costa@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Thiago",
+      "ocorrencias": [
+        {
+          "squad": "squad-3",
+          "papel": "auxiliar2"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 48,
+      "email": "thiago.zanini@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 48,
+          "nome": "Thiago Zanini",
+          "email": "thiago.zanini@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Victor",
+      "ocorrencias": [
+        {
+          "squad": "squad-6",
+          "papel": "auxiliar"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "EXCLUIDO_USUARIO_NAO_CRIADO",
+      "camada": "DECISAO_HUMANA",
+      "userId": null,
+      "email": null,
+      "role": null,
+      "candidatos": [],
+      "assentosPrevistos": [
+        {
+          "squad": "squad-6",
+          "papel": "auxiliar"
+        }
+      ],
+      "motivo": "decisão humana: a pessoa faz parte da estrutura do Squad mas ainda não possui usuário — nenhuma identidade é inventada e a membership fica fora deste APPLY"
+    },
+    {
+      "nomeRelacao": "Vinícius",
+      "ocorrencias": [
+        {
+          "squad": "squad-2",
+          "papel": "auxiliar2"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
+      "userId": 44,
+      "email": "vinicius.dias@vendexcompany.com",
+      "role": "membro",
+      "emailDecisao": "vinicius.dias@vendexcompany.com",
+      "pessoaDecisao": "Vinicius Dias",
+      "candidatos": [
+        {
+          "id": 44,
+          "nome": "Vinicius Dias",
+          "email": "vinicius.dias@vendexcompany.com",
+          "role": "membro"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Witor",
+      "ocorrencias": [
+        {
+          "squad": "squad-5",
+          "papel": "gestor"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "MATCH_EXATO",
+      "camada": "TOKEN_EXATO",
+      "userId": 31,
+      "email": "witor.silva@vendexcompany.com",
+      "role": "user",
+      "candidatos": [
+        {
+          "id": 31,
+          "nome": "Witor Silva",
+          "email": "witor.silva@vendexcompany.com",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "nomeRelacao": "Yuri",
+      "ocorrencias": [
+        {
+          "squad": "squad-4",
+          "papel": "auxiliar2"
+        }
+      ],
+      "multiSquad": false,
+      "classe": "EXCLUIDO_USUARIO_NAO_CRIADO",
+      "camada": "DECISAO_HUMANA",
+      "userId": null,
+      "email": null,
+      "role": null,
+      "candidatos": [],
+      "assentosPrevistos": [
+        {
+          "squad": "squad-4",
+          "papel": "auxiliar2"
+        }
+      ],
+      "motivo": "decisão humana: a pessoa faz parte da estrutura do Squad mas ainda não possui usuário — nenhuma identidade é inventada e a membership fica fora deste APPLY"
+    }
+  ],
+  "bloqueios": [],
+  "invariantes": [
+    {
+      "id": "I1",
+      "titulo": "nenhum Grant some",
+      "passou": true,
+      "detalhe": "grants de alias no banco=13 · grants endereçados no plano=13 · total no banco=63"
+    },
+    {
+      "id": "I2",
+      "titulo": "nenhum Grant troca de seller/conta",
+      "passou": true,
+      "detalhe": "grants reapontados sem conta de mesmo ml_user_id: 0"
+    },
+    {
+      "id": "I3",
+      "titulo": "nenhuma conta muda de marketplace",
+      "passou": true,
+      "detalhe": "contas movidas sem marketplace preservado: 0"
+    },
+    {
+      "id": "I4",
+      "titulo": "nenhuma ClienteConta duplicada é criada",
+      "passou": true,
+      "detalhe": "3 conta(s) com chave natural já existente marcadas DEDUPLICAR_CONTA (nunca criar segunda)"
+    },
+    {
+      "id": "I5",
+      "titulo": "nenhum Cliente novo é criado",
+      "passou": true,
+      "detalhe": "plano não contém nenhuma operação de criação de cliente"
+    },
+    {
+      "id": "I6",
+      "titulo": "todo Cliente ativo termina em exatamente 1 Squad",
+      "passou": true,
+      "detalhe": "sem squad: 0 · com 2+ squads: 0 · conflitos de relação: 0"
+    },
+    {
+      "id": "I7",
+      "titulo": "Cliente da relação vai para Squad 1–6",
+      "passou": true,
+      "detalhe": "clientes resolvidos pela relação que caíram no Squad 8: 0"
+    },
+    {
+      "id": "I8",
+      "titulo": "Cliente fora da relação vai para Squad 8",
+      "passou": true,
+      "detalhe": "clientes fora da relação que NÃO foram para o Squad 8: 0"
+    },
+    {
+      "id": "I9",
+      "titulo": "alias não ganha Squad próprio",
+      "passou": true,
+      "detalhe": "aliases com Squad decidido independentemente do canônico: 0"
+    },
+    {
+      "id": "I14",
+      "titulo": "nenhum cliente inexistente entra no plano",
+      "passou": true,
+      "detalhe": "entradas do plano sem cliente real correspondente: 0"
+    },
+    {
+      "id": "I15",
+      "titulo": "exatamente 6 Squads operacionais + 1 legado",
+      "passou": true,
+      "detalhe": "operacionais=6 (squad-1, squad-2, squad-3, squad-4, squad-5, squad-6) · legado=1"
+    },
+    {
+      "id": "I16",
+      "titulo": "nenhum Squad 7 ou 9 acidental",
+      "passou": true,
+      "detalhe": "todos os operacionais são squad-1..squad-6"
+    },
+    {
+      "id": "I17",
+      "titulo": "todo id do mapa existe no banco",
+      "passou": true,
+      "detalhe": "83 entradas conferidas"
+    }
+  ]
+}

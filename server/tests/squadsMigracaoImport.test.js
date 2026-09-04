@@ -129,7 +129,13 @@ function instalar(M, { failOnHistoryInsert = 0 } = {}) {
       }) };
     }
     if (q.includes("squads:AUDIT_USUARIOS")) {
-      const internos = M.users.filter((u) => u.ativo && ["user", "membro", "interno", "admin"].includes(u.role.toLowerCase()));
+      // P2.9 T-2: este double simula `squads:AUDIT_USUARIOS`, que é a query da
+      // AUDITORIA — e a auditoria NÃO cobra admin. A lista aqui estava com
+      // `admin` (a do importador), simulando um comportamento que a produção
+      // não tem. Hoje é inerte porque nenhuma fixture tem role admin, mas no
+      // dia em que tivesse, o double e o gate discordariam em silêncio.
+      const ROLES = require("../services/squads/rolesInternas").ROLES_COBRADAS_NA_AUDITORIA.set;
+      const internos = M.users.filter((u) => u.ativo && ROLES.has(u.role.toLowerCase()));
       let comM = 0, semM = 0, soInat = 0, multi = 0, multiOk = 0, semP = 0;
       for (const u of internos) {
         const ms = M.members.filter((m) => m.user_id === u.id && m.ativo);

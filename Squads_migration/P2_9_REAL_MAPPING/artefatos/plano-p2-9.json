@@ -1,0 +1,629 @@
+{
+  "versao": 1,
+  "descricao": "P2.9 — 6 Squads operacionais + Squad 8 · Legado · 24 memberships · 83 clientes reais",
+  "_geradoPor": "squads-mapeamento-real.js",
+  "_avisoResponsaveis": "responsaveis[] deliberadamente VAZIO — a regra de negócio que transformaria papel operacional (gestor/auxiliar/design) em cliente_responsaveis NÃO está documentada. Ver 12_CLIENT_CONSOLIDATION_PLAN.md.",
+  "squads": [
+    {
+      "slug": "squad-1",
+      "nome": "Squad 1",
+      "ativo": true
+    },
+    {
+      "slug": "squad-2",
+      "nome": "Squad 2",
+      "ativo": true
+    },
+    {
+      "slug": "squad-3",
+      "nome": "Squad 3",
+      "ativo": true
+    },
+    {
+      "slug": "squad-4",
+      "nome": "Squad 4",
+      "ativo": true
+    },
+    {
+      "slug": "squad-5",
+      "nome": "Squad 5",
+      "ativo": true
+    },
+    {
+      "slug": "squad-6",
+      "nome": "Squad 6",
+      "ativo": true
+    },
+    {
+      "slug": "squad-8-legado",
+      "nome": "Squad 8 · Legado",
+      "ativo": true
+    }
+  ],
+  "membros": [
+    {
+      "squad": "squad-1",
+      "usuario": "micael.almeida@vendexcompany.com",
+      "funcao": "coordenador",
+      "principal": true,
+      "_papelOperacional": "coordenador"
+    },
+    {
+      "squad": "squad-1",
+      "usuario": "eliabe.almeida@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "gestor"
+    },
+    {
+      "squad": "squad-1",
+      "usuario": "gustavo.nakamura@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "auxiliar"
+    },
+    {
+      "squad": "squad-1",
+      "usuario": "fernando.montoro@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "auxiliar2"
+    },
+    {
+      "squad": "squad-1",
+      "usuario": "gabrielly.ribeiro@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "design"
+    },
+    {
+      "squad": "squad-2",
+      "usuario": "klayvert.rodrigues@vendexcompany.com.br",
+      "funcao": "coordenador",
+      "principal": true,
+      "_papelOperacional": "coordenador"
+    },
+    {
+      "squad": "squad-2",
+      "usuario": "adrian.neves@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "gestor"
+    },
+    {
+      "squad": "squad-2",
+      "usuario": "juliana.discher@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "auxiliar"
+    },
+    {
+      "squad": "squad-2",
+      "usuario": "vinicius.dias@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "auxiliar2"
+    },
+    {
+      "squad": "squad-3",
+      "usuario": "klayvert.rodrigues@vendexcompany.com.br",
+      "funcao": "coordenador",
+      "_papelOperacional": "coordenador"
+    },
+    {
+      "squad": "squad-3",
+      "usuario": "diogo-pinheiro2001@hotmail.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "gestor"
+    },
+    {
+      "squad": "squad-3",
+      "usuario": "mayara.cerbi@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "auxiliar"
+    },
+    {
+      "squad": "squad-3",
+      "usuario": "thiago.zanini@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "auxiliar2"
+    },
+    {
+      "squad": "squad-3",
+      "usuario": "gabrielly.cavazotto@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "design"
+    },
+    {
+      "squad": "squad-4",
+      "usuario": "fernando.salgado@vendexcompany.com",
+      "funcao": "coordenador",
+      "principal": true,
+      "_papelOperacional": "coordenador"
+    },
+    {
+      "squad": "squad-4",
+      "usuario": "anderson.santos@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "gestor"
+    },
+    {
+      "squad": "squad-4",
+      "usuario": "giovanna.santos@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "auxiliar"
+    },
+    {
+      "squad": "squad-5",
+      "usuario": "micael.almeida@vendexcompany.com",
+      "funcao": "coordenador",
+      "_papelOperacional": "coordenador"
+    },
+    {
+      "squad": "squad-5",
+      "usuario": "witor.silva@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "gestor"
+    },
+    {
+      "squad": "squad-5",
+      "usuario": "felipe.pitta@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "auxiliar"
+    },
+    {
+      "squad": "squad-5",
+      "usuario": "sophia.costa@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "design"
+    },
+    {
+      "squad": "squad-6",
+      "usuario": "klayvert.rodrigues@vendexcompany.com.br",
+      "funcao": "coordenador",
+      "_papelOperacional": "coordenador"
+    },
+    {
+      "squad": "squad-6",
+      "usuario": "matheus.leopoldo@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "gestor"
+    },
+    {
+      "squad": "squad-6",
+      "usuario": "sophia.costa@vendexcompany.com",
+      "funcao": "membro",
+      "_papelOperacional": "design"
+    }
+  ],
+  "clientes": [
+    {
+      "cliente": "mwm",
+      "squad": "squad-2",
+      "motivo": "P2.9 — relação operacional (\"MWM\")"
+    },
+    {
+      "cliente": "calhas_kairos",
+      "squad": "squad-2",
+      "motivo": "P2.9 — relação operacional (\"Calhas\")"
+    },
+    {
+      "cliente": "cegil",
+      "squad": "squad-2",
+      "motivo": "P2.9 — relação operacional (\"Cegil\")"
+    },
+    {
+      "cliente": "maximus_feramentas",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "influencia_jeans",
+      "squad": "squad-4",
+      "motivo": "P2.9 — relação operacional (\"Influencia Jeans\")"
+    },
+    {
+      "cliente": "up_vendas",
+      "squad": "squad-2",
+      "motivo": "P2.9 — relação operacional (\"Up Vendas\")"
+    },
+    {
+      "cliente": "deluche",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "vent_solues",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "adb_supply",
+      "squad": "squad-2",
+      "motivo": "P2.9 — relação operacional (\"ADB Supply\")"
+    },
+    {
+      "cliente": "emprio_luz",
+      "squad": "squad-2",
+      "motivo": "P2.9 — relação operacional (\"Empório Luz\")"
+    },
+    {
+      "cliente": "maria_eduarda",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "pro_fit",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "loja_da_isa",
+      "squad": "squad-1",
+      "motivo": "P2.9 — relação operacional (\"Loja da Isa\")"
+    },
+    {
+      "cliente": "dm",
+      "squad": "squad-1",
+      "motivo": "P2.9 — relação operacional (\"DM Comércio\")"
+    },
+    {
+      "cliente": "wbs_medical",
+      "squad": "squad-1",
+      "motivo": "P2.9 — relação operacional (\"WBS\")"
+    },
+    {
+      "cliente": "carpei",
+      "squad": "squad-1",
+      "motivo": "P2.9 — relação operacional (\"Carpei\")"
+    },
+    {
+      "cliente": "j_meira",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "extra",
+      "squad": "squad-1",
+      "motivo": "P2.9 — relação operacional (\"Extra\")"
+    },
+    {
+      "cliente": "mercadao_enxovais",
+      "squad": "squad-1",
+      "motivo": "P2.9 — relação operacional (\"Mercadao\")"
+    },
+    {
+      "cliente": "jf_shopp",
+      "squad": "squad-1",
+      "motivo": "P2.9 — relação operacional (\"JF\")"
+    },
+    {
+      "cliente": "lps_fitness",
+      "squad": "squad-6",
+      "motivo": "P2.9 — relação operacional (\"LPS Fitness\")"
+    },
+    {
+      "cliente": "alma",
+      "squad": "squad-5",
+      "motivo": "P2.9 — relação operacional (\"Alma\")"
+    },
+    {
+      "cliente": "dua_cosmeticos",
+      "squad": "squad-4",
+      "motivo": "P2.9 — relação operacional (\"Dua cosmeticos\")"
+    },
+    {
+      "cliente": "brilha_kids",
+      "squad": "squad-3",
+      "motivo": "P2.9 — relação operacional (\"Brilha Kids\")"
+    },
+    {
+      "cliente": "comprou_enviou_chegou",
+      "squad": "squad-4",
+      "motivo": "P2.9 — relação operacional (\"Comprou Enviou\")"
+    },
+    {
+      "cliente": "kirius",
+      "squad": "squad-4",
+      "motivo": "P2.9 — relação operacional (\"Kirus\")"
+    },
+    {
+      "cliente": "pedro_baby",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "envm",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "tenda_medieval",
+      "squad": "squad-1",
+      "motivo": "P2.9 — relação operacional (\"Tenda\")"
+    },
+    {
+      "cliente": "macedo_materiais_construo",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "mm_importes",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "maya",
+      "squad": "squad-4",
+      "motivo": "P2.9 — relação operacional (\"Maya\")"
+    },
+    {
+      "cliente": "exclusiva_jeans",
+      "squad": "squad-4",
+      "motivo": "P2.9 — relação operacional (\"Exclusiva Jeans\")"
+    },
+    {
+      "cliente": "mais_estilo",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "luli",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "trevo",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "influencia_jeans_2",
+      "squad": "squad-4",
+      "motivo": "P2.9 — entidade legada do cliente #15; herda o Squad do canônico"
+    },
+    {
+      "cliente": "wbs_2",
+      "squad": "squad-1",
+      "motivo": "P2.9 — entidade legada do cliente #32; herda o Squad do canônico"
+    },
+    {
+      "cliente": "j_meira_2",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "j_meira_3",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "mercadao_enxovais_2",
+      "squad": "squad-1",
+      "motivo": "P2.9 — entidade legada do cliente #36; herda o Squad do canônico"
+    },
+    {
+      "cliente": "alma_2",
+      "squad": "squad-5",
+      "motivo": "P2.9 — entidade legada do cliente #39; herda o Squad do canônico"
+    },
+    {
+      "cliente": "dua_cosmeticos_2",
+      "squad": "squad-4",
+      "motivo": "P2.9 — entidade legada do cliente #40; herda o Squad do canônico"
+    },
+    {
+      "cliente": "maya_2",
+      "squad": "squad-4",
+      "motivo": "P2.9 — entidade legada do cliente #55; herda o Squad do canônico"
+    },
+    {
+      "cliente": "maya_3",
+      "squad": "squad-4",
+      "motivo": "P2.9 — entidade legada do cliente #55; herda o Squad do canônico"
+    },
+    {
+      "cliente": "maya_4",
+      "squad": "squad-4",
+      "motivo": "P2.9 — entidade legada do cliente #55; herda o Squad do canônico"
+    },
+    {
+      "cliente": "maya_5",
+      "squad": "squad-4",
+      "motivo": "P2.9 — entidade legada do cliente #55; herda o Squad do canônico"
+    },
+    {
+      "cliente": "jfx",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "luli_1",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "a_venda",
+      "squad": "squad-4",
+      "motivo": "P2.9 — relação operacional (\"AVENDA\")"
+    },
+    {
+      "cliente": "shopping_86",
+      "squad": "squad-4",
+      "motivo": "P2.9 — relação operacional (\"Shopping 86\")"
+    },
+    {
+      "cliente": "shalom_industria",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "castro_company",
+      "squad": "squad-5",
+      "motivo": "P2.9 — relação operacional (\"Castro Company\")"
+    },
+    {
+      "cliente": "demo-shopee",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "brasil_tek",
+      "squad": "squad-2",
+      "motivo": "P2.9 — relação operacional (\"BrasilTek\")"
+    },
+    {
+      "cliente": "er_2",
+      "squad": "squad-5",
+      "motivo": "P2.9 — relação operacional (\"ER2\")"
+    },
+    {
+      "cliente": "paula_anselmo",
+      "squad": "squad-4",
+      "motivo": "P2.9 — relação operacional (\"Paula e Anselmo\")"
+    },
+    {
+      "cliente": "zenite_loja",
+      "squad": "squad-4",
+      "motivo": "P2.9 — relação operacional (\"Zenite\")"
+    },
+    {
+      "cliente": "infinite_solucoes",
+      "squad": "squad-3",
+      "motivo": "P2.9 — relação operacional (\"Infinite\")"
+    },
+    {
+      "cliente": "fenix_equipamentos1",
+      "squad": "squad-6",
+      "motivo": "P2.9 — relação operacional (\"Fênix\")"
+    },
+    {
+      "cliente": "red_fish",
+      "squad": "squad-6",
+      "motivo": "P2.9 — relação operacional (\"Red Fish\")"
+    },
+    {
+      "cliente": "elizamarket",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "teste_x01",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "mm_comercio",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "rios_shop",
+      "squad": "squad-3",
+      "motivo": "P2.9 — relação operacional (\"Rios Shop\")"
+    },
+    {
+      "cliente": "teste_01",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "tevixcomercio",
+      "squad": "squad-2",
+      "motivo": "P2.9 — relação operacional (\"Tevix\")"
+    },
+    {
+      "cliente": "inmatec",
+      "squad": "squad-2",
+      "motivo": "P2.9 — relação operacional (\"Eletro in Matec\")"
+    },
+    {
+      "cliente": "zorzaloja",
+      "squad": "squad-3",
+      "motivo": "P2.9 — relação operacional (\"Zorza\")"
+    },
+    {
+      "cliente": "toque_ouro",
+      "squad": "squad-6",
+      "motivo": "P2.9 — relação operacional (\"Toque de Ouro\")"
+    },
+    {
+      "cliente": "beleza_chic",
+      "squad": "squad-3",
+      "motivo": "P2.9 — relação operacional (\"Beleza Chic\")"
+    },
+    {
+      "cliente": "plispack_embalagens",
+      "squad": "squad-3",
+      "motivo": "P2.9 — relação operacional (\"Plispack\")"
+    },
+    {
+      "cliente": "william_modas",
+      "squad": "squad-4",
+      "motivo": "P2.9 — entidade legada do cliente #123; herda o Squad do canônico"
+    },
+    {
+      "cliente": "giro_max",
+      "squad": "squad-5",
+      "motivo": "P2.9 — relação operacional (\"Giromax\")"
+    },
+    {
+      "cliente": "rikam_loja",
+      "squad": "squad-5",
+      "motivo": "P2.9 — relação operacional (\"Rikam\")"
+    },
+    {
+      "cliente": "fitassul_comercio",
+      "squad": "squad-6",
+      "motivo": "P2.9 — relação operacional (\"Fitassul Comércio\")"
+    },
+    {
+      "cliente": "zorza_shopee",
+      "squad": "squad-3",
+      "motivo": "P2.9 — entidade legada do cliente #112; herda o Squad do canônico"
+    },
+    {
+      "cliente": "canastra",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "wmmodas",
+      "squad": "squad-4",
+      "motivo": "P2.9 — relação operacional (\"WM\")"
+    },
+    {
+      "cliente": "jw_presentes",
+      "squad": "squad-2",
+      "motivo": "P2.9 — relação operacional (\"J&W Presentes\")"
+    },
+    {
+      "cliente": "power_game",
+      "squad": "squad-1",
+      "motivo": "P2.9 — relação operacional (\"Power Game\")"
+    },
+    {
+      "cliente": "teste1",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    },
+    {
+      "cliente": "teste2",
+      "squad": "squad-8-legado",
+      "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
+    }
+  ],
+  "responsaveis": [],
+  "_emitivel": true,
+  "_bloqueios": []
+}

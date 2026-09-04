@@ -1,0 +1,150 @@
+{
+  "_origem": "Squads_migration/Squads.xlsx (planilha operacional recebida)",
+  "_extraidoEm": "2026-09-03T18:42:57.244Z",
+  "_regra": "Extração literal. Nenhum nome foi corrigido, traduzido ou inferido. auxiliar2 vazio = AUSENTE_NA_ESTRUTURA.",
+  "versao": 2,
+  "squads": [
+    {
+      "numero": 1,
+      "rotuloPlanilha": "squad 1",
+      "slug": "squad-1",
+      "nome": "Squad 1",
+      "papeis": {
+        "coordenador": "Micael",
+        "gestor": "Eliabe",
+        "auxiliar": "Gustavo",
+        "auxiliar2": "Fernando",
+        "design": "Gabrielly"
+      },
+      "clientes": [
+        "Carpei",
+        "Power Game",
+        "DM Comércio",
+        "Extra",
+        "JF",
+        "WBS",
+        "Loja da Isa",
+        "Mercadao",
+        "Tenda"
+      ]
+    },
+    {
+      "numero": 2,
+      "rotuloPlanilha": "squad 2",
+      "slug": "squad-2",
+      "nome": "Squad 2",
+      "papeis": {
+        "coordenador": "Klayvert",
+        "gestor": "Adrian",
+        "auxiliar": "Juliana",
+        "auxiliar2": "Vinícius",
+        "design": "Caique"
+      },
+      "clientes": [
+        "ADB Supply",
+        "BrasilTek",
+        "J&W Presentes",
+        "GS",
+        "Calhas",
+        "Cegil",
+        "Eletro in Matec",
+        "Empório Luz",
+        "MWM",
+        "Tevix",
+        "Up Vendas"
+      ]
+    },
+    {
+      "numero": 3,
+      "rotuloPlanilha": "squad 3",
+      "slug": "squad-3",
+      "nome": "Squad 3",
+      "papeis": {
+        "coordenador": "Klayvert",
+        "gestor": "Diogo",
+        "auxiliar": "Mayara",
+        "auxiliar2": "Thiago",
+        "design": "Cavazzoto"
+      },
+      "clientes": [
+        "ADS",
+        "Beleza Chic",
+        "Brilha Kids",
+        "Infinite",
+        "MW",
+        "MM",
+        "Plispack",
+        "Rios Shop",
+        "Zorza"
+      ]
+    },
+    {
+      "numero": 4,
+      "rotuloPlanilha": "squad 4",
+      "slug": "squad-4",
+      "nome": "Squad 4",
+      "papeis": {
+        "coordenador": "Fernando",
+        "gestor": "Anderson",
+        "auxiliar": "Giovanna",
+        "auxiliar2": "Yuri",
+        "design": "Carol"
+      },
+      "clientes": [
+        "AVENDA",
+        "Comprou Enviou",
+        "Dua cosmeticos",
+        "Exclusiva Jeans",
+        "Influencia Jeans",
+        "Kirus",
+        "Maya",
+        "Nikolly Fashion",
+        "Paula e Anselmo",
+        "Shopping 86",
+        "WM",
+        "Zenite"
+      ]
+    },
+    {
+      "numero": 5,
+      "rotuloPlanilha": "squad 5",
+      "slug": "squad-5",
+      "nome": "Squad 5",
+      "papeis": {
+        "coordenador": "Micael",
+        "gestor": "Witor",
+        "auxiliar": "Felipe",
+        "auxiliar2": "AUSENTE_NA_ESTRUTURA",
+        "design": "Sophia"
+      },
+      "clientes": [
+        "Alma",
+        "Castro Company",
+        "ER2",
+        "Giromax",
+        "Rikam",
+        "Thiago Moreno"
+      ]
+    },
+    {
+      "numero": 6,
+      "rotuloPlanilha": "squad 6",
+      "slug": "squad-6",
+      "nome": "Squad 6",
+      "papeis": {
+        "coordenador": "Klayvert",
+        "gestor": "Matheus",
+        "auxiliar": "Victor",
+        "auxiliar2": "AUSENTE_NA_ESTRUTURA",
+        "design": "Sophia"
+      },
+      "clientes": [
+        "Fênix",
+        "Fitassul Comércio",
+        "LPS Fitness",
+        "Red Fish",
+        "Toque de Ouro"
+      ]
+    }
+  ]
+}

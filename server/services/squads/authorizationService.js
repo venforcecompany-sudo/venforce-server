@@ -13,8 +13,11 @@
 const pool = require("../../config/database");
 const { CODIGOS_CANONICOS } = require("../../utils/erroContextoCanonico");
 const { isEnforcementEnabled } = require("../../config/squadsEnforcement");
+const { ROLES_COBRADAS_NA_AUDITORIA } = require("./rolesInternas");
 
-const ROLES_INTERNAS = new Set(["user", "membro", "interno"]);
+// Fonte canonica unica — ver rolesInternas.js. Aqui `admin` seria codigo morto:
+// ehAdmin() retorna antes de ehInterno() em todos os call sites.
+const ROLES_INTERNAS = ROLES_COBRADAS_NA_AUDITORIA.set;
 
 function papel(user) {
   return String(user?.role || "").toLowerCase();

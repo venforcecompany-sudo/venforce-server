@@ -1,0 +1,1105 @@
+{
+  "versao": 1,
+  "geradoEm": "2026-09-04T18:24:35.084Z",
+  "aviso": "PLAN_ONLY — nenhuma destas operações foi executada. Nenhum cliente é criado ou deletado por este plano.",
+  "operacoes": [
+    {
+      "cluster": "influencia_jeans",
+      "confianca": "CONFIRMADO",
+      "canonicalClienteId": 15,
+      "canonicalSlug": "influencia_jeans",
+      "aliasClienteIds": [
+        60
+      ],
+      "evidencias": [
+        {
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "entre": [
+            60,
+            15
+          ],
+          "detalhe": "\"influencia_jeans 2\" reduz ao radical \"influencia jeans\", que É o nome/slug do cliente #15 — sufixo confirmado por existir o original"
+        }
+      ],
+      "clienteContas": [
+        {
+          "contaId": 24,
+          "deClienteId": 60,
+          "paraClienteId": 15,
+          "marketplace": "meli",
+          "externalAccountId": "2650889738",
+          "ativo": true,
+          "acao": "MOVER_CONTA",
+          "contaDestinoExistente": null,
+          "nota": "conta 24 passa a pertencer ao cliente 15; is_primary tem de ser RECALCULADO (não herdar)"
+        }
+      ],
+      "grants": [
+        {
+          "grantId": 6,
+          "deClienteId": 60,
+          "paraClienteId": 15,
+          "mlUserId": "2650889738",
+          "contaAtual": 24,
+          "contaDestino": "conta-movida:24",
+          "acao": "SEGUE_A_CONTA_MOVIDA",
+          "bloqueante": false,
+          "nota": "is_primary do grant tem de ser RECALCULADO sob o canônico — herdar criaria dois primários"
+        }
+      ],
+      "bases": [
+        {
+          "vinculoId": 37,
+          "baseSlug": "influencia_2",
+          "deClienteId": 60,
+          "paraClienteId": 15,
+          "contaAtual": 24,
+          "marketplace": "meli",
+          "ativo": false,
+          "classe": "ACCOUNT_EXACT",
+          "acao": "MOVER_VINCULO_PRESERVANDO_SEMANTICA",
+          "nota": "vínculo é de CONTA — segue a conta, não o cliente"
+        },
+        {
+          "vinculoId": 54,
+          "baseSlug": "influ2",
+          "deClienteId": 60,
+          "paraClienteId": 15,
+          "contaAtual": 24,
+          "marketplace": "meli",
+          "ativo": true,
+          "classe": "ACCOUNT_EXACT",
+          "acao": "MOVER_VINCULO_PRESERVANDO_SEMANTICA",
+          "nota": "vínculo é de CONTA — segue a conta, não o cliente"
+        }
+      ],
+      "referencias": [
+        {
+          "tabela": "base_cliente_vinculos",
+          "coluna": "cliente_id",
+          "deClienteId": 60,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "cliente_contas",
+          "coluna": "cliente_id",
+          "deClienteId": 60,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "entregas_cliente",
+          "coluna": "cliente_id",
+          "deClienteId": 60,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 60,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "relatorios",
+          "coluna": "cliente_id",
+          "deClienteId": 60,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        }
+      ],
+      "apiKeyLegacyDependency": [
+        15,
+        60
+      ],
+      "bloqueadores": [],
+      "acao": "PLAN_ONLY",
+      "aplicavelAutomaticamente": true
+    },
+    {
+      "cluster": "wbs_medical",
+      "confianca": "CONFIRMADO",
+      "canonicalClienteId": 32,
+      "canonicalSlug": "wbs_medical",
+      "aliasClienteIds": [
+        62
+      ],
+      "evidencias": [
+        {
+          "tipo": "EXTERNAL_ACCOUNT_ID",
+          "entre": [
+            32,
+            62
+          ],
+          "detalhe": "cliente_contas com o mesmo external_account_id 234836231 (meli) sob clientes distintos"
+        }
+      ],
+      "clienteContas": [
+        {
+          "contaId": 25,
+          "deClienteId": 62,
+          "paraClienteId": 32,
+          "marketplace": "meli",
+          "externalAccountId": "710361722",
+          "ativo": true,
+          "acao": "MOVER_CONTA",
+          "contaDestinoExistente": null,
+          "nota": "conta 25 passa a pertencer ao cliente 32; is_primary tem de ser RECALCULADO (não herdar)"
+        },
+        {
+          "contaId": 59,
+          "deClienteId": 62,
+          "paraClienteId": 32,
+          "marketplace": "meli",
+          "externalAccountId": "234836231",
+          "ativo": false,
+          "acao": "DEDUPLICAR_CONTA",
+          "contaDestinoExistente": 66,
+          "nota": "conta 59 tem a mesma chave natural da conta 66 do canônico — NÃO criar segunda; decidir qual sobrevive preservando as referências de ambas"
+        }
+      ],
+      "grants": [
+        {
+          "grantId": 88,
+          "deClienteId": 62,
+          "paraClienteId": 32,
+          "mlUserId": "710361722",
+          "contaAtual": 25,
+          "contaDestino": "conta-movida:25",
+          "acao": "SEGUE_A_CONTA_MOVIDA",
+          "bloqueante": false,
+          "nota": "is_primary do grant tem de ser RECALCULADO sob o canônico — herdar criaria dois primários"
+        }
+      ],
+      "bases": [],
+      "referencias": [
+        {
+          "tabela": "cliente_contas",
+          "coluna": "cliente_id",
+          "deClienteId": 62,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "diagnosticos_iniciais",
+          "coluna": "cliente_id",
+          "deClienteId": 62,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "entregas_cliente",
+          "coluna": "cliente_id",
+          "deClienteId": 62,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 62,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        }
+      ],
+      "apiKeyLegacyDependency": [
+        32,
+        62
+      ],
+      "bloqueadores": [],
+      "acao": "PLAN_ONLY",
+      "aplicavelAutomaticamente": true
+    },
+    {
+      "cluster": "j_meira",
+      "confianca": "FORTE",
+      "canonicalClienteId": 34,
+      "canonicalSlug": "j_meira",
+      "aliasClienteIds": [
+        63,
+        64
+      ],
+      "evidencias": [
+        {
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "entre": [
+            63,
+            34
+          ],
+          "detalhe": "\"J Meira 2\" reduz ao radical \"j meira\", que É o nome/slug do cliente #34 — sufixo confirmado por existir o original"
+        },
+        {
+          "tipo": "RADICAL_LEGADO_COMUM",
+          "entre": [
+            63,
+            64
+          ],
+          "detalhe": "ambos reduzem ao mesmo radical legado \"j meira\""
+        },
+        {
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "entre": [
+            34,
+            64
+          ],
+          "detalhe": "\"J Meira 3\" reduz ao radical \"j meira\", que É o nome/slug do cliente #34 — sufixo confirmado por existir o original"
+        }
+      ],
+      "clienteContas": [],
+      "grants": [],
+      "bases": [],
+      "referencias": [],
+      "apiKeyLegacyDependency": [
+        34,
+        63,
+        64
+      ],
+      "bloqueadores": [],
+      "acao": "PLAN_ONLY",
+      "aplicavelAutomaticamente": false
+    },
+    {
+      "cluster": "mercadao_enxovais",
+      "confianca": "CONFIRMADO",
+      "canonicalClienteId": 36,
+      "canonicalSlug": "mercadao_enxovais",
+      "aliasClienteIds": [
+        65
+      ],
+      "evidencias": [
+        {
+          "tipo": "ML_USER_ID",
+          "entre": [
+            36,
+            65
+          ],
+          "detalhe": "mesmo ml_user_id 8682183 marcado PRIMÁRIO nos dois clientes — a mesma conta de marketplace está cadastrada duas vezes"
+        },
+        {
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "entre": [
+            36,
+            65
+          ],
+          "detalhe": "\"Mercadao enxovais 2\" reduz ao radical \"mercadao enxovais\", que É o nome/slug do cliente #36 — sufixo confirmado por existir o original"
+        }
+      ],
+      "clienteContas": [
+        {
+          "contaId": 71,
+          "deClienteId": 65,
+          "paraClienteId": 36,
+          "marketplace": "meli",
+          "externalAccountId": "159560107",
+          "ativo": true,
+          "acao": "MOVER_CONTA",
+          "contaDestinoExistente": null,
+          "nota": "conta 71 passa a pertencer ao cliente 36; is_primary tem de ser RECALCULADO (não herdar)"
+        }
+      ],
+      "grants": [
+        {
+          "grantId": 52,
+          "deClienteId": 65,
+          "paraClienteId": 36,
+          "mlUserId": "8682183",
+          "contaAtual": null,
+          "contaDestino": null,
+          "acao": "SEM_CONTA_CORRESPONDENTE",
+          "bloqueante": true,
+          "nota": "grant 52 (ml_user_id 8682183) não tem ClienteConta correspondente em lugar nenhum — precisa que a conta seja CRIADA a partir do dado real antes de qualquer movimento"
+        },
+        {
+          "grantId": 103,
+          "deClienteId": 65,
+          "paraClienteId": 36,
+          "mlUserId": "159560107",
+          "contaAtual": 71,
+          "contaDestino": "conta-movida:71",
+          "acao": "SEGUE_A_CONTA_MOVIDA",
+          "bloqueante": false,
+          "nota": "is_primary do grant tem de ser RECALCULADO sob o canônico — herdar criaria dois primários"
+        }
+      ],
+      "bases": [],
+      "referencias": [
+        {
+          "tabela": "cliente_contas",
+          "coluna": "cliente_id",
+          "deClienteId": 65,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "entregas_cliente",
+          "coluna": "cliente_id",
+          "deClienteId": 65,
+          "linhas": 4,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 65,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        }
+      ],
+      "apiKeyLegacyDependency": [
+        36,
+        65
+      ],
+      "bloqueadores": [
+        "grant 52 sem conta correspondente"
+      ],
+      "acao": "PLAN_ONLY",
+      "aplicavelAutomaticamente": false
+    },
+    {
+      "cluster": "alma",
+      "confianca": "CONFIRMADO",
+      "canonicalClienteId": 39,
+      "canonicalSlug": "alma",
+      "aliasClienteIds": [
+        66
+      ],
+      "evidencias": [
+        {
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "entre": [
+            66,
+            39
+          ],
+          "detalhe": "\"Alma 2\" reduz ao radical \"alma\", que É o nome/slug do cliente #39 — sufixo confirmado por existir o original"
+        }
+      ],
+      "clienteContas": [
+        {
+          "contaId": 26,
+          "deClienteId": 66,
+          "paraClienteId": 39,
+          "marketplace": "meli",
+          "externalAccountId": "2568436888",
+          "ativo": true,
+          "acao": "MOVER_CONTA",
+          "contaDestinoExistente": null,
+          "nota": "conta 26 passa a pertencer ao cliente 39; is_primary tem de ser RECALCULADO (não herdar)"
+        }
+      ],
+      "grants": [
+        {
+          "grantId": 46,
+          "deClienteId": 66,
+          "paraClienteId": 39,
+          "mlUserId": "2568436888",
+          "contaAtual": 26,
+          "contaDestino": "conta-movida:26",
+          "acao": "SEGUE_A_CONTA_MOVIDA",
+          "bloqueante": false,
+          "nota": "is_primary do grant tem de ser RECALCULADO sob o canônico — herdar criaria dois primários"
+        }
+      ],
+      "bases": [],
+      "referencias": [
+        {
+          "tabela": "central_vendas_componentes",
+          "coluna": "cliente_id",
+          "deClienteId": 66,
+          "linhas": 235,
+          "temFk": false,
+          "risco": "SEM_FK__ATUALIZACAO_MANUAL_OBRIGATORIA"
+        },
+        {
+          "tabela": "central_vendas_imports",
+          "coluna": "cliente_id",
+          "deClienteId": 66,
+          "linhas": 3,
+          "temFk": false,
+          "risco": "SEM_FK__ATUALIZACAO_MANUAL_OBRIGATORIA"
+        },
+        {
+          "tabela": "central_vendas_pedido_itens",
+          "coluna": "cliente_id",
+          "deClienteId": 66,
+          "linhas": 47,
+          "temFk": false,
+          "risco": "SEM_FK__ATUALIZACAO_MANUAL_OBRIGATORIA"
+        },
+        {
+          "tabela": "central_vendas_pedidos",
+          "coluna": "cliente_id",
+          "deClienteId": 66,
+          "linhas": 47,
+          "temFk": false,
+          "risco": "SEM_FK__ATUALIZACAO_MANUAL_OBRIGATORIA"
+        },
+        {
+          "tabela": "central_vendas_sync_runs",
+          "coluna": "cliente_id",
+          "deClienteId": 66,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "cliente_contas",
+          "coluna": "cliente_id",
+          "deClienteId": 66,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "entregas_cliente",
+          "coluna": "cliente_id",
+          "deClienteId": 66,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 66,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "relatorios",
+          "coluna": "cliente_id",
+          "deClienteId": 66,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        }
+      ],
+      "apiKeyLegacyDependency": [
+        39,
+        66
+      ],
+      "bloqueadores": [],
+      "acao": "PLAN_ONLY",
+      "aplicavelAutomaticamente": true
+    },
+    {
+      "cluster": "dua_cosmeticos",
+      "confianca": "CONFIRMADO",
+      "canonicalClienteId": 40,
+      "canonicalSlug": "dua_cosmeticos",
+      "aliasClienteIds": [
+        67
+      ],
+      "evidencias": [
+        {
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "entre": [
+            67,
+            40
+          ],
+          "detalhe": "\"Dua Cosmeticos 2\" reduz ao radical \"dua cosmeticos\", que É o nome/slug do cliente #40 — sufixo confirmado por existir o original"
+        }
+      ],
+      "clienteContas": [
+        {
+          "contaId": 27,
+          "deClienteId": 67,
+          "paraClienteId": 40,
+          "marketplace": "meli",
+          "externalAccountId": "636985802",
+          "ativo": true,
+          "acao": "MOVER_CONTA",
+          "contaDestinoExistente": null,
+          "nota": "conta 27 passa a pertencer ao cliente 40; is_primary tem de ser RECALCULADO (não herdar)"
+        }
+      ],
+      "grants": [
+        {
+          "grantId": 18,
+          "deClienteId": 67,
+          "paraClienteId": 40,
+          "mlUserId": "636985802",
+          "contaAtual": 27,
+          "contaDestino": "conta-movida:27",
+          "acao": "SEGUE_A_CONTA_MOVIDA",
+          "bloqueante": false,
+          "nota": "is_primary do grant tem de ser RECALCULADO sob o canônico — herdar criaria dois primários"
+        }
+      ],
+      "bases": [],
+      "referencias": [
+        {
+          "tabela": "cliente_contas",
+          "coluna": "cliente_id",
+          "deClienteId": 67,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 67,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "relatorios",
+          "coluna": "cliente_id",
+          "deClienteId": 67,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        }
+      ],
+      "apiKeyLegacyDependency": [
+        40,
+        67
+      ],
+      "bloqueadores": [],
+      "acao": "PLAN_ONLY",
+      "aplicavelAutomaticamente": true
+    },
+    {
+      "cluster": "maya",
+      "confianca": "CONFIRMADO",
+      "canonicalClienteId": 55,
+      "canonicalSlug": "maya",
+      "aliasClienteIds": [
+        71,
+        68,
+        69,
+        70
+      ],
+      "evidencias": [
+        {
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "entre": [
+            68,
+            55
+          ],
+          "detalhe": "\"maya 2\" reduz ao radical \"maya\", que É o nome/slug do cliente #55 — sufixo confirmado por existir o original"
+        },
+        {
+          "tipo": "RADICAL_LEGADO_COMUM",
+          "entre": [
+            68,
+            69
+          ],
+          "detalhe": "ambos reduzem ao mesmo radical legado \"maya\""
+        },
+        {
+          "tipo": "RADICAL_LEGADO_COMUM",
+          "entre": [
+            68,
+            70
+          ],
+          "detalhe": "ambos reduzem ao mesmo radical legado \"maya\""
+        },
+        {
+          "tipo": "RADICAL_LEGADO_COMUM",
+          "entre": [
+            68,
+            71
+          ],
+          "detalhe": "ambos reduzem ao mesmo radical legado \"maya\""
+        },
+        {
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "entre": [
+            55,
+            69
+          ],
+          "detalhe": "\"maya 3\" reduz ao radical \"maya\", que É o nome/slug do cliente #55 — sufixo confirmado por existir o original"
+        },
+        {
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "entre": [
+            55,
+            70
+          ],
+          "detalhe": "\"maya 4\" reduz ao radical \"maya\", que É o nome/slug do cliente #55 — sufixo confirmado por existir o original"
+        },
+        {
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "entre": [
+            55,
+            71
+          ],
+          "detalhe": "\"maya 5\" reduz ao radical \"maya\", que É o nome/slug do cliente #55 — sufixo confirmado por existir o original"
+        }
+      ],
+      "clienteContas": [
+        {
+          "contaId": 31,
+          "deClienteId": 71,
+          "paraClienteId": 55,
+          "marketplace": "meli",
+          "externalAccountId": "47597550",
+          "ativo": true,
+          "acao": "MOVER_CONTA",
+          "contaDestinoExistente": null,
+          "nota": "conta 31 passa a pertencer ao cliente 55; is_primary tem de ser RECALCULADO (não herdar)"
+        },
+        {
+          "contaId": 57,
+          "deClienteId": 71,
+          "paraClienteId": 55,
+          "marketplace": "meli",
+          "externalAccountId": null,
+          "ativo": false,
+          "acao": "MOVER_CONTA",
+          "contaDestinoExistente": null,
+          "nota": "conta 57 passa a pertencer ao cliente 55; is_primary tem de ser RECALCULADO (não herdar)"
+        },
+        {
+          "contaId": 28,
+          "deClienteId": 68,
+          "paraClienteId": 55,
+          "marketplace": "meli",
+          "externalAccountId": "1078206002",
+          "ativo": true,
+          "acao": "MOVER_CONTA",
+          "contaDestinoExistente": null,
+          "nota": "conta 28 passa a pertencer ao cliente 55; is_primary tem de ser RECALCULADO (não herdar)"
+        },
+        {
+          "contaId": 29,
+          "deClienteId": 69,
+          "paraClienteId": 55,
+          "marketplace": "meli",
+          "externalAccountId": "606717549",
+          "ativo": true,
+          "acao": "MOVER_CONTA",
+          "contaDestinoExistente": null,
+          "nota": "conta 29 passa a pertencer ao cliente 55; is_primary tem de ser RECALCULADO (não herdar)"
+        },
+        {
+          "contaId": 30,
+          "deClienteId": 70,
+          "paraClienteId": 55,
+          "marketplace": "meli",
+          "externalAccountId": "450256632",
+          "ativo": true,
+          "acao": "MOVER_CONTA",
+          "contaDestinoExistente": null,
+          "nota": "conta 30 passa a pertencer ao cliente 55; is_primary tem de ser RECALCULADO (não herdar)"
+        }
+      ],
+      "grants": [
+        {
+          "grantId": 14,
+          "deClienteId": 71,
+          "paraClienteId": 55,
+          "mlUserId": "47597550",
+          "contaAtual": 31,
+          "contaDestino": "conta-movida:31",
+          "acao": "SEGUE_A_CONTA_MOVIDA",
+          "bloqueante": false,
+          "nota": "is_primary do grant tem de ser RECALCULADO sob o canônico — herdar criaria dois primários"
+        },
+        {
+          "grantId": 11,
+          "deClienteId": 68,
+          "paraClienteId": 55,
+          "mlUserId": "1078206002",
+          "contaAtual": 28,
+          "contaDestino": "conta-movida:28",
+          "acao": "SEGUE_A_CONTA_MOVIDA",
+          "bloqueante": false,
+          "nota": "is_primary do grant tem de ser RECALCULADO sob o canônico — herdar criaria dois primários"
+        },
+        {
+          "grantId": 12,
+          "deClienteId": 69,
+          "paraClienteId": 55,
+          "mlUserId": "606717549",
+          "contaAtual": 29,
+          "contaDestino": "conta-movida:29",
+          "acao": "SEGUE_A_CONTA_MOVIDA",
+          "bloqueante": false,
+          "nota": "is_primary do grant tem de ser RECALCULADO sob o canônico — herdar criaria dois primários"
+        },
+        {
+          "grantId": 13,
+          "deClienteId": 70,
+          "paraClienteId": 55,
+          "mlUserId": "450256632",
+          "contaAtual": 30,
+          "contaDestino": "conta-movida:30",
+          "acao": "SEGUE_A_CONTA_MOVIDA",
+          "bloqueante": false,
+          "nota": "is_primary do grant tem de ser RECALCULADO sob o canônico — herdar criaria dois primários"
+        }
+      ],
+      "bases": [],
+      "referencias": [
+        {
+          "tabela": "cliente_contas",
+          "coluna": "cliente_id",
+          "deClienteId": 71,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 71,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "cliente_contas",
+          "coluna": "cliente_id",
+          "deClienteId": 68,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 68,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "cliente_contas",
+          "coluna": "cliente_id",
+          "deClienteId": 69,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 69,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "cliente_contas",
+          "coluna": "cliente_id",
+          "deClienteId": 70,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 70,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        }
+      ],
+      "apiKeyLegacyDependency": [
+        55,
+        71,
+        68,
+        69,
+        70
+      ],
+      "bloqueadores": [],
+      "acao": "PLAN_ONLY",
+      "aplicavelAutomaticamente": true
+    },
+    {
+      "cluster": "luli",
+      "confianca": "CONFIRMADO",
+      "canonicalClienteId": 58,
+      "canonicalSlug": "luli",
+      "aliasClienteIds": [
+        82
+      ],
+      "evidencias": [
+        {
+          "tipo": "ML_USER_ID",
+          "entre": [
+            58,
+            82
+          ],
+          "detalhe": "mesmo ml_user_id 3310587126 marcado PRIMÁRIO nos dois clientes — a mesma conta de marketplace está cadastrada duas vezes"
+        },
+        {
+          "tipo": "SUFIXO_LEGADO_AUTOVALIDADO",
+          "entre": [
+            58,
+            82
+          ],
+          "detalhe": "\"Luli_1\" reduz ao radical \"luli\", que É o nome/slug do cliente #58 — sufixo confirmado por existir o original"
+        }
+      ],
+      "clienteContas": [],
+      "grants": [
+        {
+          "grantId": 47,
+          "deClienteId": 82,
+          "paraClienteId": 58,
+          "mlUserId": "3310587126",
+          "contaAtual": null,
+          "contaDestino": null,
+          "acao": "SEM_CONTA_CORRESPONDENTE",
+          "bloqueante": true,
+          "nota": "grant 47 (ml_user_id 3310587126) não tem ClienteConta correspondente em lugar nenhum — precisa que a conta seja CRIADA a partir do dado real antes de qualquer movimento"
+        }
+      ],
+      "bases": [],
+      "referencias": [
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 82,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        }
+      ],
+      "apiKeyLegacyDependency": [
+        58,
+        82
+      ],
+      "bloqueadores": [
+        "grant 47 sem conta correspondente"
+      ],
+      "acao": "PLAN_ONLY",
+      "aplicavelAutomaticamente": false
+    },
+    {
+      "cluster": "zorzaloja",
+      "confianca": "FORTE",
+      "canonicalClienteId": 112,
+      "canonicalSlug": "zorzaloja",
+      "aliasClienteIds": [
+        121
+      ],
+      "evidencias": [
+        {
+          "tipo": "SUFIXO_MARKETPLACE_CASCA_VAZIA",
+          "entre": [
+            121,
+            112
+          ],
+          "detalhe": "\"zorza_shopee\" é o cadastro legado do marketplace \"shopee\" de \"zorza.loja\" e não tem conta, grant, base nem linha referenciada — casca vazia"
+        }
+      ],
+      "clienteContas": [],
+      "grants": [],
+      "bases": [],
+      "referencias": [],
+      "apiKeyLegacyDependency": [
+        112,
+        121
+      ],
+      "bloqueadores": [],
+      "acao": "PLAN_ONLY",
+      "aplicavelAutomaticamente": false
+    },
+    {
+      "cluster": "wmmodas",
+      "confianca": "CONFIRMADO",
+      "canonicalClienteId": 123,
+      "canonicalSlug": "wmmodas",
+      "aliasClienteIds": [
+        116
+      ],
+      "evidencias": [
+        {
+          "tipo": "ML_USER_ID",
+          "entre": [
+            116,
+            123
+          ],
+          "detalhe": "mesmo ml_user_id 3589758095 marcado PRIMÁRIO nos dois clientes — a mesma conta de marketplace está cadastrada duas vezes"
+        }
+      ],
+      "clienteContas": [],
+      "grants": [
+        {
+          "grantId": 85,
+          "deClienteId": 116,
+          "paraClienteId": 123,
+          "mlUserId": "3589758095",
+          "contaAtual": null,
+          "contaDestino": null,
+          "acao": "SEM_CONTA_CORRESPONDENTE",
+          "bloqueante": true,
+          "nota": "grant 85 (ml_user_id 3589758095) não tem ClienteConta correspondente em lugar nenhum — precisa que a conta seja CRIADA a partir do dado real antes de qualquer movimento"
+        }
+      ],
+      "bases": [],
+      "referencias": [
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 116,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        }
+      ],
+      "apiKeyLegacyDependency": [
+        123,
+        116
+      ],
+      "bloqueadores": [
+        "grant 85 sem conta correspondente"
+      ],
+      "acao": "PLAN_ONLY",
+      "aplicavelAutomaticamente": false
+    },
+    {
+      "cluster": "teste1",
+      "confianca": "CONFIRMADO",
+      "canonicalClienteId": 126,
+      "canonicalSlug": "teste1",
+      "aliasClienteIds": [
+        127,
+        109
+      ],
+      "evidencias": [
+        {
+          "tipo": "EXTERNAL_ACCOUNT_ID",
+          "entre": [
+            109,
+            126
+          ],
+          "detalhe": "cliente_contas com o mesmo external_account_id 484819600 (meli) sob clientes distintos"
+        },
+        {
+          "tipo": "EXTERNAL_ACCOUNT_ID",
+          "entre": [
+            109,
+            127
+          ],
+          "detalhe": "cliente_contas com o mesmo external_account_id 484819600 (meli) sob clientes distintos"
+        },
+        {
+          "tipo": "ML_USER_ID",
+          "entre": [
+            126,
+            127
+          ],
+          "detalhe": "mesmo ml_user_id 484819600 marcado PRIMÁRIO nos dois clientes — a mesma conta de marketplace está cadastrada duas vezes"
+        }
+      ],
+      "clienteContas": [
+        {
+          "contaId": 74,
+          "deClienteId": 127,
+          "paraClienteId": 126,
+          "marketplace": "meli",
+          "externalAccountId": "484819600",
+          "ativo": true,
+          "acao": "DEDUPLICAR_CONTA",
+          "contaDestinoExistente": 68,
+          "nota": "conta 74 tem a mesma chave natural da conta 68 do canônico — NÃO criar segunda; decidir qual sobrevive preservando as referências de ambas"
+        },
+        {
+          "contaId": 44,
+          "deClienteId": 109,
+          "paraClienteId": 126,
+          "marketplace": "meli",
+          "externalAccountId": "484819600",
+          "ativo": false,
+          "acao": "DEDUPLICAR_CONTA",
+          "contaDestinoExistente": 68,
+          "nota": "conta 44 tem a mesma chave natural da conta 68 do canônico — NÃO criar segunda; decidir qual sobrevive preservando as referências de ambas"
+        }
+      ],
+      "grants": [
+        {
+          "grantId": 105,
+          "deClienteId": 127,
+          "paraClienteId": 126,
+          "mlUserId": "484819600",
+          "contaAtual": 74,
+          "contaDestino": 68,
+          "acao": "REAPONTAR_PARA_CONTA_EXISTENTE",
+          "bloqueante": false,
+          "nota": "is_primary do grant tem de ser RECALCULADO sob o canônico — herdar criaria dois primários"
+        }
+      ],
+      "bases": [],
+      "referencias": [
+        {
+          "tabela": "cliente_contas",
+          "coluna": "cliente_id",
+          "deClienteId": 127,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "ml_tokens",
+          "coluna": "cliente_id",
+          "deClienteId": 127,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "cliente_360_resumos_mensais",
+          "coluna": "cliente_id",
+          "deClienteId": 109,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "cliente_360_sync_jobs",
+          "coluna": "cliente_id",
+          "deClienteId": 109,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "cliente_contas",
+          "coluna": "cliente_id",
+          "deClienteId": 109,
+          "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "entregas_cliente",
+          "coluna": "cliente_id",
+          "deClienteId": 109,
+          "linhas": 2,
+          "temFk": true,
+          "risco": "COM_FK"
+        }
+      ],
+      "apiKeyLegacyDependency": [
+        126,
+        127,
+        109
+      ],
+      "bloqueadores": [],
+      "acao": "PLAN_ONLY",
+      "aplicavelAutomaticamente": true
+    }
+  ]
+}

@@ -8,13 +8,30 @@
 // comMultiplasMemberships, comPrincipalDuplicado, pronto) preservadas.
 
 const pool = require("../../config/database");
-const { ensureSquadsTables } = require("./squadsRepository");
+const { prepararSchemaSquads } = require("./squadsRepository");
+const { ROLES_COBRADAS_NA_AUDITORIA } = require("./rolesInternas");
 
-// Papéis considerados "internos" para fins de migração de membership.
-const ROLES_INTERNAS = ["user", "membro", "interno"];
+// Papéis cobrados por esta auditoria. Fonte canônica única — ver rolesInternas.js.
+// NÃO inclui `admin`: admin tem bypass e não precisa de membership; incluí-lo
+// deixaria `pronto` permanentemente falso e travaria o rollout para sempre.
+const ROLES_INTERNAS = ROLES_COBRADAS_NA_AUDITORIA.lista;
 
-async function auditoria(db = pool) {
-  await ensureSquadsTables(db);
+/**
+ * @param {object} db
+ * @param {{garantirSchema?: boolean}} [opcoes] — `garantirSchema: false` roda em
+ *   modo ZERO-WRITE (BLOQUEADOR T-3): não aplica DDL, só confere o schema com
+ *   `to_regclass`. O default mantém o comportamento histórico.
+ */
+async function auditoria(db = pool, { garantirSchema = true } = {}) {
+  const schema = await prepararSchemaSquads(db, { garantirSchema });
+  if (!schema.ok) {
+    return {
+      geradoEm: new Date().toISOString(),
+      erro: `schema de Squads ausente: ${schema.ausentes.join(", ")}. Rode a migração antes — esta auditoria é zero-write e não cria tabela.`,
+      schemaAusente: schema.ausentes,
+      pronto: false,
+    };
+  }
 
   const [
     clientesAgg,
@@ -25,6 +42,7 @@ async function auditoria(db = pool) {
     vinculosDuplicados,
     responsaveisForaDoSquad,
     membrosDeUsuarioInativo,
+    totaisVacuidade,
   ] = await Promise.all([
     db.query(`/* squads:AUDIT_CLIENTES */
       SELECT
@@ -133,6 +151,16 @@ async function auditoria(db = pool) {
         JOIN squads s ON s.id = sm.squad_id
        WHERE sm.ativo = true AND u.ativo = false
        ORDER BY s.slug ASC`),
+
+    // P2.9 BLOQUEADOR T-4 — contadores de NÃO-VACUIDADE.
+    // `pronto` é a conjunção de sete contadores "=== 0". Numa base vazia todos
+    // são 0 e o gate declarava GO sem que existisse migração nenhuma. Estas
+    // contagens existem para que "não há nada errado" nunca mais seja
+    // confundido com "está pronto".
+    db.query(`/* squads:AUDIT_TOTAIS_VACUIDADE */
+      SELECT
+        (SELECT COUNT(*) FROM squads WHERE ativo = true)::int          AS squads_ativos,
+        (SELECT COUNT(*) FROM squad_members WHERE ativo = true)::int   AS memberships_ativas`),
   ]);
 
   const c = clientesAgg.rows[0];
@@ -146,7 +174,33 @@ async function auditoria(db = pool) {
   //                 nao torna a autorizacao incorreta.
   const vinculoDuplicado = vinculosDuplicados.rows.length;
 
-  const pronto =
+  // ── P2.9 BLOQUEADOR T-4 — NÃO-VACUIDADE ──
+  // Os sete contadores acima medem DEFEITO. Um estado vazio não tem defeito
+  // algum — e por isso passava: 0 cliente sem squad, 0 interno sem membership,
+  // 0 vínculo duplicado. O gate lia isso como GO e liberava o enforcement numa
+  // base onde a migração simplesmente nunca aconteceu.
+  //
+  // Estas regras medem PRESENÇA. Cada uma sozinha reprova, e nenhuma delas pode
+  // transformar um `pronto` falso em verdadeiro — a vacuidade só subtrai.
+  const t = (totaisVacuidade && totaisVacuidade.rows[0]) || { squads_ativos: 0, memberships_ativas: 0 };
+  const motivosVacuidade = [];
+  if (t.squads_ativos === 0) motivosVacuidade.push("nenhum Squad ativo");
+  if (t.memberships_ativas === 0) motivosVacuidade.push("nenhuma membership ativa");
+  if (c.ativos === 0) motivosVacuidade.push("nenhum Cliente ativo");
+  if (c.com_squad_ativo === 0) motivosVacuidade.push("nenhum Cliente ativo com Squad ativo");
+  if (u.internos === 0) motivosVacuidade.push("nenhum usuário interno ativo");
+
+  const vacuidade = {
+    squadsAtivos: t.squads_ativos,
+    membershipsAtivas: t.memberships_ativas,
+    clientesAtivos: c.ativos,
+    clientesComSquadAtivo: c.com_squad_ativo,
+    internosAtivos: u.internos,
+    vazio: motivosVacuidade.length > 0,
+    motivos: motivosVacuidade,
+  };
+
+  const semDefeito =
     c.sem_squad === 0 &&
     c.em_squad_inativo === 0 &&
     u.sem_membership === 0 &&
@@ -155,8 +209,11 @@ async function auditoria(db = pool) {
     principalDuplicado === 0 &&
     vinculoDuplicado === 0;
 
+  const pronto = semDefeito && !vacuidade.vazio;
+
   return {
     geradoEm: new Date().toISOString(),
+    vacuidade,
     clientesAtivos: {
       total: c.ativos,
       // legado: comSquad = qualquer squad ativo aberto (inclui inativo)

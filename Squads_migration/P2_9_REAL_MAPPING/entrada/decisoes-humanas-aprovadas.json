@@ -1,0 +1,85 @@
+{
+  "_origem": "Squads_migration/VENFORCE_V3_P2_9_DECISOES_FINAIS_APROVADAS.md",
+  "_transcritoEm": "2026-09-04",
+  "_atualizadoEm": "2026-09-04 — rodada 2: as três respostas objetivas que faltavam",
+  "_regra": "Transcrição LITERAL das decisões humanas. Nenhum email, id, nome ou Squad foi inferido, completado ou corrigido aqui. O que o humano não decidiu continua indecidido — e bloqueia.",
+  "_naoDecididoPeloDocumento": [
+    "MM — squad-3. A carteira aprovada nomeia 'MM', e o banco tem duas entidades reais ('MM Importes' #54 e 'MM Comercio' #107). Sem desempate humano as duas permanecem no Squad 8 · Legado. NÃO bloqueia o APPLY: cada uma termina em exatamente 1 Squad."
+  ],
+  "_decididoNaRodada2": [
+    "Klayvert — identidade técnica = #35 (klayvert.rodrigues@vendexcompany.com.br), a conta com atividade recente registrada. A conta #22 NÃO é desativada, deletada nem migrada nesta missão: vira dívida de saneamento posterior. O Squad principal permanece Squad 2.",
+    "Vinícius (squad-2:auxiliar2) = #44 Vinicius Dias (vinicius.dias@vendexcompany.com). A conta admin #29 Vinicius Bergo NÃO é usada e NÃO é alterada.",
+    "Grant cruzado Fênix #102 × Eliza.Market #105: na dúvida operacional, NÃO mexer. Grants #69 e #70 ficam exatamente como estão. Classificação preservada: NÃO bloqueia APPLY, BLOQUEIA ENFORCEMENT."
+  ],
+  "versao": 1,
+  "identidades": [
+    {
+      "nome": "Fernando",
+      "pessoa": "Fernando Montoro",
+      "email": "fernando.montoro@vendexcompany.com",
+      "assentos": [{ "squad": "squad-1", "papel": "auxiliar2" }],
+      "_fonte": "§3.3 e §7 — são duas pessoas diferentes; este é o Auxiliar 2 do Squad 1"
+    },
+    {
+      "nome": "Fernando",
+      "pessoa": "Fernando Salgado",
+      "email": "fernando.salgado@vendexcompany.com",
+      "assentos": [{ "squad": "squad-4", "papel": "coordenador" }],
+      "_fonte": "§3.3 e §7 — Coordenador do Squad 4, role global admin, mantida integralmente"
+    },
+    {
+      "nome": "Gabrielly",
+      "pessoa": "Gabrielly Ribeiro",
+      "email": "gabrielly.ribeiro@vendexcompany.com",
+      "assentos": [{ "squad": "squad-1", "papel": "design" }],
+      "_fonte": "§7 — pessoa distinta de Cavazzoto"
+    },
+    {
+      "nome": "Cavazzoto",
+      "pessoa": "Gabrielly Cavazzoto",
+      "email": "gabrielly.cavazotto@vendexcompany.com",
+      "assentos": [{ "squad": "squad-3", "papel": "design" }],
+      "_fonte": "§7 — pessoa distinta de Gabrielly do Squad 1"
+    },
+    {
+      "nome": "Klayvert",
+      "pessoa": "Klayvert Rodrigues",
+      "email": "klayvert.rodrigues@vendexcompany.com.br",
+      "_fonte": "rodada 2, decisão 1 — a mesma pessoa tem duas contas (#22 .com e #35 .com.br); a identidade técnica do P2.9 é #35, a que tem atividade recente registrada. Sem 'assentos': vale para os três assentos de Coordenador (squads 2, 3 e 6), que são da mesma pessoa. A conta #22 NÃO é tocada."
+    },
+    {
+      "nome": "Vinícius",
+      "pessoa": "Vinicius Dias",
+      "email": "vinicius.dias@vendexcompany.com",
+      "assentos": [{ "squad": "squad-2", "papel": "auxiliar2" }],
+      "_fonte": "rodada 2, decisão 2 — é o #44 Vinicius Dias, não o admin #29 Vinicius Bergo, que não é usado nem alterado"
+    }
+  ],
+  "usuariosNaoCriados": [
+    {
+      "nome": "Caique",
+      "assentos": [{ "squad": "squad-2", "papel": "design" }],
+      "_fonte": "§8 — permanece previsto como Design do Squad 2; membership fora deste APPLY até a conta existir"
+    },
+    {
+      "nome": "Yuri",
+      "assentos": [{ "squad": "squad-4", "papel": "auxiliar2" }],
+      "_fonte": "§8 — permanece previsto como Auxiliar 2 do Squad 4"
+    },
+    {
+      "nome": "Carol",
+      "assentos": [{ "squad": "squad-4", "papel": "design" }],
+      "_fonte": "§8 — permanece prevista como Design do Squad 4"
+    },
+    {
+      "nome": "Victor",
+      "assentos": [{ "squad": "squad-6", "papel": "auxiliar" }],
+      "_fonte": "§3.1 e §8 — Auxiliar do Squad 6, usuário ainda não criado. Revoga o casamento aproximado anterior com a conta admin #6 Vitor Capeli."
+    }
+  ],
+  "squadPrincipal": [
+    { "nome": "Klayvert", "squad": "squad-2", "_fonte": "§3.2 e §6 — Squads 2/3/6, principal Squad 2" },
+    { "nome": "Micael", "squad": "squad-1", "_fonte": "§3.2 e §6 — Squads 1/5, principal Squad 1" },
+    { "nome": "Sophia", "squad": "squad-5", "_fonte": "§3.2, §5.2 e §6 — Squads 5/6, principal Squad 5" }
+  ]
+}

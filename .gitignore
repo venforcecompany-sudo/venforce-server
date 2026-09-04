@@ -24,6 +24,11 @@ xlsx.full.min.js
 node_modules/
 **/node_modules/
 .env.*
+# `.env` e `.env.*` não pegam `ALGUMACOISA.env` — e é exatamente essa a forma
+# que arquivos de credencial acabam tendo na raiz (ex.: DATABASE_URL.env com a
+# string de conexão de PRODUÇÃO). Qualquer arquivo terminado em `.env` fica de
+# fora do versionamento.
+*.env
 google-credentials.json
 user_client_access.json
 !.env.example

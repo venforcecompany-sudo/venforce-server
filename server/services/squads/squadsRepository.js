@@ -36,6 +36,47 @@ async function ensureSquadsTables(db = pool) {
   if (db === pool) _ensured = true;
 }
 
+// Tabelas sem as quais nenhuma leitura de Squads faz sentido.
+const TABELAS_SQUADS = ["squads", "squad_members", "cliente_squad_history", "cliente_responsaveis"];
+
+/**
+ * V3 P2.9 — BLOQUEADOR T-3. Alternativa ZERO-WRITE a `ensureSquadsTables`.
+ *
+ * `ensureSquadsTables` reaplica as migrations, isto é, executa DDL. Isso é
+ * legítimo no boot e no `--apply`, mas transformava o "dry-run" e o `--audit`
+ * em operações de ESCRITA — inaceitável contra produção, justamente onde essas
+ * operações existem para ser inofensivas.
+ *
+ * Esta função só PERGUNTA, com `to_regclass` (SELECT puro): as tabelas estão
+ * lá? Se não estiverem, quem chamou recebe a lista de ausentes e decide — o
+ * que nunca acontece é criar tabela caladamente durante uma simulação.
+ *
+ * @returns {Promise<{ok: boolean, ausentes: string[]}>}
+ */
+async function verificarSchemaSquads(db = pool) {
+  const { rows } = await db.query(
+    `/* squads:SCHEMA_PRESENTE */
+     SELECT t AS nome, to_regclass('public.' || t) IS NOT NULL AS existe
+       FROM unnest($1::text[]) AS t`,
+    [TABELAS_SQUADS]
+  );
+  const ausentes = rows.filter((r) => !r.existe).map((r) => r.nome);
+  return { ok: ausentes.length === 0, ausentes };
+}
+
+/**
+ * Ponto único de decisão entre "garantir" (escreve DDL) e "verificar" (não
+ * escreve nada). Todo caminho de leitura do tooling passa por aqui.
+ */
+async function prepararSchemaSquads(db = pool, { garantirSchema = true } = {}) {
+  if (garantirSchema) {
+    await ensureSquadsTables(db);
+    return { ok: true, ausentes: [], modo: "GARANTIDO" };
+  }
+  const r = await verificarSchemaSquads(db);
+  return { ...r, modo: "VERIFICADO_ZERO_WRITE" };
+}
+
 /* ─────────────────────────── squads ─────────────────────────── */
 
 async function listarSquads({ apenasAtivos = false, squadIds = null } = {}, db = pool) {
@@ -382,6 +423,9 @@ async function usuarioTemAcessoAoSquadDoCliente(clienteId, userId, db = pool) {
 
 module.exports = {
   ensureSquadsTables,
+  verificarSchemaSquads,
+  prepararSchemaSquads,
+  TABELAS_SQUADS,
   listarSquads,
   obterSquadPorId,
   obterSquadPorSlug,

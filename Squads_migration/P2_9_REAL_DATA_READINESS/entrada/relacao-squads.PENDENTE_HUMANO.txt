@@ -1,0 +1,101 @@
+# ═══════════════════════════════════════════════════════════════════
+#  P2.9 — GABARITO EM BRANCO (FORMATO V1) — HISTÓRICO
+#
+#  ⚠ ESTE ARQUIVO NÃO É MAIS O QUE A OPERAÇÃO PREENCHE.
+#
+#  A relação real dos membros CHEGOU, e a estrutura da empresa é mais rica do
+#  que o formato V1 abaixo consegue representar:
+#
+#      Squad → Coordenador → Gestor → Auxiliar → Auxiliar 2 → Design
+#
+#  USE:  relacao-squads-operacao-v1.txt   (formato V2, com a relação real)
+#  LEIA: ../15_MEMBERSHIPS_RECEBIDAS.md e ../16_DECISOES_HUMANAS_PENDENTES.md
+#
+#  O gabarito continua aqui, intacto, como registro do formato V1 — que o
+#  parser AINDA aceita. Duas regras dele, porém, foram CORRIGIDAS; ver as
+#  notas ⚠ abaixo. Para gerar um gabarito novo já no formato V2:
+#
+#    node server/sql/squads-preflight-relacao.js --esqueleto \
+#      --inventario inventario.json --saida relacao-nova.txt
+# ═══════════════════════════════════════════════════════════════════
+#
+# COMO PREENCHER
+#   1. Para cada um dos 6 Squads, substitua os marcadores PENDENTE_*.
+#   2. SQUAD:    nome oficial do Squad (como a operação o chama).
+#   3. SLUG:     opcional. Se omitir, é derivado do nome automaticamente.
+#   4. GESTOR:   email (preferido) ou id numérico do Gestor do Squad.
+#      ⚠ CORRIGIDO: o Gestor NÃO é o Coordenador. No formato V2 existe uma
+#        chave COORDENADOR: separada, e só ela vira
+#        squad_members.funcao = "coordenador". O Gestor entra como "membro",
+#        e a função organizacional dele vira cliente_responsaveis.papel =
+#        "gestor" quando Cliente→Squad chegar.
+#   5. CLIENTES: um por linha, com "- ". Use o SLUG do cliente ou o id.
+#   6. MEMBROS:  um por linha, com "- ". Use o EMAIL ou o id.
+#                NÃO repita o Gestor aqui — ele já entra pelo campo GESTOR.
+#
+# COMO VALIDAR (não escreve nada, não precisa de banco):
+#   node server/sql/squads-preflight-relacao.js \
+#     --relacao Squads_migration/P2_9_REAL_DATA_READINESS/entrada/relacao-squads.PENDENTE_HUMANO.txt \
+#     --inventario inventario.json
+#
+# REGRAS QUE O VALIDADOR APLICA
+#   - exatamente 6 Squads; nome e slug únicos; 1 Gestor por Squad;
+#   - um Cliente não pode estar em 2 Squads;
+#   - um usuário pode estar em N Squads;
+#     ⚠ CORRIGIDO: o 1º NÃO vira mais o principal. A ORDEM DESTE ARQUIVO NÃO
+#       DEFINE SQUAD PRINCIPAL. Com 1 Squad o principal é determinístico; com
+#       2+ o validador emite PENDENTE_SQUAD_PRINCIPAL e BLOQUEIA o plano até
+#       declaração humana explícita na chave PRINCIPAL: do formato V2.
+#   - todo Cliente ativo precisa acabar em algum Squad;
+#   - nenhum marcador PENDENTE_* ou SQUAD_N pode sobrar.
+#
+# NÃO INVENTE NADA. Se um dado ainda não é conhecido, deixe o marcador
+# PENDENTE_* como está — o validador trata isso como pendência esperada,
+# não como erro.
+# ═══════════════════════════════════════════════════════════════════
+
+SQUAD: PENDENTE_NOME_OFICIAL
+GESTOR: PENDENTE_DADO_HUMANO
+CLIENTES:
+MEMBROS:
+
+SQUAD: PENDENTE_NOME_OFICIAL
+GESTOR: PENDENTE_DADO_HUMANO
+CLIENTES:
+MEMBROS:
+
+SQUAD: PENDENTE_NOME_OFICIAL
+GESTOR: PENDENTE_DADO_HUMANO
+CLIENTES:
+MEMBROS:
+
+SQUAD: PENDENTE_NOME_OFICIAL
+GESTOR: PENDENTE_DADO_HUMANO
+CLIENTES:
+MEMBROS:
+
+SQUAD: PENDENTE_NOME_OFICIAL
+GESTOR: PENDENTE_DADO_HUMANO
+CLIENTES:
+MEMBROS:
+
+SQUAD: PENDENTE_NOME_OFICIAL
+GESTOR: PENDENTE_DADO_HUMANO
+CLIENTES:
+MEMBROS:
+
+# ═══════════════════════════════════════════════════════════════════
+# EXEMPLO DE UM SQUAD PREENCHIDO (remova o "#" apenas para consultar;
+# este bloco é comentário e NÃO é lido pelo validador):
+#
+# SQUAD: Squad Nordeste
+# SLUG: nordeste
+# GESTOR: fulana.silva@venforce.com
+# CLIENTES:
+#   - cliente-alpha
+#   - cliente-beta
+#   - 142
+# MEMBROS:
+#   - beltrano.souza@venforce.com
+#   - ciclana.rocha@venforce.com
+# ═══════════════════════════════════════════════════════════════════
