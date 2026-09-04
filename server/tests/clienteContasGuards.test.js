@@ -45,13 +45,58 @@ ok("server/index.js monta as rotas de cliente-contas", indexJs.includes('require
 
 const clienteContasRoutes = read("routes/clienteContasRoutes.js");
 
+// Hotfix fd487d4 ("fix: impedir auth global-bloqueio") trocou
+// `router.use(authMiddleware)` — que rodava para QUALQUER path que chegasse
+// ao router (ele é montado em app.use("/", ...) em index.js), inclusive
+// rotas públicas de OUTROS routers montados depois, como
+// GET /public/entregas/:token (Fechamento V3) — por authMiddleware
+// explícito em cada rota. Não pode haver `router.use(authMiddleware)`
+// solto de novo, e toda rota declarada precisa trazer authMiddleware antes
+// do gate de autorização (requireAdmin/requireAutomacoesAccess/carteira).
+ok(
+  "clienteContasRoutes NÃO usa router.use(authMiddleware) global (causa raiz do bloqueio de rotas públicas de outros routers)",
+  !/router\.use\(\s*authMiddleware\s*\)/.test(clienteContasRoutes)
+);
+
+for (const [verbo, rota] of [
+  ["get", '"/clientes/:cliente/contas"'],
+  ["post", '"/clientes/:cliente/contas"'],
+  ["get", '"/cliente-contas/:id"'],
+  ["patch", '"/cliente-contas/:id"'],
+  ["patch", '"/cliente-contas/:id/principal"'],
+  ["get", '"/cliente-contas/:id/base"'],
+  ["get", '"/cliente-contas/:id/bases-elegiveis"'],
+  ["put", '"/cliente-contas/:id/base"'],
+  ["delete", '"/cliente-contas/:id/ml-grant"'],
+]) {
+  // Pega o primeiro middleware nomeado logo após a rota literal.
+  const rotaOffset = clienteContasRoutes.indexOf(rota);
+  assert.ok(rotaOffset >= 0, `rota não encontrada: ${verbo} ${rota}`);
+  const fimLinha = clienteContasRoutes.indexOf(");", rotaOffset);
+  const trecho = clienteContasRoutes.slice(rotaOffset, fimLinha);
+  const primeiroMiddleware = trecho
+    .slice(rota.length)
+    .split(",")
+    .map((s) => s.trim())
+    .find((s) => s.length > 0);
+  ok(`${verbo.toUpperCase()} ${rota}: authMiddleware é o primeiro middleware após a rota (auth antes de authz)`, primeiroMiddleware === "authMiddleware");
+}
+
 // Leitura de metadados operacionais é liberada às roles internas
 // (admin/user/membro); mutações continuam admin-only. Checa o middleware
 // declarado logo após cada `router.<verbo>("<rota>"` — mesma técnica de
 // mlGrantScope.test.js para as rotas /admin/ml-tokens.
 function middlewareDaRota(routesSrc, verbo, rotaLiteral) {
-  const offset = routesSrc.indexOf(`router.${verbo}(${rotaLiteral}`);
-  assert.ok(offset >= 0, `rota não encontrada: ${verbo} ${rotaLiteral}`);
+  // Tolerante a `router.verbo("rota", ...)` numa linha só e a
+  // `router.verbo(\n  "rota",\n  ...\n)` — hotfix fd487d4 reformatou cada
+  // rota de auth global (router.use) para authMiddleware explícito e
+  // multi-linha por rota.
+  const declaracao = new RegExp(
+    `router\\.${verbo}\\(\\s*${rotaLiteral.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`
+  );
+  const casada = routesSrc.match(declaracao);
+  assert.ok(casada, `rota não encontrada: ${verbo} ${rotaLiteral}`);
+  const offset = casada.index;
   const fimLinha = routesSrc.indexOf(");", offset);
   assert.ok(fimLinha > offset, `fim da declaração não encontrado: ${verbo} ${rotaLiteral}`);
   return routesSrc.slice(offset, fimLinha);
