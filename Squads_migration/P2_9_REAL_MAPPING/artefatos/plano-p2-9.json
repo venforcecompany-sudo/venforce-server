@@ -1,6 +1,6 @@
 {
   "versao": 1,
-  "descricao": "P2.9 — 6 Squads operacionais + Squad 8 · Legado · 18 memberships · 83 clientes reais",
+  "descricao": "P2.9 — 6 Squads operacionais + Squad 8 · Legado · 20 memberships · 83 clientes reais",
   "_geradoPor": "squads-mapeamento-real.js",
   "_avisoResponsaveis": "responsaveis[] deliberadamente VAZIO — a regra de negócio que transformaria papel operacional (gestor/auxiliar/design) em cliente_responsaveis NÃO está documentada. Ver 12_CLIENT_CONSOLIDATION_PLAN.md.",
   "squads": [
@@ -45,8 +45,8 @@
       "squad": "squad-1",
       "usuario": "micael.almeida@vendexcompany.com",
       "funcao": "coordenador",
-      "_papelOperacional": "coordenador",
-      "_principalPendente": true
+      "principal": true,
+      "_papelOperacional": "coordenador"
     },
     {
       "squad": "squad-1",
@@ -61,6 +61,13 @@
       "funcao": "membro",
       "principal": true,
       "_papelOperacional": "auxiliar"
+    },
+    {
+      "squad": "squad-1",
+      "usuario": "fernando.montoro@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "auxiliar2"
     },
     {
       "squad": "squad-1",
@@ -113,6 +120,13 @@
     },
     {
       "squad": "squad-4",
+      "usuario": "fernando.salgado@vendexcompany.com",
+      "funcao": "coordenador",
+      "principal": true,
+      "_papelOperacional": "coordenador"
+    },
+    {
+      "squad": "squad-4",
       "usuario": "anderson.santos@vendexcompany.com",
       "funcao": "membro",
       "principal": true,
@@ -129,8 +143,7 @@
       "squad": "squad-5",
       "usuario": "micael.almeida@vendexcompany.com",
       "funcao": "coordenador",
-      "_papelOperacional": "coordenador",
-      "_principalPendente": true
+      "_papelOperacional": "coordenador"
     },
     {
       "squad": "squad-5",
@@ -150,8 +163,8 @@
       "squad": "squad-5",
       "usuario": "sophia.costa@vendexcompany.com",
       "funcao": "membro",
-      "_papelOperacional": "design",
-      "_principalPendente": true
+      "principal": true,
+      "_papelOperacional": "design"
     },
     {
       "squad": "squad-6",
@@ -164,8 +177,7 @@
       "squad": "squad-6",
       "usuario": "sophia.costa@vendexcompany.com",
       "funcao": "membro",
-      "_papelOperacional": "design",
-      "_principalPendente": true
+      "_papelOperacional": "design"
     }
   ],
   "clientes": [
@@ -585,5 +597,48 @@
       "motivo": "P2.9 — fora da relação operacional dos Squads 1–6; quarentena no Squad 8 · Legado"
     }
   ],
-  "responsaveis": []
+  "responsaveis": [],
+  "_emitivel": false,
+  "_bloqueios": [
+    {
+      "tipo": "USUARIO_AMBIGUO",
+      "nome": "Klayvert",
+      "squad": "squad-2",
+      "papel": "coordenador",
+      "candidatos": [
+        22,
+        35
+      ]
+    },
+    {
+      "tipo": "USUARIO_AMBIGUO",
+      "nome": "Vinícius",
+      "squad": "squad-2",
+      "papel": "auxiliar2",
+      "candidatos": [
+        29,
+        44
+      ]
+    },
+    {
+      "tipo": "USUARIO_AMBIGUO",
+      "nome": "Klayvert",
+      "squad": "squad-3",
+      "papel": "coordenador",
+      "candidatos": [
+        22,
+        35
+      ]
+    },
+    {
+      "tipo": "USUARIO_AMBIGUO",
+      "nome": "Klayvert",
+      "squad": "squad-6",
+      "papel": "coordenador",
+      "candidatos": [
+        22,
+        35
+      ]
+    }
+  ]
 }

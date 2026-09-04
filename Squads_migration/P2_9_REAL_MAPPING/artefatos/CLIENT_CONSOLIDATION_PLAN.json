@@ -1,6 +1,6 @@
 {
   "versao": 1,
-  "geradoEm": "2026-09-03T21:33:58.425Z",
+  "geradoEm": "2026-09-04T17:22:22.361Z",
   "aviso": "PLAN_ONLY — nenhuma destas operações foi executada. Nenhum cliente é criado ou deletado por este plano.",
   "operacoes": [
     {
@@ -1080,6 +1080,14 @@
           "coluna": "cliente_id",
           "deClienteId": 109,
           "linhas": 1,
+          "temFk": true,
+          "risco": "COM_FK"
+        },
+        {
+          "tabela": "entregas_cliente",
+          "coluna": "cliente_id",
+          "deClienteId": 109,
+          "linhas": 2,
           "temFk": true,
           "risco": "COM_FK"
         }

@@ -1,5 +1,5 @@
 {
-  "geradoEm": "2026-09-03T21:33:58.427Z",
+  "geradoEm": "2026-09-04T17:22:22.364Z",
   "resumo": {
     "clientesReais": 83,
     "clientesAtivos": 83,
@@ -25,10 +25,9 @@
     },
     "identidades": {
       "MATCH_EXATO": 14,
-      "NAO_ENCONTRADO": 3,
-      "MATCH_APROXIMADO": 1,
-      "MATCH_AMBIGUO": 4,
-      "MATCH_POR_EXCLUSAO": 1
+      "EXCLUIDO_USUARIO_NAO_CRIADO": 4,
+      "DECISAO_HUMANA_EMAIL": 4,
+      "MATCH_AMBIGUO": 2
     },
     "invariantesFalhas": 0
   },
@@ -1763,19 +1762,19 @@
           "id": 109,
           "slug": "teste_01",
           "nome": "Teste 01",
-          "score": 112,
+          "score": 116,
           "componentes": {
             "semSufixoLegado": 0,
             "contasAtivas": 0,
             "grants": 0,
             "bases": 0,
-            "volumeDados": 21,
+            "volumeDados": 25,
             "idMaisAntigo": 91
           },
           "contasAtivas": 0,
           "grants": 0,
           "bases": 0,
-          "linhasReferenciadas": 4,
+          "linhasReferenciadas": 6,
           "temApiKey": true
         }
       ],
@@ -2801,6 +2800,7 @@
           "papel": "gestor"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 9,
@@ -2813,8 +2813,7 @@
           "email": "adrian.neves@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Anderson",
@@ -2824,6 +2823,7 @@
           "papel": "gestor"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 11,
@@ -2836,8 +2836,7 @@
           "email": "anderson.santos@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Caique",
@@ -2847,13 +2846,20 @@
           "papel": "design"
         }
       ],
-      "classe": "NAO_ENCONTRADO",
-      "camada": "TOKEN_APROXIMADO",
+      "multiSquad": false,
+      "classe": "EXCLUIDO_USUARIO_NAO_CRIADO",
+      "camada": "DECISAO_HUMANA",
       "userId": null,
       "email": null,
       "role": null,
       "candidatos": [],
-      "multiSquad": false
+      "assentosPrevistos": [
+        {
+          "squad": "squad-2",
+          "papel": "design"
+        }
+      ],
+      "motivo": "decisão humana: a pessoa faz parte da estrutura do Squad mas ainda não possui usuário — nenhuma identidade é inventada e a membership fica fora deste APPLY"
     },
     {
       "nomeRelacao": "Carol",
@@ -2863,13 +2869,20 @@
           "papel": "design"
         }
       ],
-      "classe": "NAO_ENCONTRADO",
-      "camada": "TOKEN_APROXIMADO",
+      "multiSquad": false,
+      "classe": "EXCLUIDO_USUARIO_NAO_CRIADO",
+      "camada": "DECISAO_HUMANA",
       "userId": null,
       "email": null,
       "role": null,
       "candidatos": [],
-      "multiSquad": false
+      "assentosPrevistos": [
+        {
+          "squad": "squad-4",
+          "papel": "design"
+        }
+      ],
+      "motivo": "decisão humana: a pessoa faz parte da estrutura do Squad mas ainda não possui usuário — nenhuma identidade é inventada e a membership fica fora deste APPLY"
     },
     {
       "nomeRelacao": "Cavazzoto",
@@ -2879,11 +2892,14 @@
           "papel": "design"
         }
       ],
-      "classe": "MATCH_APROXIMADO",
-      "camada": "TOKEN_APROXIMADO",
+      "multiSquad": false,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
       "userId": 47,
       "email": "gabrielly.cavazotto@vendexcompany.com",
       "role": "membro",
+      "emailDecisao": "gabrielly.cavazotto@vendexcompany.com",
+      "pessoaDecisao": "Gabrielly Cavazzoto",
       "candidatos": [
         {
           "id": 47,
@@ -2891,8 +2907,7 @@
           "email": "gabrielly.cavazotto@vendexcompany.com",
           "role": "membro"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Diogo",
@@ -2902,6 +2917,7 @@
           "papel": "gestor"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 32,
@@ -2914,8 +2930,7 @@
           "email": "diogo-pinheiro2001@hotmail.com",
           "role": "user"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Eliabe",
@@ -2925,6 +2940,7 @@
           "papel": "gestor"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 13,
@@ -2937,8 +2953,7 @@
           "email": "eliabe.almeida@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Felipe",
@@ -2948,6 +2963,7 @@
           "papel": "auxiliar"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 37,
@@ -2960,8 +2976,7 @@
           "email": "felipe.pitta@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Fernando",
@@ -2969,32 +2984,49 @@
         {
           "squad": "squad-1",
           "papel": "auxiliar2"
-        },
-        {
-          "squad": "squad-4",
-          "papel": "coordenador"
         }
       ],
-      "classe": "MATCH_AMBIGUO",
-      "camada": "TOKEN_EXATO",
-      "userId": null,
-      "email": null,
-      "role": null,
+      "multiSquad": false,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
+      "userId": 45,
+      "email": "fernando.montoro@vendexcompany.com",
+      "role": "membro",
+      "emailDecisao": "fernando.montoro@vendexcompany.com",
+      "pessoaDecisao": "Fernando Montoro",
       "candidatos": [
-        {
-          "id": 5,
-          "nome": "Fernando Salgado",
-          "email": "fernando.salgado@vendexcompany.com",
-          "role": "admin"
-        },
         {
           "id": 45,
           "nome": "Fernando Montoro",
           "email": "fernando.montoro@vendexcompany.com",
           "role": "membro"
         }
+      ]
+    },
+    {
+      "nomeRelacao": "Fernando",
+      "ocorrencias": [
+        {
+          "squad": "squad-4",
+          "papel": "coordenador"
+        }
       ],
-      "multiSquad": true
+      "multiSquad": false,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
+      "userId": 5,
+      "email": "fernando.salgado@vendexcompany.com",
+      "role": "admin",
+      "emailDecisao": "fernando.salgado@vendexcompany.com",
+      "pessoaDecisao": "Fernando Salgado",
+      "candidatos": [
+        {
+          "id": 5,
+          "nome": "Fernando Salgado",
+          "email": "fernando.salgado@vendexcompany.com",
+          "role": "admin"
+        }
+      ]
     },
     {
       "nomeRelacao": "Gabrielly",
@@ -3004,26 +3036,22 @@
           "papel": "design"
         }
       ],
-      "classe": "MATCH_POR_EXCLUSAO",
-      "camada": "TOKEN_EXATO",
+      "multiSquad": false,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
       "userId": 16,
       "email": "gabrielly.ribeiro@vendexcompany.com",
       "role": "user",
+      "emailDecisao": "gabrielly.ribeiro@vendexcompany.com",
+      "pessoaDecisao": "Gabrielly Ribeiro",
       "candidatos": [
         {
           "id": 16,
           "nome": "Gabrielly Ribeiro",
           "email": "gabrielly.ribeiro@vendexcompany.com",
           "role": "user"
-        },
-        {
-          "id": 47,
-          "nome": "Gabrielly Cavazotto",
-          "email": "gabrielly.cavazotto@vendexcompany.com",
-          "role": "membro"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Giovanna",
@@ -3033,6 +3061,7 @@
           "papel": "auxiliar"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 17,
@@ -3045,8 +3074,7 @@
           "email": "giovanna.santos@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Gustavo",
@@ -3056,6 +3084,7 @@
           "papel": "auxiliar"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 46,
@@ -3068,8 +3097,7 @@
           "email": "gustavo.nakamura@vendexcompany.com",
           "role": "membro"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Juliana",
@@ -3079,6 +3107,7 @@
           "papel": "auxiliar"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 21,
@@ -3091,8 +3120,7 @@
           "email": "juliana.discher@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Klayvert",
@@ -3110,6 +3138,7 @@
           "papel": "coordenador"
         }
       ],
+      "multiSquad": true,
       "classe": "MATCH_AMBIGUO",
       "camada": "TOKEN_EXATO",
       "userId": null,
@@ -3128,8 +3157,7 @@
           "email": "klayvert.rodrigues@vendexcompany.com.br",
           "role": "user"
         }
-      ],
-      "multiSquad": true
+      ]
     },
     {
       "nomeRelacao": "Matheus",
@@ -3139,6 +3167,7 @@
           "papel": "gestor"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 23,
@@ -3151,8 +3180,7 @@
           "email": "matheus.leopoldo@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Mayara",
@@ -3162,6 +3190,7 @@
           "papel": "auxiliar"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 38,
@@ -3174,8 +3203,7 @@
           "email": "mayara.cerbi@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Micael",
@@ -3189,6 +3217,7 @@
           "papel": "coordenador"
         }
       ],
+      "multiSquad": true,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 24,
@@ -3201,8 +3230,7 @@
           "email": "micael.almeida@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": true
+      ]
     },
     {
       "nomeRelacao": "Sophia",
@@ -3216,6 +3244,7 @@
           "papel": "design"
         }
       ],
+      "multiSquad": true,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 28,
@@ -3228,8 +3257,7 @@
           "email": "sophia.costa@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": true
+      ]
     },
     {
       "nomeRelacao": "Thiago",
@@ -3239,6 +3267,7 @@
           "papel": "auxiliar2"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 48,
@@ -3251,8 +3280,7 @@
           "email": "thiago.zanini@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Victor",
@@ -3262,21 +3290,20 @@
           "papel": "auxiliar"
         }
       ],
-      "classe": "MATCH_AMBIGUO",
-      "camada": "TOKEN_APROXIMADO",
+      "multiSquad": false,
+      "classe": "EXCLUIDO_USUARIO_NAO_CRIADO",
+      "camada": "DECISAO_HUMANA",
       "userId": null,
       "email": null,
       "role": null,
-      "candidatos": [
+      "candidatos": [],
+      "assentosPrevistos": [
         {
-          "id": 6,
-          "nome": "Vitor Capeli",
-          "email": "vitor.capeli@vendexcompany.com",
-          "role": "admin"
+          "squad": "squad-6",
+          "papel": "auxiliar"
         }
       ],
-      "multiSquad": false,
-      "motivo": "único candidato (#6) casou só por aproximação e é conta admin — exige confirmação humana"
+      "motivo": "decisão humana: a pessoa faz parte da estrutura do Squad mas ainda não possui usuário — nenhuma identidade é inventada e a membership fica fora deste APPLY"
     },
     {
       "nomeRelacao": "Vinícius",
@@ -3286,6 +3313,7 @@
           "papel": "auxiliar2"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_AMBIGUO",
       "camada": "TOKEN_EXATO",
       "userId": null,
@@ -3304,8 +3332,7 @@
           "email": "vinicius.dias@vendexcompany.com",
           "role": "membro"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Witor",
@@ -3315,6 +3342,7 @@
           "papel": "gestor"
         }
       ],
+      "multiSquad": false,
       "classe": "MATCH_EXATO",
       "camada": "TOKEN_EXATO",
       "userId": 31,
@@ -3327,8 +3355,7 @@
           "email": "witor.silva@vendexcompany.com",
           "role": "user"
         }
-      ],
-      "multiSquad": false
+      ]
     },
     {
       "nomeRelacao": "Yuri",
@@ -3338,35 +3365,23 @@
           "papel": "auxiliar2"
         }
       ],
-      "classe": "NAO_ENCONTRADO",
-      "camada": "TOKEN_APROXIMADO",
+      "multiSquad": false,
+      "classe": "EXCLUIDO_USUARIO_NAO_CRIADO",
+      "camada": "DECISAO_HUMANA",
       "userId": null,
       "email": null,
       "role": null,
       "candidatos": [],
-      "multiSquad": false
+      "assentosPrevistos": [
+        {
+          "squad": "squad-4",
+          "papel": "auxiliar2"
+        }
+      ],
+      "motivo": "decisão humana: a pessoa faz parte da estrutura do Squad mas ainda não possui usuário — nenhuma identidade é inventada e a membership fica fora deste APPLY"
     }
   ],
   "bloqueios": [
-    {
-      "tipo": "SQUAD_PRINCIPAL_PENDENTE",
-      "nome": "Micael",
-      "userId": 24,
-      "squads": [
-        "squad-1",
-        "squad-5"
-      ]
-    },
-    {
-      "tipo": "USUARIO_AMBIGUO",
-      "nome": "Fernando",
-      "squad": "squad-1",
-      "papel": "auxiliar2",
-      "candidatos": [
-        5,
-        45
-      ]
-    },
     {
       "tipo": "USUARIO_AMBIGUO",
       "nome": "Klayvert",
@@ -3388,12 +3403,6 @@
       ]
     },
     {
-      "tipo": "USUARIO_NAO_ENCONTRADO",
-      "nome": "Caique",
-      "squad": "squad-2",
-      "papel": "design"
-    },
-    {
       "tipo": "USUARIO_AMBIGUO",
       "nome": "Klayvert",
       "squad": "squad-3",
@@ -3405,70 +3414,12 @@
     },
     {
       "tipo": "USUARIO_AMBIGUO",
-      "nome": "Fernando",
-      "squad": "squad-4",
-      "papel": "coordenador",
-      "candidatos": [
-        5,
-        45
-      ]
-    },
-    {
-      "tipo": "USUARIO_NAO_ENCONTRADO",
-      "nome": "Yuri",
-      "squad": "squad-4",
-      "papel": "auxiliar2"
-    },
-    {
-      "tipo": "USUARIO_NAO_ENCONTRADO",
-      "nome": "Carol",
-      "squad": "squad-4",
-      "papel": "design"
-    },
-    {
-      "tipo": "SQUAD_PRINCIPAL_PENDENTE",
-      "nome": "Micael",
-      "userId": 24,
-      "squads": [
-        "squad-1",
-        "squad-5"
-      ]
-    },
-    {
-      "tipo": "SQUAD_PRINCIPAL_PENDENTE",
-      "nome": "Sophia",
-      "userId": 28,
-      "squads": [
-        "squad-5",
-        "squad-6"
-      ]
-    },
-    {
-      "tipo": "USUARIO_AMBIGUO",
       "nome": "Klayvert",
       "squad": "squad-6",
       "papel": "coordenador",
       "candidatos": [
         22,
         35
-      ]
-    },
-    {
-      "tipo": "USUARIO_AMBIGUO",
-      "nome": "Victor",
-      "squad": "squad-6",
-      "papel": "auxiliar",
-      "candidatos": [
-        6
-      ]
-    },
-    {
-      "tipo": "SQUAD_PRINCIPAL_PENDENTE",
-      "nome": "Sophia",
-      "userId": 28,
-      "squads": [
-        "squad-5",
-        "squad-6"
       ]
     }
   ],
