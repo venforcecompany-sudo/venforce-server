@@ -113,7 +113,15 @@ nada, deixando para o humano só o que é genuinamente decisão de negócio.
 | 13 | `13_MAPA_P2_9_REAL.md` | o mapa completo |
 | 14 | `14_DRY_RUN_RESULTADO.md` | o dry-run real, contra produção |
 | 15 | `15_GO_NO_GO_PRE_APPLY.md` | **o veredito** |
-| 16 | **`16_DECISOES_FINAIS_HUMANAS.md`** | **← comece por aqui: o que só você pode decidir** |
+| 16 | `16_DECISOES_FINAIS_HUMANAS.md` | o que, naquele momento, só o humano podia decidir |
+| 17 | `17_DECISOES_APROVADAS_RECONCILIADAS.md` | as decisões aprovadas × o banco, item a item |
+| 18 | `18_DRY_RUN_FINAL_PRE_APPLY.md` | o dry-run final — 0 aviso, banco com hash idêntico |
+| 19 | **`19_GO_NO_GO_FINAL_PRE_APPLY.md`** | **← comece por aqui: os dois vereditos** |
+
+> **Atualização de 04/09** — as decisões humanas chegaram
+> (`VENFORCE_V3_P2_9_DECISOES_FINAIS_APROVADAS.md`) e foram reconciliadas
+> contra o banco. Os documentos 00–16 ficam como estão: são o registro do que
+> se sabia em 03/09. O estado corrente está em **17, 18 e 19**.
 
 Artefatos de máquina em `artefatos/`:
 `plano-p2-9.json` (canônico do `squads-migrate.js`),
