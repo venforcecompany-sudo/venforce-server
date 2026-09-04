@@ -119,9 +119,13 @@ nada, deixando para o humano só o que é genuinamente decisão de negócio.
 | 19 | **`19_GO_NO_GO_FINAL_PRE_APPLY.md`** | **← comece por aqui: os dois vereditos** |
 
 > **Atualização de 04/09** — as decisões humanas chegaram
-> (`VENFORCE_V3_P2_9_DECISOES_FINAIS_APROVADAS.md`) e foram reconciliadas
-> contra o banco. Os documentos 00–16 ficam como estão: são o registro do que
-> se sabia em 03/09. O estado corrente está em **17, 18 e 19**.
+> (`VENFORCE_V3_P2_9_DECISOES_FINAIS_APROVADAS.md` + as três respostas
+> objetivas da rodada 2) e foram reconciliadas contra o banco. Os documentos
+> 00–16 ficam como estão: são o registro do que se sabia em 03/09. O estado
+> corrente está em **17, 18 e 19**.
+>
+> **APPLY = GO · ENFORCEMENT = NO-GO** (grant cruzado Fênix × Eliza, mantido
+> por decisão). Banco não alterado, `--apply` não executado.
 
 Artefatos de máquina em `artefatos/`:
 `plano-p2-9.json` (canônico do `squads-migrate.js`),

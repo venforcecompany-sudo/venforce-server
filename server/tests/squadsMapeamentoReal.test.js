@@ -647,6 +647,43 @@ function testarDecisaoQueNaoPousaNaoDesapareceEmSilencio() {
     r.planoP29.membros.length === 1 && r.planoP29.membros[0].usuario === "fernando.salgado@x.com");
 }
 
+/**
+ * Trava de regressão sobre a configuração de maior aposta do plano real: uma
+ * pessoa com DUAS contas de mesmo nome no banco, resolvida por email
+ * confirmado, ocupando TRÊS assentos de Coordenador, com o principal decidido
+ * pelo humano. É a forma do Klayvert (#22 `.com` × #35 `.com.br`), e um erro
+ * aqui entrega metade dos Squads ao login errado — em silêncio.
+ */
+function testarEmailGlobalResolveMultiSquadComPrincipalDecidido() {
+  console.log("\n8m · email confirmado + 3 assentos + principal decidido");
+  const usuarios = [
+    { id: 22, nome: "Klayvert Rodrigues", email: "klayvert@vendex.com", role: "user", ativo: true },
+    { id: 35, nome: "Klayvert Rodrigues", email: "klayvert@vendex.com.br", role: "user", ativo: true },
+  ];
+  const squads = seisSquads();
+  squads[1].papeis.coordenador = "Klayvert";
+  squads[2].papeis.coordenador = "Klayvert";
+  squads[5].papeis.coordenador = "Klayvert";
+  const decisoes = {
+    versao: 1,
+    identidades: [{ nome: "Klayvert", email: "klayvert@vendex.com.br", pessoa: "Klayvert Rodrigues" }],
+    squadPrincipal: [{ nome: "Klayvert", squad: "squad-2" }],
+  };
+  const r = M.mapear({ ...cenario({ usuarios, squads }), decisoes });
+  const dele = r.planoP29.membros.filter((m) => m.usuario === "klayvert@vendex.com.br");
+
+  ok("o email desempata as duas contas de mesmo nome",
+    r.identidades.find((i) => i.nomeRelacao === "Klayvert").userId === 35);
+  ok("os três assentos viram memberships da MESMA pessoa", dele.length === 3);
+  ok("a conta não escolhida não aparece em lugar nenhum",
+    !JSON.stringify(r.planoP29).includes("klayvert@vendex.com\""));
+  ok("continua sendo multi-Squad", r.identidades.find((i) => i.nomeRelacao === "Klayvert").multiSquad === true);
+  ok("exatamente UMA membership é principal", dele.filter((m) => m.principal === true).length === 1);
+  ok("e é a decidida pelo humano", dele.find((m) => m.principal === true).squad === "squad-2");
+  ok("nenhuma fica pendente", dele.every((m) => m._principalPendente !== true));
+  ok("o plano se declara emitível", r.emitivel === true && r.planoP29._bloqueios.length === 0);
+}
+
 function testarPlanoCarregaORecusoQuandoHaBloqueio() {
   console.log("\n8l · o plano emitido diz, nele mesmo, que não está liberado");
   const squads = seisSquads();
@@ -701,5 +738,6 @@ function testarPlanoCarregaORecusoQuandoHaBloqueio() {
   testarCliAceitaArquivoDeDecisoes();
   testarDecisaoQueNaoPousaNaoDesapareceEmSilencio();
   testarPlanoCarregaORecusoQuandoHaBloqueio();
+  testarEmailGlobalResolveMultiSquadComPrincipalDecidido();
   console.log(`\n✔ squadsMapeamentoReal: ${checks} verificações OK\n`);
 })().catch((e) => { console.error(e); process.exit(1); });

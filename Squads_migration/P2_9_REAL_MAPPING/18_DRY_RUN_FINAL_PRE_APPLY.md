@@ -6,12 +6,15 @@
 
 | | |
 |---|---|
-| Momento | 2026-09-04 |
+| Momento | 2026-09-04 · rodada 2 (decisões completas) |
 | Destino | `dpg-d75ce3cr85hc73f2r490-a.oregon-postgres.render.com/venforce` |
-| Plano | `artefatos/plano-p2-9.json` (regerado com as decisões aprovadas) |
+| Plano | `artefatos/plano-p2-9.json` (regerado com as decisões completas) |
 | Comando | `node server/sql/squads-migrate.js --plan …/plano-p2-9.json` |
 | `--apply` | **ausente** |
+| Snapshot do inventário | `2026-09-04T18:23:46.199Z` |
 | Exit code | **0** |
+| Erros | **0** |
+| Avisos | **0** |
 
 ---
 
@@ -56,7 +59,7 @@ IGUAIS     : true
 ```
 
 Não é "não vi escrita acontecer": é o conteúdo das nove tabelas, byte a byte,
-idêntico.
+idêntico. O mesmo hash da rodada 1 — o banco não se moveu entre as duas.
 
 ---
 
@@ -75,7 +78,7 @@ ANTES:
 
 PLANEJADO:
   squads      → criar: 7 squad-1, squad-2, squad-3, squad-4, squad-5, squad-6, squad-8-legado | atualizar: 0 | inalterado: 0
-  membros     → criar: 20 · reativar: 0 · atualizar: 0 · inalterado: 0
+  membros     → criar: 24 · reativar: 0 · atualizar: 0 · inalterado: 0
   clientes    → atribuir: 83 · transferir: 0 · inalterado: 0
   responsáveis → upsert: 0
 
@@ -86,34 +89,34 @@ PLANEJADO:
 
 ---
 
-## 3. O que mudou desde o dry-run anterior
+## 3. A evolução dos três dry-runs
 
-| | dry-run de 03/09 | **dry-run final** |
-|---|---|---|
-| memberships planejadas | 18 | **20** |
-| **avisos** | **2** ⛔ | **0** ✅ |
-| erros | 0 | 0 |
-| squads a criar | 7 | 7 |
-| clientes a atribuir | 83 | 83 |
-| transferências | 0 | 0 |
-| exit code | 0 | 0 |
+| | 03/09 | 04/09 · rodada 1 | **04/09 · rodada 2** |
+|---|---|---|---|
+| memberships planejadas | 18 | 20 | **24** |
+| **avisos** | **2** ⛔ | 0 | **0** ✅ |
+| erros | 0 | 0 | **0** |
+| identidades ambíguas | 4 | 2 | **0** ✅ |
+| `_emitivel` do plano | — | `false` ⛔ | **`true`** ✅ |
+| squads a criar | 7 | 7 | 7 |
+| clientes a atribuir | 83 | 83 | 83 |
+| transferências | 0 | 0 | 0 |
+| exit code | 0 | 0 | **0** |
 
-**Os dois avisos eram o bloqueador anterior** e desapareceram:
+**O que fechou, em ordem:**
 
-```
-⚠ usuário id=24 (Micael)  ficará sem principal explícito — a 1ª membership será auto-promovida
-⚠ usuário id=28 (Sophia)  ficará sem principal explícito — a 1ª membership será auto-promovida
-```
+1. **Os 2 avisos** (rodada 1). Eram o bloqueador técnico: *"a 1ª membership será
+   auto-promovida a principal"* significava escolher o Squad principal pela
+   ordem da planilha — exatamente o critério que a missão proíbe. Com Micael →
+   Squad 1 e Sophia → Squad 5 decididos, o plano marca `principal: true`
+   explicitamente e a ferramenta não escolhe nada.
+2. **As 4 memberships bloqueadas** (rodada 2). Klayvert → **#35** e Vinícius →
+   **#44** resolveram os últimos assentos ambíguos: +3 Coordenadores (squads 2,
+   3, 6) e +1 auxiliar2 do squad-2. **`_emitivel` virou `true`.**
 
-"A 1ª membership será auto-promovida" significava **escolher o Squad principal
-pela ordem da planilha** — exatamente o critério que a missão proíbe. Com os
-principais decididos pelo humano (Micael → Squad 1, Sophia → Squad 5), o plano
-agora marca `principal: true` explicitamente e a ferramenta não precisa
-escolher nada. **O bloqueador técnico do dry-run está fechado.**
-
-As 20 memberships (contra 18) vêm de: **+2** os dois Fernandos, agora
-desambiguados por email; e **−0** nas quatro pessoas sem conta, que antes
-apareciam como bloqueio e agora saem por exclusão explícita.
+As 24 memberships são todas as 28 posições da planilha **menos** as 4 pessoas
+que ainda não têm conta (Caique, Yuri, Carol, Victor) — ausência esperada,
+aprovada e explícita.
 
 ---
 
@@ -125,17 +128,24 @@ apareciam como bloqueio e agora saem por exclusão explícita.
 | `UPDATE` | **0** | hash idêntico; nenhum `clientes.squad` mudou — 83 seguem "sem squad" |
 | `DELETE` | **0** | hash idêntico; contagens de `clientes`, `cliente_contas`, `ml_tokens` inalteradas |
 | **DDL** | **0** | `garantirSchema: false` sem `--apply` (T-3) **e** a sessão recusa DDL — provado empiricamente com o `CREATE TABLE` acima |
-| **Cliente criado** | **0** | `clientes` 83 → 83 · invariante **I5** verde · plano não contém `CRIAR_CLIENTE` |
-| **Cliente deletado** | **0** | `clientes` 83 → 83 |
-| **Usuário criado** | **0** | `users` 32 → 32 · o plano não emite operação sobre `users` (teste `8h`) |
-| **Grant alterado** | **0** | `ml_tokens` 63 → 63 · invariante **I1** (13 de alias endereçados = 13 no banco) · **I2** (0 troca de seller) · o grant cruzado #69 continua exatamente onde estava |
-| **Base alterada** | **0** | `base_cliente_vinculos` 45 → 45 |
+| **Clientes criados** | **0** | `clientes` 83 → 83 · invariante **I5** verde · plano não contém `CRIAR_CLIENTE` |
+| **Clientes deletados** | **0** | `clientes` 83 → 83 |
+| **Usuários criados** | **0** | `users` 32 → 32 · o plano não emite operação sobre `users` (teste `8h`) · contas #22, #29 e #6 continuam existindo, ativas e fora do plano |
+| **Grants alterados** | **0** | `ml_tokens` 63 → 63 · **I1** (13 de alias endereçados = 13 no banco) · **I2** (0 troca de seller) · os grants #69 e #70 do cruzamento Fênix × Eliza conferidos um a um, antes e depois |
+| **Bases alteradas** | **0** | `base_cliente_vinculos` 45 → 45 |
 | **`ClienteConta` troca seller** | **0** | invariante **I2** |
 | **`ClienteConta` troca marketplace** | **0** | invariante **I3** |
 
+Conferência explícita do grant cruzado, por decisão humana de **não mexer**:
+
+```
+grant cruzado ANTES : #69 cliente102 primary=false | #70 cliente105 primary=true
+grant cruzado DEPOIS: #69 cliente102 primary=false | #70 cliente105 primary=true
+```
+
 O plano de consolidação (`CLIENT_CONSOLIDATION_PLAN.json`) permanece
-**`PLAN_ONLY`**: todas as operações têm `acao: "PLAN_ONLY"`, nenhuma foi
-executada, e nenhuma entidade foi realmente consolidada.
+**`PLAN_ONLY`**: as 11 operações têm `acao: "PLAN_ONLY"`, nenhuma foi
+executada, nenhuma entidade foi realmente consolidada.
 
 ---
 
@@ -145,60 +155,44 @@ executada, e nenhuma entidade foi realmente consolidada.
 |---|---|
 | **0 erros** | o plano é **estruturalmente válido**: todo squad, usuário e cliente referenciado existe e resolve no banco |
 | **0 avisos** | nenhuma decisão implícita sobrou para a ferramenta tomar |
+| **`_emitivel: true`** | nenhum bloqueio de identidade: as 24 memberships aplicáveis estão todas resolvidas |
 | 7 squads a criar | 6 operacionais + Squad 8 · Legado. Nenhum existe — a base nunca foi migrada |
-| **20 memberships** | das 28 posições da planilha. As 8 faltantes: 4 pessoas sem conta (decisão humana) + **4 bloqueadas por identidade** (Klayvert ×3, Vinícius ×1) |
+| **24 memberships** | das 28 posições da planilha. As 4 faltantes são as pessoas sem conta, por decisão humana |
 | 83 clientes a atribuir | **todos**. Nenhum fica sem Squad |
 | 0 transferências | nenhum cliente tem Squad hoje — é a primeira migração |
 | `auditoria.pronto: false` | esperado: a migração ainda não rodou. É o que mantém o rollout gate fechado |
 
----
-
-## 6. O plano diz, nele mesmo, que não está liberado
-
-`plano-p2-9.json` agora carrega o próprio veredito:
+O plano carrega o próprio veredito:
 
 ```json
-"_emitivel": false,
-"_bloqueios": [
-  { "tipo": "USUARIO_AMBIGUO", "nome": "Klayvert", "squad": "squad-2", "papel": "coordenador", "candidatos": [22, 35] },
-  { "tipo": "USUARIO_AMBIGUO", "nome": "Vinícius", "squad": "squad-2", "papel": "auxiliar2",   "candidatos": [29, 44] },
-  { "tipo": "USUARIO_AMBIGUO", "nome": "Klayvert", "squad": "squad-3", "papel": "coordenador", "candidatos": [22, 35] },
-  { "tipo": "USUARIO_AMBIGUO", "nome": "Klayvert", "squad": "squad-6", "papel": "coordenador", "candidatos": [22, 35] }
-]
+"_emitivel": true,
+"_bloqueios": []
 ```
 
-Um plano bloqueado que circula sem dizer que está bloqueado é a forma mais
-fácil de um `--apply` acontecer por engano. Agora o arquivo carrega o motivo.
+---
 
-Note a diferença entre os dois vereditos: o **dry-run** aprova (0 erro, 0
-aviso, plano estruturalmente válido) e o **plano** se recusa (4 memberships
-sem identidade resolvida). São coisas distintas — o dry-run responde "isto
-roda?", o `_emitivel` responde "isto está completo?".
+## 6. ⚠️ O inventário envelhece — condição do APPLY
+
+Entre 03/09 e 04/09 o banco não se moveu (83 clientes em todas as leituras),
+mas **durante** a missão anterior ele se moveu: 82 → 83 clientes, 72 → 74
+contas, por atividade de QA.
+
+A regra continua valendo, e é **condição de execução** do APPLY:
+
+> **Regerar o plano a partir de um inventário fresco imediatamente antes do
+> apply**, e conferir que a contagem de clientes no plano bate com a contagem
+> no banco no instante da execução.
+
+Um cliente criado entre a geração e o apply ficaria **sem Squad** — e invisível
+assim que o enforcement ligasse.
 
 ---
 
-## 7. ⚠️ O inventário envelhece — regra operacional para o APPLY
-
-Entre 03/09 e 04/09 o banco não se moveu (83 clientes nas duas leituras), mas
-**durante** a missão anterior ele se moveu: 82 → 83 clientes, 72 → 74 contas,
-por atividade de QA.
-
-A regra continua valendo, e é condição do APPLY:
-
-> **O plano precisa ser regerado a partir de um inventário fresco imediatamente
-> antes do apply**, e a contagem de clientes no plano precisa bater com a
-> contagem no banco no instante da execução.
-
-Um cliente criado entre a geração e o apply ficaria **sem Squad** — e
-invisível assim que o enforcement ligasse.
-
----
-
-## 8. Testes
+## 7. Testes
 
 | suíte | resultado |
 |---|---|
-| `squadsMapeamentoReal` | **155** verificações ✅ (eram 109 — 46 novas nesta fase) |
+| `squadsMapeamentoReal` | **163** verificações ✅ (109 antes desta fase) |
 | `squadsDryRunZeroWrite` | 23 ✅ |
 | `squadsAuditoriaVacuidade` | 27 ✅ |
 | `squadsMigracaoImport` | 43 ✅ |
@@ -209,10 +203,11 @@ invisível assim que o enforcement ligasse.
 | `squadsPreflightRelacao` | 191 ✅ |
 | `squadsInventarioReadonly` | 38 ✅ |
 | `squadsMigracaoAuditoriaY` · `squadsMiddlewareEAuditoria` · `squadServiceMutacoes` · `squadsRolloutSafety` | ✅ |
-| `authz*` (6 suítes) + `responsabilidadeNaoAutoriza` | ✅ |
-| **backend completo** | **180 / 184 verdes** |
+| **hotfix da main** — `clienteContasAuthPerRoute` · `clienteContasGuards` | 11 ✅ · 35 ✅ |
+| **backend completo** | **181 / 185 verdes** |
 
 Os 4 vermelhos são os **mesmos pré-existentes**, já vermelhos antes desta
 missão e sem relação com ela: `basesTiktok`, `designStudioWorkspace`,
 `designTemplateEngine`, `mlTokenService`. Nenhum importa
-`squads-mapeamento-real.js`. **Zero regressão.**
+`squads-mapeamento-real.js`. **Zero regressão** — inclusive depois do merge da
+`origin/main`, cujos dois testes de `cliente_contas` passam.

@@ -1,74 +1,63 @@
 # 19 — GO / NO-GO final pré-APPLY
 
 > Dois vereditos, deliberadamente separados. **Aplicar a migração** e **ligar o
-> enforcement** são decisões diferentes, com bloqueadores diferentes.
+> enforcement** são decisões diferentes, com bloqueadores diferentes. Elas se
+> separaram de verdade nesta rodada.
 
 | | |
 |---|---|
 | Branch | `backend/v3-p2-9-real-mapping` |
-| `origin/main` | `bb33973` (avançou; **não** integrado ainda) |
+| `origin/main` | `bb33973` — **integrada por merge normal**, 0 conflito |
 | Banco | **NÃO ALTERADO** · `--apply` **NÃO EXECUTADO** |
 | `SQUADS_ENFORCEMENT` | **OFF** |
 
 ---
 
-# ⛔ APPLY: **NO-GO**
+# ✅ APPLY: **GO**
 
-**Motivo único: 4 memberships sem identidade resolvida.**
-
-| bloqueador | assentos | por quê |
-|---|---|---|
-| **Klayvert** — qual das duas contas? | `squad-2:coordenador`, `squad-3:coordenador`, `squad-6:coordenador` | duas contas ativas, mesmo nome: **#22** `…@vendexcompany.com` × **#35** `…@vendexcompany.com.br`. O documento aprovado define o Squad **principal** dele (Squad 2) mas não a **conta**. A planilha não tem coluna de email |
-| **Vinícius** — qual das duas pessoas? | `squad-2:auxiliar2` | **#29** Vinicius Bergo (`admin`) × **#44** Vinicius Dias (`membro`). Duas pessoas distintas, ambas ativas e em uso. O documento não as menciona |
-
-Aplicar assim deixaria **três dos seis Squads sem Coordenador** (2, 3 e 6) e o
-Squad 2 com 2 de 5 assentos. A regra de identidade aprovada é explícita: *"se o
-email confirmado não resolver exatamente um usuário, bloquear aquela
-membership"* — e é isso que o tooling faz, fail-closed.
-
-**Isto é o único NO-GO do APPLY.** Todo o resto está pronto:
+**Nenhum bloqueador restante.**
 
 | dimensão | estado |
 |---|---|
 | Mapa Cliente → Squad | ✅ **PRONTO** — 83/83 clientes, cada um em exatamente 1 Squad |
+| Plano de memberships | ✅ **PRONTO** — 24 de 24 aplicáveis, `_emitivel: true`, `_bloqueios: []` |
 | Plano de consolidação | ✅ **PRONTO** — `PLAN_ONLY`, 11 clusters, 16 aliases, 0 execução |
-| Plano de memberships | ⛔ **20 de 24** aplicáveis (4 bloqueadas) |
-| Dry-run zero-write | ✅ **APROVADO** — exit 0, 0 erro, **0 aviso**, hash do banco idêntico |
+| Dry-run zero-write | ✅ **APROVADO** — exit 0, **0 erro, 0 aviso**, hash do banco idêntico |
 | Invariantes | ✅ **13/13** verdes |
-| Testes | ✅ 180/184 (4 vermelhos pré-existentes, sem relação) |
-| Grant cruzado | ✅ **não bloqueia APPLY** — o plano não toca em Grant nenhum |
+| Identidades ambíguas | ✅ **0** |
+| Testes | ✅ 181/185 (4 vermelhos pré-existentes, sem relação) |
+| Merge da `origin/main` | ✅ hotfix do Fechamento V3 presente e verde |
 
-### O que destrava o APPLY
+### O que fechou o APPLY
 
-Duas respostas objetivas:
+As três decisões da rodada 2 eliminaram os últimos 4 bloqueios:
 
-1. **Klayvert é a conta #22 (`…@vendexcompany.com`) ou #35
-   (`…@vendexcompany.com.br`)?**
-   Evidência disponível, sem decidir por você: **#35 é a única com atividade
-   registrada** (8 `activity_logs` entre 05/05 e 06/07, 1 relatório); **#22 tem
-   zero atividade** desde a criação em 08/04, mas tem mais vínculos de Base (55
-   × 41). Escolher a errada entrega três carteiras de Coordenador a um login
-   que a pessoa não usa. *(Se as duas contas forem mesmo da mesma pessoa, vale
-   decidir também se a outra deve ser desativada — mas isso é operação
-   separada, não faz parte deste APPLY.)*
+| decisão | efeito |
+|---|---|
+| **Klayvert = #35** (`…@vendexcompany.com.br`) | +3 memberships de Coordenador — squads **2**, **3** e **6**. Principal **squad-2**. A conta **#22 não foi tocada** |
+| **Vinícius = #44 Vinicius Dias** | +1 membership — `squad-2:auxiliar2`. A conta admin **#29 não foi usada nem alterada** |
+| **Grant Fênix × Eliza: não mexer** | nenhum efeito no APPLY — o plano nunca tocou em Grant. Segue como bloqueador **só de enforcement** |
 
-2. **O "Vinícius" do `squad-2:auxiliar2` é o #29 Vinicius Bergo ou o #44
-   Vinicius Dias?**
+Os seis Squads têm Coordenador. Nenhum assento ficou vago por ambiguidade.
 
-Respondidas as duas, basta acrescentá-las a
-`entrada/decisoes-humanas-aprovadas.json`, regerar o plano com `--decisoes` e
-o `_emitivel` vira `true` — sem tocar em código.
+### O que fica de fora do APPLY, por decisão e sem bloquear
 
-### Não bloqueiam o APPLY, mas ficam registrados
+- **4 pessoas sem conta** — Caique (sq2·design), Yuri (sq4·aux2), Carol
+  (sq4·design), Victor (sq6·auxiliar). Saem por exclusão explícita e
+  fail-closed. Suas memberships entram numa etapa posterior, depois que as
+  contas existirem. **0 usuário criado, 0 identidade inventada.**
+- **MM ambíguo** — `MM Importes` (#54) e `MM Comercio` (#107) ficam no Squad 8.
+  O Squad 3 não recebe o "MM" da carteira aprovada: perda de **fidelidade de
+  carteira**, reversível movendo o cliente depois, não risco de dado.
+- **JFX (#75)** e o **canônico do cluster `wm`** — sem efeito no APPLY.
 
-- **4 pessoas sem conta** (Caique, Yuri, Carol, Victor): comportamento
-  esperado e aprovado. Saem por exclusão explícita, fail-closed, sem bloquear
-  as demais. Suas memberships entram numa etapa posterior, depois que as contas
-  existirem.
-- **MM ambíguo**: `MM Importes` (#54) e `MM Comercio` (#107) ficam no Squad 8.
-  O Squad 3 não recebe o "MM" da carteira aprovada. É perda de **fidelidade de
-  carteira**, reversível movendo o cliente depois — não é risco de dado.
-- **JFX (#75)** e o **canônico do cluster `wm`**: sem efeito no APPLY.
+### Condições de execução (não são bloqueadores; são o procedimento)
+
+1. **Regerar o plano com inventário fresco imediatamente antes do apply** e
+   conferir que a contagem de clientes bate com a do banco no instante da
+   execução. Um cliente criado no intervalo ficaria sem Squad.
+2. O apply é transacional e idempotente; qualquer falha faz ROLLBACK total.
+3. Revisão humana final do plano antes de rodar com `--apply`.
 
 ---
 
@@ -76,7 +65,7 @@ o `_emitivel` vira `true` — sem tocar em código.
 
 Dois motivos, independentes entre si.
 
-### 1. O APPLY não aconteceu
+### 1. O APPLY ainda não aconteceu
 
 `squads` = 0, `squad_members` = 0, `clientes com squad ativo` = 0,
 `auditoria.pronto: false`. Ligar o enforcement agora deixaria **todo usuário
@@ -84,52 +73,49 @@ interno com carteira vazia (403 em cascata)**. O rollout gate (P2.2) já
 bloquearia sozinho: a flag só governa depois que a auditoria de migração
 aprova, e o fail-safe é OFF em toda direção de dúvida.
 
-### 2. ⛔ O grant cruzado **Fênix (#102) × Eliza.Market (#105)**
+**Este motivo cai sozinho quando o APPLY rodar.**
 
-O documento aprovado (§9) declara que não recebeu caso concreto de Grant e
-portanto **não decidiu este**. Ele foi reauditado do zero (detalhe completo em
-`17`, seção 5):
+### 2. ⛔ O grant cruzado **Fênix (#102) × Eliza.Market (#105)** — mantido por decisão
 
 ```
 ml_tokens #69   cliente_id=102 (Fenix)         ml_user_id=2661771367  is_primary=false  cliente_conta_id=NULL  valid
 ml_tokens #70   cliente_id=105 (Eliza.Market)  ml_user_id=2661771367  is_primary=true   cliente_conta_id=NULL  valid
 ```
 
-Nenhum dos dois tem `ClienteConta`. O sistema já registrou a pendência sozinho
-(`cliente_contas_pendencias`, tipo `ml_user_id_duplicado_entre_clientes`, 4
-abertas — este é uma delas, e a única entre clientes sem parentesco).
+Perguntado se o #69 deveria ser desconectado, o humano respondeu: **na dúvida
+operacional, não mexer.** Os dois grants ficam exatamente como estão — não
+desconectar, não mover, não alterar. Verificado antes e depois do dry-run.
 
-Grants são resolvidos por `cliente_id`
-(`listGrantsByCliente` / `resolveMlGrant` em `server/services/mlTokenService.js`).
+A classificação da auditoria anterior é **preservada integralmente**:
+
+| | |
+|---|---|
+| **BLOQUEIA APPLY?** | **NÃO** |
+| **BLOQUEIA ENFORCEMENT?** | **SIM** |
+
+Por quê: grants são resolvidos por `cliente_id`
+(`listGrantsByCliente` / `resolveMlGrant`, em `server/services/mlTokenService.js`).
 No mapa aprovado, **#102 → Squad 6** e **#105 → Squad 8 · Legado**. Com
 enforcement ON, o Squad 6 alcança, por um token vivo, a conta ML de um cliente
 do Squad 8.
 
-A exposição *absoluta* diminui com o enforcement (hoje, OFF, todo interno
-alcança #102). O problema não é o volume: é que a **promessa** do enforcement —
+A exposição *absoluta* até diminui com o enforcement (hoje, OFF, todo interno
+alcança #102). O problema não é volume: é que a **promessa** do enforcement —
 "um Squad só alcança as contas dos seus Clientes" — passaria a ser falsa no
-exato momento em que passa a valer. Não se liga um mecanismo de autorização
-com uma exceção silenciosa dentro.
+exato momento em que passa a valer.
 
-**Nada foi movido, removido ou reapontado.** O grant #69 continua onde estava.
+**Manter o grant é uma decisão consciente de aceitar este bloqueador**, não de
+descartá-lo. Enquanto o cruzamento existir, o enforcement fica NO-GO.
 
-### O que destrava o ENFORCEMENT
+### 3. Regra de produto a preservar quando o enforcement for ligado
 
-1. APPLY concluído e auditoria de migração aprovada (fecha o motivo 1).
-2. **Uma pergunta objetiva:**
+**Squad principal e Squad ativo não são autorização.** A autorização continua
+determinada pelo backend a partir da role e das memberships reais; o Squad
+ativo é só o recorte de carteira da sessão, descartado no próximo login.
 
-   > **O grant secundário #69 (`ml_user_id` 2661771367) em Fenix
-   > Equipamentos1 (#102) deve ser desconectado, ou é intencional?**
-   >
-   > Ele não tem `ClienteConta`; o mesmo seller já é o grant **primário** de
-   > Eliza.Market (#105); os dois clientes vão para Squads diferentes. Se a
-   > resposta for "desconectar", é uma correção de dado **separada** deste
-   > APPLY, e depois dela o enforcement fica liberado por este item.
-
-3. Preservar a regra de produto aprovada: **Squad principal e Squad ativo não
-   são autorização.** A autorização continua sendo determinada pelo backend a
-   partir da role e das memberships reais; o Squad ativo é só o recorte de
-   carteira da sessão, descartado no próximo login.
+Uma dívida a acompanhar: **a conta #22 do Klayvert ficará sem Squad**. Com
+enforcement OFF é inócuo; quando ligar, quem logar por ela vê carteira vazia.
+Por isso o saneamento de #22 é dívida real, não cosmética.
 
 ---
 
@@ -137,15 +123,15 @@ com uma exceção silenciosa dentro.
 
 | | APPLY | ENFORCEMENT |
 |---|---|---|
-| **veredito** | ⛔ **NO-GO** | ⛔ **NO-GO** |
-| bloqueador 1 | identidade de **Klayvert** (3 memberships) | APPLY não executado (rollout gate fechado) |
-| bloqueador 2 | identidade de **Vinícius** (1 membership) | **grant cruzado #69** Fenix × Eliza |
+| **veredito** | ✅ **GO** | ⛔ **NO-GO** |
+| bloqueadores | **nenhum** | APPLY não executado · **grant cruzado #69** |
 | o grant cruzado bloqueia? | **NÃO** | **SIM** |
-| decisões humanas necessárias | **2** | **1** (+ o APPLY) |
-| natureza | conhecimento de negócio | conhecimento de negócio + sequência |
+| decisões humanas pendentes | **0** | **1** — o que fazer com o grant #69 |
+| natureza do que falta | procedimento de execução | correção de dado + sequência |
 
-É perfeitamente possível que o APPLY vire GO antes do ENFORCEMENT: as duas
-perguntas de identidade são independentes da pergunta do grant.
+Era exatamente o desfecho previsto como aceitável: **APPLY = GO com
+ENFORCEMENT = NO-GO**, separados pelo grant cruzado. Não foi forçado — o
+`_emitivel: true` sai do tooling, e os 0 avisos saem do dry-run.
 
 ---
 
@@ -158,11 +144,14 @@ perguntas de identidade são independentes da pergunta do grant.
 | Clientes deletados | **0** |
 | Usuários criados | **0** |
 | Identidades inventadas | **0** |
-| Grants alterados | **0** |
+| Grants alterados | **0** — #69 e #70 conferidos um a um |
 | Grants perdidos | **0** |
 | Bases alteradas | **0** |
 | `ClienteConta` movida | **0** |
 | Consolidação executada | **0** — tudo `PLAN_ONLY` |
+| Conta #22 (Klayvert `.com`) | **intacta** — não desativada, não deletada, sem migração |
+| Conta #29 (Vinicius Bergo, admin) | **intacta** — não usada, não alterada |
+| `role` do Fernando Salgado (#5) | **admin preservado** — o plano não toca `users` |
 | `--apply` | **NÃO EXECUTADO** |
 | `SQUADS_ENFORCEMENT` | **OFF** |
 | Frontend | **não tocado** |

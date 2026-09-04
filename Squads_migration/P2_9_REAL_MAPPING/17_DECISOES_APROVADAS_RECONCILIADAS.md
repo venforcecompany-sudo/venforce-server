@@ -6,19 +6,20 @@
 
 | | |
 |---|---|
-| Documento humano novo | `Squads_migration/VENFORCE_V3_P2_9_DECISOES_FINAIS_APROVADAS.md` |
+| Documento humano | `Squads_migration/VENFORCE_V3_P2_9_DECISOES_FINAIS_APROVADAS.md` |
+| + rodada 2 | as três respostas objetivas: Klayvert, Vinícius e o Grant cruzado |
 | Documento humano anterior | `16_DECISOES_FINAIS_HUMANAS.md` (permanece, é histórico) |
 | Branch | `backend/v3-p2-9-real-mapping` |
-| Base da branch | `7acb3f0` |
+| Base | `7acb3f0` + merge de `origin/main` `bb33973` |
 | Banco lido | produção (Render) · **somente leitura** |
-| Snapshot do inventário | `2026-09-04T17:06:41.166Z` |
+| Snapshot do inventário | `2026-09-04T18:23:46.199Z` |
 
 ---
 
-## 0. Divergência com `origin/main` — reportada, não integrada
+## 0. `origin/main` — integrada por merge normal
 
-`origin/main` avançou de `fd2671a` para **`bb33973`** desde o fechamento
-anterior. Três commits, todos do mesmo hotfix:
+`origin/main` avançou de `fd2671a` para **`bb33973`**. Três commits, todos do
+mesmo hotfix do Fechamento V3 (PR #97):
 
 ```
 bb33973 Merge pull request #97 from .../hotfix/fechamento-v3-auth-public-route
@@ -26,11 +27,15 @@ bb33973 Merge pull request #97 from .../hotfix/fechamento-v3-auth-public-route
 216f8d7 fix: impedir auth global-bloqueio
 ```
 
-Tocam `server/routes/clienteContasRoutes.js` e dois testes de
-`cliente_contas`. **Nenhum arquivo em comum com esta missão** — que só mexe em
-`server/sql/squads-mapeamento-real.js`, no teste dele e nos artefatos de
-`Squads_migration/`. Conforme instruído, a integração **não** foi feita agora;
-fica registrada para o merge.
+Integrada nesta branch por **merge normal** (`--no-ff`, sem rebase, sem force):
+tocam `server/routes/clienteContasRoutes.js` e dois testes de `cliente_contas`;
+esta branch toca `server/sql/squads-mapeamento-real.js`, o teste dele e
+`Squads_migration/`. **Zero interseção de arquivos, zero conflito.**
+
+Os dois lados foram conferidos depois do merge: o hotfix está presente
+(`216f8d7` é o último commit de `clienteContasRoutes.js`, e
+`clienteContasAuthPerRoute.test.js` existe e passa com 11 verificações), e o
+trabalho P2.9 está intacto.
 
 ---
 
@@ -67,16 +72,16 @@ que aconteceu com ela.
 | 1 | Squad principal de Klayvert, squads 2/3/6 | 🔴 pendente | **Squad 2** | §3.2/§6 | ⚠️ **decisão registrada, inaplicável** — a identidade de Klayvert continua indefinida (ver 3.1). O principal está no arquivo de decisões e passa a valer no instante em que a conta for escolhida |
 | 1 | Squad principal de Fernando, squad-1 × squad-4 | 🔴 pendente | **não existe** — são duas pessoas | §3.3/§7 | ✅ **DISSOLVIDO** — cada Fernando ocupa 1 Squad e é principal dele |
 | 2 | Quem é "Fernando": #5 Salgado (admin) **ou** #45 Montoro (membro)? | 🔴 ambíguo | **os dois; pessoas diferentes** — squad-1:auxiliar2 = Montoro, squad-4:coordenador = Salgado | emails confirmados batem exatamente 1 usuário ativo cada: `fernando.montoro@vendexcompany.com` → **#45**, `fernando.salgado@vendexcompany.com` → **#5** (`role=admin`) | ✅ **RESOLVIDO** |
-| 2 | Quem é "Klayvert": #22 (`.com`) **ou** #35 (`.com.br`)? | 🔴 ambíguo | o doc dá o **principal**, não a **conta** | §7 não lista email para Klayvert; a planilha `Squads.xlsx` também não tem coluna de email (conferido: 0 strings com `@` em 88) | ⛔ **CONTINUA BLOQUEADO** — 3 memberships de Coordenador (squads 2, 3, 6) |
+| 2 | Quem é "Klayvert": #22 (`.com`) **ou** #35 (`.com.br`)? | 🔴 ambíguo | **#35** — rodada 2, decisão 1 | `klayvert.rodrigues@vendexcompany.com.br` resolve exatamente 1 usuário ativo: **#35**. Motivo humano: é a conta com atividade recente registrada | ✅ **RESOLVIDO** — 3 memberships de Coordenador emitidas (squads 2, 3, 6), principal squad-2. **#22 não é tocada**: fica como dívida de saneamento |
 | 2 | Quem é "Victor": #6 Vitor Capeli (admin)? | 🔴 ambíguo | **nenhum dos dois** — Victor é usuário **ainda não criado** | §3.1/§8 | ✅ **RESOLVIDO por exclusão** — o casamento aproximado com a conta admin #6 fica formalmente **revogado** |
-| 2 | Quem é "Vinícius": #29 Bergo (admin) **ou** #44 Dias (membro)? | 🔴 ambíguo | **não decidido** | §7 não menciona Vinícius | ⛔ **CONTINUA BLOQUEADO** — 1 membership (squad-2:auxiliar2) |
+| 2 | Quem é "Vinícius": #29 Bergo (admin) **ou** #44 Dias (membro)? | 🔴 ambíguo | **#44 Vinicius Dias** — rodada 2, decisão 2 | `vinicius.dias@vendexcompany.com` resolve exatamente 1 usuário ativo: **#44** | ✅ **RESOLVIDO** — `squad-2:auxiliar2` emitido. A conta admin **#29 não é usada nem alterada** |
 | 3 | Três pessoas sem conta: Caique, Carol, Yuri | 🔴 pendente | **quatro**: + **Victor**. Nenhuma conta é criada; só as memberships técnicas ficam fora | §3.5/§8 | ✅ **RESOLVIDO** — ver seção 4 |
 
 ### 2.2 Bloqueavam o ENFORCEMENT
 
 | # | DECISÃO ANTIGA | STATUS ANTIGO | DECISÃO NOVA | EVIDÊNCIA | STATUS FINAL |
 |---|---|---|---|---|---|
-| 4 | Grant cruzado **Fenix (#102) × Eliza.Market (#105)** | 🟠 pendente | **não decidido.** §9 do doc novo diz explicitamente que o arquivo recebido não trazia caso concreto de Grant | reauditoria read-only completa na seção 5 | ⛔ **CONTINUA ABERTO** — não bloqueia APPLY, **bloqueia ENFORCEMENT** |
+| 4 | Grant cruzado **Fenix (#102) × Eliza.Market (#105)** | 🟠 pendente | **NÃO MEXER** — rodada 2, decisão 3. Grants #69 e #70 ficam exatamente como estão | reauditoria read-only completa na seção 5; classificação preservada | ⛔ **ABERTO POR DECISÃO** — não bloqueia APPLY, **bloqueia ENFORCEMENT** |
 | 5 | Squad 8 · Legado com 26 clientes e nenhum membro | 🟠 pendente | **confirmado como está**: 6 operacionais + Squad 8 Legado, sem renumerar; acesso só por admin e por memberships reais; `responsibility` não é autorização | §10 | ✅ **RESOLVIDO** — comportamento mantido, 26 clientes |
 
 ### 2.3 Confirmações rápidas
@@ -102,18 +107,18 @@ que aconteceu com ela.
 
 ---
 
-## 3. O que o documento aprovado **não** resolveu
+## 3. O que ainda não está decidido
 
-O documento se declara sem pendências humanas (§11). Confrontado com o banco,
-**três** itens continuam exigindo decisão. Nenhum foi inferido.
+Depois da rodada 2, **nenhum item bloqueia o APPLY**. Sobra um item aberto,
+não bloqueante, e o Grant cruzado (seção 5), que bloqueia só o enforcement.
 
-### 3.1 ⛔ Klayvert — qual das duas contas?
+### 3.1 ✅ Klayvert — resolvido: **#35**
 
-O documento define o **Squad principal** de Klayvert (Squad 2) mas não diz
-**qual usuário** ele é. O banco tem duas contas ativas, mesmo nome, mesma
-pessoa segundo o relatório anterior:
+Duas contas ativas, mesmo nome, a mesma pessoa. A decisão humana escolheu
+**#35** (`klayvert.rodrigues@vendexcompany.com.br`) como identidade técnica do
+P2.9, pelo motivo que a evidência já apontava:
 
-| | #22 | #35 |
+| | #22 | **#35 ← escolhida** |
 |---|---|---|
 | email | `klayvert.rodrigues@vendexcompany.com` | `klayvert.rodrigues@vendexcompany.com.br` |
 | role | `user` | `user` |
@@ -123,36 +128,44 @@ pessoa segundo o relatório anterior:
 | `relatorios` | 0 | 1 |
 | `user_bases` | 55 | 41 |
 
-**A evidência aponta para #35 como a conta em uso** — é a única com atividade
-registrada. Mas isso é evidência operacional, **não** decisão: `user_bases`
-aponta para o outro lado, e escolher a conta errada dá as três carteiras de
-Coordenador para um login que a pessoa não usa. Fica bloqueado.
+O email confirmado resolve **exatamente 1** usuário ativo (#35), e as três
+memberships de Coordenador (squads 2, 3 e 6) foram emitidas para ele, com
+`principal: true` só em squad-2.
 
-**Impacto:** 3 memberships (`squad-2`, `squad-3`, `squad-6`, todas
-`coordenador`). Três dos seis Squads ficariam **sem Coordenador**.
+**A conta #22 não foi tocada** — não desativada, não deletada, sem migração de
+dados. Ela não aparece em nenhum lugar do plano (verificado). Fica registrada
+como **dívida de saneamento posterior**, fora do escopo deste APPLY.
 
-### 3.2 ⛔ Vinícius — qual das duas pessoas?
+> ⚠️ Consequência operacional a acompanhar depois do APPLY: se a pessoa logar
+> pela conta #22, ela não terá Squad nenhum. Enquanto o enforcement estiver
+> OFF isso é inócuo; quando ligar, vira carteira vazia. É o que torna o
+> saneamento de #22 uma dívida real, e não cosmética.
 
-Aqui não são duas contas de uma pessoa; são **duas pessoas**:
+### 3.2 ✅ Vinícius — resolvido: **#44 Vinicius Dias**
 
-| | #29 Vinicius **Bergo** | #44 Vinicius **Dias** |
+Aqui não eram duas contas de uma pessoa; eram **duas pessoas**:
+
+| | #29 Vinicius **Bergo** | **#44 Vinicius Dias ← escolhido** |
 |---|---|---|
 | email | `vinicius.bergo@vendexcompany.com` | `vinicius.dias@vendexcompany.com` |
 | role | `admin` | `membro` |
 | criado em | 2026-04-08 | 2026-07-06 |
 | `activity_logs` | 8 (até 2026-08-31) | 5 (até 2026-08-27) |
 
-Ambos ativos, ambos em uso. O documento não os menciona. **Impacto:** 1
-membership (`squad-2:auxiliar2`).
+O assento `squad-2:auxiliar2` foi emitido para **#44**. A conta admin **#29 não
+é usada nem alterada** e não aparece no plano (verificado).
 
-### 3.3 🟡 MM — qual das duas empresas?
+### 3.3 🟡 MM — continua aberto, e continua não bloqueante
 
 A carteira aprovada (§3.6) lista `MM` no Squad 3. O banco tem **`MM Importes`
 (#54)** e **`MM Comercio` (#107)**, ambos ativos, cada um com conta e grant
-próprios. Sem desempate, os dois permanecem no **Squad 8 · Legado** — que é o
-default seguro. Não bloqueia o APPLY (a invariante "1 Squad por Cliente"
-continua satisfeita), mas significa que **o Squad 3 não recebe o cliente "MM"
-que o humano aprovou**. É fidelidade de carteira, não integridade de dados.
+próprios. Sem desempate, os dois permanecem no **Squad 8 · Legado** — o default
+seguro.
+
+Não bloqueia o APPLY: a invariante "todo Cliente ativo em exatamente 1 Squad"
+continua satisfeita. O custo é que **o Squad 3 não recebe o cliente "MM" que o
+humano aprovou** — fidelidade de carteira, reversível movendo o cliente depois,
+não risco de dado.
 
 ---
 
@@ -224,25 +237,35 @@ ml_tokens (grants)
 | **BLOQUEIA APPLY?** | **NÃO** — o APPLY não toca em Grant nenhum, e o defeito já existe hoje |
 | **BLOQUEIA ENFORCEMENT?** | **SIM** — enquanto o grant #69 existir, o Squad 6 alcança conta de cliente do Squad 8 |
 
-Nada foi movido, removido ou reapontado. O grant #69 continua exatamente onde
-estava.
+### 5.4 A decisão humana: **não mexer**
 
-### 5.4 A pergunta objetiva
+Perguntado se o grant secundário #69 deveria ser desconectado, o humano
+respondeu: **na dúvida operacional, não mexer.**
 
-> **O grant secundário #69 (`ml_user_id` 2661771367) em Fenix Equipamentos1
-> (#102) deve ser desconectado, ou é intencional?**
->
-> Contexto para responder: ele não tem `ClienteConta`, o mesmo seller já é o
-> grant **primário** de Eliza.Market (#105), e os dois clientes vão para Squads
-> diferentes. Se a resposta for "desconectar", isso é uma operação de correção
-> de dado — separada deste APPLY — e depois disso o enforcement fica liberado
-> por este item.
+- grant **#69** (secundário, em Fenix #102) → **fica como está**
+- grant **#70** (primário, em Eliza.Market #105) → **fica como está**
+- não desconectar · não mover · não alterar
+
+A classificação acima é **preservada integralmente**. Isso é uma decisão
+consciente de aceitar o item como **bloqueador de enforcement**, não de
+descartá-lo: o APPLY segue liberado, e ligar o enforcement continua
+condicionado a resolver o cruzamento.
+
+Verificado depois do dry-run final: os dois grants estão exatamente onde
+estavam.
+
+```
+grant cruzado ANTES : #69 cliente102 primary=false | #70 cliente105 primary=true
+grant cruzado DEPOIS: #69 cliente102 primary=false | #70 cliente105 primary=true
+```
+
+Nada foi movido, removido ou reapontado.
 
 ---
 
 ## 6. MM · JFX · cluster `wm` — reconciliados
 
-O comportamento seguro anterior **continua válido** para os três. Nenhum passou
+Reconferidos na rodada 2: o comportamento seguro **continua válido** para os três. Nenhum passou
 a violar "todo Cliente canônico termina em exatamente 1 Squad" e nenhum cria
 risco de Grant ou de Conta. Nenhum sobe para bloqueador.
 
@@ -254,10 +277,10 @@ risco de Grant ou de Conta. Nenhum sobe para bloqueador.
 
 ---
 
-## 7. Identidades finais — 24 identidades, 20 memberships
+## 7. Identidades finais — 24 identidades, 24 memberships
 
 `Fernando` conta como **duas** identidades: a relação tem 23 nomes distintos,
-mas 24 pessoas.
+mas 24 pessoas. **Nenhuma identidade ficou ambígua.**
 
 | nome na planilha | classe | user.id | email confirmado | Squads | principal |
 |---|---|---|---|---|---|
@@ -275,34 +298,44 @@ mas 24 pessoas.
 | Giovanna | MATCH_EXATO | **#17** | giovanna.santos@ | squad-4 | squad-4 |
 | Gustavo | MATCH_EXATO | **#46** | gustavo.nakamura@ | squad-1 | squad-1 |
 | Juliana | MATCH_EXATO | **#21** | juliana.discher@ | squad-2 | squad-2 |
-| **Klayvert** | ⛔ MATCH_AMBIGUO | — | #22 × #35 | squads 2·3·6 | (Squad 2, decidido, inaplicável) |
+| **Klayvert** | **DECISAO_HUMANA_EMAIL** | **#35** | klayvert.rodrigues@vendexcompany.**com.br** | squads 2·3·6 | **squad-2** ✔ |
 | Matheus | MATCH_EXATO | **#23** | matheus.leopoldo@ | squad-6 | squad-6 |
 | Mayara | MATCH_EXATO | **#38** | mayara.cerbi@ | squad-3 | squad-3 |
 | **Micael** | MATCH_EXATO | **#24** | micael.almeida@ | squads 1·5 | **squad-1** ✔ |
 | **Sophia** | MATCH_EXATO | **#28** | sophia.costa@ | squads 5·6 | **squad-5** ✔ |
 | Thiago | MATCH_EXATO | **#48** | thiago.zanini@ | squad-3 | squad-3 |
 | **Victor** | EXCLUIDO_USUARIO_NAO_CRIADO | — | — | squad-6 (previsto) | — |
-| **Vinícius** | ⛔ MATCH_AMBIGUO | — | #29 × #44 | squad-2 | — |
+| **Vinícius** | **DECISAO_HUMANA_EMAIL** | **#44** Dias | vinicius.dias@ | squad-2 | squad-2 |
 | Witor | MATCH_EXATO | **#31** | witor.silva@ | squad-5 | squad-5 |
 | **Yuri** | EXCLUIDO_USUARIO_NAO_CRIADO | — | — | squad-4 (previsto) | — |
 
-Domínio omitido por brevidade: todos `@vendexcompany.com`, exceto Diogo.
+Domínio omitido por brevidade: todos `@vendexcompany.com`, exceto Diogo
+(hotmail) e Klayvert (`.com.br`).
+
+**Contas deliberadamente fora do plano**, verificado no artefato: **#22**
+(Klayvert `.com`), **#29** (Vinicius Bergo, admin) e **#6** (Vitor Capeli,
+admin). Nenhuma delas aparece em nenhuma membership.
 
 **Fernando Salgado mantém `role = admin`.** O plano só emite `squad_members`;
-nenhuma operação toca `users.role`. A função operacional (Coordenador do Squad
-4) não reduz o admin, conforme §3.3.
+nenhuma operação toca `users`. A função operacional (Coordenador do Squad 4)
+não reduz o admin, conforme §3.3.
+
+**Exatamente 1 principal por usuário**, verificado: 0 usuários com número de
+principais diferente de 1, e 0 memberships com `_principalPendente`.
 
 ### Composição por Squad, ao fim
 
 | Squad | assentos na planilha | memberships emitidas | faltando | por quê |
 |---|---|---|---|---|
 | squad-1 | 5 | **5** | — | completo |
-| squad-2 | 5 | **2** | 3 | Klayvert ⛔, Vinícius ⛔, Caique (sem conta) |
-| squad-3 | 5 | **4** | 1 | Klayvert ⛔ |
+| squad-2 | 5 | **4** | 1 | Caique (sem conta) |
+| squad-3 | 5 | **5** | — | completo |
 | squad-4 | 5 | **3** | 2 | Yuri e Carol (sem conta) |
 | squad-5 | 4 | **4** | — | completo (auxiliar2 ausente na estrutura, por decisão §5.1) |
-| squad-6 | 4 | **2** | 2 | Klayvert ⛔, Victor (sem conta) |
-| **total** | **28** | **20** | **8** | 4 sem conta (esperado) + **4 bloqueadas** (Klayvert ×3, Vinícius ×1) |
+| squad-6 | 4 | **3** | 1 | Victor (sem conta) |
+| **total** | **28** | **24** | **4** | **todas** as ausências são as 4 pessoas sem conta — **0 bloqueio de identidade** |
+
+Os seis Squads têm Coordenador. Nenhum assento ficou vago por ambiguidade.
 
 ---
 
@@ -336,9 +369,14 @@ e **MM** (ambíguo entre dois). Nada foi criado para "completar" a estrutura.
 Fonte → tooling → artefato. Nenhum JSON foi editado à mão.
 
 **Nova fonte:** `entrada/decisoes-humanas-aprovadas.json` — transcrição literal
-do documento aprovado (identidades por email, usuários não criados, Squad
-principal), com o que ele **não** decidiu registrado explicitamente no campo
-`_naoDecididoPeloDocumento`.
+das decisões humanas (identidades por email, usuários não criados, Squad
+principal). Ela carrega os dois lados: `_decididoNaRodada2` registra as três
+respostas objetivas que fecharam o pré-apply, e `_naoDecididoPeloDocumento`
+mantém o que segue indecidido (hoje, só o `MM`).
+
+**A rodada 2 não mexeu em uma linha de tooling.** As três decisões entraram
+como *dados* na fonte canônica; o código que as consome já existia e já estava
+testado. Fonte → tooling → artefato, sem exceção.
 
 **Novo flag:** `squads-mapeamento-real.js --decisoes <arquivo>`.
 
@@ -384,8 +422,11 @@ Invariantes adicionais desta fase, verificadas nos artefatos:
 - **Fernando Montoro ≠ Fernando Salgado** — #45 e #5, memberships em Squads
   distintos, nenhum marcado multi-Squad ✔
 - **Sophia** multi-Squad, principal **squad-5** ✔
-- **Klayvert** multi-Squad, principal **squad-2** — decidido, ainda inaplicável ⛔
+- **Klayvert** = **#35**, multi-Squad (2·3·6), principal **squad-2** ✔ · a conta
+  **#22 fora do plano**, não desativada, não deletada, sem migração ✔
 - **Micael** multi-Squad, principal **squad-1** ✔
+- **Vinícius** = **#44 Dias** · a conta admin **#29 fora do plano e intocada** ✔
+- **Grants #69 e #70 preservados**, byte a byte, antes e depois do dry-run ✔
 - **4 usuários inexistentes sem membership técnica** ✔
 - **admin Fernando Salgado mantém `role=admin`** — nada no plano toca `users` ✔
 - **`SQUADS_ENFORCEMENT` continua OFF** — default fail-safe, e o rollout gate

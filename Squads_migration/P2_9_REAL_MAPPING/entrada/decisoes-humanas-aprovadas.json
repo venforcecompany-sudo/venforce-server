@@ -1,11 +1,15 @@
 {
   "_origem": "Squads_migration/VENFORCE_V3_P2_9_DECISOES_FINAIS_APROVADAS.md",
   "_transcritoEm": "2026-09-04",
-  "_regra": "Transcrição LITERAL do documento humano aprovado. Nenhum email, id, nome ou Squad foi inferido, completado ou corrigido aqui. O que o documento não decidiu continua indecidido — e bloqueia.",
+  "_atualizadoEm": "2026-09-04 — rodada 2: as três respostas objetivas que faltavam",
+  "_regra": "Transcrição LITERAL das decisões humanas. Nenhum email, id, nome ou Squad foi inferido, completado ou corrigido aqui. O que o humano não decidiu continua indecidido — e bloqueia.",
   "_naoDecididoPeloDocumento": [
-    "Klayvert — o documento define o Squad principal (Squad 2) mas NÃO informa qual das duas contas ativas de mesmo nome é a real (#22 @vendexcompany.com × #35 @vendexcompany.com.br). Sem email confirmado, os 3 assentos de Coordenador ficam bloqueados.",
-    "Vinícius — squad-2:auxiliar2. O documento não traz email confirmado e o banco tem duas pessoas distintas (#29 Vinicius Bergo, admin × #44 Vinicius Dias, membro). Assento bloqueado.",
-    "MM — squad-3. A carteira aprovada nomeia 'MM', e o banco tem duas entidades reais ('MM Importes' #54 e 'MM Comercio' #107). Sem desempate humano as duas permanecem no Squad 8 · Legado."
+    "MM — squad-3. A carteira aprovada nomeia 'MM', e o banco tem duas entidades reais ('MM Importes' #54 e 'MM Comercio' #107). Sem desempate humano as duas permanecem no Squad 8 · Legado. NÃO bloqueia o APPLY: cada uma termina em exatamente 1 Squad."
+  ],
+  "_decididoNaRodada2": [
+    "Klayvert — identidade técnica = #35 (klayvert.rodrigues@vendexcompany.com.br), a conta com atividade recente registrada. A conta #22 NÃO é desativada, deletada nem migrada nesta missão: vira dívida de saneamento posterior. O Squad principal permanece Squad 2.",
+    "Vinícius (squad-2:auxiliar2) = #44 Vinicius Dias (vinicius.dias@vendexcompany.com). A conta admin #29 Vinicius Bergo NÃO é usada e NÃO é alterada.",
+    "Grant cruzado Fênix #102 × Eliza.Market #105: na dúvida operacional, NÃO mexer. Grants #69 e #70 ficam exatamente como estão. Classificação preservada: NÃO bloqueia APPLY, BLOQUEIA ENFORCEMENT."
   ],
   "versao": 1,
   "identidades": [
@@ -36,6 +40,19 @@
       "email": "gabrielly.cavazotto@vendexcompany.com",
       "assentos": [{ "squad": "squad-3", "papel": "design" }],
       "_fonte": "§7 — pessoa distinta de Gabrielly do Squad 1"
+    },
+    {
+      "nome": "Klayvert",
+      "pessoa": "Klayvert Rodrigues",
+      "email": "klayvert.rodrigues@vendexcompany.com.br",
+      "_fonte": "rodada 2, decisão 1 — a mesma pessoa tem duas contas (#22 .com e #35 .com.br); a identidade técnica do P2.9 é #35, a que tem atividade recente registrada. Sem 'assentos': vale para os três assentos de Coordenador (squads 2, 3 e 6), que são da mesma pessoa. A conta #22 NÃO é tocada."
+    },
+    {
+      "nome": "Vinícius",
+      "pessoa": "Vinicius Dias",
+      "email": "vinicius.dias@vendexcompany.com",
+      "assentos": [{ "squad": "squad-2", "papel": "auxiliar2" }],
+      "_fonte": "rodada 2, decisão 2 — é o #44 Vinicius Dias, não o admin #29 Vinicius Bergo, que não é usado nem alterado"
     }
   ],
   "usuariosNaoCriados": [

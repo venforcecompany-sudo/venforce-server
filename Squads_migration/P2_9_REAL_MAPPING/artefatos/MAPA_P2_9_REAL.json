@@ -1,5 +1,5 @@
 {
-  "geradoEm": "2026-09-04T17:22:22.364Z",
+  "geradoEm": "2026-09-04T18:24:35.087Z",
   "resumo": {
     "clientesReais": 83,
     "clientesAtivos": 83,
@@ -26,8 +26,7 @@
     "identidades": {
       "MATCH_EXATO": 14,
       "EXCLUIDO_USUARIO_NAO_CRIADO": 4,
-      "DECISAO_HUMANA_EMAIL": 4,
-      "MATCH_AMBIGUO": 2
+      "DECISAO_HUMANA_EMAIL": 6
     },
     "invariantesFalhas": 0
   },
@@ -3139,18 +3138,14 @@
         }
       ],
       "multiSquad": true,
-      "classe": "MATCH_AMBIGUO",
-      "camada": "TOKEN_EXATO",
-      "userId": null,
-      "email": null,
-      "role": null,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
+      "userId": 35,
+      "email": "klayvert.rodrigues@vendexcompany.com.br",
+      "role": "user",
+      "emailDecisao": "klayvert.rodrigues@vendexcompany.com.br",
+      "pessoaDecisao": "Klayvert Rodrigues",
       "candidatos": [
-        {
-          "id": 22,
-          "nome": "Klayvert Rodrigues",
-          "email": "klayvert.rodrigues@vendexcompany.com",
-          "role": "user"
-        },
         {
           "id": 35,
           "nome": "Klayvert Rodrigues",
@@ -3314,18 +3309,14 @@
         }
       ],
       "multiSquad": false,
-      "classe": "MATCH_AMBIGUO",
-      "camada": "TOKEN_EXATO",
-      "userId": null,
-      "email": null,
-      "role": null,
+      "classe": "DECISAO_HUMANA_EMAIL",
+      "camada": "DECISAO_HUMANA",
+      "userId": 44,
+      "email": "vinicius.dias@vendexcompany.com",
+      "role": "membro",
+      "emailDecisao": "vinicius.dias@vendexcompany.com",
+      "pessoaDecisao": "Vinicius Dias",
       "candidatos": [
-        {
-          "id": 29,
-          "nome": "Vinicius Bergo",
-          "email": "vinicius.bergo@vendexcompany.com",
-          "role": "admin"
-        },
         {
           "id": 44,
           "nome": "Vinicius Dias",
@@ -3381,48 +3372,7 @@
       "motivo": "decisão humana: a pessoa faz parte da estrutura do Squad mas ainda não possui usuário — nenhuma identidade é inventada e a membership fica fora deste APPLY"
     }
   ],
-  "bloqueios": [
-    {
-      "tipo": "USUARIO_AMBIGUO",
-      "nome": "Klayvert",
-      "squad": "squad-2",
-      "papel": "coordenador",
-      "candidatos": [
-        22,
-        35
-      ]
-    },
-    {
-      "tipo": "USUARIO_AMBIGUO",
-      "nome": "Vinícius",
-      "squad": "squad-2",
-      "papel": "auxiliar2",
-      "candidatos": [
-        29,
-        44
-      ]
-    },
-    {
-      "tipo": "USUARIO_AMBIGUO",
-      "nome": "Klayvert",
-      "squad": "squad-3",
-      "papel": "coordenador",
-      "candidatos": [
-        22,
-        35
-      ]
-    },
-    {
-      "tipo": "USUARIO_AMBIGUO",
-      "nome": "Klayvert",
-      "squad": "squad-6",
-      "papel": "coordenador",
-      "candidatos": [
-        22,
-        35
-      ]
-    }
-  ],
+  "bloqueios": [],
   "invariantes": [
     {
       "id": "I1",

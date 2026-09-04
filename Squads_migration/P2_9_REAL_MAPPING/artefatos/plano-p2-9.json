@@ -1,6 +1,6 @@
 {
   "versao": 1,
-  "descricao": "P2.9 — 6 Squads operacionais + Squad 8 · Legado · 20 memberships · 83 clientes reais",
+  "descricao": "P2.9 — 6 Squads operacionais + Squad 8 · Legado · 24 memberships · 83 clientes reais",
   "_geradoPor": "squads-mapeamento-real.js",
   "_avisoResponsaveis": "responsaveis[] deliberadamente VAZIO — a regra de negócio que transformaria papel operacional (gestor/auxiliar/design) em cliente_responsaveis NÃO está documentada. Ver 12_CLIENT_CONSOLIDATION_PLAN.md.",
   "squads": [
@@ -78,6 +78,13 @@
     },
     {
       "squad": "squad-2",
+      "usuario": "klayvert.rodrigues@vendexcompany.com.br",
+      "funcao": "coordenador",
+      "principal": true,
+      "_papelOperacional": "coordenador"
+    },
+    {
+      "squad": "squad-2",
       "usuario": "adrian.neves@vendexcompany.com",
       "funcao": "membro",
       "principal": true,
@@ -89,6 +96,19 @@
       "funcao": "membro",
       "principal": true,
       "_papelOperacional": "auxiliar"
+    },
+    {
+      "squad": "squad-2",
+      "usuario": "vinicius.dias@vendexcompany.com",
+      "funcao": "membro",
+      "principal": true,
+      "_papelOperacional": "auxiliar2"
+    },
+    {
+      "squad": "squad-3",
+      "usuario": "klayvert.rodrigues@vendexcompany.com.br",
+      "funcao": "coordenador",
+      "_papelOperacional": "coordenador"
     },
     {
       "squad": "squad-3",
@@ -165,6 +185,12 @@
       "funcao": "membro",
       "principal": true,
       "_papelOperacional": "design"
+    },
+    {
+      "squad": "squad-6",
+      "usuario": "klayvert.rodrigues@vendexcompany.com.br",
+      "funcao": "coordenador",
+      "_papelOperacional": "coordenador"
     },
     {
       "squad": "squad-6",
@@ -598,47 +624,6 @@
     }
   ],
   "responsaveis": [],
-  "_emitivel": false,
-  "_bloqueios": [
-    {
-      "tipo": "USUARIO_AMBIGUO",
-      "nome": "Klayvert",
-      "squad": "squad-2",
-      "papel": "coordenador",
-      "candidatos": [
-        22,
-        35
-      ]
-    },
-    {
-      "tipo": "USUARIO_AMBIGUO",
-      "nome": "Vinícius",
-      "squad": "squad-2",
-      "papel": "auxiliar2",
-      "candidatos": [
-        29,
-        44
-      ]
-    },
-    {
-      "tipo": "USUARIO_AMBIGUO",
-      "nome": "Klayvert",
-      "squad": "squad-3",
-      "papel": "coordenador",
-      "candidatos": [
-        22,
-        35
-      ]
-    },
-    {
-      "tipo": "USUARIO_AMBIGUO",
-      "nome": "Klayvert",
-      "squad": "squad-6",
-      "papel": "coordenador",
-      "candidatos": [
-        22,
-        35
-      ]
-    }
-  ]
+  "_emitivel": true,
+  "_bloqueios": []
 }
