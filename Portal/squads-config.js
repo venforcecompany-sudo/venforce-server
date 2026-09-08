@@ -507,6 +507,136 @@ async function confirmarAdicionarPessoa() {
   }
 }
 
+/* ── MODAL: ADICIONAR CLIENTE (sem squad) ────────────────── */
+// Atribuição inicial (cliente sem squad) usa POST /squads/:id/clientes —
+// o mesmo endpoint que atribuirCliente() no backend já usa e recusa
+// (409 CLIENTE_JA_TEM_SQUAD) se o cliente já pertence a outro squad. Não é
+// endpoint novo; "Mover" continua sendo o único caminho para reatribuir um
+// cliente que já tem squad (usa /transferir).
+async function carregarTodosClientes() {
+  const data = await api("/clientes");
+  return Array.isArray(data.clientes) ? data.clientes : [];
+}
+
+// Reúne os clientes de TODOS os squads (não só o aberto) para poder
+// subtrair do total quem já tem vínculo — reaproveita GET /squads/:id/clientes,
+// já usado por abrirSquad(), sem criar contrato novo.
+async function carregarTodosClientesPorSquad() {
+  await Promise.all(STATE.squads.map(async (s) => {
+    try {
+      const r = await api(`/squads/${s.id}/clientes`);
+      STATE.clientesPorSquad[s.id] = Array.isArray(r.clientes) ? r.clientes : [];
+    } catch { STATE.clientesPorSquad[s.id] = STATE.clientesPorSquad[s.id] || []; }
+  }));
+}
+
+function idsClientesComSquad() {
+  const ids = new Set();
+  Object.values(STATE.clientesPorSquad).forEach((lista) => {
+    (lista || []).forEach((c) => ids.add(Number(c.id)));
+  });
+  return ids;
+}
+
+function clientesElegiveisParaAdicionar(busca) {
+  const comSquad = idsClientesComSquad();
+  const q = (busca || "").trim().toLowerCase();
+  return (STATE.todosClientes || [])
+    .filter((c) => c.ativo !== false && !comSquad.has(Number(c.id)))
+    .filter((c) => !q || `${c.nome || ""} ${c.slug || ""}`.toLowerCase().includes(q))
+    .sort((a, b) => String(a.nome || a.slug || "").localeCompare(String(b.nome || b.slug || "")));
+}
+
+async function abrirModalAdicionarCliente(squadId) {
+  const squad = squadPorId(squadId);
+  const modal = document.getElementById("sq-addcliente-modal");
+  modal.dataset.squadId = squadId;
+
+  document.getElementById("sq-addcliente-subtitle").textContent = squad ? squad.nome : "";
+  document.getElementById("sq-addcliente-busca").value = "";
+  document.getElementById("sq-addcliente-preview").textContent = "";
+  const danger = document.getElementById("sq-addcliente-danger");
+  danger.style.display = "none"; danger.textContent = "";
+
+  const select = document.getElementById("sq-addcliente-select");
+  select.innerHTML = `<option value="">Carregando…</option>`;
+  modal.classList.add("is-open");
+  document.body.classList.add("vf-no-scroll");
+
+  try {
+    const [todos] = await Promise.all([carregarTodosClientes(), carregarTodosClientesPorSquad()]);
+    STATE.todosClientes = todos;
+    renderOpcoesAdicionarCliente();
+  } catch (err) {
+    select.innerHTML = `<option value="">—</option>`;
+    danger.style.display = "block";
+    danger.textContent = `Erro ao carregar clientes: ${err.message}`;
+  }
+}
+
+function renderOpcoesAdicionarCliente() {
+  const select = document.getElementById("sq-addcliente-select");
+  const busca = document.getElementById("sq-addcliente-busca").value;
+  const disponiveis = clientesElegiveisParaAdicionar(busca);
+
+  if (!disponiveis.length) {
+    select.innerHTML = `<option value="">Nenhum cliente sem squad encontrado</option>`;
+  } else {
+    select.innerHTML = disponiveis
+      .map((c) => `<option value="${esc(c.id)}">${esc(c.nome || c.slug)} (${esc(c.slug || "")})</option>`)
+      .join("");
+  }
+  atualizarPreviewAdicionarCliente();
+}
+
+function atualizarPreviewAdicionarCliente() {
+  const modal = document.getElementById("sq-addcliente-modal");
+  const squad = squadPorId(Number(modal.dataset.squadId));
+  const select = document.getElementById("sq-addcliente-select");
+  const opt = select.options[select.selectedIndex];
+  const preview = document.getElementById("sq-addcliente-preview");
+  if (!opt || !opt.value) { preview.textContent = ""; return; }
+  preview.textContent = `Adicionar Cliente ${opt.textContent} ao Squad ${squad ? squad.nome : "—"}?`;
+}
+
+function fecharModalAdicionarCliente() {
+  document.getElementById("sq-addcliente-modal").classList.remove("is-open");
+  document.body.classList.remove("vf-no-scroll");
+}
+
+async function confirmarAdicionarCliente() {
+  const modal = document.getElementById("sq-addcliente-modal");
+  const squadId = Number(modal.dataset.squadId);
+  const select = document.getElementById("sq-addcliente-select");
+  const clienteId = select.value;
+  const danger = document.getElementById("sq-addcliente-danger");
+  danger.style.display = "none"; danger.textContent = "";
+
+  if (!clienteId) {
+    danger.style.display = "block";
+    danger.textContent = "Selecione um cliente.";
+    return;
+  }
+
+  const confirmBtn = document.getElementById("sq-addcliente-confirm");
+  confirmBtn.disabled = true;
+  const txtOrig = confirmBtn.textContent;
+  confirmBtn.textContent = "Adicionando…";
+
+  try {
+    await api(`/squads/${squadId}/clientes`, { method: "POST", body: { clienteId: Number(clienteId) } });
+    toast("Cliente adicionado ao squad.", "ok");
+    fecharModalAdicionarCliente();
+    await recarregarAtual();
+  } catch (err) {
+    danger.style.display = "block";
+    danger.textContent = err.message || "Não foi possível adicionar o cliente.";
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = txtOrig;
+  }
+}
+
 /* ── MODAL: MOVER CLIENTE ────────────────────────────────── */
 function abrirModalMover({ clienteId, clienteNome, squadOrigemId }) {
   const modal = document.getElementById("sq-move-modal");
@@ -602,6 +732,18 @@ document.getElementById("sq-add-modal")?.addEventListener("click", (e) => {
   if (e.target?.id === "sq-add-modal") fecharModalAdicionarPessoa();
 });
 
+document.getElementById("sq-btn-add-cliente")?.addEventListener("click", () => {
+  if (STATE.squadAbertoId != null) abrirModalAdicionarCliente(STATE.squadAbertoId);
+});
+document.getElementById("sq-addcliente-close")?.addEventListener("click", fecharModalAdicionarCliente);
+document.getElementById("sq-addcliente-cancel")?.addEventListener("click", fecharModalAdicionarCliente);
+document.getElementById("sq-addcliente-confirm")?.addEventListener("click", confirmarAdicionarCliente);
+document.getElementById("sq-addcliente-select")?.addEventListener("change", atualizarPreviewAdicionarCliente);
+document.getElementById("sq-addcliente-busca")?.addEventListener("input", renderOpcoesAdicionarCliente);
+document.getElementById("sq-addcliente-modal")?.addEventListener("click", (e) => {
+  if (e.target?.id === "sq-addcliente-modal") fecharModalAdicionarCliente();
+});
+
 document.getElementById("sq-move-close")?.addEventListener("click", fecharModalMover);
 document.getElementById("sq-move-cancel")?.addEventListener("click", fecharModalMover);
 document.getElementById("sq-move-confirm")?.addEventListener("click", confirmarMoverCliente);
@@ -613,6 +755,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   fecharConfirmacao();
   fecharModalAdicionarPessoa();
+  fecharModalAdicionarCliente();
   fecharModalMover();
 });
 

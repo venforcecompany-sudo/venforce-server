@@ -108,6 +108,9 @@ export const ADMIN = [
   { id: "ml-tokens", label: "Tokens ML", rota: "ml-tokens.html" },
   // Criação Anúncios ML era `adminOnly` em layout.js — mesma regra aqui.
   { id: "criar-anuncios-meli", label: "Criação Anúncios ML", rota: "criar-anuncios-meli.html" },
+  // squads-config.html existe desde o PR #99 (backend + tela prontos) mas
+  // nunca ganhou entrada no Shell V3 — hotfix pós-PR #99, achado 1.
+  { id: "squads", label: "Squads", rota: "squads-config.html" },
   { id: "atividade", label: "Atividade", rota: "atividade.html" },
   { id: "control-center", label: "Control Center", rota: "control-center.html" },
   { id: "callbacks", label: "Callbacks", rota: "callbacks.html" },
