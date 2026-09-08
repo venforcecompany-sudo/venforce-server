@@ -107,6 +107,7 @@ const {
 } = require("./middlewares/observabilityMiddleware");
 const { ensureObservabilityTables } = require("./repositories/observabilityRepository");
 const { ensureSquadsTables } = require("./services/squads/squadsRepository");
+const squadService = require("./services/squads/squadService");
 const { ensureEntregasClienteSchema } = require("./services/schema/schemaEnsure");
 const { logReadinessNoBoot, verificarSchemaV3 } = require("./services/schema/schemaReadiness");
 const {
@@ -1452,22 +1453,54 @@ app.delete("/clientes/:slug/ml-token", authMiddleware, requireAdmin, async (req,
 
 app.post("/clientes", authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const { nome, slug } = req.body;
+    const { nome, slug, squadId } = req.body;
     if (!nome || !slug) {
       return res.status(400).json({ ok: false, erro: "Nome e slug são obrigatórios." });
     }
     const slugNorm = normalizarSlug(slug);
     const apiKey = gerarApiKey();
+    const nomeTrim = nome.trim();
+
+    // squadId é aditivo (mission: preservar consumidores antigos de
+    // {nome, slug}). Quando vem, cria Cliente + vínculo de Squad como UMA
+    // transação — nunca duas escritas independentes que possam deixar o
+    // Cliente órfão se a segunda falhar.
+    if (squadId !== undefined && squadId !== null && squadId !== "") {
+      const sid = Number(squadId);
+      if (!Number.isInteger(sid) || sid <= 0) {
+        return res.status(400).json({ ok: false, erro: "Squad inválido." });
+      }
+      try {
+        const resultado = await squadService.criarClienteComSquad(
+          { nome: nomeTrim, slug: slugNorm, apiKey, squadId: sid },
+          req.user.id
+        );
+        registrarLog({
+          ...dadosUsuarioDeReq(req),
+          acao: "admin.cliente.criar",
+          detalhes: { cliente_slug: slugNorm, cliente_nome: nomeTrim, squad_id: sid },
+          ip: extrairIp(req),
+          status: "sucesso"
+        });
+        return res.status(201).json({ ok: true, cliente: resultado.cliente, squad: resultado.squad });
+      } catch (err) {
+        const status = Number.isFinite(Number(err?.statusCode)) ? Number(err.statusCode) : 500;
+        if (status >= 500) console.error("[clientes] criar com squad:", err.message);
+        return res.status(status).json({ ok: false, erro: err.message, code: err.code });
+      }
+    }
+
+    // Caminho legado — sem squadId, comportamento inalterado (compatibilidade).
     const result = await pool.query(
       `INSERT INTO clientes (nome, slug, api_key)
        VALUES ($1, $2, $3)
        RETURNING id, nome, slug, api_key, ativo, created_at`,
-      [nome.trim(), slugNorm, apiKey]
+      [nomeTrim, slugNorm, apiKey]
     );
     registrarLog({
       ...dadosUsuarioDeReq(req),
       acao: "admin.cliente.criar",
-      detalhes: { cliente_slug: slugNorm, cliente_nome: nome.trim() },
+      detalhes: { cliente_slug: slugNorm, cliente_nome: nomeTrim },
       ip: extrairIp(req),
       status: "sucesso"
     });

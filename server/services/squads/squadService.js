@@ -354,6 +354,58 @@ async function atribuirCliente(squadId, clienteId, { motivo = null } = {}, actor
   }
 }
 
+// Cria um Cliente NOVO já vinculado a um Squad, como uma única transação
+// (mission "criação de cliente com squad"): não pode existir uma janela em
+// que o Cliente exista sem Squad. squadId é sempre revalidado aqui (existe +
+// ativo) — nunca confiado do jeito que chega do frontend. Não toca
+// ClienteConta, Grant, Base nem nenhum dado operacional — só clientes +
+// cliente_squad_history, igual atribuirCliente().
+async function criarClienteComSquad({ nome, slug, apiKey, squadId, motivo = null } = {}, actorId = null) {
+  await ensureSquadsTables();
+  const sid = Number(squadId);
+  if (!Number.isInteger(sid) || sid <= 0) {
+    throw erro(400, "SQUAD_ID_INVALIDO", "squadId inválido.");
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const squad = await client.query("SELECT id, nome, ativo FROM squads WHERE id = $1", [sid]);
+    if (!squad.rows.length) throw erro(404, "SQUAD_NAO_ENCONTRADO", "Squad não encontrado.");
+    if (squad.rows[0].ativo !== true) throw erro(409, "SQUAD_INATIVO", "Squad inativo. Escolha um squad ativo.");
+
+    let clienteRow;
+    try {
+      const ins = await client.query(
+        `INSERT INTO clientes (nome, slug, api_key)
+         VALUES ($1, $2, $3)
+         RETURNING id, nome, slug, api_key, ativo, created_at`,
+        [nome, slug, apiKey]
+      );
+      clienteRow = ins.rows[0];
+    } catch (e) {
+      if (e.code === "23505") throw erro(409, "CLIENTE_SLUG_DUPLICADO", "Slug já cadastrado. Use outro nome.");
+      throw e;
+    }
+
+    await client.query(
+      `INSERT INTO cliente_squad_history (cliente_id, squad_id, alterado_por, motivo)
+       VALUES ($1, $2, $3, $4)`,
+      [clienteRow.id, sid, actorId, motivo]
+    );
+
+    await client.query("COMMIT");
+    console.log(`[squads] cliente=${clienteRow.id} criado e atribuído ao squad=${sid} por user=${actorId}`);
+    return { cliente: clienteRow, squad: { id: squad.rows[0].id, nome: squad.rows[0].nome } };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 // Transferência transacional Squad A -> Squad B. NÃO toca ClienteConta,
 // Grant, Base nem dados operacionais — só o pertencimento do Cliente.
 // Fecha o histórico antigo e abre o novo.
@@ -439,6 +491,7 @@ module.exports = {
   definirPrincipal,
   definirFuncao,
   atribuirCliente,
+  criarClienteComSquad,
   transferirCliente,
   removerClienteDoSquad,
 };
