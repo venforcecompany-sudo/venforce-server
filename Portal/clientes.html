@@ -54,8 +54,14 @@
                     <label class="vf-field__label" for="cliente-slug">Slug</label>
                     <input type="text" id="cliente-slug" class="vf-input" placeholder="ex: loja_eletronico">
                   </div>
+                  <div class="vf-field">
+                    <label class="vf-field__label" for="cliente-squad">Squad *</label>
+                    <select id="cliente-squad" class="vf-input">
+                      <option value="">Carregando squads…</option>
+                    </select>
+                  </div>
                   <div class="vf-clientes-create-submit">
-                    <button id="btn-criar-cliente" class="vf-btn vf-btn--primary">
+                    <button id="btn-criar-cliente" class="vf-btn vf-btn--primary" disabled>
                       <span id="btn-criar-cliente-text">Criar cliente</span>
                       <span id="btn-criar-cliente-spinner" class="vf-spinner vf-spinner--sm" style="display:none;"></span>
                     </button>

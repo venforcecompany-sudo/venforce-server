@@ -248,6 +248,7 @@ async function run() {
       if (p === "/usuarios") return json({ ok: true, usuarios: USUARIOS });
       if (p === "/seller/vinculos") return json({ ok: true, vinculos: [] });
       if (p === "/clientes") return json({ ok: true, clientes: CLIENTES });
+      if (p === "/squads") return json({ ok: true, squads: [{ id: 1, nome: "Squad 1", slug: "squad-1", ativo: true }] });
       const mContas = p.match(/^\/clientes\/([^/]+)\/contas$/);
       if (mContas) {
         const slug = decodeURIComponent(mContas[1]);

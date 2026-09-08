@@ -31,6 +31,14 @@ function escapeHTML(s) {
   return d.innerHTML;
 }
 
+// Mesma regra de Portal/squads-config.js: squad "Legado" é reconhecido pelo
+// slug, não por um campo dedicado.
+function isLegado(squad) {
+  return String(squad.slug || "").includes("legado");
+}
+
+let SQUADS_ATIVOS = [];
+
 function filtrarClientes() {
   const termo = (document.getElementById("busca-cliente")?.value || "").toLowerCase().trim();
   const linhas = document.querySelectorAll("#clientes-tbody > tr.vf-clientes-row");
@@ -357,31 +365,84 @@ async function deleteCliente(slug, btn) {
   }
 }
 
+async function carregarSquadsAtivos() {
+  const select = document.getElementById("cliente-squad");
+  select.innerHTML = `<option value="">Carregando squads…</option>`;
+  try {
+    const data = await apiFetch("/squads");
+    const todos = Array.isArray(data.squads) ? data.squads : [];
+    SQUADS_ATIVOS = todos.filter((s) => s.ativo === true);
+    renderOpcoesSquad();
+  } catch (err) {
+    select.innerHTML = `<option value="">Erro ao carregar squads</option>`;
+    setFormStatus(`Erro ao carregar squads: ${err.message}`, true);
+  }
+  atualizarEstadoBotaoCriar();
+}
+
+function renderOpcoesSquad() {
+  const select = document.getElementById("cliente-squad");
+  if (!SQUADS_ATIVOS.length) {
+    select.innerHTML = `<option value="">Nenhum squad ativo disponível</option>`;
+    return;
+  }
+  const opcoes = SQUADS_ATIVOS
+    .map((s) => `<option value="${s.id}">${escapeHTML(s.nome)}${isLegado(s) ? " · Legado" : ""}</option>`)
+    .join("");
+  // Sempre começa com placeholder vazio — a pré-seleção (quando há
+  // exatamente 1 squad elegível) é aplicada depois, explicitamente, nunca
+  // via "primeira <option> da lista" (nunca escolher em silêncio).
+  select.innerHTML = `<option value="">Selecione um squad</option>${opcoes}`;
+  if (SQUADS_ATIVOS.length === 1) {
+    select.value = String(SQUADS_ATIVOS[0].id);
+  }
+}
+
+function squadSelecionadoValido() {
+  const select = document.getElementById("cliente-squad");
+  const id = Number(select.value);
+  return Number.isInteger(id) && id > 0;
+}
+
+function atualizarEstadoBotaoCriar() {
+  const nome = document.getElementById("cliente-nome").value.trim();
+  const slug = document.getElementById("cliente-slug").value.trim();
+  const btn = document.getElementById("btn-criar-cliente");
+  btn.disabled = !(nome && slug && squadSelecionadoValido());
+}
+
 async function createCliente() {
   const nomeEl = document.getElementById("cliente-nome");
   const slugEl = document.getElementById("cliente-slug");
+  const squadEl = document.getElementById("cliente-squad");
   const nome = nomeEl.value.trim();
   const slug = slugEl.value.trim();
+  const squadId = Number(squadEl.value);
+  const squadNome = squadEl.options[squadEl.selectedIndex]?.textContent || "";
 
   setFormStatus("", false);
   if (!nome) { setFormStatus("Informe o nome do cliente.", true); return; }
   if (!slug) { setFormStatus("Informe o slug do cliente.", true); return; }
+  if (!Number.isInteger(squadId) || squadId <= 0) { setFormStatus("Selecione um squad.", true); return; }
 
   setCreateLoading(true);
   try {
-    await apiFetch("/clientes", {
+    const data = await apiFetch("/clientes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nome, slug }),
+      body: JSON.stringify({ nome, slug, squadId }),
     });
     nomeEl.value = "";
     slugEl.value = "";
-    setFormStatus("✓ Cliente criado com sucesso.", false);
+    squadEl.value = "";
+    const squadFinal = data?.squad?.nome || squadNome;
+    setFormStatus(`✓ Cliente "${nome}" criado no Squad ${squadFinal}.`, false);
     loadClientes();
   } catch (err) {
     setFormStatus("Erro ao criar: " + err.message, true);
   } finally {
     setCreateLoading(false);
+    atualizarEstadoBotaoCriar();
   }
 }
 
@@ -816,6 +877,11 @@ nomeInput.addEventListener("input", () => {
   if (slugTouched) return;
   slugInput.value = slugify(nomeInput.value);
 });
+
+nomeInput.addEventListener("input", atualizarEstadoBotaoCriar);
+slugInput.addEventListener("input", atualizarEstadoBotaoCriar);
+document.getElementById("cliente-squad").addEventListener("change", atualizarEstadoBotaoCriar);
+if (TOKEN) carregarSquadsAtivos();
 
 document.getElementById("btn-criar-cliente").addEventListener("click", createCliente);
 document.getElementById("btn-retry").addEventListener("click", loadClientes);
