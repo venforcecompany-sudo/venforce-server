@@ -1,0 +1,199 @@
+/* Portal/css/pages/squads-config.css
+ * Tela "Configuração de Squads" (admin). Componentes (card, tabela, modal,
+ * banner, tag, status, botões, select) vêm da Fundação V2 — aqui só o que
+ * é específico desta tela: a lista de squads e o layout do detalhe. */
+
+/* ── Lista de squads ──────────────────────────────────────────────── */
+.sq-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-2);
+}
+
+.sq-row {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-4);
+  padding: var(--vf-sp-3) var(--vf-sp-4);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  background: var(--vf-surface);
+  transition: border-color var(--vf-duration) var(--vf-ease);
+}
+.sq-row:hover { border-color: var(--vf-border-strong); }
+.sq-row.is-selected { border-color: var(--vf-primary); }
+
+.sq-row__main {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.sq-row__nome {
+  font-family: var(--vf-font-display);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sq-row__inativo {
+  font-size: var(--vf-fs-2xs);
+  color: var(--vf-text-muted);
+}
+
+.sq-row__stats {
+  display: flex;
+  gap: var(--vf-sp-4);
+  flex: 1 1 220px;
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.sq-row__coord {
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sq-badge-legado {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--vf-sp-2);
+  border-radius: var(--vf-radius-sm);
+  background: var(--vf-warning-bg, #fff3cd);
+  color: var(--vf-warning-strong, #92620a);
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-bold);
+  letter-spacing: var(--vf-ls-caps);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── Detalhe do squad ─────────────────────────────────────────────── */
+.sq-detail-subtitle {
+  margin: 0 0 var(--vf-sp-4);
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text-muted);
+}
+
+.sq-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vf-sp-3);
+  margin: var(--vf-sp-6) 0 var(--vf-sp-3);
+}
+.sq-section-title:first-of-type { margin-top: 0; }
+.sq-section-title h3 {
+  margin: 0;
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-fs-sm);
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: var(--vf-ls-caps);
+  text-transform: uppercase;
+  color: var(--vf-text);
+}
+
+.sq-star {
+  color: var(--vf-warning, #c88a00);
+  font-weight: var(--vf-fw-bold);
+  white-space: nowrap;
+}
+
+.sq-principal-btn {
+  font-size: var(--vf-fs-2xs);
+  color: var(--vf-text-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.sq-principal-btn:hover { color: var(--vf-primary); }
+
+.sq-vazio {
+  margin: 0;
+  padding: var(--vf-sp-4) 0;
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text-muted);
+}
+
+.sq-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  min-width: 0;
+}
+.sq-table { width: 100%; }
+.sq-table td { vertical-align: middle; }
+.sq-col-actions { white-space: nowrap; text-align: right; }
+
+.sq-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sq-funcao-select { width: auto; min-width: 128px; }
+
+/* ── Modal: mover cliente / adicionar pessoa ─────────────────────── */
+.sq-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--vf-sp-3);
+}
+.sq-field:first-child { margin-top: 0; }
+.sq-field label {
+  font-size: var(--vf-fs-xs);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text-secondary);
+}
+.sq-preview {
+  margin-top: var(--vf-sp-3);
+  padding: var(--vf-sp-3);
+  border-radius: var(--vf-radius-sm);
+  background: var(--vf-bg-2);
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text);
+}
+
+/* ── Toast ────────────────────────────────────────────────────────── */
+.sq-toast {
+  position: fixed;
+  right: var(--vf-sp-4);
+  bottom: var(--vf-sp-4);
+  z-index: var(--vf-z-toast);
+  max-width: min(360px, calc(100vw - 2 * var(--vf-sp-4)));
+  padding: var(--vf-sp-3) var(--vf-sp-4);
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-left: 3px solid var(--vf-neutral);
+  border-radius: var(--vf-radius);
+  box-shadow: var(--vf-shadow-popover);
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity var(--vf-duration) var(--vf-ease),
+    transform var(--vf-duration) var(--vf-ease);
+}
+.sq-toast-show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.sq-toast-ok     { border-left-color: var(--vf-success); }
+.sq-toast-danger { border-left-color: var(--vf-danger); }
+
+@media (max-width: 900px) {
+  .sq-row { flex-wrap: wrap; }
+  .sq-row__coord { flex-basis: 100%; }
+}

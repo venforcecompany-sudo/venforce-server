@@ -200,6 +200,7 @@
       adminOnly: true,
       links: [
         { label: "Usuários",  href: "usuarios.html",  icon: "users"    },
+        { label: "Squads",    href: "squads-config.html", icon: "users" },
         { label: "Tokens ML", href: "ml-tokens.html", icon: "shield"   },
         { label: "Callbacks", href: "callbacks.html", icon: "repeat"   },
         { label: "Atividade", href: "atividade.html", icon: "activity" },
@@ -223,6 +224,7 @@
     "ml-tokens.html":       "clientes",
     "callbacks.html":       "clientes",
     "usuarios.html":        "admin",
+    "squads-config.html":   "admin",
     "atividade.html":       "admin",
     "control-center.html":   "admin",
     "financeiro-debug.html": "admin",
