@@ -237,3 +237,17 @@
   font-family: var(--vf-font-mono);
   font-size: var(--vf-fs-xs);
 }
+
+/* Coluna "Squad" — texto secundário discreto, nunca badge colorido nem
+   card. "Sem Squad" (cliente histórico sem vínculo) fica com o mesmo peso
+   visual da coluna, só numa cor de atenção suave — não esconde o cliente,
+   não inventa um squad default. */
+.vf-page-clientes .vf-cli-cell-squad {
+  color: var(--vf-text-secondary);
+  font-size: var(--vf-fs-sm);
+  white-space: nowrap;
+}
+.vf-page-clientes .vf-cli-cell-squad.is-missing {
+  color: var(--vf-warning-strong);
+  font-style: italic;
+}

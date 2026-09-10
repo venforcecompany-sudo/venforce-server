@@ -260,9 +260,15 @@ function renderClientes(clientes) {
     tr.style.animationDelay = `${i * 0.04}s`;
     tr.dataset.slug = slug;
 
+    const squadTexto = c.squad
+      ? `${escapeHTML(c.squad.nome)}${isLegado(c.squad) ? " · Legado" : ""}`
+      : "Sem Squad";
+    const squadCls = c.squad ? "" : "is-missing";
+
     tr.innerHTML = `
       <td class="vf-cli-cell-slug">${String(i + 1).padStart(2, "0")}</td>
       <td><strong>${escapeHTML(c.nome || "—")}</strong></td>
+      <td class="vf-cli-cell-squad ${squadCls}">${squadTexto}</td>
       <td class="vf-cli-cell-slug">${escapeHTML(slug || "—")}</td>
       <td>
         <span class="vf-status ${ativo ? "is-success" : ""}">${ativo ? "Ativo" : "Inativo"}</span>
