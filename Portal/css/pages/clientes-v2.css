@@ -275,3 +275,30 @@
 .vf-page-clientes .vf-clientes-confirm-deps li {
   margin: 2px 0;
 }
+
+/* Modal "Remover cliente" — passo 2 (exclusão permanente): aviso de perigo
+   visualmente distinto do texto normal do modal (mesma paleta de
+   .vf-alert.is-danger, sem reaproveitar o componente porque aqui é texto
+   corrido, não uma caixa de erro) + input de confirmação com folga clara
+   acima/abaixo. */
+.vf-page-clientes .vf-clientes-remover-aviso-perigo {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--vf-radius-sm);
+  background: var(--vf-danger-bg);
+  color: var(--vf-danger-strong);
+  font-size: var(--vf-fs-sm);
+  font-weight: var(--vf-fw-medium);
+}
+.vf-page-clientes #vf-clientes-remover-passo-purge label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text-secondary);
+}
+.vf-page-clientes #vf-clientes-remover-input {
+  width: 100%;
+}
+.vf-page-clientes #vf-clientes-remover-rodape-escolha .vf-btn--danger {
+  margin-left: auto;
+}

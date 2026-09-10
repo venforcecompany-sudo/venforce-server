@@ -1,16 +1,18 @@
 // server/tests/clientesRemocaoAdminSegura.test.js
 //
-// mission "fechar o contrato Cliente↔Squad + exclusão admin" (set/2026):
-// antes desta missão, DELETE /clientes/:slug bloqueava com 409
-// CLIENTE_COM_DEPENDENCIAS e o admin ficava sem alternativa — o cliente
-// continuava preso na operação ativa para sempre. Esta missão adiciona
-// uma saída segura sem tocar na lógica de bloqueio já existente
-// (verificarDependenciasCliente / CLIENTE_COM_DEPENDENCIAS, cobertos em
-// clienteContasGuards.test.js):
+// mission "fechar o contrato Cliente↔Squad + exclusão admin" (set/2026),
+// corrigida pela mission "admin precisa poder excluir cliente de verdade"
+// (mesmo dia): DELETE /clientes/:slug oferece hoje 3 caminhos —
 //
-//   GET   /clientes/:slug/dependencias  → leitura prévia, não apaga nada
-//   PATCH /clientes/:slug/desativar     → ativo=false, nunca DELETE em
-//                                          tabela nenhuma
+//   GET   /clientes/:slug/dependencias        → leitura prévia, não apaga nada
+//   DELETE /clientes/:slug                    → sem dependências: apaga direto
+//   DELETE /clientes/:slug?confirmarPurge=true
+//          + body {confirmar: slug|nome}      → com dependências: purge real
+//          (server/services/clientes/clientePurgeService.js, testado à parte
+//          em clientePurgeService.test.js — aqui só verificamos o WIRING da
+//          rota, não a lógica transacional)
+//   PATCH /clientes/:slug/desativar           → ativo=false, nunca DELETE em
+//                                                tabela nenhuma
 //
 // Teste de wiring por leitura de fonte — mesmo padrão de
 // clienteContasGuards.test.js — não sobe servidor real nem banco.
@@ -44,14 +46,27 @@ function isolarRota(marcador) {
   ok("é só leitura: não contém DELETE FROM nem UPDATE de cliente", !/DELETE\s+FROM|UPDATE\s+clientes/i.test(trecho));
 }
 
-// ── DELETE /clientes/:slug (hard delete — comportamento preexistente,
-//    não reescrito nesta missão) ────────────────────────────────────────
+// ── DELETE /clientes/:slug (admin tem a palavra final: sem dependências
+//    apaga direto; com dependências, exige confirmarPurge=true + o admin
+//    ter digitado nome/slug — nunca um beco sem saída) ───────────────────
 {
   const trecho = isolarRota('app.delete("/clientes/:slug"');
   ok("DELETE /clientes/:slug exige authMiddleware + requireAdmin", trecho.includes("authMiddleware") && trecho.includes("requireAdmin"));
-  ok("DELETE /clientes/:slug continua verificando dependências antes de apagar", trecho.includes("verificarDependenciasCliente"));
-  ok("DELETE /clientes/:slug continua bloqueando com 409 CLIENTE_COM_DEPENDENCIAS quando há dependências", /status\(409\)/.test(trecho) && trecho.includes("CLIENTE_COM_DEPENDENCIAS"));
-  ok("DELETE /clientes/:slug só apaga de verdade (DELETE FROM clientes) quando dependencias.length é 0", trecho.includes("DELETE FROM clientes"));
+  ok("DELETE /clientes/:slug continua auditando dependências antes de decidir (verificarDependenciasCliente)", trecho.includes("verificarDependenciasCliente"));
+  ok(
+    "sem ?confirmarPurge=true, dependências bloqueiam com 409 CLIENTE_COM_DEPENDENCIAS (nunca apaga em silêncio)",
+    /status\(409\)/.test(trecho) && trecho.includes("CLIENTE_COM_DEPENDENCIAS") && trecho.includes("confirmarPurge")
+  );
+  ok(
+    "com dependências + confirmarPurge=true, exige uma 2ª confirmação (nome/slug digitado) antes do purge",
+    trecho.includes("CONFIRMACAO_INVALIDA") && /req\.body\??\.\s*confirmar/.test(trecho)
+  );
+  ok(
+    "a exclusão de verdade (com ou sem dependências) delega para purgarClientePermanentemente — não há DELETE FROM clientes direto na rota",
+    trecho.includes("purgarClientePermanentemente(slug)") && !/DELETE\s+FROM\s+clientes/i.test(trecho)
+  );
+  ok("erro do purge (ex.: dependência que o Postgres recusou apagar) propaga o statusCode e o code originais", /err\?\.\s*statusCode/.test(trecho) && /err\.code/.test(trecho));
+  ok("log de auditoria distingue purge de exclusão simples (admin.cliente.purgar vs admin.cliente.excluir)", trecho.includes("admin.cliente.purgar") && trecho.includes("admin.cliente.excluir"));
 }
 
 // ── PATCH /clientes/:slug/desativar (remoção segura — a saída nova) ────

@@ -73,6 +73,7 @@ const clienteResponsaveisRoutes = require("./routes/clienteResponsaveisRoutes");
 const visaoRoutes = require("./routes/visaoRoutes");
 const financeiroVisaoRoutes = require("./routes/financeiroVisaoRoutes");
 const { verificarDependenciasCliente } = require("./services/clientes/clienteDependenciasService");
+const { purgarClientePermanentemente } = require("./services/clientes/clientePurgeService");
 const automacoesRoutes = require("./routes/automacoesRoutes");
 const entregasClienteRoutes = require("./routes/entregasClienteRoutes");
 const basesRoutes = require("./routes/basesRoutes");
@@ -1536,50 +1537,87 @@ app.get("/clientes/:slug/dependencias", authMiddleware, requireAdmin, async (req
     if (!clienteAtual.rows.length) {
       return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
     }
-    const dependencias = await verificarDependenciasCliente(clienteAtual.rows[0].id);
+    const dependencias = await verificarDependenciasCliente(clienteAtual.rows[0].id, slug);
     res.json({ ok: true, dependencias });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
 
+// Exclusão administrativa (admin tem a palavra final):
+//   - sem dependências            -> apaga direto.
+//   - com dependências, sem       -> 409 CLIENTE_COM_DEPENDENCIAS, lista o
+//     ?confirmarPurge=true           que existe. Não é um beco sem saída: o
+//                                     admin escolhe entre PATCH .../desativar
+//                                     (preserva tudo) ou repetir este DELETE
+//                                     com ?confirmarPurge=true (apaga tudo).
+//   - com dependências, COM       -> purge real: apaga o cliente e todo o
+//     ?confirmarPurge=true           dado relacionado numa transação só
+//                                     (clientePurgeService.purgarClientePermanentemente).
+// Em ambos os casos que efetivamente excluem, o purge service é quem roda —
+// mesmo sem dependências, para não duplicar a lógica de exclusão em dois
+// lugares (as tabelas "sem FK" simplesmente não têm o que apagar).
 app.delete("/clientes/:slug", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const slug = normalizarSlug(req.params.slug);
-    const clienteAtual = await pool.query("SELECT id FROM clientes WHERE slug = $1", [slug]);
+    const clienteAtual = await pool.query("SELECT id, nome, slug FROM clientes WHERE slug = $1", [slug]);
     if (!clienteAtual.rows.length) {
       return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
     }
-    // Proteção de impacto (auditoria de clientes/contas): o hard delete
-    // mistura CASCADE destrutivo com tabelas sem FK que ficariam órfãs.
-    // Em vez de apagar tudo silenciosamente, bloqueia quando há
-    // dependências relevantes — a saída para esse caso é
-    // PATCH /clientes/:slug/desativar (abaixo), não este endpoint.
-    const dependencias = await verificarDependenciasCliente(clienteAtual.rows[0].id);
-    if (dependencias.length) {
+    const cliente = clienteAtual.rows[0];
+
+    const dependencias = await verificarDependenciasCliente(cliente.id, slug);
+    const confirmarPurge = String(req.query.confirmarPurge || "").toLowerCase() === "true";
+
+    if (dependencias.length && !confirmarPurge) {
       return res.status(409).json({
         ok: false,
         code: "CLIENTE_COM_DEPENDENCIAS",
-        erro: "Este cliente possui dados vinculados (grants, contas, bases, fechamentos ou históricos) e não pode ser excluído diretamente.",
+        erro: "Este cliente possui dados vinculados. Confirme explicitamente a exclusão permanente (?confirmarPurge=true) ou use PATCH /clientes/:slug/desativar para removê-lo da operação preservando o histórico.",
         dependencias,
       });
     }
 
-    const result = await pool.query(
-      "DELETE FROM clientes WHERE slug = $1 RETURNING id",
-      [slug]
-    );
-    if (!result.rows.length) {
-      return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+    // Segunda confirmação (defesa em profundidade além do botão desabilitado
+    // na UI): quando há dependências reais sendo apagadas de verdade, exige
+    // que o admin tenha digitado o nome ou o slug exato do cliente no corpo
+    // da requisição — nunca aceita ?confirmarPurge=true sozinho como prova
+    // de intenção para um purge com dados envolvidos.
+    if (dependencias.length && confirmarPurge) {
+      const digitado = String(req.body?.confirmar || "").trim().toLowerCase();
+      const confere = digitado === cliente.slug.toLowerCase() || digitado === cliente.nome.trim().toLowerCase();
+      if (!confere) {
+        return res.status(400).json({
+          ok: false,
+          code: "CONFIRMACAO_INVALIDA",
+          erro: "Para excluir permanentemente, digite o nome ou o slug exato do cliente no campo de confirmação.",
+        });
+      }
     }
+
+    let resultado;
+    try {
+      resultado = await purgarClientePermanentemente(slug);
+    } catch (err) {
+      const status = Number.isFinite(Number(err?.statusCode)) ? Number(err.statusCode) : 500;
+      if (status >= 500) console.error("[clientes] purge:", err.message);
+      return res.status(status).json({ ok: false, erro: err.message, code: err.code });
+    }
+
     registrarLog({
       ...dadosUsuarioDeReq(req),
-      acao: "admin.cliente.excluir",
-      detalhes: { cliente_slug: slug },
+      acao: dependencias.length ? "admin.cliente.purgar" : "admin.cliente.excluir",
+      detalhes: { cliente_slug: slug, apagados: resultado.apagados },
       ip: extrairIp(req),
       status: "sucesso"
     });
-    res.json({ ok: true, mensagem: "Cliente removido com sucesso." });
+    res.json({
+      ok: true,
+      mensagem: dependencias.length
+        ? "Cliente e todos os dados relacionados foram excluídos permanentemente."
+        : "Cliente removido com sucesso.",
+      apagados: resultado.apagados,
+    });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
