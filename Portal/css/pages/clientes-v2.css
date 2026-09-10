@@ -237,3 +237,41 @@
   font-family: var(--vf-font-mono);
   font-size: var(--vf-fs-xs);
 }
+
+/* Coluna "Squad" — texto secundário discreto, nunca badge colorido nem
+   card. "Sem Squad" (cliente histórico sem vínculo) fica com o mesmo peso
+   visual da coluna, só numa cor de atenção suave — não esconde o cliente,
+   não inventa um squad default. */
+.vf-page-clientes .vf-cli-cell-squad {
+  color: var(--vf-text-secondary);
+  font-size: var(--vf-fs-sm);
+  white-space: nowrap;
+}
+.vf-page-clientes .vf-cli-cell-squad.is-missing {
+  color: var(--vf-warning-strong);
+  font-style: italic;
+}
+
+/* Modal de exclusão: a lista de dependências (uma por linha, "• label:
+   total") precisa quebrar linha — .vf-alert global é inline-flex de uma
+   linha só (feedback curto), então este box específico é sobrescrito para
+   virar bloco com as quebras preservadas. Não mexe no componente global. */
+.vf-page-clientes #vf-clientes-confirm-danger {
+  display: block;
+  white-space: pre-line;
+  text-align: left;
+}
+
+/* Modal de remoção: lista de dependências mostrada de forma PROATIVA
+   (antes de o admin confirmar), não como erro — texto discreto, sem cor de
+   alerta. Distinta de #vf-clientes-confirm-danger, que só aparece se algo
+   falhar na confirmação. */
+.vf-page-clientes .vf-clientes-confirm-deps {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+}
+.vf-page-clientes .vf-clientes-confirm-deps li {
+  margin: 2px 0;
+}

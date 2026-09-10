@@ -109,7 +109,7 @@ const {
 const { ensureObservabilityTables } = require("./repositories/observabilityRepository");
 const { ensureFechamentoIncidenteTables } = require("./repositories/fechamentoIncidenteRepository");
 const fechamentoIncidentStorageService = require("./services/fechamentoFinanceiro/incidente/fechamentoIncidentStorageService");
-const { ensureSquadsTables } = require("./services/squads/squadsRepository");
+const { ensureSquadsTables, squadsAtivosDeClientes } = require("./services/squads/squadsRepository");
 const squadService = require("./services/squads/squadService");
 const { ensureEntregasClienteSchema } = require("./services/schema/schemaEnsure");
 const { logReadinessNoBoot, verificarSchemaV3 } = require("./services/schema/schemaReadiness");
@@ -1239,7 +1239,22 @@ app.get("/clientes", authMiddleware, async (req, res) => {
     const result = await pool.query(
       "SELECT id, nome, slug, ativo, created_at FROM clientes ORDER BY created_at DESC"
     );
-    res.json({ ok: true, clientes: result.rows });
+    const clientes = result.rows;
+
+    // Squad ativo de cada cliente, numa única query batched (mission
+    // "fechar o contrato Cliente↔Squad", set/2026) — cliente histórico sem
+    // squad fica com squad: null (honesto, nunca inventado).
+    const squadsPorCliente = await squadsAtivosDeClientes(clientes.map((c) => c.id));
+    const squadDoCliente = new Map(squadsPorCliente.map((s) => [s.cliente_id, s]));
+    const clientesComSquad = clientes.map((c) => {
+      const s = squadDoCliente.get(c.id) || null;
+      return {
+        ...c,
+        squad: s ? { id: s.squad_id, nome: s.squad_nome, slug: s.squad_slug } : null,
+      };
+    });
+
+    res.json({ ok: true, clientes: clientesComSquad });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
@@ -1461,58 +1476,69 @@ app.post("/clientes", authMiddleware, requireAdmin, async (req, res) => {
     if (!nome || !slug) {
       return res.status(400).json({ ok: false, erro: "Nome e slug são obrigatórios." });
     }
+
+    // squadId é obrigatório (mission "fechar o contrato Cliente↔Squad",
+    // set/2026): um incidente real mostrou 2 clientes ativos sem Squad
+    // porque o backend ainda tolerava criação sem squadId. O único
+    // consumidor de POST /clientes é Portal/clientes.js, que já envia
+    // squadId desde a obrigatoriedade no formulário (commit
+    // e2e2f20, set/2026) — não há caminho legado a preservar.
+    if (squadId === undefined || squadId === null || squadId === "") {
+      return res.status(400).json({
+        ok: false,
+        code: "SQUAD_OBRIGATORIO",
+        erro: "Todo cliente deve pertencer a um Squad.",
+      });
+    }
+    const sid = Number(squadId);
+    if (!Number.isInteger(sid) || sid <= 0) {
+      return res.status(400).json({ ok: false, code: "SQUAD_ID_INVALIDO", erro: "Squad inválido." });
+    }
+
     const slugNorm = normalizarSlug(slug);
     const apiKey = gerarApiKey();
     const nomeTrim = nome.trim();
 
-    // squadId é aditivo (mission: preservar consumidores antigos de
-    // {nome, slug}). Quando vem, cria Cliente + vínculo de Squad como UMA
-    // transação — nunca duas escritas independentes que possam deixar o
-    // Cliente órfão se a segunda falhar.
-    if (squadId !== undefined && squadId !== null && squadId !== "") {
-      const sid = Number(squadId);
-      if (!Number.isInteger(sid) || sid <= 0) {
-        return res.status(400).json({ ok: false, erro: "Squad inválido." });
-      }
-      try {
-        const resultado = await squadService.criarClienteComSquad(
-          { nome: nomeTrim, slug: slugNorm, apiKey, squadId: sid },
-          req.user.id
-        );
-        registrarLog({
-          ...dadosUsuarioDeReq(req),
-          acao: "admin.cliente.criar",
-          detalhes: { cliente_slug: slugNorm, cliente_nome: nomeTrim, squad_id: sid },
-          ip: extrairIp(req),
-          status: "sucesso"
-        });
-        return res.status(201).json({ ok: true, cliente: resultado.cliente, squad: resultado.squad });
-      } catch (err) {
-        const status = Number.isFinite(Number(err?.statusCode)) ? Number(err.statusCode) : 500;
-        if (status >= 500) console.error("[clientes] criar com squad:", err.message);
-        return res.status(status).json({ ok: false, erro: err.message, code: err.code });
-      }
+    // Cria Cliente + vínculo de Squad como UMA transação
+    // (squadService.criarClienteComSquad) — nunca duas escritas
+    // independentes que possam deixar o Cliente órfão se a segunda falhar.
+    try {
+      const resultado = await squadService.criarClienteComSquad(
+        { nome: nomeTrim, slug: slugNorm, apiKey, squadId: sid },
+        req.user.id
+      );
+      registrarLog({
+        ...dadosUsuarioDeReq(req),
+        acao: "admin.cliente.criar",
+        detalhes: { cliente_slug: slugNorm, cliente_nome: nomeTrim, squad_id: sid },
+        ip: extrairIp(req),
+        status: "sucesso"
+      });
+      return res.status(201).json({ ok: true, cliente: resultado.cliente, squad: resultado.squad });
+    } catch (err) {
+      const status = Number.isFinite(Number(err?.statusCode)) ? Number(err.statusCode) : 500;
+      if (status >= 500) console.error("[clientes] criar com squad:", err.message);
+      return res.status(status).json({ ok: false, erro: err.message, code: err.code });
     }
-
-    // Caminho legado — sem squadId, comportamento inalterado (compatibilidade).
-    const result = await pool.query(
-      `INSERT INTO clientes (nome, slug, api_key)
-       VALUES ($1, $2, $3)
-       RETURNING id, nome, slug, api_key, ativo, created_at`,
-      [nomeTrim, slugNorm, apiKey]
-    );
-    registrarLog({
-      ...dadosUsuarioDeReq(req),
-      acao: "admin.cliente.criar",
-      detalhes: { cliente_slug: slugNorm, cliente_nome: nomeTrim },
-      ip: extrairIp(req),
-      status: "sucesso"
-    });
-    res.status(201).json({ ok: true, cliente: result.rows[0] });
   } catch (err) {
-    if (err.code === "23505") {
-      return res.status(409).json({ ok: false, erro: "Slug já cadastrado. Use outro nome." });
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Consulta prévia e não-destrutiva de dependências — usada pelo frontend
+// para decidir, ANTES de o admin confirmar, se a remoção será hard delete
+// (sem dependências) ou desativação preservando histórico (com
+// dependências). Nunca apaga nada; só lê.
+app.get("/clientes/:slug/dependencias", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const slug = normalizarSlug(req.params.slug);
+    const clienteAtual = await pool.query("SELECT id FROM clientes WHERE slug = $1", [slug]);
+    if (!clienteAtual.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
     }
+    const dependencias = await verificarDependenciasCliente(clienteAtual.rows[0].id);
+    res.json({ ok: true, dependencias });
+  } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
@@ -1527,7 +1553,8 @@ app.delete("/clientes/:slug", authMiddleware, requireAdmin, async (req, res) => 
     // Proteção de impacto (auditoria de clientes/contas): o hard delete
     // mistura CASCADE destrutivo com tabelas sem FK que ficariam órfãs.
     // Em vez de apagar tudo silenciosamente, bloqueia quando há
-    // dependências relevantes e explica o que está em jogo.
+    // dependências relevantes — a saída para esse caso é
+    // PATCH /clientes/:slug/desativar (abaixo), não este endpoint.
     const dependencias = await verificarDependenciasCliente(clienteAtual.rows[0].id);
     if (dependencias.length) {
       return res.status(409).json({
@@ -1553,6 +1580,32 @@ app.delete("/clientes/:slug", authMiddleware, requireAdmin, async (req, res) => 
       status: "sucesso"
     });
     res.json({ ok: true, mensagem: "Cliente removido com sucesso." });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Remoção segura de cliente COM dependências: nunca apaga Grants, contas,
+// bases ou histórico financeiro — só tira o cliente da operação ativa
+// (mesma flag `ativo` que já filtra dashboards/metricas/financeiro/central
+// de vendas em todo o backend). Reversível por quem tiver acesso direto ao
+// banco; não há endpoint de reativação nesta missão (fora de escopo).
+app.patch("/clientes/:slug/desativar", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const slug = normalizarSlug(req.params.slug);
+    const clienteAtual = await pool.query("SELECT id FROM clientes WHERE slug = $1", [slug]);
+    if (!clienteAtual.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+    }
+    await pool.query("UPDATE clientes SET ativo = false WHERE slug = $1", [slug]);
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.cliente.desativar",
+      detalhes: { cliente_slug: slug },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
+    res.json({ ok: true, mensagem: "Cliente removido da operação ativa. Dados preservados." });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }

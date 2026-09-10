@@ -94,7 +94,7 @@ const clientesFeedback = document.getElementById("clientes-feedback");
 let CLIENTES_LISTA = [];
 let CLIENTES_CONFIRM_OPEN = false;
 let CLIENTES_CONFIRM_ACTION = null;
-let CLIENTE_DELETE_PENDENTE = null; // { slug, btn }
+let CLIENTES_CONFIRM_LABEL = "Confirmar";
 const EXPANSAO = criarExpansaoUnica(); // controla qual linha está aberta (só uma por vez)
 const EXPANDIDO_CONTAS = new Map(); // slug -> contas cruas da última carga (cache p/ sugestão de nome "+Conta")
 let BASE_PICKER_CONTA = null; // conta sendo editada no modal "Definir/Trocar base"
@@ -111,25 +111,37 @@ function setClientesFeedback(message, type = "neutral") {
   clientesFeedback.textContent = message;
 }
 
-function abrirModalConfirmacaoClientes({ title, subtitle = "", description, confirmLabel = "Confirmar", danger = false, onConfirm }) {
+function abrirModalConfirmacaoClientes({ title, subtitle = "", description, confirmLabel = "Confirmar", danger = false, confirmVariant, deps = [], onConfirm }) {
   const modal = document.getElementById("vf-clientes-confirm-modal");
   const t = document.getElementById("vf-clientes-confirm-title");
   const sub = document.getElementById("vf-clientes-confirm-subtitle");
   const desc = document.getElementById("vf-clientes-confirm-desc");
   const ok = document.getElementById("vf-clientes-confirm-ok");
   const dangerBox = document.getElementById("vf-clientes-confirm-danger");
+  const depsList = document.getElementById("vf-clientes-confirm-deps");
   if (!modal || !ok || !desc || !t) return;
 
   CLIENTES_CONFIRM_OPEN = true;
   CLIENTES_CONFIRM_ACTION = typeof onConfirm === "function" ? onConfirm : null;
+  CLIENTES_CONFIRM_LABEL = confirmLabel || "Confirmar";
 
   t.textContent = title || "Confirmar";
   if (sub) sub.textContent = subtitle || "";
   desc.textContent = description || "";
 
-  ok.textContent = confirmLabel || "Confirmar";
-  ok.classList.remove("vf-btn--secondary", "vf-btn--danger");
-  ok.classList.add(danger ? "vf-btn--danger" : "vf-btn--secondary");
+  ok.textContent = CLIENTES_CONFIRM_LABEL;
+  ok.classList.remove("vf-btn--secondary", "vf-btn--danger", "vf-btn--primary");
+  ok.classList.add(`vf-btn--${confirmVariant || (danger ? "danger" : "secondary")}`);
+
+  if (depsList) {
+    if (deps.length) {
+      depsList.innerHTML = deps.map((d) => `<li>${escapeHTML(d.label)}: ${d.total}</li>`).join("");
+      depsList.style.display = "block";
+    } else {
+      depsList.innerHTML = "";
+      depsList.style.display = "none";
+    }
+  }
 
   if (dangerBox) { dangerBox.style.display = "none"; dangerBox.textContent = ""; }
   modal.classList.add("is-open");
@@ -139,39 +151,34 @@ function fecharModalConfirmacaoClientes() {
   document.getElementById("vf-clientes-confirm-modal")?.classList.remove("is-open");
   CLIENTES_CONFIRM_OPEN = false;
   CLIENTES_CONFIRM_ACTION = null;
-  CLIENTE_DELETE_PENDENTE = null;
 }
 
 async function confirmarModalClientes() {
   const ok = document.getElementById("vf-clientes-confirm-ok");
   const dangerBox = document.getElementById("vf-clientes-confirm-danger");
-  if (!CLIENTE_DELETE_PENDENTE && !CLIENTES_CONFIRM_ACTION) return;
+  if (!CLIENTES_CONFIRM_ACTION) return;
 
   if (dangerBox) { dangerBox.style.display = "none"; dangerBox.textContent = ""; }
-  if (ok) { ok.disabled = true; ok.textContent = CLIENTE_DELETE_PENDENTE ? "Excluindo..." : "Processando…"; }
+  if (ok) { ok.disabled = true; ok.textContent = "Processando…"; }
 
   try {
-    if (CLIENTE_DELETE_PENDENTE) {
-      const { slug, btn } = CLIENTE_DELETE_PENDENTE;
-      if (!slug) throw new Error("Cliente inválido.");
-      await deleteCliente(slug, btn);
-      CLIENTE_DELETE_PENDENTE = null;
-    } else {
-      await CLIENTES_CONFIRM_ACTION();
-    }
+    await CLIENTES_CONFIRM_ACTION();
     fecharModalConfirmacaoClientes();
   } catch (err) {
     const msg = err?.message || "Não foi possível concluir a ação.";
     const dependencias = err?.dependencias;
     if (dangerBox) {
       dangerBox.style.display = "block";
-      dangerBox.textContent = dependencias?.length
-        ? `${msg} (${dependencias.map((d) => `${d.label}: ${d.total}`).join(", ")})`
-        : msg;
+      if (dependencias?.length) {
+        const itens = dependencias.map((d) => `• ${d.label}: ${d.total}`).join("\n");
+        dangerBox.textContent = `${msg}\n\n${itens}`;
+      } else {
+        dangerBox.textContent = msg;
+      }
     } else {
       setClientesFeedback(msg, "danger");
     }
-    if (ok) { ok.disabled = false; ok.textContent = CLIENTE_DELETE_PENDENTE ? "Excluir cliente" : "Confirmar"; }
+    if (ok) { ok.disabled = false; ok.textContent = CLIENTES_CONFIRM_LABEL; }
   }
 }
 
@@ -260,9 +267,15 @@ function renderClientes(clientes) {
     tr.style.animationDelay = `${i * 0.04}s`;
     tr.dataset.slug = slug;
 
+    const squadTexto = c.squad
+      ? `${escapeHTML(c.squad.nome)}${isLegado(c.squad) ? " · Legado" : ""}`
+      : "Sem Squad";
+    const squadCls = c.squad ? "" : "is-missing";
+
     tr.innerHTML = `
       <td class="vf-cli-cell-slug">${String(i + 1).padStart(2, "0")}</td>
       <td><strong>${escapeHTML(c.nome || "—")}</strong></td>
+      <td class="vf-cli-cell-squad ${squadCls}">${squadTexto}</td>
       <td class="vf-cli-cell-slug">${escapeHTML(slug || "—")}</td>
       <td>
         <span class="vf-status ${ativo ? "is-success" : ""}">${ativo ? "Ativo" : "Inativo"}</span>
@@ -271,7 +284,7 @@ function renderClientes(clientes) {
       <td>
         <div class="vf-table__actions">
           <button class="vf-btn vf-btn--sm vf-btn--secondary vf-clientes-toggle-btn" data-action="toggle-expand" data-slug="${escapeHTML(slug)}" aria-expanded="false" title="Detalhes">⌄</button>
-          <button class="vf-btn vf-btn--sm vf-btn--secondary" data-action="delete" data-slug="${escapeHTML(slug)}">Excluir</button>
+          <button class="vf-btn vf-btn--sm vf-btn--secondary" data-action="delete" data-slug="${escapeHTML(slug)}">Remover</button>
         </div>
       </td>
     `;
@@ -287,19 +300,7 @@ function renderClientes(clientes) {
   });
 
   clientesTbody.querySelectorAll('button[data-action="delete"]').forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const slug = btn.getAttribute("data-slug") || "";
-      if (!slug) return;
-      CLIENTE_DELETE_PENDENTE = { slug, btn };
-      abrirModalConfirmacaoClientes({
-        title: "Excluir cliente",
-        subtitle: slug,
-        description: `Esta ação remove o cliente "${slug}" do portal. Se houver contas, bases ou históricos vinculados, a exclusão será bloqueada.`,
-        confirmLabel: "Excluir cliente",
-        danger: true,
-        onConfirm: null,
-      });
-    });
+    btn.addEventListener("click", () => abrirModalRemoverCliente(btn));
   });
 
   clientesTbody.querySelectorAll('button[data-action="toggle-expand"]').forEach((btn) => {
@@ -349,19 +350,62 @@ function renderResumoContasCelula(el, contas) {
     </div>`;
 }
 
-async function deleteCliente(slug, btn) {
+// Remoção de cliente (admin): a decisão entre hard delete e desativação não
+// é escolhida pelo admin no modal — é decidida ANTES, checando
+// GET /clientes/:slug/dependencias, para que o modal já abra com o texto e
+// o botão certos (nunca "tem certeza?" genérico, nunca "não pode, tente de
+// novo" sem alternativa). Cliente vazio → hard delete permanente. Cliente
+// com histórico → PATCH .../desativar, que só marca ativo=false e nunca
+// apaga Grants/ClienteContas/Bases/financeiro.
+async function abrirModalRemoverCliente(btn) {
+  const slug = btn.getAttribute("data-slug") || "";
+  if (!slug) return;
+  const cliente = CLIENTES_LISTA.find((c) => c.slug === slug);
+  const nomeCliente = cliente?.nome || slug;
+  const squadLabel = cliente?.squad ? cliente.squad.nome : "Sem Squad";
+
+  const textoOriginal = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "Excluindo…";
+  btn.textContent = "Verificando…";
+  let dependencias = [];
   try {
-    await apiFetch(`/clientes/${encodeURIComponent(slug)}`, { method: "DELETE" });
-    setClientesFeedback(`Cliente "${slug}" excluído com sucesso.`, "success");
-    loadClientes();
-    return true;
+    const data = await apiFetch(`/clientes/${encodeURIComponent(slug)}/dependencias`);
+    dependencias = Array.isArray(data.dependencias) ? data.dependencias : [];
   } catch (err) {
-    if (err.code !== "CLIENTE_COM_DEPENDENCIAS") setClientesFeedback(`Erro ao excluir: ${err.message}`, "danger");
+    setClientesFeedback(err.message || "Não foi possível verificar dependências do cliente.", "danger");
+    return;
+  } finally {
     btn.disabled = false;
-    btn.textContent = "Excluir";
-    throw err;
+    btn.textContent = textoOriginal;
+  }
+
+  if (!dependencias.length) {
+    abrirModalConfirmacaoClientes({
+      title: "Excluir cliente",
+      subtitle: `${nomeCliente} · Squad: ${squadLabel}`,
+      description: `Este cliente não possui dados vinculados e pode ser excluído permanentemente. Esta ação não pode ser desfeita.`,
+      confirmLabel: "Excluir permanentemente",
+      danger: true,
+      onConfirm: async () => {
+        await apiFetch(`/clientes/${encodeURIComponent(slug)}`, { method: "DELETE" });
+        setClientesFeedback(`Cliente "${nomeCliente}" excluído permanentemente.`, "success");
+        loadClientes();
+      },
+    });
+  } else {
+    abrirModalConfirmacaoClientes({
+      title: "Remover cliente",
+      subtitle: `${nomeCliente} · Squad: ${squadLabel}`,
+      description: `Este cliente possui dados históricos e não será apagado fisicamente. Ele será removido da operação ativa e seus dados serão preservados.`,
+      confirmLabel: "Remover cliente",
+      confirmVariant: "primary",
+      deps: dependencias,
+      onConfirm: async () => {
+        await apiFetch(`/clientes/${encodeURIComponent(slug)}/desativar`, { method: "PATCH" });
+        setClientesFeedback(`Cliente "${nomeCliente}" removido da operação ativa. Dados preservados.`, "success");
+        loadClientes();
+      },
+    });
   }
 }
 

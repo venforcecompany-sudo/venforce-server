@@ -1,10 +1,10 @@
 // server/tests/clienteCriarComSquadRota.test.js
 //
-// Audita a rota POST /clientes (server/index.js): confirma que o caminho
-// com squadId delega para squadService.criarClienteComSquad, que o caminho
-// legado (sem squadId) continua intacto, e que a rota continua exigindo
-// requireAdmin (mission: "Preserve as regras atuais de quem pode criar
-// Cliente. Não amplie permissões nesta missão.").
+// Audita a rota POST /clientes (server/index.js): confirma que squadId é
+// OBRIGATÓRIO (mission "fechar o contrato Cliente↔Squad" — set/2026), que
+// o caminho sem squadId foi removido (nenhum consumidor legítimo dependia
+// dele — só Portal/clientes.js, que já envia squadId desde set/2026), e que
+// a rota continua exigindo requireAdmin (não amplia permissões).
 //
 // Teste de wiring por leitura de fonte — igual clienteContasGuards.test.js —
 // não sobe servidor real nem banco.
@@ -31,8 +31,12 @@ const trecho = src.slice(inicio, proximaRota > 0 ? proximaRota : inicio + 4000);
 ok("POST /clientes continua exigindo authMiddleware", trecho.includes("authMiddleware"));
 ok("POST /clientes continua exigindo requireAdmin (não amplia permissões)", trecho.includes("requireAdmin"));
 ok("rota lê squadId do corpo", /const\s*\{[^}]*squadId[^}]*\}\s*=\s*req\.body/.test(trecho));
+ok("squadId ausente/vazio -> 400 SQUAD_OBRIGATORIO", trecho.includes("SQUAD_OBRIGATORIO"));
 ok("caminho com squadId delega para squadService.criarClienteComSquad", trecho.includes("squadService.criarClienteComSquad"));
-ok("caminho legado ainda faz INSERT INTO clientes direto (compat, sem squadId)", trecho.includes("INSERT INTO clientes"));
+ok(
+  "caminho legado (INSERT INTO clientes direto, sem squad) foi REMOVIDO da rota",
+  !trecho.includes("INSERT INTO clientes")
+);
 
 ok("squadService está importado no topo do arquivo", src.includes('require("./services/squads/squadService")'));
 
