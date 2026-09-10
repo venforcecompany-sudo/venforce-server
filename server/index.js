@@ -1461,58 +1461,51 @@ app.post("/clientes", authMiddleware, requireAdmin, async (req, res) => {
     if (!nome || !slug) {
       return res.status(400).json({ ok: false, erro: "Nome e slug são obrigatórios." });
     }
+
+    // squadId é obrigatório (mission "fechar o contrato Cliente↔Squad",
+    // set/2026): um incidente real mostrou 2 clientes ativos sem Squad
+    // porque o backend ainda tolerava criação sem squadId. O único
+    // consumidor de POST /clientes é Portal/clientes.js, que já envia
+    // squadId desde a obrigatoriedade no formulário (commit
+    // e2e2f20, set/2026) — não há caminho legado a preservar.
+    if (squadId === undefined || squadId === null || squadId === "") {
+      return res.status(400).json({
+        ok: false,
+        code: "SQUAD_OBRIGATORIO",
+        erro: "Todo cliente deve pertencer a um Squad.",
+      });
+    }
+    const sid = Number(squadId);
+    if (!Number.isInteger(sid) || sid <= 0) {
+      return res.status(400).json({ ok: false, code: "SQUAD_ID_INVALIDO", erro: "Squad inválido." });
+    }
+
     const slugNorm = normalizarSlug(slug);
     const apiKey = gerarApiKey();
     const nomeTrim = nome.trim();
 
-    // squadId é aditivo (mission: preservar consumidores antigos de
-    // {nome, slug}). Quando vem, cria Cliente + vínculo de Squad como UMA
-    // transação — nunca duas escritas independentes que possam deixar o
-    // Cliente órfão se a segunda falhar.
-    if (squadId !== undefined && squadId !== null && squadId !== "") {
-      const sid = Number(squadId);
-      if (!Number.isInteger(sid) || sid <= 0) {
-        return res.status(400).json({ ok: false, erro: "Squad inválido." });
-      }
-      try {
-        const resultado = await squadService.criarClienteComSquad(
-          { nome: nomeTrim, slug: slugNorm, apiKey, squadId: sid },
-          req.user.id
-        );
-        registrarLog({
-          ...dadosUsuarioDeReq(req),
-          acao: "admin.cliente.criar",
-          detalhes: { cliente_slug: slugNorm, cliente_nome: nomeTrim, squad_id: sid },
-          ip: extrairIp(req),
-          status: "sucesso"
-        });
-        return res.status(201).json({ ok: true, cliente: resultado.cliente, squad: resultado.squad });
-      } catch (err) {
-        const status = Number.isFinite(Number(err?.statusCode)) ? Number(err.statusCode) : 500;
-        if (status >= 500) console.error("[clientes] criar com squad:", err.message);
-        return res.status(status).json({ ok: false, erro: err.message, code: err.code });
-      }
+    // Cria Cliente + vínculo de Squad como UMA transação
+    // (squadService.criarClienteComSquad) — nunca duas escritas
+    // independentes que possam deixar o Cliente órfão se a segunda falhar.
+    try {
+      const resultado = await squadService.criarClienteComSquad(
+        { nome: nomeTrim, slug: slugNorm, apiKey, squadId: sid },
+        req.user.id
+      );
+      registrarLog({
+        ...dadosUsuarioDeReq(req),
+        acao: "admin.cliente.criar",
+        detalhes: { cliente_slug: slugNorm, cliente_nome: nomeTrim, squad_id: sid },
+        ip: extrairIp(req),
+        status: "sucesso"
+      });
+      return res.status(201).json({ ok: true, cliente: resultado.cliente, squad: resultado.squad });
+    } catch (err) {
+      const status = Number.isFinite(Number(err?.statusCode)) ? Number(err.statusCode) : 500;
+      if (status >= 500) console.error("[clientes] criar com squad:", err.message);
+      return res.status(status).json({ ok: false, erro: err.message, code: err.code });
     }
-
-    // Caminho legado — sem squadId, comportamento inalterado (compatibilidade).
-    const result = await pool.query(
-      `INSERT INTO clientes (nome, slug, api_key)
-       VALUES ($1, $2, $3)
-       RETURNING id, nome, slug, api_key, ativo, created_at`,
-      [nomeTrim, slugNorm, apiKey]
-    );
-    registrarLog({
-      ...dadosUsuarioDeReq(req),
-      acao: "admin.cliente.criar",
-      detalhes: { cliente_slug: slugNorm, cliente_nome: nomeTrim },
-      ip: extrairIp(req),
-      status: "sucesso"
-    });
-    res.status(201).json({ ok: true, cliente: result.rows[0] });
   } catch (err) {
-    if (err.code === "23505") {
-      return res.status(409).json({ ok: false, erro: "Slug já cadastrado. Use outro nome." });
-    }
     res.status(500).json({ ok: false, erro: err.message });
   }
 });
