@@ -102,6 +102,18 @@ export function montarPayloadFechamento({
       affiliates: parseMoedaBR(ajustes.affiliates),
       fullCost: parseMoedaBR(ajustes.fullCost),
       additionalCosts: parseMoedaBR(ajustes.additionalCosts),
+      // Origem dos custos DECLARADA pelo backend: "base" (base vinculada) ou
+      // "upload" (planilha enviada). Fica no metadado para o diagnóstico
+      // (Caixa-preta / incidente) saber de onde vieram os custos sem ter que
+      // reprocessar.
+      costsSource: processamento?.costsSource || null,
+      costsBase: processamento?.costsSource === "base" && processamento?.costsBase
+        ? {
+            id: processamento.costsBase.id ?? null,
+            slug: processamento.costsBase.slug ?? null,
+            nome: processamento.costsBase.nome ?? null,
+          }
+        : null,
     },
   };
 }

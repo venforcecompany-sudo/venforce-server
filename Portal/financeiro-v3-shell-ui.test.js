@@ -24,6 +24,17 @@ const N97_CONTAS = [
   { id: 42, cliente_id: 87, marketplace: "meli", nome: "Mercado Livre 1", ativo: true, grant: { token_status: "valid" }, base: { base_id: 9 } },
 ];
 
+// GET /base-vinculos — o que o Financeiro V3 lê para decidir se a operação
+// já tem base de custos (e, portanto, se pede upload). Shape de
+// server/services/baseVinculosService.mapearBaseComVinculo. Mutável: os
+// cenários ligam/desligam o vínculo do marketplace da vez.
+let baseVinculosFake = [
+  {
+    id: 9, slug: "base-n97-meli", nome: "Comprou_chegou_meli1", ativo: true,
+    vinculo: { cliente_slug: "n97", marketplace: "meli", cliente_conta_id: 42, conta_nome: "Mercado Livre 1" },
+  },
+];
+
 // Payload REALISTA — shape confirmado lendo server/services/
 // financeiroVisaoService.js e centralVendasMp3ReadService.js.
 function payloadFeliz() {
@@ -271,6 +282,7 @@ function wireFetchInterception(cdp) {
       await json({ ok: true, total: entregasFake.length, entregas: entregasFake });
       return;
     }
+    if (url.includes("/base-vinculos")) { await json({ ok: true, bases: baseVinculosFake }); return; }
     if (url.includes("/financeiro/")) { await json(financeiroPayload); return; }
 
     await respond("Fetch.failRequest", { requestId: params.requestId, errorReason: "ConnectionRefused" });
@@ -511,7 +523,7 @@ async function run() {
       await sleep(150);
       const fechamento = await cdp.evaluate("document.querySelector('.vf-fin-painel').innerText");
       assert.ok(/Processar fechamento/.test(fechamento), `a aba Fechamento nativa deveria abrir com o formulário: ${fechamento.slice(0, 200)}`);
-      assert.ok(/Gerar fechamento de/.test(fechamento), `o formulário nativo nomeia a competência em tela: ${fechamento.slice(0, 200)}`);
+      assert.ok(/Base de custos/.test(fechamento), `o formulário nativo começa pela base de custos: ${fechamento.slice(0, 200)}`);
       // O legado segue existindo, mas como fallback (link secundário), não como CTA.
       const temFallback = await cdp.evaluate(`document.querySelector('.vf-fin-painel a[href*="financeiro.html"]') !== null`);
       assert.ok(temFallback, "o Financeiro legado deve continuar acessível como fallback");
@@ -535,16 +547,15 @@ async function run() {
     await waitFor(cdp, "document.querySelector('.vf-tabs')", "abas não renderizaram");
     await sleep(200);
 
-    await check("Conv#3 §25 — upload nativo processa e manda periodo + clienteContaId ao backend", async () => {
+    await check("Conv#3 §25 — MELI com base vinculada: só a planilha de vendas, processa e manda periodo + clienteContaId", async () => {
       await cdp.evaluate("Array.prototype.find.call(document.querySelectorAll('.vf-tab'), b => b.textContent.trim() === 'Fechamento').click()");
       await sleep(200);
-      await cdp.evaluate(`
-        (function(){ var s = document.getElementById('fin-novo-mk');
-          s.value = 'meli'; s.dispatchEvent(new Event('change', { bubbles: true })); })();
-      `);
-      await sleep(120);
+      // marketplace vem da operação (conta 42 = meli) — sem seletor na tela
+      await waitFor(cdp, "document.querySelector('.vf-fin-base.is-encontrada') !== null", "a base vinculada de MELI não foi reconhecida");
+      const semUploadCustos = await cdp.evaluate(`document.querySelector('input[aria-label="Planilha de custos"]') === null`);
+      assert.ok(semUploadCustos, "com base vinculada, MELI não pode pedir upload de custos");
       const doc = await cdp.send("DOM.getDocument", { depth: -1 });
-      const inputNode = await cdp.send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "#fin-novo-sales" });
+      const inputNode = await cdp.send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: 'input[aria-label^="Planilha de vendas"]' });
       await cdp.send("DOM.setFileInputFiles", { files: [planilhaFake], nodeId: inputNode.nodeId });
       await sleep(150);
       await cdp.evaluate(`
@@ -582,31 +593,33 @@ async function run() {
     });
     competenciaFake = { periodoSolicitado: "2026-08", periodoDetectado: "2026-08", divergente: false };
 
-    // ═══ 2c. Missão QA §15 — Shopee não é só MELI com outro rótulo: exige
-    // planilha de custos (MELI não), e o formulário tem que travar até ela
-    // chegar, não só validar no backend. ═══
+    // ═══ 2c. Missão Financeiro V3 — Shopee ganha a MESMA experiência do MELI:
+    // com base vinculada, nada de upload de custos; sem base, o upload vira
+    // obrigatório e o formulário TRAVA até ele chegar. O marketplace é o da
+    // operação (conta), não um seletor na tela. ═══
     fechamentoRequestCount = 0;
     resetEntregas();
     entregasFake = [];
+    N97_CONTAS[0].marketplace = "shopee";
+    N97_CONTAS[0].nome = "Shopee 1";
+    baseVinculosFake = []; // Shopee ainda SEM base vinculada
     await cdp.send("Page.navigate", { url: `http://127.0.0.1:${serverPort}/financeiro-v3.html?cliente=n97&conta=42&periodo=2026-08&_r=shopee` });
     await waitFor(cdp, "window.VF && window.VF.context && window.VF.context.getState() === 'READY'", "reload não voltou a READY (cenário Shopee)");
     await waitFor(cdp, "document.querySelector('.vf-tabs')", "abas não renderizaram (cenário Shopee)");
     await sleep(200);
 
-    await check("Missão QA §15 — Shopee sem planilha de custos: 'Processar fechamento' fica travado com o motivo em tela", async () => {
+    await check("Missão FV3 §15 — Shopee sem base vinculada: pede planilha de custos e 'Processar' fica travado com o motivo em tela", async () => {
       await cdp.evaluate("Array.prototype.find.call(document.querySelectorAll('.vf-tab'), b => b.textContent.trim() === 'Fechamento').click()");
       await sleep(200);
-      await cdp.evaluate(`
-        (function(){ var s = document.getElementById('fin-novo-mk');
-          s.value = 'shopee'; s.dispatchEvent(new Event('change', { bubbles: true })); })();
-      `);
-      await sleep(120);
+      await waitFor(cdp, "document.querySelector('.vf-fin-base.is-ausente') !== null", "sem vínculo, a base de custos deveria aparecer como ausente");
       const doc = await cdp.send("DOM.getDocument", { depth: -1 });
-      const salesNode = await cdp.send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "#fin-novo-sales" });
+      const salesNode = await cdp.send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: 'input[aria-label^="Planilha de vendas"]' });
       await cdp.send("DOM.setFileInputFiles", { files: [planilhaFake], nodeId: salesNode.nodeId });
       await sleep(150);
       const texto = await cdp.evaluate("document.querySelector('.vf-fin-novo').innerText");
-      assert.ok(/Shopee exige a planilha de custos/.test(texto), `o motivo da trava deveria nomear a exigência do Shopee: ${texto.slice(0, 300)}`);
+      assert.ok(/Nenhuma base vinculada/.test(texto), `sem base, a tela precisa dizer isso: ${texto.slice(0, 300)}`);
+      const temCardCustos = await cdp.evaluate(`document.querySelector('input[aria-label="Planilha de custos"]') !== null`);
+      assert.ok(temCardCustos, "sem base, o card de upload de custos tem que aparecer");
       const travado = await cdp.evaluate(`
         (function(){ var b = Array.prototype.find.call(document.querySelectorAll('button'), function(x){ return x.textContent.trim() === 'Processar fechamento'; }); return b ? b.disabled : null; })()
       `);
@@ -614,25 +627,51 @@ async function run() {
       assert.strictEqual(fechamentoRequestCount, 0, "nada podia ter sido enviado ao backend ainda");
     });
 
-    await check("Missão QA §15 — Shopee com custos: processa e manda marketplace=shopee ao backend nativo", async () => {
+    await check("Missão FV3 §15 — Shopee com custos enviados: libera, processa e não mostra campos exclusivos de MELI", async () => {
       const doc = await cdp.send("DOM.getDocument", { depth: -1 });
-      const costsNode = await cdp.send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "#fin-novo-costs" });
+      const costsNode = await cdp.send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: 'input[aria-label="Planilha de custos"]' });
       await cdp.send("DOM.setFileInputFiles", { files: [planilhaFake], nodeId: costsNode.nodeId });
       await sleep(150);
       const liberado = await cdp.evaluate(`
         (function(){ var b = Array.prototype.find.call(document.querySelectorAll('button'), function(x){ return x.textContent.trim() === 'Processar fechamento'; }); return b ? b.disabled : null; })()
       `);
       assert.strictEqual(liberado, false, "com sales + costs, Shopee libera o processamento");
+      const semCamposMeli = await cdp.evaluate(
+        "Array.prototype.every.call(document.querySelectorAll('.vf-fin-ajuste__label'), function(l){ return !/FULL|Custos adicionais/.test(l.textContent); })"
+      );
+      assert.ok(semCamposMeli, "campos exclusivos de MELI (FULL/custos adicionais) não podem aparecer no fluxo Shopee");
       await cdp.evaluate(`
         (function(){ Array.prototype.find.call(document.querySelectorAll('button'), function(b){ return b.textContent.trim() === 'Processar fechamento'; }).click(); })();
       `);
       await waitFor(cdp, "document.querySelector('.vf-fin-novo__cards') !== null", "o preview do fechamento Shopee não apareceu");
       assert.strictEqual(fechamentoRequestCount, 1, "o processamento nativo do Shopee deveria ter chamado o backend uma vez");
-      // Nem FULL nem custos adicionais são campos do Shopee (são MELI): não
-      // podem aparecer no formulário depois do preview.
-      const semCamposMeli = await cdp.evaluate("document.getElementById('fin-novo-full') === null && document.getElementById('fin-novo-add') === null");
-      assert.ok(semCamposMeli, "campos exclusivos de MELI (FULL/custos adicionais) não podem aparecer no fluxo Shopee");
     });
+
+    await check("Missão FV3 — Shopee COM base vinculada: não pede upload de custos (paridade com o MELI)", async () => {
+      fechamentoRequestCount = 0;
+      baseVinculosFake = [
+        {
+          id: 12, slug: "base-n97-shopee", nome: "Comprou_chegou_shopee1", ativo: true,
+          vinculo: { cliente_slug: "n97", marketplace: "shopee", cliente_conta_id: 42, conta_nome: "Shopee 1" },
+        },
+      ];
+      await cdp.send("Page.navigate", { url: `http://127.0.0.1:${serverPort}/financeiro-v3.html?cliente=n97&conta=42&periodo=2026-08&_r=shopee-base` });
+      await waitFor(cdp, "window.VF && window.VF.context && window.VF.context.getState() === 'READY'", "reload não voltou a READY (Shopee c/ base)");
+      await waitFor(cdp, "document.querySelector('.vf-tabs')", "abas não renderizaram (Shopee c/ base)");
+      await cdp.evaluate("Array.prototype.find.call(document.querySelectorAll('.vf-tab'), b => b.textContent.trim() === 'Fechamento').click()");
+      await waitFor(cdp, "document.querySelector('.vf-fin-base.is-encontrada') !== null", "a base Shopee vinculada não foi reconhecida");
+      const semUploadCustos = await cdp.evaluate(`document.querySelector('input[aria-label="Planilha de custos"]') === null`);
+      assert.ok(semUploadCustos, "com base Shopee vinculada, não pode aparecer upload de custos");
+      const texto = await cdp.evaluate("document.querySelector('.vf-fin-novo').innerText");
+      assert.ok(/Comprou_chegou_shopee1/.test(texto), `a tela precisa dizer qual base será usada: ${texto.slice(0, 300)}`);
+    });
+
+    // restaura o fixture para os blocos seguintes
+    N97_CONTAS[0].marketplace = "meli";
+    N97_CONTAS[0].nome = "Mercado Livre 1";
+    baseVinculosFake = [
+      { id: 9, slug: "base-n97-meli", nome: "Comprou_chegou_meli1", ativo: true, vinculo: { cliente_slug: "n97", marketplace: "meli", cliente_conta_id: 42, conta_nome: "Mercado Livre 1" } },
+    ];
 
     // ═══ 2d. Convergência #4 §10 — fecha a lacuna de evidência Shopee nas
     // abas de LEITURA. FinanceiroPage.jsx não tem NENHUM `if (marketplace)`

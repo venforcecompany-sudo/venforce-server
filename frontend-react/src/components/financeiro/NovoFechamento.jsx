@@ -1,163 +1,137 @@
 // frontend-react/src/components/financeiro/NovoFechamento.jsx
 //
-// Convergência #3 — GERAR um fechamento sem sair do Financeiro V3.
+// GERAR um fechamento sem sair do Financeiro V3. O motor de processamento é
+// o mesmo dos dois lados (POST /fechamentos/financeiro); esta tela manda o
+// que o cabeçalho mostra (cliente, operação, período, marketplace) e trata
+// competência declarada + duplicidade.
 //
-// Antes desta tela, a aba Fechamento só sabia dizer "vá para o Financeiro
-// (legado)". O motor de processamento sempre foi o mesmo dos dois lados
-// (POST /fechamentos/financeiro); o que faltava era o formulário V3 mandar
-// `periodo` + `clienteContaId` (que a tela mostra no cabeçalho) e tratar a
-// competência declarada e a duplicidade. É isso que este componente faz.
+// A experiência: quem opera não deveria precisar pensar "qual arquivo subo?".
+// A leitura é de cima para baixo —
+//   1. contexto da operação (uma linha)
+//   2. base de custos (usa a vinculada? precisa de upload?)
+//   3. arquivos do fechamento (só os que ainda faltam)
+//   4. ajustes do período
+//   5. processar (com o motivo de bloqueio à vista)
 //
-// O que NÃO está aqui: seletor de Cliente/Conta (vem do Shell), seletor de
-// período (vem do cabeçalho da página), e TikTok (precisa da Base TikTok —
-// segue no legado, dito explicitamente).
+// O que NÃO está aqui: seletor de Cliente/Conta/Período (vêm do Shell),
+// seletor de marketplace (é o da operação) e TikTok (segue no legado).
 
-import { useFechamentoNativo, MARKETPLACES_NATIVOS } from "../../hooks/useFechamentoNativo.js";
+import { useFechamentoNativo } from "../../hooks/useFechamentoNativo.js";
 import { cardsDoSummary } from "../../utils/fechamentoPayload.js";
 import { formatarMoeda } from "../../utils/currency.js";
 import { rotularCompetencia } from "../../utils/dates.js";
 import { ehAdmin } from "../../services/apiClient.js";
+import { FechamentoContextoBar } from "./fechamento/FechamentoContextoBar.jsx";
+import { BaseCustosStatus } from "./fechamento/BaseCustosStatus.jsx";
+import { FechamentoFileCard } from "./fechamento/FechamentoFileCard.jsx";
+import { FechamentoAjustes } from "./fechamento/FechamentoAjustes.jsx";
+import { FechamentoAcao } from "./fechamento/FechamentoAcao.jsx";
 
-const MK_LABEL = { meli: "Mercado Livre", shopee: "Shopee" };
-
-function CampoArquivo({ id, rotulo, hint, obrigatorio, file, onPick }) {
-  return (
-    <label className="vf-field" htmlFor={id}>
-      <span className="vf-field__label">
-        {rotulo} {obrigatorio ? <span aria-hidden="true">*</span> : <span className="vf-field__hint">(opcional)</span>}
-      </span>
-      <input
-        id={id}
-        type="file"
-        className="vf-input"
-        accept=".xlsx,.xls,.csv"
-        onChange={(e) => onPick(e.target.files?.[0] || null)}
-      />
-      {file ? <span className="vf-field__hint">{file.name}</span> : hint ? <span className="vf-field__hint">{hint}</span> : null}
-    </label>
-  );
+function avisoDoCampo(validacao, campo) {
+  if (validacao.ok) return null;
+  return validacao.itens.find((i) => i.campo === campo)?.mensagem || null;
 }
 
-function CampoMoeda({ id, rotulo, valor, onChange }) {
-  return (
-    <label className="vf-field" htmlFor={id}>
-      <span className="vf-field__label">{rotulo}</span>
-      <input
-        id={id}
-        type="text"
-        inputMode="decimal"
-        className="vf-input"
-        placeholder="0,00"
-        value={valor}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </label>
-  );
-}
-
-export function NovoFechamento({ clienteSlug, clienteNome, clienteContaId, periodo, periodoLabel, onSalvo }) {
-  const f = useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, periodo, onSalvo });
+export function NovoFechamento({ clienteSlug, clienteNome, clienteContaId, marketplace, contaNome, periodo, periodoLabel, onSalvo }) {
+  const f = useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, marketplace, periodo, onSalvo });
   const legado = `financeiro.html?cliente=${encodeURIComponent(clienteSlug || "")}`;
 
   const noForm = f.estado === "form" || f.estado === "processando";
   const processando = f.estado === "processando";
 
+  if (!f.marketplaceSuportado) {
+    return (
+      <div className="vf-fin-novo">
+        <div className="vf-banner is-info" role="status">
+          <div className="vf-banner__content">
+            <p className="vf-banner__title">
+              {marketplace ? "Este marketplace ainda não fecha aqui" : "Operação sem marketplace resolvido"}
+            </p>
+            <p className="vf-banner__description">
+              {marketplace === "tiktok"
+                ? "TikTok Shop precisa da Base TikTok — "
+                : "Enquanto a operação não resolve o marketplace, use o "}
+              <a href={legado}>Financeiro (legado) →</a>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="vf-stack vf-fin-novo">
-      <div className="vf-cluster" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
-        <p className="vf-field__label" style={{ margin: 0 }}>Gerar fechamento de {periodoLabel}</p>
-        <span className="vf-field__hint">Operação #{clienteContaId}</span>
-      </div>
+      <FechamentoContextoBar
+        clienteNome={clienteNome}
+        marketplace={f.marketplace}
+        contaNome={contaNome}
+        clienteContaId={clienteContaId}
+        periodoLabel={periodoLabel}
+      />
 
       {noForm && (
         <>
-          <label className="vf-field" htmlFor="fin-novo-mk">
-            <span className="vf-field__label">Marketplace *</span>
-            <select
-              id="fin-novo-mk"
-              className="vf-select"
-              value={f.marketplace}
-              onChange={(e) => f.setMarketplace(e.target.value)}
-            >
-              <option value="">Selecione…</option>
-              {MARKETPLACES_NATIVOS.map((mk) => (
-                <option key={mk} value={mk}>{MK_LABEL[mk] || mk}</option>
-              ))}
-            </select>
-            <span className="vf-field__hint">
-              TikTok Shop continua no <a href={legado}>Financeiro (legado) →</a> (precisa da Base TikTok).
-            </span>
-          </label>
+          <section className="vf-fin-novo__passo">
+            <h3 className="vf-fin-novo__passo-titulo">Base de custos</h3>
+            <BaseCustosStatus
+              base={f.base}
+              marketplace={f.marketplace}
+              clienteNome={clienteNome}
+              usarUploadDeCustos={f.usarUploadDeCustos}
+              onAlternarUpload={f.alternarUploadDeCustos}
+            />
+          </section>
 
-          {f.marketplace && (
-            <>
-              <div className="vf-fin-novo__grid">
-                <CampoArquivo
-                  id="fin-novo-sales"
-                  rotulo="Planilha de vendas"
-                  obrigatorio
-                  file={f.arquivos.sales}
-                  onPick={(file) => f.setArquivo("sales", file)}
-                />
-                <CampoArquivo
-                  id="fin-novo-costs"
+          <section className="vf-fin-novo__passo">
+            <h3 className="vf-fin-novo__passo-titulo">Arquivos do fechamento</h3>
+            <div className="vf-fin-novo__files">
+              <FechamentoFileCard
+                rotulo={f.marketplace === "shopee" ? "Planilha de vendas / Performance" : "Planilha de vendas"}
+                obrigatoriedade="obrigatorio"
+                descricao={
+                  f.marketplace === "shopee"
+                    ? "Performance por produto/variação — a base das vendas pagas do período."
+                    : "Relatório de vendas do período."
+                }
+                file={f.arquivos.sales}
+                aviso={avisoDoCampo(f.validacao, "sales")}
+                onPick={(file) => f.setArquivo("sales", file)}
+              />
+
+              {f.custosObrigatorios && (
+                <FechamentoFileCard
                   rotulo="Planilha de custos"
-                  obrigatorio={f.marketplace === "shopee"}
-                  hint={
-                    f.marketplace === "meli"
-                      ? "Sem envio, usa a base de custos vinculada ao cliente."
-                      : null
-                  }
+                  obrigatoriedade="obrigatorio"
+                  descricao="Custo e imposto por produto/variação."
                   file={f.arquivos.costs}
+                  aviso={avisoDoCampo(f.validacao, "costs")}
                   onPick={(file) => f.setArquivo("costs", file)}
                 />
-                {f.marketplace === "shopee" && (
-                  <CampoArquivo
-                    id="fin-novo-orders"
-                    rotulo="Order.all (Shopee)"
-                    file={f.arquivos.ordersAll}
-                    onPick={(file) => f.setArquivo("ordersAll", file)}
-                  />
-                )}
-              </div>
+              )}
 
-              <div className="vf-fin-novo__grid">
-                <CampoMoeda id="fin-novo-ads" rotulo="ADS" valor={f.ajustes.ads} onChange={(v) => f.setAjuste("ads", v)} />
-                <CampoMoeda id="fin-novo-venforce" rotulo="Venforce" valor={f.ajustes.venforce} onChange={(v) => f.setAjuste("venforce", v)} />
-                <CampoMoeda id="fin-novo-aff" rotulo="Afiliados" valor={f.ajustes.affiliates} onChange={(v) => f.setAjuste("affiliates", v)} />
-                {f.marketplace === "meli" && (
-                  <>
-                    <CampoMoeda id="fin-novo-full" rotulo="FULL" valor={f.ajustes.fullCost} onChange={(v) => f.setAjuste("fullCost", v)} />
-                    <CampoMoeda id="fin-novo-add" rotulo="Custos adicionais" valor={f.ajustes.additionalCosts} onChange={(v) => f.setAjuste("additionalCosts", v)} />
-                  </>
-                )}
-              </div>
-            </>
-          )}
+              {f.marketplace === "shopee" && (
+                <FechamentoFileCard
+                  rotulo="Order.all (Shopee)"
+                  obrigatoriedade="recomendado"
+                  descricao="Usado para conciliação financeira e identificação dos pedidos — melhora a qualidade do fechamento."
+                  file={f.arquivos.ordersAll}
+                  onPick={(file) => f.setArquivo("ordersAll", file)}
+                />
+              )}
+            </div>
+          </section>
 
-          {!f.validacao.ok && f.marketplace && (
-            <ul className="vf-field__hint" style={{ margin: 0, paddingLeft: 18 }}>
-              {f.validacao.problemas.map((p) => <li key={p}>{p}</li>)}
-            </ul>
-          )}
+          <section className="vf-fin-novo__passo">
+            <h3 className="vf-fin-novo__passo-titulo">Ajustes do período</h3>
+            <p className="vf-fin-novo__passo-nota">Valores adicionais que afetam o resultado deste fechamento.</p>
+            <FechamentoAjustes marketplace={f.marketplace} ajustes={f.ajustes} onAjuste={f.setAjuste} />
+          </section>
 
-          <div className="vf-cluster">
-            <button
-              type="button"
-              className="vf-btn vf-btn--primary"
-              disabled={!f.validacao.ok || processando}
-              aria-busy={processando ? "true" : undefined}
-              onClick={f.processar}
-            >
-              {processando ? "Processando…" : "Processar fechamento"}
-            </button>
-          </div>
+          <FechamentoAcao validacao={f.validacao} processando={processando} onProcessar={f.processar} />
         </>
       )}
 
-      {f.erro && (
-        <div className="vf-status is-danger" role="alert">{f.erro.mensagem}</div>
-      )}
+      {f.erro && <div className="vf-status is-danger" role="alert">{f.erro.mensagem}</div>}
 
       {!noForm && f.processamento && (
         <PreviewFechamento f={f} periodoLabel={periodoLabel} legado={legado} />
@@ -171,6 +145,7 @@ function PreviewFechamento({ f, periodoLabel, legado }) {
   const cards = cardsDoSummary(f.processamento.summary);
   const salvando = f.estado === "salvando";
   const salvo = f.estado === "salvo";
+  const origemCustos = f.processamento.costsSource === "base" ? f.processamento.costsBase : null;
 
   return (
     <div className="vf-stack vf-stack--sm">
@@ -200,6 +175,12 @@ function PreviewFechamento({ f, periodoLabel, legado }) {
       ) : (
         <p className="vf-field__hint">
           Competência confere: dados de {rotularCompetencia(comp.periodoDetectado) || periodoLabel}.
+        </p>
+      )}
+
+      {origemCustos && (
+        <p className="vf-field__hint">
+          Custos da base vinculada <strong>{origemCustos.nome || origemCustos.slug}</strong>.
         </p>
       )}
 
