@@ -122,6 +122,198 @@ function init() {
     if (!btn) return;
     setActiveTab(btn.dataset.tab);
   });
+
+  initIncidentes();
+}
+
+// ── Incidentes de suporte (caixa-preta do fechamento) ──────────────────────
+// Só CONSOME a API admin (GET /fechamentos/incidentes*) — não reprocessa
+// nada, não recalcula fórmula nenhuma. Mesmo padrão de fetch/erro do resto
+// desta página.
+
+function fmtDataHora(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString("pt-BR");
+}
+
+function fmtBytes(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v < 0) return "—";
+  if (v < 1024) return `${v} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
+  return `${(v / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const TRIGGER_LABEL = {
+  identidade_ambigua: "Identidade ambígua / IDs conflitantes",
+  custo_nao_encontrado: "Custo não encontrado",
+  receita_sem_custo: "Receita sem custo",
+  cobertura_incompleta: "Cobertura incompleta",
+  excecao_processamento: "Exceção durante o processamento",
+};
+
+function setIncStatus(msg, kind) {
+  if (!els.incStatus) return;
+  els.incStatus.textContent = msg || "";
+  els.incStatus.className = `fdbg-status-line ${kind === "error" ? "is-error" : kind === "ok" ? "is-ok" : ""}`;
+}
+
+async function baixarArquivoIncidente(codigo, arquivoId, nomeOriginal) {
+  try {
+    const resp = await fetch(`${API_BASE}/fechamentos/incidentes/${encodeURIComponent(codigo)}/arquivos/${encodeURIComponent(arquivoId)}`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    if (!resp.ok) {
+      const json = await resp.json().catch(() => ({}));
+      setIncStatus(json.erro || `Erro HTTP ${resp.status} ao baixar o arquivo.`, "error");
+      return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nomeOriginal || "arquivo";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    setIncStatus(`Falha de rede ao baixar: ${error.message}`, "error");
+  }
+}
+
+function renderIncidenteDetalhe(incidente) {
+  const arquivos = Array.isArray(incidente.arquivos) ? incidente.arquivos : [];
+  const triggers = Array.isArray(incidente.resumo_json?.triggers) ? incidente.resumo_json.triggers : [];
+
+  const arquivosHtml = arquivos.length
+    ? arquivos.map((a) => `
+        <div class="fdbg-inc-arquivo">
+          <span class="fdbg-mono">${escapeHTML(a.tipo_arquivo)}</span>
+          <span>${escapeHTML(a.nome_original)}</span>
+          <span class="fdbg-hint">${fmtBytes(a.tamanho_bytes)}</span>
+          <span class="fdbg-mono fdbg-hint" title="SHA-256">${escapeHTML(String(a.sha256 || "").slice(0, 16))}…</span>
+          ${a.conteudo_truncado
+            ? '<span class="fdbg-badge warning">conteúdo excedeu o limite — não preservado</span>'
+            : `<button type="button" class="vf-btn vf-btn--ghost vf-btn--sm" data-inc-baixar="${escapeHTML(String(a.id))}" data-inc-nome="${escapeHTML(a.nome_original)}">Baixar</button>`}
+        </div>
+      `).join("")
+    : '<p class="fdbg-hint">Nenhum arquivo preservado para este incidente.</p>';
+
+  els.incDetalhe.innerHTML = `
+    <div class="fdbg-inc-detalhe">
+      <div class="fdbg-inc-detalhe__head">
+        <strong class="fdbg-mono">${escapeHTML(incidente.codigo)}</strong>
+        ${badge(incidente.status === "resolvido" ? "hit" : "warning", incidente.status || "aberto")}
+      </div>
+      <div class="fdbg-inc-grid">
+        <div><span class="fdbg-hint">Cliente</span><br>${escapeHTML(incidente.cliente_slug || "—")}</div>
+        <div><span class="fdbg-hint">Conta</span><br>${escapeHTML(incidente.cliente_conta_id ?? "—")}</div>
+        <div><span class="fdbg-hint">Marketplace</span><br>${escapeHTML(incidente.marketplace)}</div>
+        <div><span class="fdbg-hint">Período</span><br>${escapeHTML(incidente.periodo || "—")}</div>
+        <div><span class="fdbg-hint">Usuário</span><br>${escapeHTML(incidente.usuario_id ?? "—")}</div>
+        <div><span class="fdbg-hint">Criado em</span><br>${fmtDataHora(incidente.created_at)}</div>
+        <div><span class="fdbg-hint">Expira em</span><br>${fmtDataHora(incidente.expires_at)}</div>
+      </div>
+      <div class="fdbg-inc-triggers">
+        ${triggers.map((t) => badge("warning", TRIGGER_LABEL[t] || t)).join("") || badge("info", incidente.trigger_tipo || "—")}
+      </div>
+      <p class="fdbg-hint">${escapeHTML(incidente.resumo_json?.message || "")}</p>
+      <div class="fdbg-card__head"><h2>Arquivos preservados</h2></div>
+      ${arquivosHtml}
+      <details>
+        <summary class="fdbg-hint">Diagnóstico técnico (JSON)</summary>
+        <code class="fdbg-mono fdbg-diag-json">${escapeHTML(JSON.stringify(incidente.diagnostico_json || {}, null, 2))}</code>
+      </details>
+    </div>
+  `;
+
+  els.incDetalhe.querySelectorAll("[data-inc-baixar]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      baixarArquivoIncidente(incidente.codigo, btn.getAttribute("data-inc-baixar"), btn.getAttribute("data-inc-nome"));
+    });
+  });
+}
+
+async function buscarIncidente(codigoBruto) {
+  const codigo = String(codigoBruto || "").trim().toUpperCase();
+  if (!codigo) {
+    setIncStatus("Informe um código (ex.: FIN-184).", "error");
+    return;
+  }
+  els.incDetalhe.innerHTML = "";
+  setIncStatus(`Buscando ${codigo}…`, "");
+  try {
+    const resp = await fetch(`${API_BASE}/fechamentos/incidentes/${encodeURIComponent(codigo)}`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok || !json.ok) {
+      setIncStatus(json.erro || `Incidente ${codigo} não encontrado (pode ter expirado).`, "error");
+      return;
+    }
+    setIncStatus("", "");
+    renderIncidenteDetalhe(json.incidente);
+  } catch (error) {
+    setIncStatus(`Falha de rede: ${error.message}`, "error");
+  }
+}
+
+function renderIncidentesLista(rows) {
+  if (!rows.length) {
+    els.incLista.innerHTML = '<p class="fdbg-hint">Nenhum incidente recente.</p>';
+    return;
+  }
+  els.incLista.innerHTML = rows.map((r) => `
+    <button type="button" class="fdbg-inc-lista__item" data-inc-codigo="${escapeHTML(r.codigo)}">
+      <span class="fdbg-mono">${escapeHTML(r.codigo)}</span>
+      <span>${escapeHTML(r.cliente_slug || "—")} · ${escapeHTML(r.marketplace)} · ${escapeHTML(r.periodo || "—")}</span>
+      <span class="fdbg-hint">${fmtDataHora(r.created_at)}</span>
+    </button>
+  `).join("");
+  els.incLista.querySelectorAll("[data-inc-codigo]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      els.incBusca.value = btn.getAttribute("data-inc-codigo");
+      buscarIncidente(btn.getAttribute("data-inc-codigo"));
+    });
+  });
+}
+
+async function carregarIncidentesRecentes() {
+  try {
+    const resp = await fetch(`${API_BASE}/fechamentos/incidentes?limit=20`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok || !json.ok) return;
+    renderIncidentesLista(json.incidentes || []);
+  } catch (_) {
+    // Lista de recentes é conveniência — falha aqui não bloqueia a busca por código.
+  }
+}
+
+function initIncidentes() {
+  els.incBusca = document.getElementById("fdbg-inc-busca");
+  els.incBuscarBtn = document.getElementById("fdbg-inc-buscar");
+  els.incStatus = document.getElementById("fdbg-inc-status");
+  els.incDetalhe = document.getElementById("fdbg-inc-detalhe");
+  els.incLista = document.getElementById("fdbg-inc-lista");
+
+  els.incBuscarBtn.addEventListener("click", () => buscarIncidente(els.incBusca.value));
+  els.incBusca.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") buscarIncidente(els.incBusca.value);
+  });
+
+  carregarIncidentesRecentes();
+
+  // Banner do Financeiro (legado ou V3) linka para cá com ?incidente=FIN-xxx.
+  const codigoDaUrl = new URLSearchParams(window.location.search).get("incidente");
+  if (codigoDaUrl) {
+    els.incBusca.value = codigoDaUrl;
+    buscarIncidente(codigoDaUrl);
+  }
 }
 
 async function runDebug() {
