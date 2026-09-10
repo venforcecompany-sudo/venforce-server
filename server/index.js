@@ -64,6 +64,7 @@ const authRoutes = require("./routes/authRoutes");
 const logsRoutes = require("./routes/logsRoutes");
 const fechamentosFinanceiroRoutes = require("./routes/fechamentosFinanceiroRoutes");
 const fechamentoDebugRoutes = require("./routes/fechamentoDebugRoutes");
+const fechamentoIncidentesRoutes = require("./routes/fechamentoIncidentesRoutes");
 const mlRoutes = require("./routes/mlRoutes");
 const clienteContasRoutes = require("./routes/clienteContasRoutes");
 const meRoutes = require("./routes/meRoutes");
@@ -106,6 +107,8 @@ const {
   captureRequestError,
 } = require("./middlewares/observabilityMiddleware");
 const { ensureObservabilityTables } = require("./repositories/observabilityRepository");
+const { ensureFechamentoIncidenteTables } = require("./repositories/fechamentoIncidenteRepository");
+const fechamentoIncidentStorageService = require("./services/fechamentoFinanceiro/incidente/fechamentoIncidentStorageService");
 const { ensureSquadsTables } = require("./services/squads/squadsRepository");
 const squadService = require("./services/squads/squadService");
 const { ensureEntregasClienteSchema } = require("./services/schema/schemaEnsure");
@@ -783,6 +786,7 @@ app.use("/admin/observability", observabilityRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/fechamentos", fechamentosFinanceiroRoutes);
 app.use("/fechamentos", fechamentoDebugRoutes);
+app.use("/fechamentos", fechamentoIncidentesRoutes);
 app.use("/", mlRoutes);
 app.use("/", clienteContasRoutes);
 app.use("/me", meRoutes);
@@ -1962,6 +1966,13 @@ const server = app.listen(PORT, () => {
     .then(() => observabilityService.startRetentionJob())
     .catch((err) => {
       console.error("[observability] erro ao preparar tabelas no boot:", err.message);
+    });
+
+  ensureFechamentoIncidenteTables()
+    .then(() => fechamentoIncidentStorageService.runCleanup())
+    .then(() => fechamentoIncidentStorageService.startRetentionJob())
+    .catch((err) => {
+      console.error("[fechamento-incidentes] erro ao preparar tabelas no boot:", err.message);
     });
 
   startTokenRefreshWorker();

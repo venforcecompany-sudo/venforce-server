@@ -28,6 +28,9 @@ const {
   obterConta,
 } = require("../services/clienteContas/clienteContaService");
 const { CODIGOS_CANONICOS } = require("../utils/erroContextoCanonico");
+const { detectarIncidenteFechamento } = require("../services/fechamentoFinanceiro/incidente/detectarIncidenteFechamento");
+const fechamentoIncidentStorageService = require("../services/fechamentoFinanceiro/incidente/fechamentoIncidentStorageService");
+const { createDebugCollector } = require("../utils/fechamento/debugCollector");
 
 // V3 Pós-Convergência #2 — BLOCO 8: quando o processamento se declara
 // account-aware (clienteContaId informado), o backend PROVA cliente + conta +
@@ -213,6 +216,38 @@ function parseFinancialInput(body, field, label) {
 
 async function processarFechamentoFinanceiroController(req, res) {
   let meliHeaderDiagnostic = null;
+
+  // Capturados fora do try: precisam estar disponíveis também no catch, para
+  // a caixa-preta do fechamento (missão "captura automática de incidente")
+  // conseguir preservar os arquivos mesmo quando o processamento lança
+  // exceção. Nunca alteram o comportamento existente do fluxo normal.
+  const salesFileEarly = req.files && req.files["sales"] && req.files["sales"][0];
+  const costsFileEarly = req.files && req.files["costs"] && req.files["costs"][0];
+  const ordersAllFileEarly = req.files?.ordersAll?.[0];
+  const onholdFileEarly = req.files?.onhold?.[0];
+  const marketplaceEarly = String(req.body?.marketplace || "").trim().toLowerCase();
+  const incidentContext = {
+    clienteSlug: req.body?.cliente_slug || req.body?.clienteSlug || null,
+    clienteContaId: /^\d+$/.test(String(req.body?.clienteContaId || "")) ? Number(req.body.clienteContaId) : null,
+    marketplace: marketplaceEarly,
+    periodo: req.body?.periodo || null,
+    usuarioId: req.user?.id ?? null,
+  };
+  const incidentFiles = [
+    salesFileEarly && { tipoArquivo: "sales", originalName: salesFileEarly.originalname, mimeType: salesFileEarly.mimetype, buffer: salesFileEarly.buffer },
+    costsFileEarly && { tipoArquivo: "costs", originalName: costsFileEarly.originalname, mimeType: costsFileEarly.mimetype, buffer: costsFileEarly.buffer },
+    ordersAllFileEarly && { tipoArquivo: "ordersAll", originalName: ordersAllFileEarly.originalname, mimeType: ordersAllFileEarly.mimetype, buffer: ordersAllFileEarly.buffer },
+    onholdFileEarly && { tipoArquivo: "onhold", originalName: onholdFileEarly.originalname, mimeType: onholdFileEarly.mimetype, buffer: onholdFileEarly.buffer },
+  ].filter(Boolean);
+
+  // debugCollector: mesma instrumentação opcional do Debug Financeiro
+  // (utils/fechamento/debugCollector.js). Passá-lo sempre para MELI/Shopee
+  // não muda nenhum valor calculado (todo ponto de instrumentação nesses
+  // motores é `if (debugCollector) {...}`) — só habilita o snapshot para o
+  // caso de precisarmos anexar a um incidente. TikTok ainda não é
+  // instrumentado (mesma limitação do Debug Financeiro v1).
+  const debugCollector = (marketplaceEarly === "meli" || marketplaceEarly === "shopee") ? createDebugCollector() : null;
+
   try {
     const salesFile = req.files && req.files["sales"] && req.files["sales"][0];
     const costsFile = req.files && req.files["costs"] && req.files["costs"][0];
@@ -353,6 +388,7 @@ async function processarFechamentoFinanceiroController(req, res) {
       salesBufferRaw: marketplace === "tiktok" ? salesBuffer : null,
       onholdBufferRaw:
         marketplace === "tiktok" && onholdFile?.buffer ? onholdFile.buffer : null,
+      debugCollector,
     });
 
     if (marketplace === "meli") {
@@ -429,6 +465,40 @@ async function processarFechamentoFinanceiroController(req, res) {
       deteccao: detectarCompetenciaDeLinhas(salesRowsRaw),
     });
 
+    // Caixa-preta do fechamento: 100% automática, nunca pode afetar a
+    // resposta. Qualquer problema aqui vira log — saveIncidente() já
+    // garante isso internamente, mas o try/catch aqui é uma segunda rede de
+    // segurança contra erro de leitura de `result`/`competencia` etc.
+    let incidenteResumo = null;
+    try {
+      const deteccao = detectarIncidenteFechamento(result);
+      if (deteccao) {
+        const salvo = await fechamentoIncidentStorageService.saveIncidente({
+          context: {
+            ...incidentContext,
+            metadata: { costsSource, costsBaseId, competencia },
+          },
+          triggers: deteccao.triggers,
+          triggerPrincipal: deteccao.triggerPrincipal,
+          resumo: deteccao.resumo,
+          diagnostico: {
+            unmatchedIds: (result.unmatchedIds || []).slice(0, 1000),
+            unmatchedCosts: (result.unmatchedCosts || []).slice(0, 1000),
+            debug: debugCollector ? debugCollector.snapshot() : null,
+          },
+          files: incidentFiles,
+        });
+        if (salvo) {
+          incidenteResumo = {
+            codigo: salvo.codigo,
+            mensagem: `Ocorrência de suporte ${salvo.codigo} criada. Os arquivos utilizados foram preservados temporariamente para diagnóstico.`,
+          };
+        }
+      }
+    } catch (incidentErr) {
+      console.error("[FinanceiroIncident] erro inesperado na captura automática (ignorado):", incidentErr.message);
+    }
+
     res.json({
       ok: true,
       summary: result.summary,
@@ -444,6 +514,7 @@ async function processarFechamentoFinanceiroController(req, res) {
       emptySales: result.emptySales === true,
       costsSource,
       costsBase,
+      ...(incidenteResumo ? { incidente: incidenteResumo } : {}),
       ...(marketplace === "tiktok" ? {
         pendingRows: result.pendingRows || [],
         onholdSummary: result.onholdSummary || null,
@@ -479,6 +550,24 @@ async function processarFechamentoFinanceiroController(req, res) {
         totalVendasReconhecidas: error?.diagnostics?.recognizedSalesCount ?? 0,
       };
     }
+
+    // Mesma regra da captura no caminho de sucesso: best-effort, nunca pode
+    // mudar o que já foi decidido acima (statusCode/payload já estão prontos).
+    try {
+      if (incidentFiles.length > 0) {
+        await fechamentoIncidentStorageService.saveIncidente({
+          context: incidentContext,
+          triggers: ["excecao_processamento"],
+          triggerPrincipal: "excecao_processamento",
+          resumo: { statusCode, mensagemErro: payload.error, codigoErro: payload.code || null },
+          diagnostico: { stack: process.env.NODE_ENV === "production" ? null : String(error?.stack || "") },
+          files: incidentFiles,
+        });
+      }
+    } catch (incidentErr) {
+      console.error("[FinanceiroIncident] erro inesperado na captura automática pelo catch (ignorado):", incidentErr.message);
+    }
+
     res.status(statusCode).json(payload);
   }
 }
