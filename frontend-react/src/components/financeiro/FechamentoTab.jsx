@@ -26,7 +26,7 @@ const STATUS_INFO = {
   nao_gerado: { label: "Não gerado", tom: "neutral" },
 };
 
-export function FechamentoTab({ resultado, clienteSlug, clienteNome, clienteContaId, periodo, periodoLabel, entregas, onSalvo }) {
+export function FechamentoTab({ resultado, clienteSlug, clienteNome, clienteContaId, marketplace, contaNome, periodo, periodoLabel, entregas, onSalvo }) {
   const dados = resultado.dados;
   const semFechamento = !resultado.disponivel || !dados || dados.status === "nao_gerado";
 
@@ -48,6 +48,8 @@ export function FechamentoTab({ resultado, clienteSlug, clienteNome, clienteCont
           clienteSlug={clienteSlug}
           clienteNome={clienteNome}
           clienteContaId={clienteContaId}
+          marketplace={marketplace}
+          contaNome={contaNome}
           periodo={periodo}
           periodoLabel={periodoLabel}
           onSalvo={onSalvo}

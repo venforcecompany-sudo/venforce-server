@@ -104,7 +104,10 @@ describe("FinanceiroPage · Resultado/composição", () => {
     // volta para o Financeiro legado: o CTA abre a aba Fechamento nativa.
     expect(screen.queryByRole("link", { name: /Gerar no Financeiro \(legado\)/ })).not.toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Gerar fechamento" }));
-    expect(await screen.findByText(/Gerar fechamento de/)).toBeInTheDocument();
+    // a aba Fechamento nativa abre — o formulário de geração começa pela
+    // base de custos e pelos arquivos, sem seletor de marketplace
+    expect(await screen.findByText("Base de custos")).toBeInTheDocument();
+    expect(screen.getByText("Arquivos do fechamento")).toBeInTheDocument();
   });
 });
 

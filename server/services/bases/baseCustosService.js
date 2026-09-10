@@ -700,22 +700,63 @@ async function buildCostRowsFromBase({ baseId, clienteSlug, marketplace, cliente
   // TikTok recebe as chaves do seu parser: "ID" (product_id, informativo) e
   // "ID do SKU" (sku_id — a ÚNICA chave de cruzamento). Ambos continuam
   // STRING, sem qualquer conversão numérica (IDs de 18–19 dígitos).
-  const costRows = isTikTok
-    ? custos.rows.map((row) => ({
-        "ID": row.produto_id || "",
-        "ID do SKU": row.sku_id || "",
-        "Custo unitário": row.custo_produto,
-        "Imposto (%)": row.imposto_percentual,
-        "Nome do produto": row.produto_nome || "",
-        "Nome da variação": row.variacao_nome || "",
-      }))
-    : // Chaves reconhecidas por findField/parseMeliCostRows (normalização por acento/caixa).
-      custos.rows.map((row) => ({
-        "# de anúncio": row.produto_id,
-        "preço de custo": row.custo_produto,
-        imposto: row.imposto_percentual,
-        model_id: row.id_model || "",
-      }));
+  const isShopee = mkt === "shopee";
+  let costRows;
+  if (isTikTok) {
+    costRows = custos.rows.map((row) => ({
+      "ID": row.produto_id || "",
+      "ID do SKU": row.sku_id || "",
+      "Custo unitário": row.custo_produto,
+      "Imposto (%)": row.imposto_percentual,
+      "Nome do produto": row.produto_nome || "",
+      "Nome da variação": row.variacao_nome || "",
+    }));
+  } else if (isShopee) {
+    // Missão Financeiro V3 — paridade operacional com o MELI: quando existe
+    // base Shopee vinculada à conta, o fechamento usa os custos dela em vez
+    // de exigir upload. As chaves aqui são exatamente as que o parser de
+    // custos da Shopee (parseCostRows em shopeePerformanceService) já
+    // reconhece — nenhuma regra de match/fórmula/motor é tocada, só a
+    // ORIGEM das linhas muda (banco em vez de planilha).
+    //
+    // Uma linha por registro de `custos` = uma linha por variação: o mesmo
+    // produto_id repete entre variações, cada uma com seu id_model/sku e seu
+    // custo próprio. O motor endereça o custo por model_id antes de cair no
+    // produto-pai (mesma prioridade de sempre: saleModelId → id → itemId).
+    const temIdentificador = custos.rows.some(
+      (row) =>
+        String(row.produto_id || "").trim() !== "" ||
+        String(row.id_model || "").trim() !== "" ||
+        String(row.sku || "").trim() !== ""
+    );
+    if (!temIdentificador) {
+      // Bloqueia em vez de "achatar" tudo num produto-pai sem identidade —
+      // um fechamento com custo errado silencioso é pior do que pedir ajuste.
+      throw criarHttpErro(422, {
+        ok: false,
+        erro:
+          `A base vinculada "${base.nome || base.slug}" não tem nenhum identificador ` +
+          "de produto/variação (ID do item, ID Model ou SKU) para cruzar com as vendas Shopee. " +
+          "Ajuste a base na tela de Bases ou envie a planilha de custos manualmente.",
+      });
+    }
+    costRows = custos.rows.map((row) => ({
+      "id do item": row.produto_id || "",
+      "id model": row.id_model || "",
+      sku: row.sku || "",
+      custo: row.custo_produto,
+      imposto: row.imposto_percentual,
+    }));
+  } else {
+    // MELI — chaves reconhecidas por findField/parseMeliCostRows (normalização
+    // por acento/caixa). Retorno histórico, inalterado.
+    costRows = custos.rows.map((row) => ({
+      "# de anúncio": row.produto_id,
+      "preço de custo": row.custo_produto,
+      imposto: row.imposto_percentual,
+      model_id: row.id_model || "",
+    }));
+  }
 
   return {
     base: { id: base.id, slug: base.slug, nome: base.nome },

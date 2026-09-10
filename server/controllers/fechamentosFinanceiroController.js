@@ -199,6 +199,20 @@ function buildFechamentoContextRows(summary, marketplace) {
   return rows;
 }
 
+// Origem dos custos SEM upload de planilha: base de custos vinculada à conta.
+// MELI e Shopee têm a MESMA experiência operacional no V3 — se existe base
+// vinculada para o cliente/conta, o fechamento usa ela e o upload de custos
+// deixa de ser obrigatório (a resolução real, com isolamento por
+// clienteContaId e 409 de ambiguidade, é de resolverBaseVinculada; aqui só
+// decidimos se VALE tentar em vez de já barrar por "arquivo não enviado").
+// TikTok sempre resolve por Base TikTok (o costsBaseId já foi exigido acima).
+function podeResolverCustosSemUpload({ marketplace, costsBaseId, clienteSlug }) {
+  const mkt = String(marketplace || "").trim().toLowerCase();
+  if (mkt === "tiktok") return true;
+  if (mkt === "meli" || mkt === "shopee") return Boolean(costsBaseId || clienteSlug);
+  return false;
+}
+
 function parseFinancialInput(body, field, label) {
   const parsed = parseMoneyValue(body?.[field]);
   if (parsed.valid) return parsed.value;
@@ -257,10 +271,12 @@ async function processarFechamentoFinanceiroController(req, res) {
     }
 
     // Resolve a origem dos custos: arquivo enviado OU base vinculada
-    // (MELI quando existir vínculo; TikTok sempre).
-    const podeUsarBaseVinculada =
-      (marketplace === "meli" && (costsBaseId || clienteSlug)) ||
-      marketplace === "tiktok";
+    // (MELI/Shopee quando existir vínculo; TikTok sempre).
+    const podeUsarBaseVinculada = podeResolverCustosSemUpload({
+      marketplace,
+      costsBaseId,
+      clienteSlug,
+    });
 
     if ((!costsFile || !costsFile.buffer) && !podeUsarBaseVinculada) {
       return res.status(400).json({ ok: false, error: "Arquivo de custos não enviado." });
@@ -489,4 +505,5 @@ module.exports = {
   buildFechamentoContextRows,
   formatSummaryValue,
   validarContaDoCliente,
+  podeResolverCustosSemUpload,
 };
