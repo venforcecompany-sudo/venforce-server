@@ -261,3 +261,17 @@
   white-space: pre-line;
   text-align: left;
 }
+
+/* Modal de remoção: lista de dependências mostrada de forma PROATIVA
+   (antes de o admin confirmar), não como erro — texto discreto, sem cor de
+   alerta. Distinta de #vf-clientes-confirm-danger, que só aparece se algo
+   falhar na confirmação. */
+.vf-page-clientes .vf-clientes-confirm-deps {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+}
+.vf-page-clientes .vf-clientes-confirm-deps li {
+  margin: 2px 0;
+}

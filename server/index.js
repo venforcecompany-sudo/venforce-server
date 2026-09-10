@@ -1525,6 +1525,24 @@ app.post("/clientes", authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
+// Consulta prévia e não-destrutiva de dependências — usada pelo frontend
+// para decidir, ANTES de o admin confirmar, se a remoção será hard delete
+// (sem dependências) ou desativação preservando histórico (com
+// dependências). Nunca apaga nada; só lê.
+app.get("/clientes/:slug/dependencias", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const slug = normalizarSlug(req.params.slug);
+    const clienteAtual = await pool.query("SELECT id FROM clientes WHERE slug = $1", [slug]);
+    if (!clienteAtual.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+    }
+    const dependencias = await verificarDependenciasCliente(clienteAtual.rows[0].id);
+    res.json({ ok: true, dependencias });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 app.delete("/clientes/:slug", authMiddleware, requireAdmin, async (req, res) => {
   try {
     const slug = normalizarSlug(req.params.slug);
@@ -1535,7 +1553,8 @@ app.delete("/clientes/:slug", authMiddleware, requireAdmin, async (req, res) => 
     // Proteção de impacto (auditoria de clientes/contas): o hard delete
     // mistura CASCADE destrutivo com tabelas sem FK que ficariam órfãs.
     // Em vez de apagar tudo silenciosamente, bloqueia quando há
-    // dependências relevantes e explica o que está em jogo.
+    // dependências relevantes — a saída para esse caso é
+    // PATCH /clientes/:slug/desativar (abaixo), não este endpoint.
     const dependencias = await verificarDependenciasCliente(clienteAtual.rows[0].id);
     if (dependencias.length) {
       return res.status(409).json({
@@ -1561,6 +1580,32 @@ app.delete("/clientes/:slug", authMiddleware, requireAdmin, async (req, res) => 
       status: "sucesso"
     });
     res.json({ ok: true, mensagem: "Cliente removido com sucesso." });
+  } catch (err) {
+    res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
+// Remoção segura de cliente COM dependências: nunca apaga Grants, contas,
+// bases ou histórico financeiro — só tira o cliente da operação ativa
+// (mesma flag `ativo` que já filtra dashboards/metricas/financeiro/central
+// de vendas em todo o backend). Reversível por quem tiver acesso direto ao
+// banco; não há endpoint de reativação nesta missão (fora de escopo).
+app.patch("/clientes/:slug/desativar", authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const slug = normalizarSlug(req.params.slug);
+    const clienteAtual = await pool.query("SELECT id FROM clientes WHERE slug = $1", [slug]);
+    if (!clienteAtual.rows.length) {
+      return res.status(404).json({ ok: false, erro: "Cliente não encontrado." });
+    }
+    await pool.query("UPDATE clientes SET ativo = false WHERE slug = $1", [slug]);
+    registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "admin.cliente.desativar",
+      detalhes: { cliente_slug: slug },
+      ip: extrairIp(req),
+      status: "sucesso"
+    });
+    res.json({ ok: true, mensagem: "Cliente removido da operação ativa. Dados preservados." });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
