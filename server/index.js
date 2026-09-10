@@ -109,7 +109,7 @@ const {
 const { ensureObservabilityTables } = require("./repositories/observabilityRepository");
 const { ensureFechamentoIncidenteTables } = require("./repositories/fechamentoIncidenteRepository");
 const fechamentoIncidentStorageService = require("./services/fechamentoFinanceiro/incidente/fechamentoIncidentStorageService");
-const { ensureSquadsTables } = require("./services/squads/squadsRepository");
+const { ensureSquadsTables, squadsAtivosDeClientes } = require("./services/squads/squadsRepository");
 const squadService = require("./services/squads/squadService");
 const { ensureEntregasClienteSchema } = require("./services/schema/schemaEnsure");
 const { logReadinessNoBoot, verificarSchemaV3 } = require("./services/schema/schemaReadiness");
@@ -1239,7 +1239,22 @@ app.get("/clientes", authMiddleware, async (req, res) => {
     const result = await pool.query(
       "SELECT id, nome, slug, ativo, created_at FROM clientes ORDER BY created_at DESC"
     );
-    res.json({ ok: true, clientes: result.rows });
+    const clientes = result.rows;
+
+    // Squad ativo de cada cliente, numa única query batched (mission
+    // "fechar o contrato Cliente↔Squad", set/2026) — cliente histórico sem
+    // squad fica com squad: null (honesto, nunca inventado).
+    const squadsPorCliente = await squadsAtivosDeClientes(clientes.map((c) => c.id));
+    const squadDoCliente = new Map(squadsPorCliente.map((s) => [s.cliente_id, s]));
+    const clientesComSquad = clientes.map((c) => {
+      const s = squadDoCliente.get(c.id) || null;
+      return {
+        ...c,
+        squad: s ? { id: s.squad_id, nome: s.squad_nome, slug: s.squad_slug } : null,
+      };
+    });
+
+    res.json({ ok: true, clientes: clientesComSquad });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
   }
