@@ -165,9 +165,12 @@ async function confirmarModalClientes() {
     const dependencias = err?.dependencias;
     if (dangerBox) {
       dangerBox.style.display = "block";
-      dangerBox.textContent = dependencias?.length
-        ? `${msg} (${dependencias.map((d) => `${d.label}: ${d.total}`).join(", ")})`
-        : msg;
+      if (dependencias?.length) {
+        const itens = dependencias.map((d) => `• ${d.label}: ${d.total}`).join("\n");
+        dangerBox.textContent = `${msg}\n\n${itens}`;
+      } else {
+        dangerBox.textContent = msg;
+      }
     } else {
       setClientesFeedback(msg, "danger");
     }
@@ -296,11 +299,13 @@ function renderClientes(clientes) {
     btn.addEventListener("click", () => {
       const slug = btn.getAttribute("data-slug") || "";
       if (!slug) return;
+      const cliente = CLIENTES_LISTA.find((c) => c.slug === slug);
+      const squadLabel = cliente?.squad ? cliente.squad.nome : "Sem Squad";
       CLIENTE_DELETE_PENDENTE = { slug, btn };
       abrirModalConfirmacaoClientes({
         title: "Excluir cliente",
-        subtitle: slug,
-        description: `Esta ação remove o cliente "${slug}" do portal. Se houver contas, bases ou históricos vinculados, a exclusão será bloqueada.`,
+        subtitle: `${cliente?.nome || slug} · Squad: ${squadLabel}`,
+        description: `Esta ação exclui permanentemente o cliente "${cliente?.nome || slug}". Se houver contas, bases ou históricos vinculados, a exclusão será bloqueada.`,
         confirmLabel: "Excluir cliente",
         danger: true,
         onConfirm: null,

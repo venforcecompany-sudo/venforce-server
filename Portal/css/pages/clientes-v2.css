@@ -251,3 +251,13 @@
   color: var(--vf-warning-strong);
   font-style: italic;
 }
+
+/* Modal de exclusão: a lista de dependências (uma por linha, "• label:
+   total") precisa quebrar linha — .vf-alert global é inline-flex de uma
+   linha só (feedback curto), então este box específico é sobrescrito para
+   virar bloco com as quebras preservadas. Não mexe no componente global. */
+.vf-page-clientes #vf-clientes-confirm-danger {
+  display: block;
+  white-space: pre-line;
+  text-align: left;
+}
