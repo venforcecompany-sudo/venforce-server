@@ -2169,6 +2169,37 @@ function renderFinTabela(data) {
     `;
     host.appendChild(panel);
   }
+
+  // --- Incidente de suporte (caixa-preta do fechamento) ---
+  // Captura 100% automática no backend quando há anomalia relevante — este
+  // banner só avisa que já aconteceu, sem exigir nenhuma ação do usuário.
+  if (data?.incidente?.codigo) {
+    const codigo = data.incidente.codigo;
+    const panel = document.createElement("div");
+    panel.className = "vf-banner is-info";
+    panel.setAttribute("role", "status");
+
+    let isAdmin = false;
+    try {
+      const user = JSON.parse(localStorage.getItem("vf-user") || "{}") || {};
+      isAdmin = String(user.role || "").toLowerCase() === "admin";
+    } catch (_) { isAdmin = false; }
+
+    panel.innerHTML = `
+      <div class="vf-banner__content">
+        <p class="vf-banner__title">Ocorrência de suporte ${escapeHTML(codigo)} criada</p>
+        <p class="vf-banner__description">Os arquivos utilizados foram preservados temporariamente para diagnóstico. Se precisar de ajuda, informe este código.</p>
+        <div class="vf-fin-idlist">
+          <button type="button" class="vf-btn vf-btn--secondary" data-vf-copiar-incidente="${escapeHTML(codigo)}">Copiar código</button>
+          ${isAdmin ? `<a class="vf-btn vf-btn--link" href="financeiro-debug.html?incidente=${encodeURIComponent(codigo)}">Abrir diagnóstico</a>` : ""}
+        </div>
+      </div>
+    `;
+    panel.querySelector("[data-vf-copiar-incidente]")?.addEventListener("click", (ev) => {
+      navigator.clipboard?.writeText(ev.currentTarget.getAttribute("data-vf-copiar-incidente") || codigo);
+    });
+    host.appendChild(panel);
+  }
 }
 
 function base64ToBlob(base64, mimeType) {

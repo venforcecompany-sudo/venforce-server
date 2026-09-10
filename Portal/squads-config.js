@@ -1,763 +1,480 @@
-/* ================================================================
-   squads-config.js — VenForce · Configuração de Squads (admin)
-   ----------------------------------------------------------------
-   Consome exclusivamente a API /squads/* já existente (backend do
-   P2.9). Não cria API paralela. Squad é propriedade do CLIENTE —
-   mover cliente de squad nunca toca ClienteConta/Grant/Base/token;
-   isso é garantido pelo backend (cliente_squad_history), esta tela
-   só chama os endpoints administrativos já auditados/gate-ados.
-   ================================================================ */
-
+/* VenForce · Gestão de Squads. Vanilla, sem alterações de domínio.
+ * Mutações: exclusivamente /squads/*. Os catálogos GET /usuarios e
+ * GET /clientes são as consultas já existentes nesta tela.
+ * O servidor decide autorização, principal único e atribuição/transferência.
+ */
+"use strict";
 const STORAGE_KEY = "vf-token";
-const API_BASE    = "https://venforce-server.onrender.com";
-
-function getToken() {
-  const t = localStorage.getItem(STORAGE_KEY);
-  if (!t) { window.location.replace("index.html"); return null; }
-  return t;
-}
-const TOKEN = getToken();
-
-const self = JSON.parse(localStorage.getItem("vf-user") || "{}");
-// Admin-only na tela (conveniência de UX) — a segurança real é o
-// requireAdmin/requireSquadAdmin do backend em cada endpoint de escrita.
-if (self.role !== "admin") window.location.replace("carteira.html");
-initLayout();
-
-/* ── ESC ─────────────────────────────────────────────────── */
-function esc(s) {
-  const d = document.createElement("div");
-  d.textContent = s == null ? "" : String(s);
-  return d.innerHTML;
-}
-
-/* ── TOAST ───────────────────────────────────────────────── */
-let _toastTimer = null;
-function toast(msg, tipo = "ok") {
-  const el = document.getElementById("sq-toast");
-  if (!el) return;
-  el.textContent = msg;
-  el.className = `sq-toast sq-toast-${tipo} sq-toast-show`;
-  clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => { el.className = "sq-toast"; }, 3200);
-}
-
-/* ── FEEDBACK INLINE ─────────────────────────────────────── */
-function setFeedback(msg, tipo = "neutral") {
-  const el = document.getElementById("sq-feedback");
-  if (!el) return;
-  el.className = "vf-banner";
-  el.textContent = "";
-  if (!msg) { el.hidden = true; return; }
-  if (tipo === "success") el.classList.add("is-success");
-  if (tipo === "danger")  el.classList.add("is-danger");
-  el.hidden = false;
-  el.textContent = msg;
-}
-
-function clearSession() {
-  localStorage.removeItem(STORAGE_KEY);
-  localStorage.removeItem("vf-user");
-  window.location.replace("index.html");
-}
-
-/* ── FETCH HELPER ────────────────────────────────────────── */
-async function api(path, { method = "GET", body } = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: "Bearer " + TOKEN,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (res.status === 401) { clearSession(); throw new Error("Sessão expirada."); }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.ok === false) throw new Error(data.erro || `HTTP ${res.status}`);
-  return data;
-}
-
-/* ── ESTADO EM MEMÓRIA ───────────────────────────────────── */
+const API_BASE = "https://venforce-server.onrender.com";
+const $ = (id) => document.getElementById(id);
+const TOKEN = localStorage.getItem(STORAGE_KEY);
+let SELF = {};
+try { SELF = JSON.parse(localStorage.getItem("vf-user") || "{}"); } catch { /* sessão inválida */ }
+const ADMIN = SELF.role === "admin";
 const STATE = {
-  squads: [],           // [{id,nome,slug,ativo,membros_ativos,clientes_ativos}]
-  membrosPorSquad: {},  // squadId -> membros[]
-  clientesPorSquad: {}, // squadId -> clientes[]
-  usuarios: null,       // cache de GET /usuarios
-  squadAbertoId: null,
+  squads: [], membrosPorSquad: {}, clientesPorSquad: {}, errors: {}, allowed: {},
+  squadAbertoId: null, usuarios: null, todosClientes: null, catalogsReady: false,
+  refreshing: false, busy: false, selection: 0, modal: null, returnFocus: null, initialSelection: false,
 };
-
-function isLegado(squad) {
-  return String(squad.slug || "").includes("legado");
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
-
-/* ── ESTADOS DA LISTA ────────────────────────────────────── */
-function showListLoading() {
-  document.getElementById("sq-state-loading").style.display = "flex";
-  document.getElementById("sq-state-error").style.display   = "none";
-  document.getElementById("sq-list").style.display          = "none";
+const normal = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+const matches = (query, ...values) => normal(values.join(" ")).includes(normal(query));
+const squadPorId = id => STATE.squads.find(s => String(s.id) === String(id));
+const isLegado = s => Number(s.id) === 8 || normal(s.slug).includes("legado");
+const canManage = id => !!STATE.allowed[id];
+const people = id => STATE.membrosPorSquad[id];
+const clients = id => STATE.clientesPorSquad[id];
+const squadName = id => squadPorId(id)?.nome || "Squad";
+const personName = (sid, uid) => people(sid)?.find(m => String(m.user_id) === String(uid))?.user_nome || `Pessoa #${uid}`;
+const count = (s, kind) => s[kind === "people" ? "membros_ativos" : "clientes_ativos"] ?? (kind === "people" ? people(s.id)?.length : clients(s.id)?.length) ?? "—";
+function feedback(message, type = "success") {
+  $("sq-feedback").hidden = !message;
+  $("sq-feedback").className = `vf-banner is-${type}`;
+  $("sq-feedback").innerHTML = message ? `<span>${esc(message)}</span><button type="button" class="sq-feedback-close" data-action="dismiss" aria-label="Dispensar mensagem">×</button>` : "";
 }
-function showListContent() {
-  document.getElementById("sq-state-loading").style.display = "none";
-  document.getElementById("sq-state-error").style.display   = "none";
-  document.getElementById("sq-list").style.display          = "flex";
-}
-function showListError(msg) {
-  document.getElementById("sq-state-loading").style.display = "none";
-  document.getElementById("sq-state-error").style.display   = "block";
-  document.getElementById("sq-list").style.display          = "none";
-  const el = document.getElementById("sq-error-message");
-  if (el) el.textContent = msg;
-}
-
-/* ── CARREGAR SQUADS ─────────────────────────────────────── */
-async function loadSquads() {
-  if (!TOKEN) return;
-  showListLoading();
-  setFeedback("");
+async function api(path, { method = "GET", body } = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try {
-    const data = await api("/squads");
-    STATE.squads = Array.isArray(data.squads) ? data.squads : [];
-
-    // Coordenador(es) por squad exige os membros de cada squad — só 7
-    // squads, então busca tudo em paralelo e guarda em cache (reaproveitado
-    // ao abrir o detalhe, sem refetch).
-    await Promise.all(STATE.squads.map(async (s) => {
-      try {
-        const r = await api(`/squads/${s.id}/membros`);
-        STATE.membrosPorSquad[s.id] = Array.isArray(r.membros) ? r.membros : [];
-      } catch { STATE.membrosPorSquad[s.id] = []; }
-    }));
-
-    renderSquadList();
-    const badge = document.getElementById("sq-list-count");
-    if (badge) { badge.textContent = String(STATE.squads.length); badge.style.display = "inline-block"; }
-    showListContent();
-
-    // Mantém o detalhe aberto sincronizado após qualquer recarga.
-    if (STATE.squadAbertoId != null) await abrirSquad(STATE.squadAbertoId, { skipScroll: true });
-  } catch (err) {
-    showListError("Não foi possível carregar os squads. Tente novamente.");
-  }
-}
-
-/* ── RENDERIZAR LISTA DE SQUADS ──────────────────────────── */
-function renderSquadList() {
-  const wrap = document.getElementById("sq-list");
-  if (!wrap) return;
-
-  if (!STATE.squads.length) {
-    wrap.innerHTML = `<p class="sq-vazio">Nenhum squad cadastrado.</p>`;
-    return;
-  }
-
-  wrap.innerHTML = STATE.squads.map((s) => {
-    const membros = STATE.membrosPorSquad[s.id] || [];
-    const coords = membros.filter((m) => m.funcao === "coordenador").map((m) => m.user_nome);
-    const coordTxt = coords.length ? coords.join(", ") : "sem coordenador";
-    const legadoBadge = isLegado(s) ? `<span class="sq-badge-legado">Legado</span>` : "";
-    const inativoTxt = s.ativo === false ? `<span class="sq-row__inativo">(inativo)</span>` : "";
-    const selecionado = STATE.squadAbertoId === s.id ? "is-selected" : "";
-
-    return `
-      <div class="sq-row ${selecionado}" data-id="${s.id}">
-        <div class="sq-row__main">
-          <span class="sq-row__nome">${esc(s.nome)}</span>
-          ${legadoBadge}
-          ${inativoTxt}
-        </div>
-        <div class="sq-row__stats">
-          <span>${s.clientes_ativos ?? 0} clientes</span>
-          <span>${s.membros_ativos ?? 0} membros</span>
-        </div>
-        <div class="sq-row__coord" title="${esc(coordTxt)}">Coordenador(es): ${esc(coordTxt)}</div>
-        <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-action="abrir" data-id="${s.id}">
-          ${STATE.squadAbertoId === s.id ? "Fechar" : "Abrir"}
-        </button>
-      </div>`;
-  }).join("");
-
-  wrap.querySelectorAll('button[data-action="abrir"]').forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = Number(btn.getAttribute("data-id"));
-      if (STATE.squadAbertoId === id) { fecharDetalhe(); return; }
-      abrirSquad(id);
+    const res = await fetch(`${API_BASE}${path}`, {
+      method, signal: controller.signal,
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + TOKEN },
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
-  });
-}
-
-/* ── ABRIR / FECHAR DETALHE DO SQUAD ─────────────────────── */
-async function abrirSquad(squadId, { skipScroll = false } = {}) {
-  STATE.squadAbertoId = squadId;
-  try {
-    const [membrosResp, clientesResp] = await Promise.all([
-      api(`/squads/${squadId}/membros`),
-      api(`/squads/${squadId}/clientes`),
-    ]);
-    STATE.membrosPorSquad[squadId]  = Array.isArray(membrosResp.membros) ? membrosResp.membros : [];
-    STATE.clientesPorSquad[squadId] = Array.isArray(clientesResp.clientes) ? clientesResp.clientes : [];
-  } catch (err) {
-    toast(`Erro ao carregar squad: ${err.message}`, "danger");
-    return;
-  }
-
-  renderSquadList();
-  renderDetalhe(squadId);
-
-  const detalhe = document.getElementById("sq-detail");
-  detalhe.style.display = "block";
-  if (!skipScroll) detalhe.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function fecharDetalhe() {
-  STATE.squadAbertoId = null;
-  document.getElementById("sq-detail").style.display = "none";
-  renderSquadList();
-}
-
-/* ── RENDERIZAR DETALHE (MEMBROS + CLIENTES) ─────────────── */
-function squadPorId(id) {
-  return STATE.squads.find((s) => s.id === Number(id));
-}
-
-function renderDetalhe(squadId) {
-  const squad = squadPorId(squadId);
-  if (!squad) return;
-
-  const membros  = STATE.membrosPorSquad[squadId]  || [];
-  const clientes = STATE.clientesPorSquad[squadId] || [];
-  const principais = membros.filter((m) => m.is_primary).length;
-
-  document.getElementById("sq-detail-title").innerHTML =
-    `${esc(squad.nome)} ${isLegado(squad) ? '<span class="sq-badge-legado">Legado</span>' : ""}`;
-  document.getElementById("sq-detail-subtitle").textContent =
-    `${membros.length} membro(s) · ${principais} com este squad como principal · ${clientes.length} cliente(s)`;
-
-  renderMembrosTable(squadId, membros);
-  renderClientesTable(squadId, clientes);
-}
-
-function renderMembrosTable(squadId, membros) {
-  const wrap = document.getElementById("sq-membros-wrap");
-  if (!membros.length) {
-    wrap.innerHTML = `<p class="sq-vazio">Nenhum membro neste squad.</p>`;
-    return;
-  }
-
-  const linhas = membros.map((m) => {
-    const principalTxt = m.is_primary
-      ? `<span class="sq-star">★ Principal</span>`
-      : `<button type="button" class="sq-principal-btn" data-action="principal" data-uid="${m.user_id}" data-nome="${esc(m.user_nome)}">Definir como principal</button>`;
-
-    return `
-      <tr>
-        <td><strong>${esc(m.user_nome)}</strong></td>
-        <td class="vu-cell-muted">${esc(m.user_email || "")}</td>
-        <td>
-          <select class="vf-select vf-select--sm sq-funcao-select" data-uid="${m.user_id}" data-nome="${esc(m.user_nome)}" aria-label="Função de ${esc(m.user_nome)}">
-            <option value="membro" ${m.funcao === "membro" ? "selected" : ""}>Membro</option>
-            <option value="coordenador" ${m.funcao === "coordenador" ? "selected" : ""}>Coordenador</option>
-          </select>
-        </td>
-        <td>${principalTxt}</td>
-        <td class="sq-col-actions">
-          <div class="sq-actions">
-            <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-action="remover" data-uid="${m.user_id}" data-nome="${esc(m.user_nome)}">
-              Remover
-            </button>
-          </div>
-        </td>
-      </tr>`;
-  }).join("");
-
-  wrap.innerHTML = `
-    <div class="sq-table-wrap">
-      <table class="vf-table vf-table--compact sq-table">
-        <thead><tr><th>Nome</th><th>E-mail</th><th>Função</th><th>Principal</th><th class="sq-col-actions">Ações</th></tr></thead>
-        <tbody>${linhas}</tbody>
-      </table>
-    </div>`;
-
-  wrap.querySelectorAll(".sq-funcao-select").forEach((sel) => {
-    const original = sel.value;
-    sel.addEventListener("change", () => {
-      const nome = sel.getAttribute("data-nome");
-      const nova = sel.value;
-      if (!confirm(`Alterar função de ${nome} para "${nova}" no squad?`)) {
-        sel.value = original;
-        return;
-      }
-      patchFuncao(squadId, sel.getAttribute("data-uid"), nova, sel, original);
-    });
-  });
-
-  wrap.querySelectorAll('button[data-action="principal"]').forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const uid  = btn.getAttribute("data-uid");
-      const nome = btn.getAttribute("data-nome");
-      const squad = squadPorId(squadId);
-      abrirConfirmacao({
-        titulo: "Definir squad principal",
-        corpo: `Definir ${squad.nome} como principal de ${nome}?`,
-        acao: () => patchPrincipal(squadId, uid),
-      });
-    });
-  });
-
-  wrap.querySelectorAll('button[data-action="remover"]').forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const uid  = btn.getAttribute("data-uid");
-      const nome = btn.getAttribute("data-nome");
-      const squad = squadPorId(squadId);
-      abrirConfirmacao({
-        titulo: "Remover membro",
-        corpo: `Remover ${nome} do ${squad.nome}?`,
-        acaoBtnLabel: "Remover",
-        acaoBtnClasse: "vf-btn vf-btn--danger",
-        acao: () => removerMembro(squadId, uid),
-      });
-    });
-  });
-}
-
-function renderClientesTable(squadId, clientes) {
-  const wrap = document.getElementById("sq-clientes-wrap");
-  if (!clientes.length) {
-    wrap.innerHTML = `<p class="sq-vazio">Nenhum cliente neste squad.</p>`;
-    return;
-  }
-
-  const linhas = clientes.map((c) => `
-    <tr>
-      <td><strong>${esc(c.nome || c.slug)}</strong></td>
-      <td class="vu-cell-muted">${esc(c.slug || "")}</td>
-      <td class="sq-col-actions">
-        <button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-action="mover" data-cid="${c.id}" data-nome="${esc(c.nome || c.slug)}">
-          Mover
-        </button>
-      </td>
-    </tr>`).join("");
-
-  wrap.innerHTML = `
-    <div class="sq-table-wrap">
-      <table class="vf-table vf-table--compact sq-table">
-        <thead><tr><th>Cliente</th><th>Slug</th><th class="sq-col-actions">Ações</th></tr></thead>
-        <tbody>${linhas}</tbody>
-      </table>
-    </div>`;
-
-  wrap.querySelectorAll('button[data-action="mover"]').forEach((btn) => {
-    btn.addEventListener("click", () => {
-      abrirModalMover({
-        clienteId: btn.getAttribute("data-cid"),
-        clienteNome: btn.getAttribute("data-nome"),
-        squadOrigemId: squadId,
-      });
-    });
-  });
-}
-
-/* ── PATCH FUNÇÃO ────────────────────────────────────────── */
-async function patchFuncao(squadId, userId, funcao, selectEl, funcaoOriginal) {
-  selectEl.disabled = true;
-  try {
-    await api(`/squads/${squadId}/membros/${userId}/funcao`, { method: "PATCH", body: { funcao } });
-    toast(`Função atualizada para "${funcao}".`, "ok");
-    await recarregarAtual();
-  } catch (err) {
-    toast(`Erro: ${err.message}`, "danger");
-    selectEl.value = funcaoOriginal;
-    selectEl.disabled = false;
-  }
-}
-
-/* ── PATCH PRINCIPAL ─────────────────────────────────────── */
-async function patchPrincipal(squadId, userId) {
-  await api(`/squads/${squadId}/membros/${userId}/principal`, { method: "PATCH" });
-  toast("Squad principal atualizado.", "ok");
-  await recarregarAtual();
-}
-
-/* ── REMOVER MEMBRO ──────────────────────────────────────── */
-async function removerMembro(squadId, userId) {
-  await api(`/squads/${squadId}/membros/${userId}`, { method: "DELETE" });
-  toast("Membro removido do squad.", "ok");
-  await recarregarAtual();
-}
-
-async function recarregarAtual() {
-  await loadSquads();
-}
-
-/* ── MODAL GENÉRICO DE CONFIRMAÇÃO ───────────────────────── */
-let _confirmAcao = null;
-function abrirConfirmacao({ titulo, corpo, acao, acaoBtnLabel = "Confirmar", acaoBtnClasse = "vf-btn vf-btn--primary" }) {
-  document.getElementById("sq-confirm-title").textContent = titulo;
-  document.getElementById("sq-confirm-body").textContent  = corpo;
-  const danger = document.getElementById("sq-confirm-danger");
-  danger.style.display = "none"; danger.textContent = "";
-  const okBtn = document.getElementById("sq-confirm-ok");
-  okBtn.className = acaoBtnClasse;
-  okBtn.textContent = acaoBtnLabel;
-  okBtn.disabled = false;
-  _confirmAcao = acao;
-  document.getElementById("sq-confirm-modal").classList.add("is-open");
-  document.body.classList.add("vf-no-scroll");
-}
-function fecharConfirmacao() {
-  document.getElementById("sq-confirm-modal").classList.remove("is-open");
-  document.body.classList.remove("vf-no-scroll");
-  _confirmAcao = null;
-}
-async function confirmarAcaoGenerica() {
-  if (!_confirmAcao) return;
-  const okBtn = document.getElementById("sq-confirm-ok");
-  const danger = document.getElementById("sq-confirm-danger");
-  okBtn.disabled = true;
-  const txtOrig = okBtn.textContent;
-  okBtn.textContent = "Salvando…";
-  try {
-    await _confirmAcao();
-    fecharConfirmacao();
-  } catch (err) {
-    danger.style.display = "block";
-    danger.textContent = err.message || "Não foi possível concluir a ação.";
-    okBtn.disabled = false;
-    okBtn.textContent = txtOrig;
-  }
-}
-
-/* ── MODAL: ADICIONAR PESSOA ─────────────────────────────── */
-async function carregarUsuarios() {
-  if (STATE.usuarios) return STATE.usuarios;
-  const data = await api("/usuarios");
-  const lista = Array.isArray(data.usuarios) ? data.usuarios
-              : Array.isArray(data) ? data : [];
-  STATE.usuarios = lista;
-  return lista;
-}
-
-async function abrirModalAdicionarPessoa(squadId) {
-  const squad = squadPorId(squadId);
-  document.getElementById("sq-add-subtitle").textContent = squad ? squad.nome : "";
-  const danger = document.getElementById("sq-add-danger");
-  danger.style.display = "none"; danger.textContent = "";
-  document.getElementById("sq-add-funcao").value = "membro";
-  document.getElementById("sq-add-principal").checked = false;
-
-  const selectUser = document.getElementById("sq-add-user");
-  selectUser.innerHTML = `<option value="">Carregando…</option>`;
-  document.getElementById("sq-add-modal").classList.add("is-open");
-  document.body.classList.add("vf-no-scroll");
-
-  try {
-    const usuarios = await carregarUsuarios();
-    const membrosAtuais = new Set((STATE.membrosPorSquad[squadId] || []).map((m) => String(m.user_id)));
-    const disponiveis = usuarios.filter((u) => u.ativo !== false && !membrosAtuais.has(String(u.id)));
-    if (!disponiveis.length) {
-      selectUser.innerHTML = `<option value="">Nenhuma pessoa disponível</option>`;
-      return;
+    if (res.status === 401) {
+      localStorage.removeItem(STORAGE_KEY); localStorage.removeItem("vf-user");
+      window.location.replace("index.html");
     }
-    selectUser.innerHTML = disponiveis
-      .map((u) => `<option value="${esc(u.id)}">${esc(u.nome || u.email)} (${esc(u.email || "")})</option>`)
-      .join("");
+    const data = await res.json();
+    if (!res.ok || data.ok === false) throw Object.assign(new Error(data.erro || `Não foi possível concluir (HTTP ${res.status}).`), { status: res.status });
+    return data;
   } catch (err) {
-    danger.style.display = "block";
-    danger.textContent = `Erro ao carregar pessoas: ${err.message}`;
-  }
-
-  document.getElementById("sq-add-modal").dataset.squadId = squadId;
+    if (err.name === "AbortError") throw new Error("A resposta demorou demais. Tente novamente.");
+    throw err;
+  } finally { clearTimeout(timeout); }
 }
-
-function fecharModalAdicionarPessoa() {
-  document.getElementById("sq-add-modal").classList.remove("is-open");
-  document.body.classList.remove("vf-no-scroll");
+function listFrom(data, key) {
+  if (!Array.isArray(data[key])) throw new Error("Resposta incompleta. Tente atualizar.");
+  return data[key];
 }
-
-async function confirmarAdicionarPessoa() {
-  const modal = document.getElementById("sq-add-modal");
-  const squadId = Number(modal.dataset.squadId);
-  const userId = document.getElementById("sq-add-user").value;
-  const funcao = document.getElementById("sq-add-funcao").value;
-  const isPrimary = document.getElementById("sq-add-principal").checked;
-  const danger = document.getElementById("sq-add-danger");
-  danger.style.display = "none"; danger.textContent = "";
-
-  if (!userId) {
-    danger.style.display = "block";
-    danger.textContent = "Selecione uma pessoa.";
-    return;
-  }
-
-  const confirmBtn = document.getElementById("sq-add-confirm");
-  confirmBtn.disabled = true;
-  const txtOrig = confirmBtn.textContent;
-  confirmBtn.textContent = "Adicionando…";
-
-  try {
-    await api(`/squads/${squadId}/membros`, { method: "POST", body: { userId: Number(userId), funcao, isPrimary } });
-    toast("Pessoa adicionada ao squad.", "ok");
-    fecharModalAdicionarPessoa();
-    await recarregarAtual();
-  } catch (err) {
-    danger.style.display = "block";
-    danger.textContent = err.message || "Não foi possível adicionar.";
-  } finally {
-    confirmBtn.disabled = false;
-    confirmBtn.textContent = txtOrig;
-  }
-}
-
-/* ── MODAL: ADICIONAR CLIENTE (sem squad) ────────────────── */
-// Atribuição inicial (cliente sem squad) usa POST /squads/:id/clientes —
-// o mesmo endpoint que atribuirCliente() no backend já usa e recusa
-// (409 CLIENTE_JA_TEM_SQUAD) se o cliente já pertence a outro squad. Não é
-// endpoint novo; "Mover" continua sendo o único caminho para reatribuir um
-// cliente que já tem squad (usa /transferir).
-async function carregarTodosClientes() {
-  const data = await api("/clientes");
-  return Array.isArray(data.clientes) ? data.clientes : [];
-}
-
-// Reúne os clientes de TODOS os squads (não só o aberto) para poder
-// subtrair do total quem já tem vínculo — reaproveita GET /squads/:id/clientes,
-// já usado por abrirSquad(), sem criar contrato novo.
-async function carregarTodosClientesPorSquad() {
-  await Promise.all(STATE.squads.map(async (s) => {
-    try {
-      const r = await api(`/squads/${s.id}/clientes`);
-      STATE.clientesPorSquad[s.id] = Array.isArray(r.clientes) ? r.clientes : [];
-    } catch { STATE.clientesPorSquad[s.id] = STATE.clientesPorSquad[s.id] || []; }
+// Limita o fan-out; catálogo e detalhe compartilham o mesmo cache de leitura.
+async function eachLimited(items, task) {
+  let index = 0;
+  await Promise.all(Array.from({ length: Math.min(4, items.length) }, async () => {
+    while (index < items.length) { const item = items[index++]; await task(item); }
   }));
 }
-
-function idsClientesComSquad() {
-  const ids = new Set();
-  Object.values(STATE.clientesPorSquad).forEach((lista) => {
-    (lista || []).forEach((c) => ids.add(Number(c.id)));
+async function readSquad(s) {
+  STATE.errors[s.id] = {};
+  try {
+    STATE.membrosPorSquad[s.id] = listFrom(await api(`/squads/${s.id}/membros`), "membros");
+    STATE.allowed[s.id] = true; // requireSquadAdmin confirmou este escopo.
+  } catch (err) {
+    STATE.errors[s.id].people = err;
+    STATE.allowed[s.id] = false;
+    if (err.status === 403) { delete STATE.membrosPorSquad[s.id]; delete STATE.clientesPorSquad[s.id]; return; }
+  }
+  try { STATE.clientesPorSquad[s.id] = listFrom(await api(`/squads/${s.id}/clientes`), "clientes"); }
+  catch (err) {
+    STATE.errors[s.id].clients = err;
+    if (err.status === 403) { delete STATE.clientesPorSquad[s.id]; STATE.allowed[s.id] = false; }
+  }
+}
+let refreshTask = null;
+function loadSquads() {
+  if (!TOKEN) return Promise.resolve();
+  if (!refreshTask) refreshTask = refreshSquads().finally(() => { refreshTask = null; });
+  return refreshTask;
+}
+async function refreshSquads() {
+  STATE.refreshing = true;
+  STATE.catalogsReady = false;
+  $("sq-refresh").disabled = true;
+  $("sq-refresh").textContent = "Atualizando…";
+  $("sq-state-error").style.display = "none";
+  if (!STATE.squads.length) $("sq-state-loading").style.display = "block";
+  $("sq-detail-status").textContent = STATE.squadAbertoId ? "Atualizando equipe e carteira…" : "";
+  try {
+    STATE.squads = listFrom(await api("/squads"), "squads");
+    await eachLimited(STATE.squads, readSquad);
+    $("sq-list-count").textContent = STATE.squads.length;
+    $("sq-list").style.display = "flex";
+    renderSquadList();
+    if (STATE.squadAbertoId && !squadPorId(STATE.squadAbertoId)) fecharDetalhe();
+    if (!STATE.initialSelection && STATE.squads.length) {
+      STATE.initialSelection = true;
+      if (!window.matchMedia("(max-width: 700px)").matches) {
+        const first = STATE.squads.find(s => canManage(s.id)) || STATE.squads[0];
+        await abrirSquad(first.id);
+      }
+    }
+    if (STATE.squadAbertoId) renderDetalhe(STATE.squadAbertoId);
+    if (ADMIN) {
+      try {
+        STATE.todosClientes = listFrom(await api("/clientes"), "clientes");
+        STATE.catalogsReady = STATE.squads.every(s => !STATE.errors[s.id]?.clients && Array.isArray(clients(s.id)));
+      } catch { STATE.catalogsReady = false; }
+    }
+    renderUnassigned();
+  } catch (err) {
+    $("sq-state-error").style.display = "block";
+    $("sq-error-message").textContent = `${err.message} ${STATE.squads.length ? "Os dados anteriores foram mantidos." : ""}`;
+    $("sq-detail-status").textContent = STATE.squadAbertoId ? "Não foi possível atualizar. Os dados exibidos são da última leitura." : "";
+  } finally {
+    STATE.refreshing = false;
+    $("sq-state-loading").style.display = "none";
+    $("sq-refresh").disabled = false;
+    $("sq-refresh").textContent = "Atualizar";
+    if (!$("sq-state-error").offsetHeight && STATE.squadAbertoId) renderDetailStatus();
+  }
+}
+function coordinators(s) {
+  if (STATE.errors[s.id]?.people) return STATE.errors[s.id].people.status === 403 ? "Gestão restrita à coordenação" : "Coordenação indisponível";
+  const names = (people(s.id) || []).filter(m => m.funcao === "coordenador").map(m => m.user_nome);
+  return names.length ? names.join(", ") : "Sem coordenador";
+}
+function renderSquadList() {
+  const query = $("sq-search").value;
+  const filtered = STATE.squads.filter(s => matches(query, s.nome, s.slug,
+    ...(people(s.id) || []).flatMap(m => [m.user_nome, m.user_email]),
+    ...(clients(s.id) || []).flatMap(c => [c.nome, c.slug])));
+  $("sq-search-status").textContent = query ? `${filtered.length} de ${STATE.squads.length} Squads · busca nos dados disponíveis` : "";
+  $("sq-list").innerHTML = filtered.map(s => {
+    const selected = String(STATE.squadAbertoId) === String(s.id);
+    return `<button type="button" class="sq-row ${selected ? "is-selected" : ""}" data-action="abrir" data-id="${esc(s.id)}" aria-current="${selected ? "true" : "false"}" aria-controls="sq-detail">
+      <span class="sq-row__main"><strong>${esc(s.nome)}</strong>${isLegado(s) ? '<span class="sq-badge-legado">Legado</span>' : ""}${s.ativo === false ? '<span class="sq-tag">Inativo</span>' : ""}</span>
+      <span class="sq-row__stats"><span><b>${count(s, "clients")}</b> ${Number(count(s, "clients")) === 1 ? "cliente" : "clientes"}</span><span><b>${count(s, "people")}</b> ${Number(count(s, "people")) === 1 ? "pessoa" : "pessoas"}</span></span>
+      <span class="sq-row__coord">${esc(coordinators(s))}</span></button>`;
+  }).join("") || `<div class="sq-empty"><h3>${STATE.squads.length ? "Nenhum Squad encontrado" : "Nenhum Squad disponível"}</h3><p>${STATE.squads.length ? "Busque outro nome ou limpe a busca." : "Os Squads disponíveis para você aparecerão aqui."}</p></div>`;
+}
+async function abrirSquad(id) {
+  if (STATE.busy) return;
+  const changed = String(STATE.squadAbertoId) !== String(id);
+  STATE.squadAbertoId = Number(id);
+  const version = ++STATE.selection;
+  if (changed) {
+    ["sq-people-search", "sq-clients-search"].forEach(key => $(key).value = "");
+    $("sq-people-filter").value = "all";
+    $("sq-edit-form").hidden = true;
+  }
+  $("sq-detail").style.display = "block";
+  $("sq-detail-placeholder").hidden = true;
+  $("sq-workspace").classList.add("has-detail");
+  renderSquadList(); renderDetalhe(id);
+  if (!people(id) && !STATE.errors[id]?.people && !STATE.refreshing) {
+    await readSquad(squadPorId(id));
+    if (version !== STATE.selection) return;
+    renderDetalhe(id); renderSquadList();
+  }
+  if (changed && window.matchMedia("(max-width: 700px)").matches) {
+    $("sq-detail-title").focus({ preventScroll: true });
+    $("sq-workspace").scrollIntoView({ block: "start" });
+  }
+}
+function fecharDetalhe() {
+  if (STATE.busy) return;
+  const id = STATE.squadAbertoId;
+  STATE.squadAbertoId = null; STATE.selection++;
+  $("sq-detail").style.display = "none";
+  $("sq-detail-placeholder").hidden = false;
+  $("sq-workspace").classList.remove("has-detail");
+  renderSquadList();
+  document.querySelector(`.sq-row[data-id="${Number(id)}"]`)?.focus();
+}
+function renderDetailStatus() {
+  const id = STATE.squadAbertoId;
+  const errors = STATE.errors[id] || {};
+  const denied = errors.people?.status === 403;
+  $("sq-detail-status").innerHTML = denied
+    ? "Você pode consultar o resumo. A equipe e a carteira são restritas ao coordenador deste Squad e aos administradores."
+    : (errors.people || errors.clients) ? 'Parte dos dados não pôde ser atualizada. <button type="button" class="sq-text-button" data-action="retry">Tentar novamente</button>' : "";
+}
+function renderDetalhe(id) {
+  const s = squadPorId(id); if (!s) return;
+  $("sq-detail-title").textContent = s.nome;
+  $("sq-detail-state").textContent = s.ativo === false ? "Inativo" : "Ativo";
+  $("sq-detail-coord").textContent = `Coordenação · ${coordinators(s)}`;
+  $("sq-legacy-note").hidden = !isLegado(s);
+  $("sq-detail-subtitle").innerHTML = `<a href="#sq-people-section"><strong>${count(s, "people")}</strong> ${Number(count(s, "people")) === 1 ? "pessoa" : "pessoas"}</a><a href="#sq-clients-section"><strong>${count(s, "clients")}</strong> ${Number(count(s, "clients")) === 1 ? "cliente" : "clientes"}</a>${isLegado(s) ? '<span class="sq-badge-legado">Squad 8 · Legado</span>' : ""}`;
+  $("sq-edit").hidden = !canManage(id);
+  $("sq-btn-add-member").hidden = !canManage(id);
+  $("sq-btn-add-cliente").hidden = !canManage(id);
+  $("sq-people-count").textContent = count(s, "people");
+  $("sq-clients-count").textContent = count(s, "clients");
+  renderDetailStatus(); renderPeople(); renderClients();
+}
+function contentState(kind, rows) {
+  const err = STATE.errors[STATE.squadAbertoId]?.[kind];
+  if (err?.status === 403) return '<p class="sq-empty">Disponível para a coordenação deste Squad.</p>';
+  if (!rows) return `<p class="sq-empty">${err ? "Não foi possível carregar esta seção. Use Tentar novamente acima." : "Carregando…"}</p>`;
+  return "";
+}
+function renderPeople() {
+  const id = STATE.squadAbertoId; if (!id) return;
+  const rows = people(id); const state = contentState("people", rows);
+  if (state) { $("sq-membros-wrap").innerHTML = state; return; }
+  const q = $("sq-people-search").value, filter = $("sq-people-filter").value;
+  const filtered = rows.filter(m => matches(q, m.user_nome, m.user_email) && (filter === "all" || (filter === "primary" ? m.is_primary : filter === "invalid" ? !["membro", "coordenador"].includes(m.funcao) : m.funcao === filter)))
+    .sort((a,b) => Number(b.funcao === "coordenador") - Number(a.funcao === "coordenador") || String(a.user_nome).localeCompare(String(b.user_nome), "pt-BR"));
+  $("sq-membros-wrap").innerHTML = filtered.length ? `<ul class="sq-people">${filtered.map(m => {
+    const name = esc(m.user_nome), uid = esc(m.user_id), valid = ["membro", "coordenador"].includes(m.funcao);
+    return `<li class="sq-person" data-person="${uid}"><div class="sq-person-identity"><strong>${name}</strong><span>${esc(m.user_email)}</span></div>
+      <div class="sq-person-role">${ADMIN && canManage(id) ? `<label class="sq-sr-only" for="sq-role-${uid}">Função de ${name}</label><select id="sq-role-${uid}" class="vf-select sq-funcao-select" data-uid="${uid}" data-original="${esc(m.funcao)}">${!valid ? '<option value="" selected>Função não definida</option>' : ""}<option value="membro" ${m.funcao === "membro" ? "selected" : ""}>Membro</option><option value="coordenador" ${m.funcao === "coordenador" ? "selected" : ""}>Coordenador</option></select>` : `<span class="sq-role-label">${m.funcao === "coordenador" ? "Coordenador" : valid ? "Membro" : "Função não definida"}</span>`}</div>
+      <div class="sq-person-primary">${m.is_primary ? '<span class="sq-primary">Squad principal</span>' : canManage(id) ? `<button type="button" class="sq-text-button" data-action="principal" data-uid="${uid}" aria-label="Definir este Squad como principal de ${name}">Definir principal</button>` : '<span class="sq-hint">Outro Squad principal</span>'}</div>
+      ${canManage(id) ? `<button type="button" class="sq-remove" data-action="remover" data-uid="${uid}" aria-label="Remover ${name} deste Squad">Remover</button>` : ""}</li>`;
+  }).join("")}</ul>` : `<div class="sq-empty"><h4>${rows.length ? "Nenhuma pessoa encontrada" : "A equipe começa aqui"}</h4><p>${rows.length ? "Ajuste a busca ou o filtro de função." : "Nenhum membro neste squad. Use Adicionar pessoa para compor a equipe."}</p></div>`;
+}
+function renderClients() {
+  const id = STATE.squadAbertoId; if (!id) return;
+  const rows = clients(id); const state = contentState("clients", rows);
+  if (state) { $("sq-clientes-wrap").innerHTML = state; $("sq-clients-result").textContent = ""; return; }
+  const filtered = rows.filter(c => matches($("sq-clients-search").value, c.nome, c.slug));
+  $("sq-clients-result").textContent = `${filtered.length} de ${rows.length} clientes`;
+  $("sq-clientes-wrap").innerHTML = filtered.length ? `<div class="sq-table-wrap"><table class="sq-table"><caption class="sq-sr-only">Clientes de ${esc(squadName(id))}</caption><thead><tr><th scope="col">Cliente</th><th scope="col" class="sq-col-actions">${ADMIN ? "Transferência" : "Estado"}</th></tr></thead><tbody>${filtered.map(c => `<tr><td><strong>${esc(c.nome || c.slug)}</strong><span class="sq-client-slug">${esc(c.slug)}${c.ativo === false ? " · Inativo" : ""}</span></td><td class="sq-col-actions">${ADMIN && canManage(id) && !STATE.errors[id]?.clients ? `<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-action="mover" data-cid="${esc(c.id)}" aria-label="Mover ${esc(c.nome || c.slug)} para outro Squad">Mover <span aria-hidden="true">→</span></button>` : esc(c.ativo === false ? "Inativo" : "Ativo")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="sq-empty"><h4>${rows.length ? "Nenhum cliente encontrado" : "Uma carteira para formar"}</h4><p>${rows.length ? "Tente outro nome ou identificador." : "Nenhum cliente neste squad. Adicione um cliente que aguarda atribuição."}</p></div>`;
+}
+function eligibleClients(query = "") {
+  if (!STATE.catalogsReady) return [];
+  const linked = new Set(STATE.squads.flatMap(s => (clients(s.id) || []).map(c => String(c.id))));
+  return (STATE.todosClientes || []).filter(c => c.ativo !== false && !linked.has(String(c.id)) && matches(query, c.nome, c.slug));
+}
+function renderUnassigned() {
+  const wrap = $("sq-unassigned"); wrap.hidden = !ADMIN;
+  if (!ADMIN) return;
+  if (!STATE.catalogsReady) { wrap.innerHTML = '<span>Clientes sem Squad · não foi possível verificar todas as carteiras.</span><button class="sq-text-button" type="button" data-action="retry">Tentar novamente</button>'; return; }
+  const rows = eligibleClients(); wrap.hidden = !rows.length;
+  wrap.innerHTML = `<div><strong>${rows.length} ${rows.length === 1 ? "cliente aguarda" : "clientes aguardam"} atribuição</strong><span>Clientes ativos que ainda não pertencem a um Squad.</span></div><button type="button" class="vf-btn vf-btn--secondary" data-action="assign">Atribuir clientes</button>`;
+}
+/* Dialogs: foco contido, retorno ao acionador, Esc e bloqueio durante escrita. */
+function openModal(kind, sid) {
+  STATE.modal = kind; STATE.returnFocus = document.activeElement;
+  const modal = $(`sq-${kind}-modal`); modal.dataset.squadId = sid;
+  modal.classList.add("is-open"); document.body.classList.add("vf-no-scroll");
+  $("sq-workspace").inert = true;
+  const danger = $(`sq-${kind}-danger`); danger.style.display = "none"; danger.textContent = "";
+  requestAnimationFrame(() => {
+    if (STATE.modal !== kind) return;
+    const field = [...modal.querySelectorAll('input:not([type="checkbox"]), select')].find(el => !el.disabled && el.offsetParent !== null);
+    (field || modal.querySelector("button"))?.focus();
   });
-  return ids;
 }
-
-function clientesElegiveisParaAdicionar(busca) {
-  const comSquad = idsClientesComSquad();
-  const q = (busca || "").trim().toLowerCase();
-  return (STATE.todosClientes || [])
-    .filter((c) => c.ativo !== false && !comSquad.has(Number(c.id)))
-    .filter((c) => !q || `${c.nome || ""} ${c.slug || ""}`.toLowerCase().includes(q))
-    .sort((a, b) => String(a.nome || a.slug || "").localeCompare(String(b.nome || b.slug || "")));
+function closeModal() {
+  if (STATE.busy || !STATE.modal) return;
+  $(`sq-${STATE.modal}-modal`).classList.remove("is-open");
+  STATE.modal = null; document.body.classList.remove("vf-no-scroll"); $("sq-workspace").inert = false;
+  if (STATE.returnFocus?.isConnected) STATE.returnFocus.focus(); else $("sq-detail-title").focus({ preventScroll: true });
 }
-
-async function abrirModalAdicionarCliente(squadId) {
-  const squad = squadPorId(squadId);
-  const modal = document.getElementById("sq-addcliente-modal");
-  modal.dataset.squadId = squadId;
-
-  document.getElementById("sq-addcliente-subtitle").textContent = squad ? squad.nome : "";
-  document.getElementById("sq-addcliente-busca").value = "";
-  document.getElementById("sq-addcliente-preview").textContent = "";
-  const danger = document.getElementById("sq-addcliente-danger");
-  danger.style.display = "none"; danger.textContent = "";
-
-  const select = document.getElementById("sq-addcliente-select");
-  select.innerHTML = `<option value="">Carregando…</option>`;
-  modal.classList.add("is-open");
-  document.body.classList.add("vf-no-scroll");
-
+let confirmAction = null;
+function confirmDialog({ title, text, label = "Confirmar", danger = false, action }) {
+  $("sq-confirm-title").textContent = title; $("sq-confirm-body").textContent = text;
+  $("sq-confirm-ok").textContent = label;
+  $("sq-confirm-ok").className = `vf-btn vf-btn--${danger ? "danger" : "primary"}`;
+  confirmAction = action; openModal("confirm", STATE.squadAbertoId);
+}
+async function mutate({ path, method, body, message, button, errorId, done }) {
+  if (STATE.busy) return;
+  STATE.busy = true;
+  const text = button.textContent; button.textContent = "Salvando…";
+  const scope = STATE.modal ? $(`sq-${STATE.modal}-modal`) : $("sq-detail");
+  const controls = [...scope.querySelectorAll("button,input,select")].map(el => [el, el.disabled]);
+  controls.forEach(([el]) => el.disabled = true);
+  if (errorId) { $(errorId).textContent = ""; $(errorId).style.display = "none"; }
+  let success = false;
   try {
-    const [todos] = await Promise.all([carregarTodosClientes(), carregarTodosClientesPorSquad()]);
-    STATE.todosClientes = todos;
-    renderOpcoesAdicionarCliente();
+    // Uma leitura anterior não pode sobrescrever o resultado desta escrita.
+    if (refreshTask) await refreshTask;
+    await api(path, { method, body }); success = true;
+    feedback(message);
+    // A escrita já foi confirmada. Falha de atualização nunca vira "falha ao salvar".
+    await loadSquads();
   } catch (err) {
-    select.innerHTML = `<option value="">—</option>`;
-    danger.style.display = "block";
-    danger.textContent = `Erro ao carregar clientes: ${err.message}`;
-  }
-}
-
-function renderOpcoesAdicionarCliente() {
-  const select = document.getElementById("sq-addcliente-select");
-  const busca = document.getElementById("sq-addcliente-busca").value;
-  const disponiveis = clientesElegiveisParaAdicionar(busca);
-
-  if (!disponiveis.length) {
-    select.innerHTML = `<option value="">Nenhum cliente sem squad encontrado</option>`;
-  } else {
-    select.innerHTML = disponiveis
-      .map((c) => `<option value="${esc(c.id)}">${esc(c.nome || c.slug)} (${esc(c.slug || "")})</option>`)
-      .join("");
-  }
-  atualizarPreviewAdicionarCliente();
-}
-
-function atualizarPreviewAdicionarCliente() {
-  const modal = document.getElementById("sq-addcliente-modal");
-  const squad = squadPorId(Number(modal.dataset.squadId));
-  const select = document.getElementById("sq-addcliente-select");
-  const opt = select.options[select.selectedIndex];
-  const preview = document.getElementById("sq-addcliente-preview");
-  if (!opt || !opt.value) { preview.textContent = ""; return; }
-  preview.textContent = `Adicionar Cliente ${opt.textContent} ao Squad ${squad ? squad.nome : "—"}?`;
-}
-
-function fecharModalAdicionarCliente() {
-  document.getElementById("sq-addcliente-modal").classList.remove("is-open");
-  document.body.classList.remove("vf-no-scroll");
-}
-
-async function confirmarAdicionarCliente() {
-  const modal = document.getElementById("sq-addcliente-modal");
-  const squadId = Number(modal.dataset.squadId);
-  const select = document.getElementById("sq-addcliente-select");
-  const clienteId = select.value;
-  const danger = document.getElementById("sq-addcliente-danger");
-  danger.style.display = "none"; danger.textContent = "";
-
-  if (!clienteId) {
-    danger.style.display = "block";
-    danger.textContent = "Selecione um cliente.";
-    return;
-  }
-
-  const confirmBtn = document.getElementById("sq-addcliente-confirm");
-  confirmBtn.disabled = true;
-  const txtOrig = confirmBtn.textContent;
-  confirmBtn.textContent = "Adicionando…";
-
-  try {
-    await api(`/squads/${squadId}/clientes`, { method: "POST", body: { clienteId: Number(clienteId) } });
-    toast("Cliente adicionado ao squad.", "ok");
-    fecharModalAdicionarCliente();
-    await recarregarAtual();
-  } catch (err) {
-    danger.style.display = "block";
-    danger.textContent = err.message || "Não foi possível adicionar o cliente.";
+    const text = `${message.split(".")[0]} — alteração não concluída: ${err.message}`;
+    if (errorId) { $(errorId).textContent = err.message; $(errorId).style.display = "block"; }
+    else feedback(text, "danger");
   } finally {
-    confirmBtn.disabled = false;
-    confirmBtn.textContent = txtOrig;
+    STATE.busy = false; controls.forEach(([el, disabled]) => el.disabled = disabled); button.textContent = text;
+    if (success) { closeModal(); done?.(); }
   }
+  return success;
 }
-
-/* ── MODAL: MOVER CLIENTE ────────────────────────────────── */
-function abrirModalMover({ clienteId, clienteNome, squadOrigemId }) {
-  const modal = document.getElementById("sq-move-modal");
-  modal.dataset.clienteId = clienteId;
-  modal.dataset.squadOrigemId = squadOrigemId;
-
-  const origem = squadPorId(squadOrigemId);
-  document.getElementById("sq-move-subtitle").textContent = `${clienteNome} · atualmente em ${origem ? origem.nome : "—"}`;
-  document.getElementById("sq-move-motivo").value = "";
-
-  const select = document.getElementById("sq-move-destino");
-  const opcoes = STATE.squads.filter((s) => s.id !== Number(squadOrigemId));
-  select.innerHTML = opcoes
-    .map((s) => `<option value="${s.id}">${esc(s.nome)}${isLegado(s) ? " · Legado" : ""}</option>`)
-    .join("");
-
-  const danger = document.getElementById("sq-move-danger");
-  danger.style.display = "none"; danger.textContent = "";
-
-  atualizarPreviewMover(clienteNome);
-  select.onchange = () => atualizarPreviewMover(clienteNome);
-
-  modal.classList.add("is-open");
-  document.body.classList.add("vf-no-scroll");
+function memberAction(action, uid) {
+  const sid = STATE.squadAbertoId; if (!canManage(sid)) return;
+  const name = personName(sid, uid), squad = squadName(sid);
+  const remove = action === "remover";
+  confirmDialog({ title: remove ? "Remover pessoa da equipe" : "Definir Squad principal", danger: remove,
+    text: remove ? `${name} deixará a equipe de ${squad}. Se este for o Squad principal, outro vínculo ativo será escolhido automaticamente, quando existir.` : `${squad} será o Squad principal de ${name}, substituindo o principal atual. Os outros vínculos da pessoa serão mantidos.`,
+    label: remove ? "Remover pessoa" : "Definir principal",
+    action: () => mutate({ path: `/squads/${sid}/membros/${uid}${remove ? "" : "/principal"}`, method: remove ? "DELETE" : "PATCH", message: remove ? `${name} foi removido de ${squad}.` : `${squad} agora é o Squad principal de ${name}.`, button: $("sq-confirm-ok"), errorId: "sq-confirm-danger" }) });
 }
-
-function atualizarPreviewMover(clienteNome) {
-  const modal = document.getElementById("sq-move-modal");
-  const origem = squadPorId(Number(modal.dataset.squadOrigemId));
-  const destinoId = Number(document.getElementById("sq-move-destino").value);
-  const destino = squadPorId(destinoId);
-  document.getElementById("sq-move-preview").textContent =
-    `Mover Cliente ${clienteNome} do ${origem ? origem.nome : "—"} para ${destino ? destino.nome : "—"}?`;
+async function changeRole(select) {
+  const sid = STATE.squadAbertoId, uid = select.dataset.uid, value = select.value;
+  if (!ADMIN || !canManage(sid) || !["membro", "coordenador"].includes(value)) return;
+  const success = await mutate({ path: `/squads/${sid}/membros/${uid}/funcao`, method: "PATCH", body: { funcao: value }, message: `${personName(sid, uid)} agora tem a função de ${value} em ${squadName(sid)}.`, button: $("sq-btn-add-member") });
+  if (!success) select.value = select.dataset.original;
 }
-
-function fecharModalMover() {
-  document.getElementById("sq-move-modal").classList.remove("is-open");
-  document.body.classList.remove("vf-no-scroll");
+function renderUserOptions() {
+  const sid = $("sq-add-modal").dataset.squadId;
+  const current = new Set((people(sid) || []).map(m => String(m.user_id)));
+  const rows = (STATE.usuarios || []).filter(u => u.ativo !== false && !current.has(String(u.id)) && matches($("sq-add-search").value, u.nome, u.email));
+  $("sq-add-user").innerHTML = '<option value="">Selecione uma pessoa</option>' + rows.map(u => `<option value="${esc(u.id)}">${esc(u.nome || u.email)} · ${esc(u.email)}</option>`).join("");
+  if (!rows.length) $("sq-add-user").innerHTML = '<option value="">Nenhuma pessoa disponível para esta busca</option>';
+  $("sq-add-confirm").disabled = true;
 }
-
-async function confirmarMoverCliente() {
-  const modal = document.getElementById("sq-move-modal");
-  const clienteId = modal.dataset.clienteId;
-  const destinoId = document.getElementById("sq-move-destino").value;
-  const motivo = document.getElementById("sq-move-motivo").value.trim() || null;
-  const danger = document.getElementById("sq-move-danger");
-  danger.style.display = "none"; danger.textContent = "";
-
-  if (!destinoId) {
-    danger.style.display = "block";
-    danger.textContent = "Selecione o squad de destino.";
-    return;
-  }
-
-  const confirmBtn = document.getElementById("sq-move-confirm");
-  confirmBtn.disabled = true;
-  const txtOrig = confirmBtn.textContent;
-  confirmBtn.textContent = "Movendo…";
-
+async function addPerson(sid) {
+  if (!canManage(sid)) return;
+  $("sq-add-subtitle").textContent = squadName(sid);
+  $("sq-add-search").value = ""; $("sq-add-id").value = "";
+  $("sq-add-funcao").value = "membro"; $("sq-add-principal").checked = false;
+  $("sq-add-search-wrap").hidden = !ADMIN; $("sq-add-user-wrap").hidden = !ADMIN; $("sq-add-id-wrap").hidden = ADMIN;
+  $("sq-add-confirm").disabled = true;
+  $("sq-add-user").innerHTML = '<option value="">Carregando pessoas…</option>';
+  openModal("add", sid);
+  if (!ADMIN) { $("sq-add-id").focus(); return; }
   try {
-    await api(`/squads/${destinoId}/clientes/${clienteId}/transferir`, { method: "POST", body: { motivo } });
-    toast("Cliente movido de squad.", "ok");
-    fecharModalMover();
-    await recarregarAtual();
+    if (!STATE.usuarios) { const data = await api("/usuarios"); STATE.usuarios = Array.isArray(data) ? data : listFrom(data, "usuarios"); }
+    if (STATE.modal === "add") renderUserOptions();
   } catch (err) {
-    danger.style.display = "block";
-    danger.textContent = err.message || "Não foi possível mover o cliente.";
-  } finally {
-    confirmBtn.disabled = false;
-    confirmBtn.textContent = txtOrig;
+    $("sq-add-danger").textContent = `Não foi possível carregar pessoas: ${err.message} Feche e tente novamente.`;
+    $("sq-add-danger").style.display = "block";
   }
 }
-
-/* ── EVENTOS FIXOS ───────────────────────────────────────── */
-document.getElementById("sq-btn-retry")?.addEventListener("click", loadSquads);
-document.getElementById("sq-detail-close")?.addEventListener("click", fecharDetalhe);
-
-document.getElementById("sq-btn-add-member")?.addEventListener("click", () => {
-  if (STATE.squadAbertoId != null) abrirModalAdicionarPessoa(STATE.squadAbertoId);
+function confirmPerson() {
+  const sid = $("sq-add-modal").dataset.squadId, uid = Number($(ADMIN ? "sq-add-user" : "sq-add-id").value);
+  if (!Number.isInteger(uid) || uid <= 0 || !canManage(sid)) return;
+  const name = STATE.usuarios?.find(u => Number(u.id) === uid)?.nome || `Pessoa #${uid}`;
+  mutate({ path: `/squads/${sid}/membros`, method: "POST", body: { userId: uid, funcao: $("sq-add-funcao").value, isPrimary: $("sq-add-principal").checked }, message: `${name} foi adicionado a ${squadName(sid)}.`, button: $("sq-add-confirm"), errorId: "sq-add-danger" });
+}
+function clientOptions() {
+  const rows = eligibleClients($("sq-addcliente-busca").value);
+  $("sq-addcliente-select").innerHTML = rows.map(c => `<option value="${esc(c.id)}">${esc(c.nome || c.slug)} (${esc(c.slug)})</option>`).join("") || '<option value="">Nenhum cliente sem Squad encontrado</option>';
+  $("sq-addcliente-select").selectedIndex = -1; clientPreview();
+}
+function clientPreview() {
+  const sid = $("sq-addcliente-modal").dataset.squadId;
+  const select = $("sq-addcliente-select");
+  const label = ADMIN ? select.selectedOptions[0]?.textContent : `Cliente #${$("sq-addcliente-id").value}`;
+  const value = $(ADMIN ? "sq-addcliente-select" : "sq-addcliente-id").value;
+  $("sq-addcliente-preview").textContent = value ? `Adicionar Cliente ${label} ao ${squadName(sid)}?` : "Selecione o cliente para conferir a atribuição.";
+  $("sq-addcliente-confirm").disabled = !value || (ADMIN && !STATE.catalogsReady);
+}
+async function addClient(sid) {
+  if (!canManage(sid)) return;
+  $("sq-addcliente-subtitle").textContent = `Destino · ${squadName(sid)}`;
+  $("sq-addcliente-busca").value = ""; $("sq-addcliente-id").value = "";
+  ["sq-addcliente-search-wrap", "sq-addcliente-select-wrap"].forEach(id => $(id).hidden = !ADMIN);
+  $("sq-addcliente-id-wrap").hidden = ADMIN;
+  openModal("addcliente", sid);
+  if (ADMIN) {
+    if (!STATE.catalogsReady) {
+      $("sq-addcliente-confirm").disabled = true;
+      $("sq-addcliente-select").innerHTML = '<option value="">Verificando carteiras…</option>';
+      await loadSquads();
+    }
+    clientOptions();
+    if (!STATE.catalogsReady) { $("sq-addcliente-danger").textContent = "A verificação de clientes sem Squad está incompleta. Feche e atualize para tentar novamente."; $("sq-addcliente-danger").style.display = "block"; }
+  } else { clientPreview(); $("sq-addcliente-id").focus(); }
+}
+function confirmClient() {
+  const sid = $("sq-addcliente-modal").dataset.squadId, cid = Number($(ADMIN ? "sq-addcliente-select" : "sq-addcliente-id").value);
+  if (!Number.isInteger(cid) || cid <= 0 || !canManage(sid) || (ADMIN && !eligibleClients().some(c => Number(c.id) === cid))) return;
+  const name = STATE.todosClientes?.find(c => Number(c.id) === cid)?.nome || `Cliente #${cid}`;
+  mutate({ path: `/squads/${sid}/clientes`, method: "POST", body: { clienteId: cid }, message: `${name} foi atribuído a ${squadName(sid)}.`, button: $("sq-addcliente-confirm"), errorId: "sq-addcliente-danger" });
+}
+function openMove(cid) {
+  const sid = STATE.squadAbertoId, client = clients(sid)?.find(c => String(c.id) === String(cid));
+  if (!ADMIN || !canManage(sid) || !client) return;
+  const modal = $("sq-move-modal"); modal.dataset.clienteId = cid; modal.dataset.clienteNome = client.nome || client.slug;
+  $("sq-move-subtitle").textContent = `${client.nome || client.slug} · ${client.slug}`;
+  $("sq-move-motivo").value = "";
+  $("sq-move-destino").innerHTML = '<option value="">Selecione o destino</option>' + STATE.squads.filter(s => String(s.id) !== String(sid) && s.ativo !== false).map(s => `<option value="${esc(s.id)}">${esc(s.nome)}${isLegado(s) ? " · Legado" : ""}</option>`).join("");
+  openModal("move", sid); movePreview();
+}
+function movePreview() {
+  const modal = $("sq-move-modal"), sid = modal.dataset.squadId, dest = $("sq-move-destino").value;
+  $("sq-move-preview").innerHTML = `<strong>${esc(modal.dataset.clienteNome)}</strong><span class="sq-transfer-route"><span><small>Origem</small>${esc(squadName(sid))}</span><span aria-hidden="true">→</span><span><small>Destino</small>${dest ? esc(squadName(dest)) : "Escolha um Squad"}</span></span>`;
+  $("sq-move-confirm").disabled = !dest;
+}
+function confirmMove() {
+  const modal = $("sq-move-modal"), sid = modal.dataset.squadId, cid = modal.dataset.clienteId, dest = $("sq-move-destino").value;
+  if (!ADMIN || !canManage(sid) || !dest || dest === sid || squadPorId(dest)?.ativo === false) return;
+  mutate({ path: `/squads/${dest}/clientes/${cid}/transferir`, method: "POST", body: { motivo: $("sq-move-motivo").value.trim() || null }, message: `${modal.dataset.clienteNome} foi movido de ${squadName(sid)} para ${squadName(dest)}.`, button: $("sq-move-confirm"), errorId: "sq-move-danger" });
+}
+function editSquad() {
+  const s = squadPorId(STATE.squadAbertoId); if (!canManage(s?.id)) return;
+  $("sq-edit-name").value = s.nome; $("sq-edit-state").value = String(s.ativo !== false);
+  $("sq-edit-state-wrap").hidden = !ADMIN; $("sq-edit-form").hidden = false; $("sq-edit-error").textContent = ""; $("sq-edit-name").focus();
+}
+function saveSquad(event) {
+  event.preventDefault();
+  const s = squadPorId(STATE.squadAbertoId); if (!s || !canManage(s.id)) return;
+  const body = { nome: $("sq-edit-name").value.trim() }; if (!body.nome) return;
+  if (ADMIN) body.ativo = $("sq-edit-state").value === "true";
+  const execute = (button, errorId) => mutate({ path: `/squads/${s.id}`, method: "PATCH", body, message: `${body.nome} foi atualizado${ADMIN ? ` e está ${body.ativo ? "ativo" : "inativo"}` : ""}.`, button, errorId, done: () => $("sq-edit-form").hidden = true });
+  if (ADMIN && body.ativo === false && s.ativo !== false) confirmDialog({ title: "Desativar Squad", text: `${s.nome} ficará inativo. Um Squad inativo deixa de conceder acesso operacional pela carteira. Seus vínculos serão mantidos.`, label: "Desativar Squad", danger: true, action: () => execute($("sq-confirm-ok"), "sq-confirm-danger") });
+  else execute(event.submitter, "sq-edit-error");
+}
+/* Eventos delegados: renderizar uma lista não multiplica listeners. */
+document.addEventListener("click", event => {
+  const target = event.target.closest("[data-action]"); if (!target || STATE.busy) return;
+  const action = target.dataset.action;
+  if (action === "dismiss") feedback("");
+  if (action === "abrir") abrirSquad(target.dataset.id);
+  if (action === "retry") loadSquads();
+  if (action === "principal" || action === "remover") memberAction(action, target.dataset.uid);
+  if (action === "mover") openMove(target.dataset.cid);
+  if (action === "assign") {
+    if (STATE.squadAbertoId && canManage(STATE.squadAbertoId)) addClient(STATE.squadAbertoId);
+    else { feedback("Selecione o Squad que receberá os clientes e use Adicionar cliente.", "neutral"); $("sq-search").focus(); }
+  }
 });
-
-document.getElementById("sq-confirm-close")?.addEventListener("click", fecharConfirmacao);
-document.getElementById("sq-confirm-cancel")?.addEventListener("click", fecharConfirmacao);
-document.getElementById("sq-confirm-ok")?.addEventListener("click", confirmarAcaoGenerica);
-document.getElementById("sq-confirm-modal")?.addEventListener("click", (e) => {
-  if (e.target?.id === "sq-confirm-modal") fecharConfirmacao();
+$("sq-search").addEventListener("input", renderSquadList);
+$("sq-people-search").addEventListener("input", renderPeople);
+$("sq-people-filter").addEventListener("change", renderPeople);
+$("sq-clients-search").addEventListener("input", renderClients);
+$("sq-membros-wrap").addEventListener("change", e => { if (e.target.matches(".sq-funcao-select")) changeRole(e.target); });
+$("sq-list").addEventListener("keydown", e => {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+  const rows = [...$("sq-list").querySelectorAll("button")], i = rows.indexOf(document.activeElement); if (i < 0) return;
+  e.preventDefault(); rows[e.key === "Home" ? 0 : e.key === "End" ? rows.length - 1 : (i + (e.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length]?.focus();
 });
-
-document.getElementById("sq-add-close")?.addEventListener("click", fecharModalAdicionarPessoa);
-document.getElementById("sq-add-cancel")?.addEventListener("click", fecharModalAdicionarPessoa);
-document.getElementById("sq-add-confirm")?.addEventListener("click", confirmarAdicionarPessoa);
-document.getElementById("sq-add-modal")?.addEventListener("click", (e) => {
-  if (e.target?.id === "sq-add-modal") fecharModalAdicionarPessoa();
+$("sq-refresh").addEventListener("click", () => { if (!STATE.busy) loadSquads(); });
+$("sq-btn-retry").addEventListener("click", loadSquads);
+$("sq-detail-close").addEventListener("click", fecharDetalhe);
+$("sq-btn-add-member").addEventListener("click", () => addPerson(STATE.squadAbertoId));
+$("sq-btn-add-cliente").addEventListener("click", () => addClient(STATE.squadAbertoId));
+$("sq-edit").addEventListener("click", editSquad);
+$("sq-edit-form").addEventListener("submit", saveSquad);
+$("sq-edit-cancel").addEventListener("click", () => { $("sq-edit-form").hidden = true; $("sq-edit").focus(); });
+$("sq-confirm-ok").addEventListener("click", () => { if (!STATE.busy) confirmAction?.(); });
+$("sq-add-confirm").addEventListener("click", confirmPerson);
+$("sq-add-search").addEventListener("input", renderUserOptions);
+["sq-add-user", "sq-add-id"].forEach(id => $(id).addEventListener("input", () => $("sq-add-confirm").disabled = !$(id).value));
+$("sq-addcliente-confirm").addEventListener("click", confirmClient);
+$("sq-addcliente-busca").addEventListener("input", clientOptions);
+$("sq-addcliente-select").addEventListener("change", clientPreview);
+$("sq-addcliente-id").addEventListener("input", clientPreview);
+$("sq-move-destino").addEventListener("change", movePreview);
+$("sq-move-confirm").addEventListener("click", confirmMove);
+["confirm", "add", "addcliente", "move"].forEach(kind => {
+  ["close", "cancel"].forEach(action => $(`sq-${kind}-${action}`).addEventListener("click", closeModal));
+  $(`sq-${kind}-modal`).addEventListener("click", e => { if (e.target.id === `sq-${kind}-modal`) closeModal(); });
 });
-
-document.getElementById("sq-btn-add-cliente")?.addEventListener("click", () => {
-  if (STATE.squadAbertoId != null) abrirModalAdicionarCliente(STATE.squadAbertoId);
+document.addEventListener("keydown", e => {
+  if (!STATE.modal) return;
+  const modal = $(`sq-${STATE.modal}-modal`);
+  if (e.key === "Escape") { e.preventDefault(); closeModal(); }
+  if (e.key === "Tab") {
+    const controls = [...modal.querySelectorAll("button,input,select,[tabindex]")].filter(el => !el.disabled && el.offsetParent !== null);
+    const first = controls[0], last = controls.at(-1);
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+    if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+  }
+  if (e.key === "Enter" && e.target.tagName === "INPUT" && !STATE.busy) {
+    const id = STATE.modal === "confirm" ? "sq-confirm-ok" : `sq-${STATE.modal}-confirm`;
+    if (!$(id).disabled) { e.preventDefault(); $(id).click(); }
+  }
 });
-document.getElementById("sq-addcliente-close")?.addEventListener("click", fecharModalAdicionarCliente);
-document.getElementById("sq-addcliente-cancel")?.addEventListener("click", fecharModalAdicionarCliente);
-document.getElementById("sq-addcliente-confirm")?.addEventListener("click", confirmarAdicionarCliente);
-document.getElementById("sq-addcliente-select")?.addEventListener("change", atualizarPreviewAdicionarCliente);
-document.getElementById("sq-addcliente-busca")?.addEventListener("input", renderOpcoesAdicionarCliente);
-document.getElementById("sq-addcliente-modal")?.addEventListener("click", (e) => {
-  if (e.target?.id === "sq-addcliente-modal") fecharModalAdicionarCliente();
-});
-
-document.getElementById("sq-move-close")?.addEventListener("click", fecharModalMover);
-document.getElementById("sq-move-cancel")?.addEventListener("click", fecharModalMover);
-document.getElementById("sq-move-confirm")?.addEventListener("click", confirmarMoverCliente);
-document.getElementById("sq-move-modal")?.addEventListener("click", (e) => {
-  if (e.target?.id === "sq-move-modal") fecharModalMover();
-});
-
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  fecharConfirmacao();
-  fecharModalAdicionarPessoa();
-  fecharModalAdicionarCliente();
-  fecharModalMover();
-});
-
-/* ── BOOT ────────────────────────────────────────────────── */
-if (TOKEN) loadSquads();
+$("sq-access-label").textContent = ADMIN ? "Administração global" : "Gestão dos seus Squads";
+$("sq-list-scope").textContent = ADMIN ? "Todos" : "Seus vínculos";
+if (!TOKEN) window.location.replace("index.html"); else loadSquads();

@@ -66,6 +66,28 @@
               <div id="fdbg-upload-status" class="fdbg-status-line" aria-live="polite"></div>
             </section>
 
+            <!-- ────────────────── INCIDENTES DE SUPORTE (caixa-preta do fechamento) ────────────────── -->
+            <section class="fdbg-card">
+              <div class="fdbg-card__head">
+                <h2>Incidentes de suporte</h2>
+                <span class="fdbg-hint">
+                  Quando um fechamento REAL (Financeiro legado ou V3) apresenta anomalia — custo não
+                  encontrado, identidade ambígua, cobertura incompleta ou exceção — o backend preserva
+                  automaticamente os arquivos exatos e o diagnóstico. Busque pelo código (ex.: FIN-184).
+                </span>
+              </div>
+              <div class="fdbg-upload-row">
+                <input type="text" id="fdbg-inc-busca" class="vf-input" placeholder="FIN-184" style="max-width:220px;">
+                <button type="button" id="fdbg-inc-buscar" class="vf-btn vf-btn--secondary">Buscar</button>
+              </div>
+              <div id="fdbg-inc-status" class="fdbg-status-line" aria-live="polite"></div>
+              <div id="fdbg-inc-detalhe"></div>
+              <div class="fdbg-card__head" style="margin-top:16px;">
+                <h2>Recentes</h2>
+              </div>
+              <div id="fdbg-inc-lista" class="fdbg-inc-lista"></div>
+            </section>
+
             <!-- ────────────────── PIPELINE ────────────────── -->
             <section class="fdbg-card" id="fdbg-pipeline-card" hidden>
               <div class="fdbg-card__head"><h2>Pipeline</h2></div>

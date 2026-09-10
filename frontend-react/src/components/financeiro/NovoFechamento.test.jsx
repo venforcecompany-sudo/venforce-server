@@ -19,11 +19,13 @@ vi.mock("../../services/financeiroFechamentoApi.js", async (orig) => ({
 }));
 
 // A verificação da base vinculada bate em GET /base-vinculos via
-// apiClient.requisitar — controlada por teste.
-const rede = vi.hoisted(() => ({ requisitar: vi.fn() }));
+// apiClient.requisitar — controlada por teste. `ehAdmin` idem (controla o
+// link "Abrir diagnóstico" do banner de incidente).
+const rede = vi.hoisted(() => ({ requisitar: vi.fn(), ehAdmin: vi.fn(() => false) }));
 vi.mock("../../services/apiClient.js", async (orig) => ({
   ...(await orig()),
   requisitar: rede.requisitar,
+  ehAdmin: rede.ehAdmin,
 }));
 
 const SUMMARY = {
@@ -78,6 +80,7 @@ const props = {
 beforeEach(() => {
   vi.clearAllMocks();
   rede.requisitar.mockResolvedValue(semVinculos);
+  rede.ehAdmin.mockReturnValue(false);
 });
 
 async function subirVendas(usuario, nome = "vendas.xlsx") {
@@ -264,6 +267,59 @@ describe("NovoFechamento · validação e envio", () => {
     expect(screen.getByText("Performance_Agosto.xlsx")).toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Remover Planilha de vendas" }));
     await waitFor(() => expect(screen.queryByText("Performance_Agosto.xlsx")).not.toBeInTheDocument());
+  });
+});
+
+describe("NovoFechamento · caixa-preta (incidente FIN-xxx) + base vinculada", () => {
+  it("Shopee com base vinculada: se o backend devolve incidente, o banner FIN-xxx aparece no preview", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "shopee", contaId: 42, nome: "Comprou_chegou_shopee1" }));
+    api.processar.mockResolvedValue(
+      respostaOk({
+        summary: { ...SUMMARY, marketplace: "shopee" },
+        costsSource: "base",
+        costsBase: { id: 55, slug: "comprou_chegou_shopee1", nome: "Comprou_chegou_shopee1" },
+        incidente: { codigo: "FIN-777", mensagem: "Ocorrência de suporte FIN-777 criada." },
+      })
+    );
+    const usuario = userEvent.setup();
+    render(<NovoFechamento {...props} marketplace="shopee" />);
+    await screen.findByText("Base vinculada");
+    await subirVendas(usuario);
+    await usuario.click(screen.getByRole("button", { name: "Processar fechamento" }));
+
+    expect(await screen.findByText("Ocorrência de suporte FIN-777 criada")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copiar código" })).toBeInTheDocument();
+    // custos da base continuam visíveis no preview (as duas features juntas)
+    expect(screen.getByText(/Custos da base vinculada/)).toBeInTheDocument();
+    // não-admin não vê o link de diagnóstico
+    expect(screen.queryByRole("link", { name: "Abrir diagnóstico" })).not.toBeInTheDocument();
+  });
+
+  it("admin vê o link 'Abrir diagnóstico' apontando para o código do incidente", async () => {
+    rede.ehAdmin.mockReturnValue(true);
+    rede.requisitar.mockResolvedValue(semVinculos);
+    api.processar.mockResolvedValue(respostaOk({ incidente: { codigo: "FIN-42" } }));
+    const usuario = userEvent.setup();
+    render(<NovoFechamento {...props} />);
+    await screen.findByText(/Nenhuma base vinculada/);
+    await subirVendas(usuario);
+    await subirCustos(usuario);
+    await usuario.click(screen.getByRole("button", { name: "Processar fechamento" }));
+
+    const link = await screen.findByRole("link", { name: "Abrir diagnóstico" });
+    expect(link).toHaveAttribute("href", "financeiro-debug.html?incidente=FIN-42");
+  });
+
+  it("sem incidente na resposta, nenhum banner FIN aparece", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
+    api.processar.mockResolvedValue(respostaOk());
+    const usuario = userEvent.setup();
+    render(<NovoFechamento {...props} />);
+    await screen.findByText("Base vinculada");
+    await subirVendas(usuario);
+    await usuario.click(screen.getByRole("button", { name: "Processar fechamento" }));
+    await screen.findByText(/Competência confere/);
+    expect(screen.queryByText(/Ocorrência de suporte/)).not.toBeInTheDocument();
   });
 });
 

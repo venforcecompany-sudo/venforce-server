@@ -351,3 +351,82 @@ table.fdbg-table tbody tr:hover { background: var(--vf-surface-2, #fbfbfe); }
   color: #fff;
   border-color: var(--vf-primary, #5A2A8F);
 }
+
+/* ── Incidentes de suporte (caixa-preta do fechamento) ─────────────────── */
+
+.fdbg-inc-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fdbg-inc-lista__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--vf-border, #e4e6ee);
+  border-radius: 8px;
+  background: var(--vf-surface, #fff);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fdbg-inc-lista__item:hover {
+  border-color: var(--vf-primary, #5A2A8F);
+}
+
+.fdbg-inc-detalhe {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--vf-border, #e4e6ee);
+  border-radius: 10px;
+  background: var(--vf-neutral-bg, #eef0f4);
+}
+
+.fdbg-inc-detalhe__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.fdbg-inc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  font-size: 0.78rem;
+  margin-bottom: 8px;
+}
+
+.fdbg-inc-triggers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.fdbg-inc-arquivo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--vf-border, #e4e6ee);
+  font-size: 0.78rem;
+  flex-wrap: wrap;
+}
+
+.fdbg-diag-json {
+  display: block;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre;
+  padding: 8px;
+  margin-top: 6px;
+  background: var(--vf-surface, #fff);
+  border: 1px solid var(--vf-border, #e4e6ee);
+  border-radius: 8px;
+  font-size: 0.72rem;
+}

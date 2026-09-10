@@ -20,6 +20,7 @@ import { useFechamentoNativo } from "../../hooks/useFechamentoNativo.js";
 import { cardsDoSummary } from "../../utils/fechamentoPayload.js";
 import { formatarMoeda } from "../../utils/currency.js";
 import { rotularCompetencia } from "../../utils/dates.js";
+import { ehAdmin } from "../../services/apiClient.js";
 import { FechamentoContextoBar } from "./fechamento/FechamentoContextoBar.jsx";
 import { BaseCustosStatus } from "./fechamento/BaseCustosStatus.jsx";
 import { FechamentoFileCard } from "./fechamento/FechamentoFileCard.jsx";
@@ -196,6 +197,37 @@ function PreviewFechamento({ f, periodoLabel, legado }) {
           </div>
         ))}
       </div>
+
+      {/* ── Incidente de suporte (caixa-preta do fechamento) ───────────────
+          Captura 100% automática no backend quando há anomalia relevante —
+          este banner só avisa que já aconteceu, sem exigir ação do usuário. */}
+      {f.processamento.incidente?.codigo && (
+        <div className="vf-banner is-info" role="status">
+          <div className="vf-banner__content">
+            <p className="vf-banner__title">Ocorrência de suporte {f.processamento.incidente.codigo} criada</p>
+            <p className="vf-banner__description">
+              Os arquivos utilizados foram preservados temporariamente para diagnóstico. Se precisar de ajuda, informe este código.
+            </p>
+            <div className="vf-cluster">
+              <button
+                type="button"
+                className="vf-btn vf-btn--secondary vf-btn--sm"
+                onClick={() => navigator.clipboard?.writeText(f.processamento.incidente.codigo)}
+              >
+                Copiar código
+              </button>
+              {ehAdmin() && (
+                <a
+                  className="vf-btn vf-btn--ghost vf-btn--sm"
+                  href={`financeiro-debug.html?incidente=${encodeURIComponent(f.processamento.incidente.codigo)}`}
+                >
+                  Abrir diagnóstico
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Duplicidade (409) ───────────────────────────────────────────── */}
       {f.duplicidade && (
