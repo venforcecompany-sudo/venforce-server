@@ -11,6 +11,7 @@ const STATUS_TOM = { publicado: "success", rascunho: "neutral" };
 
 export function FechamentoBloco({ dados, periodo }) {
   if (!dados) {
+    // A ação "Ver detalhes →" já vem no cabeçalho do BlocoCard — não repetir aqui.
     return (
       <div className="vf-empty">
         <p className="vf-empty__description">Nenhum fechamento gerado para {periodo} ainda.</p>
@@ -22,7 +23,7 @@ export function FechamentoBloco({ dados, periodo }) {
 
   return (
     <div className="vf-stack">
-      <div className="vf-cluster" style={{ justifyContent: "space-between" }}>
+      <div className="vf-cluster">
         <span className={`vf-status is-${tom}`}>{dados.status === "publicado" ? "Publicado" : "Rascunho"}</span>
         <span className="vf-field__hint">{dados.titulo || dados.periodo}</span>
       </div>

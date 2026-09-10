@@ -1,33 +1,38 @@
 /* frontend-react/src/styles/visao.css
-   F3.2 — só o layout específico da Visão. Componentes (vf-section, vf-kpi,
-   vf-banner, vf-status, vf-tag...) vêm inteiros da Fundação Global V2
-   (Portal/css/vf-components-v2.css) — nada duplicado aqui. */
+   Visão V3 — só o layout específico desta tela. Componentes compartilhados
+   (.vf-section, .vf-progress, .vf-status, .vf-tag, .vf-btn, .vf-divider,
+   .vf-empty, .vf-banner...) vêm inteiros da Fundação Global V2
+   (Portal/css/vf-components-v2.css).
 
+   Regra do redesign (Direção A): a Visão NÃO reaproveita os cards KPI da
+   Fundação (nem a grade, nem o modificador "featured"). Os números são
+   "figuras" sem caixa — tipografia própria, sem borda/fundo/padding. Aqui não
+   se declara token novo nem cor: todo valor é var(--vf-*). Prefixo .vf-visao-. */
+
+/* ── Densidade da página ───────────────────────────────────────────── */
+/* `.vf-page-container` empilha os filhos (header / Resultado / grade) com
+   `gap: var(--vf-section-gap)` = 32px — respiro demais para esta tela densa.
+   Reduz SÓ na Visão (seletor composto vence a Fundação sem depender da ordem
+   de import). 12px = um passo mais denso que o canvas, sem achatar. */
+.vf-page-container.vf-visao-page {
+  gap: var(--vf-sp-3);
+}
+
+/* ── Bloco principal (Resultado do período) ─────────────────────────── */
+/* Fica FORA da grade, acima dela, em largura cheia. O espaçamento acima/abaixo
+   vem do `gap` do `.vf-page-container` — nada de margin-top (dobrava o respiro). */
+
+/* ── Grade secundária 2×2 ──────────────────────────────────────────── */
+/* Saúde | Margem  /  Ads | Fechamento */
 .vf-visao-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--vf-section-gap, 20px);
-  margin-top: var(--vf-section-gap, 20px);
-}
-
-.vf-visao-bloco {
-  min-width: 0; /* evita que uma tabela/lista larga estoure a coluna do grid */
-}
-
-/* .vf-empty é pensado para o corpo inteiro de uma página vazia (padding
-   generoso) — dentro de um bloco da Visão isso é espaço vazio demais para
-   uma frase de uma linha ("nenhum fechamento ainda"). */
-.vf-visao-bloco .vf-empty {
-  padding: var(--vf-sp-3, 12px) 0;
-  align-items: flex-start;
-  text-align: left;
-}
-
-/* Bloco "Saúde da operação" e "Resultado" merecem a largura cheia: são os
-   dois que respondem "como está isso agora" de forma mais densa. */
-.vf-visao-grid > :nth-child(1),
-.vf-visao-grid > :nth-child(2) {
-  grid-column: span 2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* linha (vertical) mais densa que a coluna: encolhe o vão entre a linha
+     Saúde/Margem e a linha Ads/Fechamento sem colar as colunas. */
+  gap: var(--vf-sp-3) var(--vf-sp-4);
+  /* `align-items: stretch` (default): os dois cards de cada linha têm a mesma
+     altura — Margem acompanha Saúde, Fechamento acompanha Ads. A densidade
+     interna vem dos gaps/padding reduzidos abaixo, não de encolher o card. */
 }
 
 .vf-visao-grid.is-atualizando {
@@ -39,8 +44,177 @@
   .vf-visao-grid {
     grid-template-columns: 1fr;
   }
-  .vf-visao-grid > :nth-child(1),
-  .vf-visao-grid > :nth-child(2) {
-    grid-column: span 1;
-  }
+}
+
+/* Cada bloco é um card discreto. A casca comum (BlocoCard) já traz
+   `.vf-section`; daqui vem só a superfície + o espaçamento interno vertical. */
+.vf-visao-bloco {
+  min-width: 0; /* evita que uma lista/linha larga estoure a coluna do grid */
+  padding: var(--vf-card-pad-y) var(--vf-card-pad-x);
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+}
+
+/* Densidade INTERNA dos 4 cards da grade (o card principal não é tocado):
+   `.vf-section` da Fundação separa header↔corpo com --vf-sp-4 (16px) e o
+   `.vf-stack` do corpo empilha com --vf-sp-3 (12px). Aqui apertamos um passo
+   e reduzimos o padding vertical — título, barra, lista e linha final ficam
+   próximos e o card acompanha o conteúdo. */
+.vf-visao-grid .vf-visao-bloco {
+  padding-top: var(--vf-sp-4);
+  padding-bottom: var(--vf-sp-4);
+  gap: var(--vf-sp-3);
+}
+
+.vf-visao-grid .vf-visao-bloco .vf-stack {
+  gap: var(--vf-sp-2);
+}
+
+/* .vf-empty é pensado para o corpo inteiro de uma página vazia — dentro de um
+   bloco da Visão é uma frase só: sem padding vertical, encostado no topo. */
+.vf-visao-bloco .vf-empty {
+  padding: 0;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* ── Figuras (números sem caixa) ───────────────────────────────────── */
+/* Espelha a tipografia de rótulo/valor dos cards KPI da Fundação, mas sem
+   herdar a classe nem a caixa — a Visão tem estrutura própria. */
+.vf-visao-figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-1);
+  min-width: 0;
+}
+
+.vf-visao-figure__label {
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: var(--vf-ls-caps);
+  text-transform: uppercase;
+  color: var(--vf-text-secondary);
+}
+
+.vf-visao-figure__value {
+  max-width: 100%;
+  font-family: var(--vf-font-display);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--vf-fs-lg);
+  font-weight: var(--vf-fw-bold);
+  line-height: var(--vf-lh-tight);
+  letter-spacing: var(--vf-ls-tighter);
+  color: var(--vf-text);
+}
+
+.vf-visao-figure__value--lg { font-size: var(--vf-fs-2xl); }
+.vf-visao-figure__value--sm { font-size: var(--vf-fs-md); }
+
+/* Símbolo monetário: menor, corpo de texto, na mesma linha do valor */
+.vf-visao-figure__cur {
+  margin-right: 4px;
+  font-family: var(--vf-font-body);
+  font-size: 0.62em;
+  font-weight: var(--vf-fw-semibold);
+  letter-spacing: 0;
+  color: var(--vf-text-secondary);
+}
+
+/* Fração secundária de um valor (ex.: "válidos / total") */
+.vf-visao-figure__sub {
+  color: var(--vf-text-muted);
+  font-size: 0.8em;
+  font-weight: var(--vf-fw-semibold);
+}
+
+/* Cor semântica de um número — nunca pinta caixa, só o texto */
+.vf-visao-num--primary { color: var(--vf-primary-strong); }
+.vf-visao-num--success { color: var(--vf-success-strong); }
+.vf-visao-num--warning { color: var(--vf-warning-strong); }
+.vf-visao-num--danger  { color: var(--vf-danger-strong); }
+
+/* Linha dos números principais do Resultado (Faturamento / LC / MC) — leitura
+   AGRUPADA como no canvas: larguras naturais, encostadas à esquerda, sem
+   esticar pela largura do card. Os três têm o mesmo corpo de fonte. */
+.vf-visao-figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--vf-sp-3) var(--vf-sp-10);
+}
+
+/* Régua horizontal secundária — Resultado (ticket/pedidos/…), Margem, Ads */
+.vf-visao-metricrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--vf-sp-3) var(--vf-sp-8);
+}
+
+/* ── Saúde da operação — progresso do setup ────────────────────────── */
+.vf-visao-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-2);
+}
+
+.vf-visao-progress__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vf-sp-2);
+}
+
+.vf-visao-progress__count {
+  font-family: var(--vf-font-display);
+  font-weight: var(--vf-fw-bold);
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text);
+}
+
+.vf-visao-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-2);
+}
+
+.vf-visao-step {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text);
+}
+
+.vf-visao-step--todo {
+  color: var(--vf-text-muted);
+}
+
+.vf-visao-step__mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--vf-text-placeholder);
+}
+
+.vf-visao-step--done .vf-visao-step__mark {
+  color: var(--vf-success);
+}
+
+/* ── Margem — cobertura da amostra ─────────────────────────────────── */
+.vf-visao-cobertura {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-2);
+}
+
+.vf-visao-cobertura__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vf-sp-3);
 }
