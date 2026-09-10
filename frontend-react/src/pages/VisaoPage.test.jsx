@@ -1,11 +1,14 @@
-// Testes de render da Visão operacional (F3.2) — React Testing Library + Vitest.
+// Testes de render da Visão operacional V3 (redesign Direção A) —
+// React Testing Library + Vitest.
 //
-// Cobrem exatamente os contratos que já regrediram uma vez (acc3e92):
+// Cobrem os contratos que já regrediram uma vez (acc3e92):
 //   resultado lido de dados.filteredSummary (não de dados direto) ·
 //   percentual ausente nunca vira "0,0%" (coerção null/undefined ÷ 100) ·
-//   valor ausente nunca vira "R$ 0,00" · escopoConta=false permanece
-//   semanticamente explícito (nunca omitido/pausado) · bloco indisponível
-//   não derruba os outros 5 blocos da grade.
+//   valor ausente nunca vira "R$ 0,00" · bloco indisponível não derruba os
+//   outros da grade.
+// E as travas do redesign:
+//   "Resultado do período" fica FORA da grade 2×2 · Atividade não é
+//   renderizada · nenhuma classe .vf-kpi na Visão · Ads tem dois estados.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
@@ -28,10 +31,9 @@ function envelope(disponivel, dados, escopoConta = true, motivo = null) {
 }
 
 // Shape REALISTA do bootstrap da Central de Vendas: um objeto grande com
-// `filteredSummary` aninhado junto de outras chaves (rows/pagination/dias)
-// que a Visão não lê — igual ao payload real de getCentralVendasReadBootstrap,
-// não um resumo já achatado (é essa diferença que a regressão de acc3e92
-// mascarava quando o fixture de teste era flat).
+// `filteredSummary` aninhado junto de outras chaves que a Visão não lê — igual
+// ao payload real de getCentralVendasReadBootstrap, não um resumo já achatado
+// (é essa diferença que a regressão de acc3e92 mascarava).
 function bootstrapResultado(overridesFilteredSummary = {}) {
   return {
     rows: [{ id: 1 }, { id: 2 }],
@@ -45,6 +47,7 @@ function bootstrapResultado(overridesFilteredSummary = {}) {
       pedidosValidos: 1963,
       pedidosTotal: 2010,
       cancelados: 47,
+      confiancaFechamento: "confiavel",
       ...overridesFilteredSummary,
     },
   };
@@ -53,14 +56,12 @@ function bootstrapResultado(overridesFilteredSummary = {}) {
 function dadosBase(overrides = {}) {
   return {
     saude: envelope(true, {
-      saude: { status: "atencao", score: 62, label: "Precisa de atenção", motivos: [] },
       setup: { temGrant: true, temBase: true },
       sync: { status: "sincronizado", ultimaSincronizacao: "2026-08-26T10:00:00Z" },
-      proximoPasso: null,
     }, false),
     resultado: envelope(true, bootstrapResultado(), true),
     margem: envelope(true, { placar: {}, cobertura: {}, excecoes: [] }, false),
-    ads: envelope(true, { semDados: true, codigo: "sem_grant", motivo: "Ads não configurado." }, true),
+    ads: envelope(true, { semDados: true, codigo: "NO_TOKEN", motivo: "Ads não configurado." }, true),
     fechamento: envelope(true, null, false),
     atividade: envelope(true, [], true),
     ...overrides,
@@ -76,14 +77,20 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+// Valor de uma figura pelo seu rótulo, dentro de um escopo (a Visão não usa
+// .vf-kpi — os números vivem em .vf-visao-figure__value).
+function figuraValor(scope, label) {
+  return within(scope).getByText(label).closest(".vf-visao-figure").querySelector(".vf-visao-figure__value");
+}
+
 describe("VisaoPage · Resultado do período (regressão acc3e92)", () => {
   it("lê o faturamento e a margem de dados.filteredSummary, não do bootstrap cru", async () => {
     mockarHooks({ dados: dadosBase() });
     render(<VisaoPage />);
 
     const bloco = (await screen.findByText("Resultado do período")).closest("section");
-    expect(within(bloco).getByText("R$ 412.880,50")).toBeInTheDocument();
-    expect(within(bloco).getByText("23,7%")).toBeInTheDocument();
+    expect(figuraValor(bloco, "Faturamento")).toHaveTextContent("412.880,50");
+    expect(figuraValor(bloco, "Margem de contribuição")).toHaveTextContent("23,7%");
   });
 
   it("margemContribuicaoPercentual ausente mostra '—', nunca vira '0,0%'", async () => {
@@ -96,8 +103,25 @@ describe("VisaoPage · Resultado do período (regressão acc3e92)", () => {
 
     const bloco = (await screen.findByText("Resultado do período")).closest("section");
     expect(bloco.textContent).not.toContain("0,0%");
-    const rotulo = within(bloco).getByText("Margem de contribuição");
-    expect(rotulo.closest(".vf-kpi").querySelector(".vf-kpi__value")).toHaveTextContent("—");
+    expect(figuraValor(bloco, "Margem de contribuição")).toHaveTextContent("—");
+  });
+
+  it("semCusto/semFrete = 0 não imprime um '0' solto no rodapé do card", async () => {
+    mockarHooks({
+      dados: dadosBase({
+        resultado: envelope(true, bootstrapResultado({ semCusto: 0, semFrete: 0 }), true),
+      }),
+    });
+    render(<VisaoPage />);
+
+    const bloco = (await screen.findByText("Resultado do período")).closest("section");
+    const stack = bloco.querySelector(".vf-stack");
+    const textoSolto = Array.from(stack.childNodes).filter(
+      (n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim() !== "",
+    );
+    expect(textoSolto).toHaveLength(0);
+    // e o hint de custo/frete não aparece quando ambos são 0
+    expect(bloco.textContent).not.toContain("Itens sem custo");
   });
 
   it("ticket/faturamento ausentes mostram '—', nunca 'R$ 0,00'", async () => {
@@ -114,26 +138,166 @@ describe("VisaoPage · Resultado do período (regressão acc3e92)", () => {
   });
 });
 
-describe("VisaoPage · escopoConta explícito", () => {
-  it("escopoConta=false mostra o badge 'cliente inteiro'", async () => {
+describe("VisaoPage · estrutura do redesign", () => {
+  it("'Resultado do período' fica FORA da grade 2×2 e é o bloco principal", async () => {
     mockarHooks({ dados: dadosBase() });
     render(<VisaoPage />);
 
-    const saude = (await screen.findByText("Saúde da operação")).closest("section");
-    expect(within(saude).getByText("cliente inteiro")).toBeInTheDocument();
+    const bloco = (await screen.findByText("Resultado do período")).closest("section");
+    expect(bloco).toHaveClass("vf-visao-principal");
+    expect(bloco.closest(".vf-visao-grid")).toBeNull();
   });
 
-  it("escopoConta=true não mostra o badge (não é omissão silenciosa, é o outro valor explícito)", async () => {
+  it("a grade tem exatamente 4 blocos: Saúde, Margem, Ads, Fechamento", async () => {
+    mockarHooks({ dados: dadosBase() });
+    const { container } = render(<VisaoPage />);
+    await screen.findByText("Resultado do período");
+
+    const naGrade = container.querySelectorAll(".vf-visao-grid > .vf-visao-bloco");
+    expect(naGrade.length).toBe(4);
+    for (const titulo of ["Saúde da operação", "Margem", "Ads", "Fechamento"]) {
+      expect(screen.getByText(titulo)).toBeInTheDocument();
+    }
+  });
+
+  it("Atividade não é renderizada (o componente segue existindo no repo)", async () => {
     mockarHooks({ dados: dadosBase() });
     render(<VisaoPage />);
+    await screen.findByText("Resultado do período");
+    expect(screen.queryByText("Atividade recente")).not.toBeInTheDocument();
+  });
 
-    const resultado = (await screen.findByText("Resultado do período")).closest("section");
-    expect(within(resultado).queryByText("cliente inteiro")).not.toBeInTheDocument();
+  it("não usa nenhuma classe .vf-kpi na Visão", async () => {
+    mockarHooks({ dados: dadosBase() });
+    const { container } = render(<VisaoPage />);
+    await screen.findByText("Resultado do período");
+    expect(container.querySelector('[class*="vf-kpi"]')).toBeNull();
+  });
+
+  it("o topo não mostra status global", async () => {
+    mockarHooks({ dados: dadosBase() });
+    const { container } = render(<VisaoPage />);
+    await screen.findByText("Resultado do período");
+    expect(container.querySelector(".vf-page-header__actions .vf-status")).toBeNull();
+  });
+});
+
+describe("VisaoPage · Saúde da operação", () => {
+  it("mostra 'N de 6 etapas concluídas' com base em setup.*", async () => {
+    mockarHooks({ dados: dadosBase() });
+    render(<VisaoPage />);
+    const saude = (await screen.findByText("Saúde da operação")).closest("section");
+    expect(within(saude).getByText("2 de 6 etapas concluídas")).toBeInTheDocument();
+    expect(within(saude).queryByText(/Prontidão/)).not.toBeInTheDocument();
+  });
+
+  it("a barra de progresso preenche na proporção das etapas concluídas (2/6)", async () => {
+    mockarHooks({ dados: dadosBase() });
+    render(<VisaoPage />);
+    const saude = (await screen.findByText("Saúde da operação")).closest("section");
+    const barra = saude.querySelector(".vf-progress__bar");
+    expect(barra).not.toBeNull();
+    expect(barra.tagName).toBe("DIV"); // <span> inline ignoraria width/height
+    expect(barra.style.width).toBe("33.3%");
+  });
+
+  it("sem sincronização registrada: frase neutra, nunca 'Nunca sincronizado'", async () => {
+    mockarHooks({
+      dados: dadosBase({
+        saude: envelope(true, { setup: {}, sync: { status: "ausente", ultimaSincronizacao: null } }, false),
+      }),
+    });
+    render(<VisaoPage />);
+    const saude = (await screen.findByText("Saúde da operação")).closest("section");
+    expect(saude.textContent).not.toContain("Nunca sincronizado");
+    expect(within(saude).getByText("Sincronização ainda não realizada")).toBeInTheDocument();
+  });
+});
+
+describe("VisaoPage · Margem", () => {
+  function margemComDados(extra = {}) {
+    return envelope(true, {
+      placar: { margemMediaPercent: 16.2, itensComMargem: 842, itensSemMargem: 37, ...extra.placar },
+      cobertura: { itensAnalisados: 879, totalItensMl: 900, parcial: true, ...extra.cobertura },
+      excecoes: [],
+    }, false);
+  }
+
+  it("a barra representa itens com margem / itens analisados (842/879 → 95.8%)", async () => {
+    mockarHooks({ dados: dadosBase({ margem: margemComDados() }) });
+    render(<VisaoPage />);
+    const margem = (await screen.findByText("Margem")).closest("section");
+    const barra = margem.querySelector(".vf-progress__bar");
+    expect(barra).not.toBeNull();
+    expect(barra.tagName).toBe("DIV");
+    expect(barra.style.width).toBe("95.8%");
+  });
+
+  it("'Revisar →' aparece quando há itens sem margem", async () => {
+    mockarHooks({ dados: dadosBase({ margem: margemComDados() }) });
+    render(<VisaoPage />);
+    const margem = (await screen.findByText("Margem")).closest("section");
+    expect(within(margem).getByText("Revisar →")).toBeInTheDocument();
+  });
+
+  it("'Revisar →' some quando não há itens sem margem", async () => {
+    mockarHooks({
+      dados: dadosBase({
+        margem: margemComDados({ placar: { itensComMargem: 879, itensSemMargem: 0 }, cobertura: { itensAnalisados: 879 } }),
+      }),
+    });
+    render(<VisaoPage />);
+    const margem = (await screen.findByText("Margem")).closest("section");
+    expect(within(margem).queryByText("Revisar →")).not.toBeInTheDocument();
+  });
+});
+
+describe("VisaoPage · Ads (dois estados)", () => {
+  it("sem Ads: 'Ads não conectado' + CTA 'Conectar Ads', sem métricas", async () => {
+    mockarHooks({ dados: dadosBase() });
+    render(<VisaoPage />);
+    const ads = (await screen.findByText("Ads")).closest("section");
+    expect(within(ads).getByText("Ads não conectado")).toBeInTheDocument();
+    expect(within(ads).getByText("Conectar Ads")).toBeInTheDocument();
+    expect(within(ads).queryByText("ROAS")).not.toBeInTheDocument();
+  });
+
+  it("com Ads: ROAS/ACOS/GMV/Investimento numa única régua horizontal — nunca 'ROI'", async () => {
+    mockarHooks({
+      dados: dadosBase({
+        ads: envelope(true, { roas: 6.8, acos: 14.8, gmvAds: 84300, investimentoAds: 12480, avisos: [] }, true),
+      }),
+    });
+    render(<VisaoPage />);
+    const ads = (await screen.findByText("Ads")).closest("section");
+    expect(within(ads).getByText("ROAS")).toBeInTheDocument();
+    expect(within(ads).getByText("6,8x")).toBeInTheDocument();
+    expect(within(ads).getByText("14,8%")).toBeInTheDocument();
+    expect(ads.textContent).not.toContain("ROI");
+
+    // uma só régua, com as 4 figuras dentro dela (sem ROAS numa linha própria)
+    const reguas = ads.querySelectorAll(".vf-visao-metricrow");
+    expect(reguas.length).toBe(1);
+    expect(reguas[0].querySelectorAll(".vf-visao-figure").length).toBe(4);
+  });
+});
+
+describe("VisaoPage · Fechamento", () => {
+  it("sem fechamento no período: estado vazio + UM único 'Ver detalhes →' (o do cabeçalho)", async () => {
+    mockarHooks({ dados: dadosBase() });
+    render(<VisaoPage />);
+    const fechamento = (await screen.findByText("Fechamento")).closest("section");
+    expect(within(fechamento).getByText(/Nenhum fechamento gerado/)).toBeInTheDocument();
+
+    const acoes = within(fechamento).getAllByText("Ver detalhes →");
+    expect(acoes).toHaveLength(1);
+    expect(acoes[0].closest("header")).not.toBeNull(); // é o link do BlocoCard, não do corpo
+    expect(acoes[0].getAttribute("href")).toMatch(/^financeiro\.html/);
   });
 });
 
 describe("VisaoPage · resiliência por bloco", () => {
-  it("um bloco indisponível mostra o motivo e não impede os outros 5 blocos de renderizar", async () => {
+  it("um bloco indisponível mostra o motivo e não impede os outros de renderizar", async () => {
     mockarHooks({
       dados: dadosBase({
         margem: envelope(false, null, false, "Base de custo ainda não vinculada."),
@@ -144,12 +308,11 @@ describe("VisaoPage · resiliência por bloco", () => {
     const margem = (await screen.findByText("Margem")).closest("section");
     expect(within(margem).getByText("Base de custo ainda não vinculada.")).toBeInTheDocument();
 
-    // os outros blocos continuam de pé, com dado real
-    expect(screen.getByText("R$ 412.880,50")).toBeInTheDocument();
+    const resultado = screen.getByText("Resultado do período").closest("section");
+    expect(figuraValor(resultado, "Faturamento")).toHaveTextContent("412.880,50");
     expect(screen.getByText("Saúde da operação")).toBeInTheDocument();
     expect(screen.getByText("Ads")).toBeInTheDocument();
     expect(screen.getByText("Fechamento")).toBeInTheDocument();
-    expect(screen.getByText("Atividade recente")).toBeInTheDocument();
   });
 
   it("bloco indisponível sem motivo cai no texto genérico, não fica vazio", async () => {
@@ -164,10 +327,10 @@ describe("VisaoPage · resiliência por bloco", () => {
 });
 
 describe("VisaoPage · estados de carregamento e erro", () => {
-  it("sem dados e carregando: mostra 6 esqueletos, não a grade", () => {
+  it("sem dados e carregando: mostra os esqueletos (principal + 4 da grade), não a grade real", () => {
     mockarHooks({ dados: null, carregando: true });
     const { container } = render(<VisaoPage />);
-    expect(container.querySelectorAll(".vf-visao-bloco").length).toBe(6);
+    expect(container.querySelectorAll(".vf-visao-bloco").length).toBe(5);
     expect(screen.queryByText("Resultado do período")).not.toBeInTheDocument();
   });
 
