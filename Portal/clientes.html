@@ -169,12 +169,47 @@
       </div>
       <div class="vf-modal__body">
         <p id="vf-clientes-confirm-desc" style="margin:0;color:var(--vf-text-secondary);"></p>
-        <ul id="vf-clientes-confirm-deps" class="vf-clientes-confirm-deps" style="display:none;"></ul>
         <div id="vf-clientes-confirm-danger" class="vf-alert is-danger" style="display:none;margin-top:12px;"></div>
       </div>
       <div class="vf-modal__footer">
         <button type="button" id="vf-clientes-confirm-cancel" class="vf-btn vf-btn--secondary">Cancelar</button>
         <button type="button" id="vf-clientes-confirm-ok" class="vf-btn vf-btn--danger">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MODAL "REMOVER CLIENTE" (cliente com dependências): admin escolhe
+       entre remover da operação (preserva tudo) ou excluir permanentemente
+       (2ª confirmação obrigatória, digitando nome/slug). ── -->
+  <div id="vf-clientes-remover-modal" class="vf-overlay">
+    <div class="vf-modal vf-modal--sm" role="dialog" aria-modal="true" aria-labelledby="vf-clientes-remover-title">
+      <div class="vf-modal__header">
+        <div>
+          <h3 id="vf-clientes-remover-title" class="vf-modal__title">Remover cliente</h3>
+          <p id="vf-clientes-remover-subtitle" class="vf-clientes-modal-sub"></p>
+        </div>
+        <button type="button" id="vf-clientes-remover-close" class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" aria-label="Fechar">✕</button>
+      </div>
+      <div class="vf-modal__body">
+        <div id="vf-clientes-remover-passo-escolha">
+          <p id="vf-clientes-remover-desc" style="margin:0;color:var(--vf-text-secondary);"></p>
+          <ul id="vf-clientes-remover-deps" class="vf-clientes-confirm-deps"></ul>
+        </div>
+        <div id="vf-clientes-remover-passo-purge" style="display:none;">
+          <p class="vf-clientes-remover-aviso-perigo">Esta ação é irreversível. Todos os dados listados acima serão apagados permanentemente — não é possível desfazer.</p>
+          <label for="vf-clientes-remover-input">Digite <strong id="vf-clientes-remover-alvo"></strong> para liberar a exclusão:</label>
+          <input type="text" id="vf-clientes-remover-input" class="vf-input" autocomplete="off" spellcheck="false" />
+        </div>
+        <div id="vf-clientes-remover-erro" class="vf-alert is-danger" style="display:none;"></div>
+      </div>
+      <div class="vf-modal__footer" id="vf-clientes-remover-rodape-escolha">
+        <button type="button" id="vf-clientes-remover-cancelar" class="vf-btn vf-btn--secondary">Cancelar</button>
+        <button type="button" id="vf-clientes-remover-btn-desativar" class="vf-btn vf-btn--primary">Remover da operação</button>
+        <button type="button" id="vf-clientes-remover-btn-ir-purge" class="vf-btn vf-btn--danger">Excluir permanentemente</button>
+      </div>
+      <div class="vf-modal__footer" id="vf-clientes-remover-rodape-purge" style="display:none;">
+        <button type="button" id="vf-clientes-remover-voltar" class="vf-btn vf-btn--secondary">Voltar</button>
+        <button type="button" id="vf-clientes-remover-btn-purge" class="vf-btn vf-btn--danger" disabled>Excluir permanentemente</button>
       </div>
     </div>
   </div>
