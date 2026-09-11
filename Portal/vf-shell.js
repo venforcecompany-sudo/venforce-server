@@ -118,6 +118,32 @@ export const ADMIN = [
   { id: "lab", label: "Laboratório UI", rota: "design-system-lab.html" },
 ];
 
+/* ── Agrupamento visual (redesign do Shell V3, artboards aprovados) ──────
+   Reorganização SOMENTE de apresentação: nenhum item sai de MODULOS/GLOBAIS/
+   ADMIN acima, nenhuma rota muda, nenhum item é removido. GRUPOS_NAV só
+   decide sob qual rótulo de seção cada `id` já existente aparece na
+   sidebar. Administração continua fora daqui — colapsável e admin-only,
+   como já era (nenhuma mudança pedida para ela). */
+const TODOS_ITENS = [...MODULOS, ...GLOBAIS];
+const IDS_MODULOS = new Set(MODULOS.map((m) => m.id));
+function porId(id) {
+  return TODOS_ITENS.find((m) => m.id === id) || null;
+}
+// Requer cliente+operação selecionados (era MODULOS) vs. sempre disponível
+// (era GLOBAIS, cada tela tem seletor próprio) — a MESMA regra de antes,
+// só que consultável por id em vez de decidida pela posição no array.
+function requerContexto(id) {
+  return IDS_MODULOS.has(id);
+}
+
+export const GRUPOS_NAV = [
+  { titulo: "Operação", ids: ["visao", "carteira", "cliente-360-v2", "cliente-operacao", "cliente-360"] },
+  { titulo: "Performance", ids: ["central-vendas", "financeiro", "margem", "ads", "anuncios", "central-full", "curva-abc"] },
+  { titulo: "Execução", ids: ["automacoes", "diagnosticos", "promocoes-ml"] },
+  { titulo: "Gestão", ids: ["pessoas", "clientes-contas", "relatorios", "bases"] },
+  { titulo: "Ferramentas", ids: ["ferramentas", "guia"] },
+];
+
 export const MARKETPLACE_LABEL = { meli: "Mercado Livre", shopee: "Shopee", tiktok: "TikTok Shop" };
 
 /* ── linkParams — recuperação de navegação (VENFORCE_AUDITORIA_FORENSE_
@@ -460,33 +486,42 @@ export function createVfShell(options = {}) {
       host.appendChild(bloco);
     }
 
-    const nav = el("nav", "vf-shell__nav");
-    nav.setAttribute("aria-label", "Módulos da operação");
-    const indisponiveis = [];
-    MODULOS.forEach((mod) => {
-      if (meta && !moduloDisponivel(mod, meta)) {
-        indisponiveis.push(mod);
-        return;
+    // Redesign do Shell V3 (artboards aprovados) — os mesmos MODULOS/GLOBAIS
+    // de sempre, só reagrupados sob os rótulos visuais aprovados. Cada item
+    // mantém EXATAMENTE a regra de disponibilidade que já tinha (contexto
+    // obrigatório + gating por marketplace para quem era MODULOS; sempre
+    // disponível para quem era GLOBAIS) — só decidida por id agora.
+    GRUPOS_NAV.forEach((grupo) => {
+      const itens = grupo.ids.map(porId).filter(Boolean);
+      const disponiveis = [];
+      const indisponiveis = [];
+      itens.forEach((mod) => {
+        if (requerContexto(mod.id) && meta && !moduloDisponivel(mod, meta)) {
+          indisponiveis.push(mod);
+        } else {
+          disponiveis.push(mod);
+        }
+      });
+
+      host.appendChild(el("div", "vf-shell__section-label", grupo.titulo));
+      const nav = el("nav", "vf-shell__nav");
+      nav.setAttribute("aria-label", grupo.titulo);
+      disponiveis.forEach((mod) => {
+        const motivo = requerContexto(mod.id) && estado !== "READY" ? "Escolha um cliente e uma operação para abrir este módulo" : null;
+        nav.appendChild(itemNav(mod, motivo, meta));
+      });
+
+      if (indisponiveis.length >= 3) {
+        const mkt = MARKETPLACE_LABEL[meta.marketplace] || meta.marketplace;
+        const det = el("details", "vf-shell__unavailable");
+        det.innerHTML = `<summary>Indisponíveis para ${fmt.escapeHTML(mkt)} (${indisponiveis.length})</summary>`;
+        indisponiveis.forEach((mod) => det.appendChild(itemNav(mod, motivoIndisponivel(mod, meta), meta)));
+        nav.appendChild(det);
+      } else {
+        indisponiveis.forEach((mod) => nav.appendChild(itemNav(mod, motivoIndisponivel(mod, meta), meta)));
       }
-      nav.appendChild(itemNav(mod, estado === "READY" ? null : "Escolha um cliente e uma operação para abrir este módulo", meta));
+      host.appendChild(nav);
     });
-
-    if (indisponiveis.length >= 3) {
-      const mkt = MARKETPLACE_LABEL[meta.marketplace] || meta.marketplace;
-      const det = el("details", "vf-shell__unavailable");
-      det.innerHTML = `<summary>Indisponíveis para ${fmt.escapeHTML(mkt)} (${indisponiveis.length})</summary>`;
-      indisponiveis.forEach((mod) => det.appendChild(itemNav(mod, motivoIndisponivel(mod, meta), meta)));
-      nav.appendChild(det);
-    } else {
-      indisponiveis.forEach((mod) => nav.appendChild(itemNav(mod, motivoIndisponivel(mod, meta), meta)));
-    }
-    host.appendChild(nav);
-
-    host.appendChild(el("div", "vf-shell__section-label", "Gestão global"));
-    const navG = el("nav", "vf-shell__nav");
-    navG.setAttribute("aria-label", "Gestão global");
-    GLOBAIS.forEach((mod) => navG.appendChild(itemNav(mod, null, null)));
-    host.appendChild(navG);
 
     if (String(user.role || "").toLowerCase() === "admin") {
       const admin = el("details", "vf-shell__admin");
@@ -621,18 +656,25 @@ export function createVfShell(options = {}) {
     const cliente = ctxStore.getClienteAtual();
 
     const rotuloEscopo = escopoPagina === "global" ? '<span class="vf-shell__context-flag">contexto ativo</span>' : "";
-    bloco.innerHTML = `<div class="vf-shell__context-label">Cliente${rotuloEscopo}</div>`;
 
+    // Redesign do Shell V3 (artboards aprovados) — o rótulo ("Cliente
+    // atual"/"Operação") passa a viver DENTRO do próprio card do seletor,
+    // como primeira linha (§ "cards de contexto"). `.vf-ctx-selector`
+    // continua sendo filho DIRETO de `.vf-shell__context` — nenhuma div
+    // nova entra entre os dois, então o modo `contextbar` (§19.1, Bug B já
+    // corrigido) não muda de comportamento: só o conteúdo do botão mudou.
     const btnC = el("button", "vf-ctx-selector" + (dropdownAberto === "cliente" ? " is-open" : ""));
     btnC.type = "button";
     btnC.id = "vf-cliente-trigger";
     btnC.setAttribute("aria-haspopup", "listbox");
     btnC.setAttribute("aria-expanded", dropdownAberto === "cliente" ? "true" : "false");
+    const rotuloCliente = `<span class="vf-ctx-selector__label">Cliente atual${rotuloEscopo}</span>`;
     if (carregando && !cliente) {
-      btnC.innerHTML = '<span class="vf-skeleton vf-skeleton--row" style="width:100%;height:14px"></span>';
+      btnC.innerHTML = rotuloCliente + '<span class="vf-skeleton vf-skeleton--row" style="width:100%;height:14px"></span>';
       btnC.disabled = true;
     } else {
       btnC.innerHTML =
+        rotuloCliente +
         `<span class="vf-ctx-selector__value${cliente ? "" : " is-empty"}">` +
         fmt.escapeHTML(cliente ? cliente.nome : "Selecione um cliente") +
         '</span><span aria-hidden="true">▾</span>';
@@ -641,33 +683,40 @@ export function createVfShell(options = {}) {
     bloco.appendChild(btnC);
     if (dropdownAberto === "cliente") bloco.appendChild(dropdownClientes());
 
-    bloco.appendChild(el("div", "vf-shell__context-label", "Operação"));
     const contas = ctxStore.getAccounts().filter((c) => c.ativo !== false);
     const btnO = el("button", "vf-ctx-selector" + (dropdownAberto === "operacao" ? " is-open" : ""));
     btnO.type = "button";
     btnO.id = "vf-op-trigger";
     btnO.setAttribute("aria-haspopup", "listbox");
     btnO.setAttribute("aria-expanded", dropdownAberto === "operacao" ? "true" : "false");
+    const rotuloOperacao = '<span class="vf-ctx-selector__label">Operação</span>';
 
     if (estado === "RESOLVING_ACCOUNTS") {
-      btnO.innerHTML = '<span class="vf-skeleton vf-skeleton--row" style="width:100%;height:14px"></span>';
+      btnO.innerHTML = rotuloOperacao + '<span class="vf-skeleton vf-skeleton--row" style="width:100%;height:14px"></span>';
       btnO.disabled = true;
     } else if (!cliente) {
-      btnO.innerHTML = '<span class="vf-ctx-selector__value is-empty">—</span>';
+      btnO.innerHTML = rotuloOperacao + '<span class="vf-ctx-selector__value is-empty">—</span>';
       btnO.disabled = true;
     } else if (!contas.length) {
-      btnO.innerHTML = '<span class="vf-ctx-selector__value is-empty">Sem operação</span>';
+      btnO.innerHTML = rotuloOperacao + '<span class="vf-ctx-selector__value is-empty">Sem operação</span>';
       btnO.disabled = true; // visível e desabilitado, nunca escondido (§9.2)
     } else if (meta) {
+      // Regra do redesign: sem grant conectado, o identificador operacional
+      // ainda não existe — não inventamos um (§ "regra visual do ID"). Com
+      // grant, mostra normalmente (comportamento de antes, inalterado).
+      const semGrant = meta.status.code === "sem_grant";
       btnO.innerHTML =
+        rotuloOperacao +
         `<span class="vf-ctx-selector__value"><span class="vf-status is-${meta.status.tone}">` +
         '<span aria-hidden="true"></span></span>' +
         fmt.escapeHTML(meta.nome) +
         '</span><span aria-hidden="true">▾</span>' +
-        `<small class="vf-ctx-selector__sub">${fmt.escapeHTML(meta.externalAccountLabel)}</small>`;
+        (semGrant
+          ? `<small class="vf-ctx-selector__sub">${fmt.escapeHTML(meta.status.label)}</small>`
+          : `<small class="vf-ctx-selector__sub">${fmt.escapeHTML(meta.externalAccountLabel)}</small>`);
       btnO.disabled = contas.length === 1; // 1 ativa: nada a escolher (precedente fechamentos-api.js:820)
     } else {
-      btnO.innerHTML = '<span class="vf-ctx-selector__value is-empty">Selecione a operação…</span><span aria-hidden="true">▾</span>';
+      btnO.innerHTML = rotuloOperacao + '<span class="vf-ctx-selector__value is-empty">Selecione a operação…</span><span aria-hidden="true">▾</span>';
     }
     btnO.addEventListener("click", () => abrirDropdown(dropdownAberto === "operacao" ? null : "operacao"));
     bloco.appendChild(btnO);
@@ -754,13 +803,19 @@ export function createVfShell(options = {}) {
       const sel = atual && atual.clienteContaId === c.id;
       it.setAttribute("aria-selected", sel ? "true" : "false");
       if (inativa) it.setAttribute("aria-disabled", "true");
+      // Regra do redesign: sem grant, o identificador operacional ainda não
+      // existe — a sub-linha mostra só o rótulo de estado, nunca um ID
+      // inventado (mesma regra aplicada ao gatilho fechado, blocoContexto()).
+      const semGrant = st.code === "sem_grant";
       it.innerHTML =
         `<span class="vf-status is-${st.tone}"><span aria-hidden="true"></span>` +
         `<span class="vf-visually-hidden">${fmt.escapeHTML(st.label)}</span></span>` +
         fmt.escapeHTML(c.nome) +
         (inativa ? " (inativa)" : "") +
         (sel ? ' <span class="vf-menu__check" aria-hidden="true">✓</span>' : "") +
-        `<small>${fmt.escapeHTML(rotuloExterno(c))} · ${fmt.escapeHTML(st.label)}</small>`;
+        (semGrant
+          ? `<small>${fmt.escapeHTML(st.label)}</small>`
+          : `<small>${fmt.escapeHTML(rotuloExterno(c))} · ${fmt.escapeHTML(st.label)}</small>`);
       if (!inativa) {
         it.addEventListener("click", () => {
           abrirDropdown(null);
