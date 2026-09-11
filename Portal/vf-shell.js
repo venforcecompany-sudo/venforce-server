@@ -136,6 +136,41 @@ function requerContexto(id) {
   return IDS_MODULOS.has(id);
 }
 
+// Ícones dos artboards aprovados — mesma família em todos (viewBox 24,
+// stroke 2.2, cantos arredondados). Só decorativo: ausência de entrada aqui
+// não desabilita nem esconde nenhum item (itemNav() cai para o texto puro).
+const ICONS = {
+  visao: '<path d="M3 3v18h18"></path><path d="M7 15l4-4 3 3 6-6"></path>',
+  carteira: '<rect x="2" y="7" width="20" height="13" rx="2"></rect><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"></path><path d="M2 13h20"></path>',
+  "cliente-360-v2": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
+  "cliente-operacao": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
+  "cliente-360": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
+  "central-vendas": '<circle cx="9" cy="21" r="1"></circle><circle cx="19" cy="21" r="1"></circle><path d="M2.5 3h2l2.4 12.4a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L21 8H6"></path>',
+  financeiro: '<path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-8"></path><path d="M3 20h18"></path>',
+  margem: '<line x1="18" y1="6" x2="6" y2="18"></line><circle cx="7.5" cy="7.5" r="2"></circle><circle cx="16.5" cy="16.5" r="2"></circle>',
+  ads: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline>',
+  anuncios: '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>',
+  "central-full": '<path d="M21 8l-9-5-9 5 9 5 9-5z"></path><path d="M3 8v8l9 5 9-5V8"></path><path d="M12 13v8"></path>',
+  "curva-abc": '<rect x="3" y="4" width="4" height="16"></rect><rect x="10" y="9" width="4" height="11"></rect><rect x="17" y="13" width="4" height="7"></rect>',
+  automacoes: '<polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path>',
+  diagnosticos: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>',
+  "promocoes-ml": '<path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.57 3H4a1 1 0 0 0-1 1v5.57a2 2 0 0 0 .83 1.42l9.59 9.59a2 2 0 0 0 2.83 0l4.34-4.34a2 2 0 0 0 0-2.83z"></path><circle cx="7.5" cy="7.5" r="1.5"></circle>',
+  pessoas: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
+  "clientes-contas": '<rect x="4" y="3" width="14" height="18" rx="2"></rect><circle cx="11" cy="9" r="2.4"></circle><path d="M7.5 17c0-2 1.6-3.4 3.5-3.4s3.5 1.4 3.5 3.4"></path><line x1="18" y1="7" x2="21" y2="7"></line><line x1="18" y1="12" x2="21" y2="12"></line>',
+  relatorios: '<line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line>',
+  bases: '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>',
+  ferramentas: '<path d="M14.7 6.3a4 4 0 1 0-5.4 5.4L2 19l3 3 7.3-7.3a4 4 0 0 0 5.4-5.4z"></path>',
+  guia: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>',
+  "ml-tokens": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',
+  "criar-anuncios-meli": '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>',
+  squads: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
+  atividade: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>',
+  "control-center": '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>',
+  callbacks: '<polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path>',
+  debug: '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>',
+  lab: '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>',
+};
+
 export const GRUPOS_NAV = [
   { titulo: "Operação", ids: ["visao", "carteira", "cliente-360-v2", "cliente-operacao", "cliente-360"] },
   { titulo: "Performance", ids: ["central-vendas", "financeiro", "margem", "ads", "anuncios", "central-full", "curva-abc"] },
@@ -570,7 +605,17 @@ export function createVfShell(options = {}) {
     const a = el("a", "vf-shell__item" + (isActive ? " is-active" : "") + (desabilitado ? " is-disabled" : ""));
     a.href = desabilitado ? "#" : buildHref(mod, meta);
     const rail = railEstreito() || colapsada;
-    a.textContent = rail ? abreviar(mod.label) : mod.label;
+    if (rail) {
+      // Rail (ícone só, sem <svg>): mantém o texto abreviado de sempre —
+      // adicionar ícone aqui não foi pedido e mudaria o rail já validado.
+      a.textContent = abreviar(mod.label);
+    } else {
+      const icone = ICONS[mod.id];
+      a.innerHTML =
+        (icone
+          ? `<svg class="vf-shell__item-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icone}</svg>`
+          : "") + `<span>${fmt.escapeHTML(mod.label)}</span>`;
+    }
     if (rail) {
       a.setAttribute("aria-label", mod.label);
       a.title = motivoDesabilitado || (futuro ? "Ainda não disponível nesta versão" : mod.label);
