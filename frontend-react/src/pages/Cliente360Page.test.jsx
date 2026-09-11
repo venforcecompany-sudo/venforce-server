@@ -275,6 +275,15 @@ describe("Cliente 360 · simulador", () => {
   });
 });
 
+// VFMonthYearSelector não é um <select> nativo: escolher uma competência é
+// clicar na caixa (abre o popover) e depois no mês desejado (aplica e fecha
+// na hora, sem confirmação). O ano já parte correto porque a URL/estado
+// inicial ("2026-06"/"2026-05") já ancora a grade no ano certo.
+async function escolherCompetencia(usuario, rotuloCampo, mesAbreviado) {
+  await usuario.click(screen.getByLabelText(rotuloCampo));
+  await usuario.click(screen.getByRole("button", { name: mesAbreviado }));
+}
+
 describe("Cliente 360 · filtros", () => {
   it("11. alterar o filtro recarrega os dados com a nova competência", async () => {
     const usuario = userEvent.setup();
@@ -282,7 +291,7 @@ describe("Cliente 360 · filtros", () => {
 
     expect(mocks.obterResultado).toHaveBeenCalledTimes(1);
 
-    await usuario.selectOptions(screen.getByLabelText("Competência"), "2026-05");
+    await escolherCompetencia(usuario, "Competência", "Mai");
 
     await waitFor(() => expect(mocks.obterResultado).toHaveBeenCalledTimes(2));
     const [slug, opcoes] = mocks.obterResultado.mock.calls[1];
@@ -305,9 +314,8 @@ describe("Cliente 360 · filtros", () => {
     render(<Cliente360Page />);
     await screen.findByText("Fechamento do mês");
 
-    const seletor = screen.getByLabelText("Competência");
-    await usuario.selectOptions(seletor, "2026-05");
-    await usuario.selectOptions(seletor, "2026-04");
+    await escolherCompetencia(usuario, "Competência", "Mai");
+    await escolherCompetencia(usuario, "Competência", "Abr");
 
     await waitFor(() => expect(sinais.length).toBeGreaterThanOrEqual(3));
     // todos os sinais anteriores ao último foram abortados

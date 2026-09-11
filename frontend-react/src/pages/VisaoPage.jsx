@@ -15,15 +15,14 @@
 
 import { useOperacaoAtual } from "../hooks/useVfContext.js";
 import { useVisao } from "../hooks/useVisao.js";
-import { competenciasRecentes, rotularCompetencia } from "../utils/dates.js";
+import { rotularCompetencia } from "../utils/dates.js";
+import { VFMonthYearSelector } from "../components/ui/index.js";
 import { BlocoCard, BlocoIndisponivel, BlocoSkeleton } from "../components/visao/BlocoCard.jsx";
 import { SaudeOperacional } from "../components/visao/SaudeOperacional.jsx";
 import { ResultadoPeriodo } from "../components/visao/ResultadoPeriodo.jsx";
 import { MargemBloco } from "../components/visao/MargemBloco.jsx";
 import { AdsBloco } from "../components/visao/AdsBloco.jsx";
 import { FechamentoBloco } from "../components/visao/FechamentoBloco.jsx";
-
-const PERIODOS = competenciasRecentes(13);
 
 function Bloco({ envelope, render, ...props }) {
   if (!envelope) return null;
@@ -57,14 +56,7 @@ export default function VisaoPage() {
             <h1 className="vf-page-header__title">Como está esta operação</h1>
           </div>
           <div className="vf-page-header__actions">
-            <label className="vf-field" style={{ margin: 0 }}>
-              <span className="vf-visually-hidden">Período</span>
-              <select className="vf-select vf-select--sm" value={periodo} onChange={(e) => setPeriodo(e.target.value)}>
-                {PERIODOS.map((c) => (
-                  <option key={c} value={c}>{rotularCompetencia(c)}</option>
-                ))}
-              </select>
-            </label>
+            <VFMonthYearSelector value={periodo} onChange={setPeriodo} />
           </div>
         </header>
 
