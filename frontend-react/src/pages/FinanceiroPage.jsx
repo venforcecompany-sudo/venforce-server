@@ -20,7 +20,8 @@ import { useState } from "react";
 import { useOperacaoAtual } from "../hooks/useVfContext.js";
 import { useFinanceiro } from "../hooks/useFinanceiro.js";
 import { useEntregasFechamento } from "../hooks/useEntregasFechamento.js";
-import { competenciasRecentes, rotularCompetencia } from "../utils/dates.js";
+import { rotularCompetencia } from "../utils/dates.js";
+import { VFMonthYearSelector } from "../components/ui/index.js";
 import { Tabs } from "../components/financeiro/Tabs.jsx";
 import { ResultadoTab } from "../components/financeiro/ResultadoTab.jsx";
 import { ConciliacaoTab } from "../components/financeiro/ConciliacaoTab.jsx";
@@ -28,7 +29,6 @@ import { FechamentoTab } from "../components/financeiro/FechamentoTab.jsx";
 import { RelatoriosTab } from "../components/financeiro/RelatoriosTab.jsx";
 import { HistoricoTab } from "../components/financeiro/HistoricoTab.jsx";
 
-const PERIODOS = competenciasRecentes(13);
 const ABAS = [
   { id: "resultado", label: "Resultado" },
   { id: "conciliacao", label: "Conciliação" },
@@ -93,14 +93,7 @@ export default function FinanceiroPage() {
             </p>
           </div>
           <div className="vf-page-header__actions">
-            <label className="vf-field" style={{ margin: 0 }}>
-              <span className="vf-visually-hidden">Período</span>
-              <select className="vf-select vf-select--sm" value={periodo} onChange={(e) => setPeriodo(e.target.value)}>
-                {PERIODOS.map((c) => (
-                  <option key={c} value={c}>{rotularCompetencia(c)}</option>
-                ))}
-              </select>
-            </label>
+            <VFMonthYearSelector value={periodo} onChange={setPeriodo} />
           </div>
         </header>
 

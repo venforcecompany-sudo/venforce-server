@@ -2,8 +2,7 @@
 // Todos são controlados e refletidos na query string pelo hook useCliente360,
 // para a tela ser linkável a partir do Portal legado. Token nunca vai na URL.
 
-import { useMemo } from "react";
-import { competenciasRecentes, rotularCompetencia } from "../../utils/dates.js";
+import { VFMonthYearSelector } from "../ui/index.js";
 
 // A UI fala em % inteiro; o contrato do backend é fração (0,15).
 function paraPercentual(margemAlvo) {
@@ -16,8 +15,6 @@ function paraPercentual(margemAlvo) {
 export default function Cliente360Filters({
   filtros, clientes, clientesCarregando, carregando, onAtualizar, onRecarregar,
 }) {
-  const competencias = useMemo(() => competenciasRecentes(13), []);
-
   return (
     <section className="vf-toolbar c360-filtros" aria-label="Filtros do fechamento">
       <div className="vf-toolbar__filters">
@@ -38,28 +35,18 @@ export default function Cliente360Filters({
 
         <label className="vf-field c360-filtros__campo">
           <span className="vf-field__label">Competência</span>
-          <select
-            className="vf-select"
+          <VFMonthYearSelector
             value={filtros.competencia}
-            onChange={(e) => onAtualizar({ competencia: e.target.value })}
-          >
-            {competencias.map((c) => (
-              <option key={c} value={c}>{rotularCompetencia(c)}</option>
-            ))}
-          </select>
+            onChange={(competencia) => onAtualizar({ competencia })}
+          />
         </label>
 
         <label className="vf-field c360-filtros__campo">
           <span className="vf-field__label">Comparar com</span>
-          <select
-            className="vf-select"
+          <VFMonthYearSelector
             value={filtros.compararCom}
-            onChange={(e) => onAtualizar({ compararCom: e.target.value })}
-          >
-            {competencias.map((c) => (
-              <option key={c} value={c}>{rotularCompetencia(c)}</option>
-            ))}
-          </select>
+            onChange={(compararCom) => onAtualizar({ compararCom })}
+          />
         </label>
 
         <label className="vf-field c360-filtros__campo c360-filtros__campo--curto">
