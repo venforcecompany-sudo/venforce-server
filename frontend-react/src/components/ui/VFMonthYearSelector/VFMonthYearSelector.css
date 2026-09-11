@@ -1,0 +1,184 @@
+/* VFMonthYearSelector — CSS próprio da Fundação Global V2.
+   Só var(--vf-*) existentes (Portal/css/vf-tokens-v2.css). Nenhum token novo.
+   Linguagem visual espelhada do canvas aprovado (/design): raios, sombra de
+   popover e tipografia idênticos ao padrão do VFCalendar. */
+
+.vf-month-year-selector {
+  position: relative;
+  display: inline-block;
+}
+
+.vf-month-year-selector__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vf-sp-2);
+  width: fit-content;
+  height: var(--vf-control-h-sm);
+  padding: 0 var(--vf-sp-3);
+  border-radius: var(--vf-radius-sm);
+  border: 1px solid var(--vf-border-strong);
+  background: var(--vf-surface);
+  font-family: var(--vf-font-body);
+  font-size: var(--vf-fs-xs);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--vf-duration) var(--vf-ease), box-shadow var(--vf-duration) var(--vf-ease);
+}
+
+.vf-month-year-selector__trigger:hover:not(:disabled) {
+  border-color: var(--vf-border-hover);
+}
+
+.vf-month-year-selector__trigger--open {
+  border-color: var(--vf-primary);
+  box-shadow: var(--vf-focus-ring);
+}
+
+.vf-month-year-selector__trigger--disabled,
+.vf-month-year-selector__trigger:disabled {
+  color: var(--vf-text-disabled);
+  border-color: var(--vf-border);
+  background: var(--vf-disabled-bg);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.vf-month-year-selector__chevron {
+  flex: none;
+  color: currentColor;
+  transition: transform var(--vf-duration) var(--vf-ease);
+}
+
+.vf-month-year-selector__trigger--open .vf-month-year-selector__chevron {
+  transform: rotate(180deg);
+}
+
+.vf-month-year-selector__popover {
+  position: absolute;
+  top: calc(100% + var(--vf-sp-2));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--vf-z-dropdown);
+  width: 280px;
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius-lg);
+  box-shadow: var(--vf-shadow-popover);
+  padding: var(--vf-sp-4) var(--vf-sp-3) var(--vf-sp-3);
+}
+
+.vf-month-year-selector__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vf-sp-2);
+  margin-bottom: var(--vf-sp-3);
+}
+
+.vf-month-year-selector__nav {
+  width: var(--vf-sp-8);
+  height: var(--vf-sp-8);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--vf-radius-sm);
+  border: 1px solid var(--vf-border);
+  background: var(--vf-bg);
+  color: var(--vf-text-secondary);
+  cursor: pointer;
+}
+
+.vf-month-year-selector__nav:hover {
+  background: var(--vf-primary-soft);
+  border-color: var(--vf-primary);
+  color: var(--vf-primary);
+}
+
+.vf-month-year-selector__year-button {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  border: none;
+  background: transparent;
+  font-family: var(--vf-font-body);
+  font-weight: var(--vf-fw-bold);
+  font-size: var(--vf-fs-md);
+  color: var(--vf-text);
+  padding: var(--vf-sp-1) var(--vf-sp-2);
+  border-radius: var(--vf-radius-sm);
+  cursor: pointer;
+}
+
+.vf-month-year-selector__year-button:hover,
+.vf-month-year-selector__year-button--open {
+  background: var(--vf-surface-hover);
+}
+
+.vf-month-year-selector__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--vf-sp-1);
+}
+
+.vf-month-year-selector__month {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 42px;
+  border: none;
+  border-radius: var(--vf-radius-sm);
+  font-family: var(--vf-font-body);
+  font-size: var(--vf-fs-sm);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.vf-month-year-selector__month:hover {
+  background: var(--vf-primary-soft);
+  color: var(--vf-primary-strong);
+}
+
+.vf-month-year-selector__month--selected {
+  background: var(--vf-primary);
+  color: var(--vf-text-on-primary);
+}
+
+.vf-month-year-selector__year-menu {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 112px;
+  background: var(--vf-surface);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius);
+  box-shadow: var(--vf-shadow-popover);
+  padding: var(--vf-sp-1);
+  z-index: var(--vf-z-dropdown);
+}
+
+.vf-month-year-selector__year-item {
+  padding: var(--vf-sp-2) var(--vf-sp-3);
+  border-radius: var(--vf-radius-sm);
+  font-family: var(--vf-font-body);
+  font-size: var(--vf-fs-sm);
+  color: var(--vf-text);
+  text-align: center;
+  cursor: pointer;
+}
+
+.vf-month-year-selector__year-item:hover {
+  background: var(--vf-surface-hover);
+}
+
+.vf-month-year-selector__year-item--active {
+  background: var(--vf-primary-soft);
+  color: var(--vf-primary-strong);
+  font-weight: var(--vf-fw-bold);
+}
