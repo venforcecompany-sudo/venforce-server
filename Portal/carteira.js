@@ -248,6 +248,7 @@ export function createCarteira(options = {}) {
 
   function montar(container) {
     host = container;
+    doc.addEventListener("keydown", atalhoBusca);
     lerFiltrosDaUrl();
     carregarCarteiraCompleta();
     unsubscribe = ctxStore.subscribe(render);
@@ -299,6 +300,7 @@ export function createCarteira(options = {}) {
   function desmontar() {
     if (observer) observer.disconnect();
     if (unsubscribe) unsubscribe();
+    doc.removeEventListener("keydown", atalhoBusca);
     host = null;
   }
 
@@ -316,7 +318,12 @@ export function createCarteira(options = {}) {
   function visiveis(clientes) {
     const q = fmt.normalizarBusca(busca);
     let lista = clientes.filter((c) => {
-      if (q && fmt.normalizarBusca(`${c.nome} ${c.slug}`).indexOf(q) < 0) return false;
+      if (q) {
+        const cache = contasPorCliente[c.slug];
+        const contas = cache && !cache.erro ? cache.lista.filter((x) => x.ativo !== false) : [];
+        const termos = contas.map((x) => `${x.nome || ""} ${x.marketplace || ""} ${x.externalAccountLabel || ""} ${x.external_account_id || ""}`).join(" ");
+        if (!fmt.normalizarBusca(`${c.nome} ${c.slug} ${termos}`).includes(q)) return false;
+      }
       if (squad !== "todos" && String(c.squadId) !== String(squad)) return false;
       if (filtro === "pendencia" && !(c.pendencias || []).length) return false;
       if (filtro === "sem-operacao" && c.ativo !== false && contasResumoCliente(c).contasAtivas !== 0) return false;
@@ -390,9 +397,8 @@ export function createCarteira(options = {}) {
     return (
       '<header class="vf-page-header vf-portfolio-header">' +
       '<div class="vf-page-header__main">' +
-      '<p class="vf-page-header__eyebrow">Gestão global</p>' +
       '<h1 class="vf-page-header__title">Carteira</h1>' +
-      `<p class="vf-page-header__description" aria-live="polite" id="cart-contagem">${descricaoHtml}</p>` +
+      `<p class="vf-page-header__description" role="status" aria-live="polite" aria-atomic="true" id="cart-contagem">${descricaoHtml}</p>` +
       "</div>" +
       "</header>"
     );
@@ -401,7 +407,7 @@ export function createCarteira(options = {}) {
   function renderCarregando() {
     host.innerHTML =
       cabecalho("Carregando…") +
-      '<div class="vf-portfolio-list">' +
+      '<div class="vf-portfolio-list" aria-hidden="true">' +
       new Array(8)
         .fill('<div class="vf-portfolio-row is-skeleton"><span class="vf-skeleton vf-skeleton--title"></span><span class="vf-skeleton vf-skeleton--row"></span></div>')
         .join("") +
@@ -439,7 +445,9 @@ export function createCarteira(options = {}) {
       fmt.escapeHTML(estado.titulo) +
       '</p><p class="vf-empty__description">' +
       fmt.escapeHTML(estado.descricao) +
-      "</p></div>"
+      '</p>' +
+      (estado === VAZIO_DE_FILTRO ? '<button type="button" class="vf-btn vf-btn--sm" id="cart-limpar">Limpar busca e filtros</button>' : '') +
+      "</div>"
     );
   }
 
@@ -454,10 +462,6 @@ export function createCarteira(options = {}) {
     // seletor exibindo "Todos" — filtro invisível, o pior dos dois mundos.
     // Mesmo tratamento já dado a `?ordem=sync` sem dado de sync.
     if (squad !== "todos" && !squads.some((s) => String(s.id) === String(squad))) squad = "todos";
-    const comAtencao = clientes.filter((c) => (c.pendencias || []).length).length;
-    const descricao =
-      `${clientes.length} cliente${clientes.length === 1 ? "" : "s"}` +
-      (comAtencao ? ` · ${comAtencao} precisa${comAtencao === 1 ? "" : "m"} de atenção` : "");
 
     // Um `?ordem=sync` colado numa URL não pode deixar a tela numa
     // ordenação que a fonte atual não sabe executar.
@@ -465,7 +469,7 @@ export function createCarteira(options = {}) {
     if (ordem === "sync" && !comSync) ordem = "atencao";
 
     host.innerHTML =
-      cabecalho(descricao) +
+      cabecalho("") +
       barraFiltros(squads, comSync) +
       '<div id="cart-lista" class="vf-portfolio-list"></div>';
 
@@ -474,17 +478,24 @@ export function createCarteira(options = {}) {
       busca = buscaEl.value;
       escreverFiltrosNaUrl();
       renderCorpo(clientes);
-      atualizarContagem(clientes);
     });
-    if (clientes.length > 12 && !busca) setTimeout(() => buscaEl.focus(), 0);
+    // Não roubar o foco ao trocar um filtro em carteiras grandes.
+    if (clientes.length > 12 && !busca && (!doc.activeElement || doc.activeElement === doc.body)) buscaEl.focus();
 
     host.querySelectorAll("[data-filtro]").forEach((b) => {
-      b.addEventListener("click", () => { filtro = b.dataset.filtro; escreverFiltrosNaUrl(); renderLista(clientes); });
+      b.addEventListener("click", () => {
+        filtro = b.dataset.filtro;
+        host.querySelectorAll("[data-filtro]").forEach((el) => {
+          el.classList.toggle("is-active", el.dataset.filtro === filtro);
+          el.setAttribute("aria-pressed", String(el.dataset.filtro === filtro));
+        });
+        escreverFiltrosNaUrl(); renderCorpo(clientes);
+      });
     });
     const selOrdem = host.querySelector("#cart-ordem");
     if (selOrdem) selOrdem.addEventListener("change", () => { ordem = selOrdem.value; escreverFiltrosNaUrl(); renderCorpo(clientes); });
     const selSquad = host.querySelector("#cart-squad");
-    if (selSquad) selSquad.addEventListener("change", () => { squad = selSquad.value; escreverFiltrosNaUrl(); renderLista(clientes); });
+    if (selSquad) selSquad.addEventListener("change", () => { squad = selSquad.value; escreverFiltrosNaUrl(); renderCorpo(clientes); });
 
     renderCorpo(clientes);
   }
@@ -508,7 +519,9 @@ export function createCarteira(options = {}) {
         : "";
     return (
       '<div class="vf-toolbar vf-portfolio-toolbar">' +
-      `<input id="cart-busca" class="vf-input vf-input--sm" type="search" placeholder="Buscar cliente…  (/)" aria-label="Buscar cliente" value="${fmt.escapeHTML(busca)}">` +
+      '<label class="vf-portfolio-search" for="cart-busca"><span class="vf-visually-hidden">Buscar cliente, operação ou seller</span>' +
+      `<input id="cart-busca" class="vf-input vf-input--sm" type="search" placeholder="Cliente, operação ou seller" aria-keyshortcuts="/" value="${fmt.escapeHTML(busca)}">` +
+      '<kbd aria-hidden="true">/</kbd></label>' +
       '<div class="vf-filter-group" role="group" aria-label="Filtros">' +
       filtros
         .map(([id, label]) => `<button type="button" class="vf-filter-chip${filtro === id ? " is-active" : ""}" data-filtro="${id}" aria-pressed="${filtro === id}">${label}</button>`)
@@ -525,11 +538,15 @@ export function createCarteira(options = {}) {
     );
   }
 
-  function atualizarContagem(clientes) {
+  function atualizarContagem(clientes, lista) {
     const el = host.querySelector("#cart-contagem");
     if (!el) return;
-    const n = visiveis(clientes).length;
-    el.textContent = `${n} cliente${n === 1 ? "" : "s"}` + (busca ? ` para «${busca}»` : "");
+    const n = lista.length;
+    const atencao = lista.filter((c) => (c.pendencias || []).length).length;
+    const filtrando = busca || filtro !== "todos" || squad !== "todos";
+    const atual = squadsDaCarteira(clientes).find((s) => String(s.id) === squad);
+    el.textContent = `${n}${filtrando ? ` de ${clientes.length}` : ""} cliente${n === 1 && !filtrando ? "" : "s"} · ${atencao} com pendência` +
+      (atual ? ` · ${atual.nome}` : "");
   }
 
   function renderCorpo(clientes) {
@@ -538,10 +555,17 @@ export function createCarteira(options = {}) {
     if (observer) { observer.disconnect(); observer = null; }
 
     const lista = visiveis(clientes);
+    atualizarContagem(clientes, lista);
     if (!lista.length) {
       // Um squad autorizado sem cliente visível não é falta de acesso nem
       // erro: é um filtro sem resultado, e é o que a tela precisa dizer.
       box.innerHTML = htmlVazio(clientes.length ? VAZIO_DE_FILTRO : vazioDaCarteira());
+      const limpar = box.querySelector("#cart-limpar");
+      if (limpar) limpar.addEventListener("click", () => {
+        busca = ""; filtro = "todos"; squad = "todos";
+        escreverFiltrosNaUrl(); renderLista(clientes);
+        host.querySelector("#cart-busca").focus();
+      });
       return;
     }
 
@@ -565,7 +589,7 @@ export function createCarteira(options = {}) {
         // "Principal" INFORMA, nunca restringe: o grupo continua sendo um
         // grupo como os outros, com os mesmos clientes e o mesmo acesso.
         const marca = s && s.principal ? ' <span class="vf-portfolio-group__tag">principal</span>' : "";
-        html += `<h2 class="vf-portfolio-group">${fmt.escapeHTML(rotulo)}${marca} <small>${n} cliente${n === 1 ? "" : "s"}</small></h2>`;
+        html += `<li class="vf-portfolio-group-item" role="presentation"><h2 class="vf-portfolio-group">${fmt.escapeHTML(rotulo)}${marca} <small>${n} cliente${n === 1 ? "" : "s"}</small></h2></li>`;
       }
       html += linhaCliente(c);
     });
@@ -589,10 +613,14 @@ export function createCarteira(options = {}) {
     const umaConta = ativas && ativas.length === 1;
     const semConta = ativas && ativas.length === 0;
 
-    const alerta = pend.length
-      ? `<span class="vf-status is-warning"><span aria-hidden="true"></span>${pend.length} alerta${pend.length === 1 ? "" : "s"}</span>`
-      : semConta
+    const alerta = semConta
       ? '<span class="vf-status"><span aria-hidden="true"></span>sem operação</span>'
+      : pend.length
+      ? `<span class="vf-status is-warning"><span aria-hidden="true"></span>${pend.length} pendência${pend.length === 1 ? "" : "s"}</span>`
+      : c.statusOperacional === "critico"
+      ? '<span class="vf-status is-danger">Não operacional</span>'
+      : c.statusOperacional === "atencao"
+      ? '<span class="vf-status is-warning">Atenção</span>'
       : "";
 
     // 1 conta ativa: a linha inteira é o alvo. 2+: o nome vira <h3> e só os
@@ -600,7 +628,7 @@ export function createCarteira(options = {}) {
     // conhecido; antes disso o nome não é clicável (evita "clicou, não
     // aconteceu nada" enquanto a operação ainda carrega).
     const titulo = umaConta
-      ? `<button type="button" class="vf-portfolio-row__name is-clickable" data-entrar="${fmt.escapeHTML(c.slug)}">${fmt.escapeHTML(c.nome)}</button>`
+      ? `<button type="button" class="vf-portfolio-row__name is-clickable" data-entrar="${fmt.escapeHTML(c.slug)}" aria-label="${fmt.escapeHTML(`${c.nome} — abrir ${ativas[0].nome} na Visão`)}">${fmt.escapeHTML(c.nome)} <span class="vf-portfolio-entry" aria-hidden="true">→</span></button>`
       : `<h3 class="vf-portfolio-row__name">${fmt.escapeHTML(c.nome)}</h3>`;
 
     const rodape = semConta
@@ -610,10 +638,10 @@ export function createCarteira(options = {}) {
       : "";
 
     return (
-      `<li class="vf-portfolio-row" data-slug="${fmt.escapeHTML(c.slug)}">` +
+      `<li class="vf-portfolio-row${semConta ? " is-empty" : ""}" data-slug="${fmt.escapeHTML(c.slug)}" tabindex="-1">` +
       '<div class="vf-portfolio-row__head">' +
       titulo +
-      (c.responsavelDireto ? '<span class="vf-tag">responsável: você</span>' : "") +
+      (c.responsavelDireto ? '<span class="vf-tag vf-portfolio-owner">responsável: você</span>' : "") +
       '<span class="vf-portfolio-row__spacer"></span>' +
       alerta +
       "</div>" +
@@ -629,11 +657,11 @@ export function createCarteira(options = {}) {
       // Skeleton neutro — sem saber ainda quantas contas existem, não dá
       // para prometer uma largura fixa por conta (diferente do resto do
       // shell, que já conhece a cardinalidade pelo contexto ativo).
-      return '<span class="vf-op-chip is-skeleton"><span class="vf-skeleton vf-skeleton--row"></span></span>';
+      return '<span class="vf-op-chip is-skeleton" role="status"><span class="vf-visually-hidden">Carregando operações</span><span class="vf-skeleton vf-skeleton--row" aria-hidden="true"></span></span>';
     }
     if (cache.erro) {
       return (
-        '<span class="vf-op-chip is-error">não foi possível carregar as operações · ' +
+        '<span class="vf-op-chip is-error" role="status">Não foi possível carregar as operações. ' +
         `<button type="button" class="vf-linklike" data-recarregar="${fmt.escapeHTML(c.slug)}">tentar de novo</button></span>`
       );
     }
@@ -642,17 +670,29 @@ export function createCarteira(options = {}) {
     return ativas
       .map((conta) => {
         const st = statusOperacao(conta);
-        const sub = [conta.base ? "base ok" : "sem base"];
-        // "nunca sincronizou" seria uma AFIRMAÇÃO — e nenhum dos dois
-        // payloads de conta (GET /clientes/:slug/contas não tem o campo;
-        // /me/portfolio manda `null` fixo) sabe disso. Ausência é ausência.
-        sub.push(conta.ultimaSync ? fmt.desde(conta.ultimaSync) : "sem dado de sync");
+        const marketplace = { meli: "Mercado Livre", shopee: "Shopee" }[conta.marketplace] || conta.marketplace || "Marketplace sem dado";
+        const nome = conta.nome || marketplace;
+        const mostrarMarketplace = !fmt.normalizarBusca(nome).includes(fmt.normalizarBusca(marketplace));
+        const id = conta.external_account_id;
+        const externo = rotuloExterno(conta);
+        const identificador = id && String(id) !== String(externo) ? ` · ${conta.marketplace === "meli" ? "seller" : "ID"} ${id}` : "";
+        // Mesmo estado canônico do Shell; só a apresentação muda aqui.
+        const status = st.code === "sem_grant" ? "Sem Grant" : st.label;
+        const tom = st.code === "sem_grant" ? "danger" : st.tone;
+        const base = conta.base ? "Base vinculada" : "Base não vinculada";
+        // Sync ausente ou inválida não significa que nunca sincronizou.
+        const syncValida = conta.ultimaSync && Number.isFinite(new Date(conta.ultimaSync).getTime());
+        const sync = syncValida ? `Sync ${fmt.desde(conta.ultimaSync)}` : "sem dado de sync";
         return (
-          `<button type="button" class="vf-op-chip" data-conta="${conta.id}" data-cliente="${fmt.escapeHTML(c.slug)}">` +
-          `<span class="vf-op-chip__top"><span class="vf-status is-${st.tone}"><span aria-hidden="true"></span>` +
-          `<span class="vf-visually-hidden">${fmt.escapeHTML(st.label)}</span></span>${fmt.escapeHTML(conta.nome)}</span>` +
-          `<span class="vf-op-chip__label">${fmt.escapeHTML(rotuloExterno(conta))}</span>` +
-          `<span class="vf-op-chip__meta">${fmt.escapeHTML(sub.join(" · "))}</span>` +
+          `<button type="button" class="vf-op-chip" data-conta="${conta.id}" data-cliente="${fmt.escapeHTML(c.slug)}" aria-label="${fmt.escapeHTML(`${nome}, ${marketplace}, ${externo}${identificador}, ${c.nome}. ${status}. ${base}. ${sync}. Abrir na Visão`)}">` +
+          `<span class="vf-op-chip__top"><span>${fmt.escapeHTML(nome)}</span>` +
+          `<span class="vf-op-chip__health"><span class="vf-status is-${tom}"><span aria-hidden="true"></span>${fmt.escapeHTML(status)}</span></span>` +
+          '<span class="vf-portfolio-entry" aria-hidden="true">→</span></span>' +
+          '<span class="vf-op-chip__identity">' +
+          (mostrarMarketplace ? `<span>${fmt.escapeHTML(marketplace)} · </span>` : '') +
+          `<span class="vf-op-chip__label">${fmt.escapeHTML(externo)}</span><span class="vf-op-chip__external">${fmt.escapeHTML(identificador)}</span></span>` +
+          `<span class="vf-op-chip__meta"><span class="${conta.base ? "" : "vf-op-chip__missing"}">${fmt.escapeHTML(base)}</span> · ` +
+          `<span${syncValida ? ` title="${fmt.escapeHTML(fmt.data(conta.ultimaSync))}"` : ""}>${fmt.escapeHTML(sync)}</span></span>` +
           "</button>"
         );
       })
@@ -660,20 +700,20 @@ export function createCarteira(options = {}) {
   }
 
   function wireLinhas(box) {
-    box.querySelectorAll("[data-entrar]").forEach((b) => {
-      b.addEventListener("click", () => entrar(b.dataset.entrar, null));
-    });
-    box.querySelectorAll("[data-conta]").forEach((b) => {
-      b.addEventListener("click", () => entrar(b.dataset.cliente, Number(b.dataset.conta)));
-    });
-    box.querySelectorAll("[data-recarregar]").forEach((b) => {
-      b.addEventListener("click", () => {
+    // Um handler por lista, mesmo após busca, ordenação e respostas do fallback.
+    box.onclick = (e) => {
+      const b = e.target.closest("[data-entrar], [data-conta], [data-recarregar]");
+      if (!b || !box.contains(b)) return;
+      if (b.dataset.entrar) entrar(b.dataset.entrar, null);
+      else if (b.dataset.conta) entrar(b.dataset.cliente, Number(b.dataset.conta));
+      else {
         delete contasPorCliente[b.dataset.recarregar];
+        pintarLinha(b.dataset.recarregar);
         buscarContas(b.dataset.recarregar);
-      });
-    });
+      }
+    };
     // Navegação vertical entre clientes (roving) — §10.10
-    box.addEventListener("keydown", (e) => {
+    box.onkeydown = (e) => {
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
       const linhas = Array.prototype.slice.call(box.querySelectorAll(".vf-portfolio-row"));
       const atual = doc.activeElement && doc.activeElement.closest(".vf-portfolio-row");
@@ -681,9 +721,9 @@ export function createCarteira(options = {}) {
       const alvo = linhas[e.key === "ArrowDown" ? i + 1 : i - 1];
       if (!alvo) return;
       e.preventDefault();
-      const foco = alvo.querySelector("[data-entrar], [data-conta]");
-      if (foco) foco.focus();
-    });
+      const foco = alvo.querySelector("[data-entrar], [data-conta], [data-recarregar], a") || alvo;
+      foco.focus();
+    };
   }
 
   /* Carga sob demanda (§10.5 nível A): (a) prefetch imediato das primeiras
@@ -745,7 +785,6 @@ export function createCarteira(options = {}) {
     tpl.innerHTML = linhaCliente(c).trim();
     const novo = tpl.content.firstElementChild;
     antigo.replaceWith(novo);
-    wireLinhas(novo.parentElement || host.querySelector("#cart-lista"));
   }
 
   function cssEscape(s) {
@@ -793,11 +832,10 @@ export function createCarteira(options = {}) {
   function atalhoBusca(e) {
     if (e.key !== "/" || !host) return;
     const alvo = e.target;
-    if (alvo && (alvo.tagName === "INPUT" || alvo.tagName === "TEXTAREA" || alvo.tagName === "SELECT")) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || (alvo && (alvo.isContentEditable || alvo.tagName === "INPUT" || alvo.tagName === "TEXTAREA" || alvo.tagName === "SELECT"))) return;
     const buscaEl = host.querySelector("#cart-busca");
     if (buscaEl) { e.preventDefault(); buscaEl.focus(); }
   }
-  doc.addEventListener("keydown", atalhoBusca);
 
   return { montar, desmontar };
 }

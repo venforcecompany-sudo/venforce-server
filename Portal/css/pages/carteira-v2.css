@@ -1,172 +1,164 @@
-/* ============================================================
- * VenForce — Carteira · CSS específico da página (F1.1/F1.2)
- *
- * Cinco componentes que a Fundação V2 ainda não tem (MASTER_SPEC §16.3):
- * lista densa da Carteira, chip de operação com status, filtro em chip,
- * grupo de squad e o rótulo de linha. Vivem aqui, não em
- * vf-components-v2.css — F0.4 reservou aquele arquivo para uma unidade
- * própria, revisada à parte.
- *
- * Nenhum token novo: só var(--vf-*) já definidos em vf-tokens-v2.css.
- * ============================================================ */
-
+/* Carteira: lista operacional densa sobre a Fundação V2. Escopo local;
+   a especificidade protege os chips das regras legadas do Shell. */
 .vf-page-carteira .vf-content {
   max-width: none;
   padding: 0;
 }
-
 .vf-page-carteira [hidden] {
   display: none;
 }
-
+.vf-page-carteira .vf-portfolio-header {
+  margin-bottom: var(--vf-sp-4);
+}
 .vf-portfolio-header .vf-page-header__main {
   flex-basis: auto;
 }
+.vf-portfolio-header .vf-page-header__description {
+  font-variant-numeric: tabular-nums;
+}
 
-/* ── Toolbar: busca + filtros + ordenação ─────────────────────────────── */
-
-.vf-portfolio-toolbar {
-  display: flex;
-  flex-wrap: wrap;
+/* Grid mantém as duas faixas compactas mesmo quando a Fundação vira
+   .vf-toolbar para coluna em 900px; flex-basis nunca vira altura de input. */
+.vf-page-carteira .vf-portfolio-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: var(--vf-sp-2) var(--vf-sp-4);
   align-items: center;
-  gap: var(--vf-sp-3);
+  padding: 0 0 var(--vf-sp-3);
+  border: 0;
+  border-bottom: 1px solid var(--vf-border);
+  border-radius: 0;
+  background: transparent;
 }
-
-.vf-portfolio-toolbar .vf-input {
-  flex: 1 1 240px;
-  min-width: 180px;
-  max-width: 360px;
+.vf-portfolio-search {
+  position: relative;
+  min-width: 0;
 }
-
+.vf-portfolio-search .vf-input {
+  width: 100%;
+  min-width: 0;
+  padding-right: var(--vf-sp-8);
+}
+.vf-portfolio-search .vf-input::placeholder {
+  color: var(--vf-text-muted);
+}
+.vf-portfolio-search kbd {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--vf-text-muted);
+  font: inherit;
+  font-size: var(--vf-fs-xs);
+  pointer-events: none;
+}
+.vf-portfolio-search:focus-within kbd {
+  visibility: hidden;
+}
 .vf-filter-group {
   display: flex;
-  gap: var(--vf-sp-2);
+  gap: var(--vf-sp-1);
 }
-
 .vf-filter-chip {
-  border: 1px solid var(--vf-border-strong);
-  background: var(--vf-surface);
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--vf-text-secondary);
-  border-radius: var(--vf-radius-pill);
-  padding: var(--vf-sp-1) var(--vf-sp-3);
+  border-radius: var(--vf-radius-sm);
+  min-height: 32px;
+  padding: var(--vf-sp-1) var(--vf-sp-2);
   font-size: var(--vf-fs-xs);
   font-weight: var(--vf-fw-medium);
+  white-space: nowrap;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
-
 .vf-filter-chip:hover {
   background: var(--vf-surface-hover);
   border-color: var(--vf-border-hover);
 }
-
 .vf-filter-chip.is-active {
   background: var(--vf-primary-soft);
   border-color: var(--vf-primary-border);
   color: var(--vf-primary-strong);
 }
-
-.vf-cluster {
+.vf-portfolio-toolbar .vf-cluster {
+  grid-column: 1 / -1;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: var(--vf-sp-4);
-  margin-left: auto;
+  min-width: 0;
 }
-
-.vf-toolbar__field {
+.vf-portfolio-toolbar .vf-toolbar__field {
   display: flex;
   align-items: center;
   gap: var(--vf-sp-2);
+  min-width: 0;
   font-size: var(--vf-fs-xs);
-  color: var(--vf-text-muted);
+  color: var(--vf-text-secondary);
+}
+.vf-portfolio-toolbar .vf-select {
+  min-width: 0;
+  max-width: 230px;
 }
 
-/* ── Lista densa ──────────────────────────────────────────────────────── */
-
-.vf-portfolio-list {
-  margin-top: var(--vf-sp-4);
+.vf-page-carteira .vf-portfolio-list {
+  margin-top: var(--vf-sp-3);
 }
-
 .vf-portfolio-ul {
   list-style: none;
   margin: 0;
   padding: 0;
 }
-
-/* Densidade (Wave 1 UI/UX B2): um portfólio com dezenas de clientes precisa
-   caber mais linhas por viewport. Grupo e linha ficam mais justos sem
-   comprimir a tipografia de leitura. */
 .vf-portfolio-group {
-  margin: var(--vf-sp-5) 0 var(--vf-sp-2);
-  font-size: var(--vf-fs-2xs);
-  font-weight: var(--vf-fw-bold);
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--vf-sp-2);
+  margin: var(--vf-sp-5) 0 var(--vf-sp-1);
+  font: var(--vf-fw-bold) var(--vf-fs-xs) / var(--vf-lh-snug) var(--vf-font-body);
   letter-spacing: var(--vf-ls-caps);
-  color: var(--vf-text-muted);
+  color: var(--vf-text-secondary);
 }
-
-.vf-portfolio-group:first-child {
+.vf-portfolio-group-item:first-child .vf-portfolio-group {
   margin-top: 0;
 }
-
 .vf-portfolio-group small {
-  font-weight: var(--vf-fw-medium);
-  text-transform: none;
-  letter-spacing: normal;
-}
-
-/* Squad principal (P2.9): marca DISCRETA de default de UX. Deliberadamente
-   sem cor de status — "principal" não é aviso, não é sucesso e não concede
-   nada; é só a informação de qual squad o backend registrou como padrão
-   deste usuário. Um destaque forte aqui sugeriria que os outros grupos
-   valem menos, e eles têm exatamente o mesmo acesso. */
-.vf-portfolio-group__tag {
-  display: inline-block;
-  margin-inline-start: var(--vf-sp-1);
-  padding: 0 var(--vf-sp-1);
-  border: 1px solid var(--vf-border);
-  border-radius: var(--vf-radius-sm);
-  font-size: var(--vf-fs-2xs);
-  font-weight: var(--vf-fw-medium);
-  text-transform: none;
+  font: var(--vf-fw-regular) var(--vf-fs-xs) var(--vf-font-body);
   letter-spacing: normal;
   color: var(--vf-text-muted);
-  vertical-align: baseline;
+}
+.vf-portfolio-group__tag {
+  font-size: var(--vf-fs-xs);
+  font-weight: var(--vf-fw-regular);
+  letter-spacing: normal;
+  color: var(--vf-text-muted);
 }
 
 .vf-portfolio-row {
-  padding: var(--vf-sp-3) var(--vf-sp-2);
-  margin: 0 calc(-1 * var(--vf-sp-2));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 200px);
+  column-gap: var(--vf-sp-4);
+  padding: var(--vf-sp-3) 0;
   border-bottom: 1px solid var(--vf-border);
-  border-radius: var(--vf-radius-sm);
 }
-.vf-portfolio-row:hover {
-  background: var(--vf-surface-hover);
-}
-
 .vf-portfolio-row:last-child {
   border-bottom: none;
 }
-
-.vf-portfolio-row.is-skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vf-sp-2);
-}
-
 .vf-portfolio-row__head {
+  grid-column: 1 / -1;
   display: flex;
-  align-items: center;
-  gap: var(--vf-sp-3);
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--vf-sp-1) var(--vf-sp-3);
   margin-bottom: var(--vf-sp-2);
+  min-width: 0;
 }
-
 .vf-portfolio-row__name {
   margin: 0;
-  font-size: var(--vf-fs-md);
-  font-weight: var(--vf-fw-semibold);
+  font: var(--vf-fw-bold) var(--vf-fs-md) / var(--vf-lh-snug) var(--vf-font-body);
   color: var(--vf-text);
+  overflow-wrap: anywhere;
 }
-
 button.vf-portfolio-row__name {
   background: none;
   border: none;
@@ -174,101 +166,164 @@ button.vf-portfolio-row__name {
   cursor: pointer;
   text-align: left;
 }
-
-button.vf-portfolio-row__name.is-clickable:hover {
+button.vf-portfolio-row__name:hover {
   color: var(--vf-primary-strong);
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
-
-.vf-portfolio-row__spacer {
-  flex: 1 1 auto;
-}
-
-.vf-portfolio-row__ops {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vf-sp-2);
-}
-
-.vf-portfolio-row__foot {
-  margin: var(--vf-sp-2) 0 0;
-  font-size: var(--vf-fs-xs);
+.vf-portfolio-entry {
   color: var(--vf-text-muted);
+  margin-left: auto;
+  flex-shrink: 0;
 }
-
+.vf-portfolio-row__name .vf-portfolio-entry {
+  margin-left: var(--vf-sp-1);
+}
+.vf-portfolio-row .vf-portfolio-owner {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--vf-text-muted);
+  font-size: var(--vf-fs-xs);
+  font-weight: var(--vf-fw-regular);
+}
+.vf-portfolio-row__spacer {
+  flex: 1;
+}
+.vf-portfolio-row__head > .vf-status {
+  font-size: var(--vf-fs-xs);
+  white-space: nowrap;
+}
+.vf-portfolio-row__ops {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  align-items: stretch;
+  gap: var(--vf-sp-2);
+  min-width: 0;
+}
+.vf-portfolio-row__ops:empty {
+  display: none;
+}
+.vf-portfolio-row__foot {
+  margin: 0;
+  align-self: start;
+  text-align: right;
+  font-size: var(--vf-fs-xs);
+  line-height: var(--vf-lh-normal);
+  color: var(--vf-text-secondary);
+  overflow-wrap: anywhere;
+}
 .vf-portfolio-row__foot a {
   color: var(--vf-primary-strong);
+  text-underline-offset: 3px;
 }
-
-/* ── Chip de operação ─────────────────────────────────────────────────── */
-
-.vf-op-chip {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-width: 168px;
-  padding: var(--vf-sp-2) var(--vf-sp-3);
-  border: 1px solid var(--vf-border-strong);
-  border-radius: var(--vf-radius-sm);
-  background: var(--vf-surface);
-  cursor: pointer;
+.vf-portfolio-row.is-empty .vf-portfolio-row__foot {
+  grid-column: 1 / -1;
   text-align: left;
-  transition: border-color 0.12s ease, background 0.12s ease;
 }
 
-.vf-op-chip:hover {
-  border-color: var(--vf-primary-border);
+.vf-page-carteira .vf-op-chip {
+  position: relative;
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 2px; flex: 0 1 300px; min-width: 0; max-width: 100%;
+  padding: var(--vf-sp-2) var(--vf-sp-3);
+  border: 1px solid var(--vf-border-strong); border-radius: var(--vf-radius-sm);
+  background: var(--vf-surface); text-align: left; cursor: pointer;
+  line-height: var(--vf-lh-snug); overflow-wrap: anywhere;
+  box-shadow: none;
+}
+.vf-page-carteira button.vf-op-chip:hover {
+  border-color: var(--vf-primary);
   background: var(--vf-primary-soft);
 }
-
-.vf-op-chip[aria-disabled="true"] {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.vf-op-chip__top {
+.vf-page-carteira .vf-op-chip__top {
   display: flex;
-  align-items: center;
-  gap: var(--vf-sp-1);
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px var(--vf-sp-2);
+  padding-right: var(--vf-sp-5);
   font-size: var(--vf-fs-sm);
-  font-weight: var(--vf-fw-medium);
+  font-weight: var(--vf-fw-semibold);
   color: var(--vf-text);
 }
-
-.vf-op-chip__label {
+.vf-page-carteira .vf-op-chip__identity {
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+}
+.vf-page-carteira .vf-op-chip__label {
+  font-family: var(--vf-font-body);
+  font-size: inherit;
+  color: inherit;
+}
+.vf-op-chip__external {
+  font-variant-numeric: tabular-nums;
+}
+.vf-op-chip__health {
+  margin-left: auto;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+}
+.vf-op-chip__top .vf-portfolio-entry {
+  position: absolute;
+  right: var(--vf-sp-3);
+  top: var(--vf-sp-2);
+  margin-left: 0;
+}
+.vf-op-chip__health .vf-status {
+  font-size: inherit;
+}
+.vf-page-carteira .vf-op-chip__missing {
+  color: var(--vf-warning-strong);
+}
+.vf-page-carteira .vf-op-chip__meta {
   font-size: var(--vf-fs-xs);
   color: var(--vf-text-muted);
 }
-
-.vf-op-chip__meta {
-  font-size: var(--vf-fs-2xs);
-  color: var(--vf-text-placeholder);
+.vf-page-carteira .vf-op-chip.is-skeleton {
+  min-height: 88px;
+  cursor: default;
 }
-
-.vf-op-chip.is-skeleton {
-  min-width: 168px;
-  padding: var(--vf-sp-3);
-}
-
-.vf-op-chip.is-error {
-  border-color: var(--vf-danger-border);
-  background: var(--vf-danger-bg);
+.vf-page-carteira .vf-op-chip.is-error {
+  background: transparent;
+  border: 0;
+  padding: 0;
   color: var(--vf-danger-strong);
   font-size: var(--vf-fs-xs);
   cursor: default;
 }
-
+.vf-op-chip.is-error .vf-linklike {
+  align-self: flex-start;
+  min-height: 32px;
+}
+.vf-portfolio-row.is-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-2);
+  min-height: 120px;
+}
 .vf-linklike {
   background: none;
   border: none;
   padding: 0;
   color: var(--vf-primary-strong);
   text-decoration: underline;
+  text-underline-offset: 3px;
   cursor: pointer;
   font: inherit;
 }
-
+.vf-page-carteira .vf-empty {
+  text-align: left;
+  align-items: flex-start;
+  padding: var(--vf-sp-8) 0;
+}
+.vf-page-carteira .vf-empty .vf-btn {
+  margin-top: var(--vf-sp-3);
+}
+.vf-page-carteira :is(button, a, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--vf-primary);
+  outline-offset: 3px;
+  box-shadow: none;
+}
 .vf-visually-hidden {
   position: absolute;
   width: 1px;
@@ -281,32 +336,86 @@ button.vf-portfolio-row__name.is-clickable:hover {
   border: 0;
 }
 
-/* A toolbar da Carteira é `.vf-toolbar` + `.vf-portfolio-toolbar`, e
-   vf-components-v2.css vira a PRIMEIRA para `flex-direction: column` em
-   ≤900px. Aí o eixo principal passa a ser a VERTICAL, e o
-   `flex: 1 1 240px` que dava à busca a largura certa em linha passou a
-   valer como ALTURA: o campo de busca ficava com 240px de altura (medido
-   com CDP em 900px e 390px) e a barra inteira com ~350px. Em coluna a
-   largura já vem do `align-items: stretch`, então a busca não precisa de
-   base nenhuma no eixo principal. */
-@media (max-width: 900px) {
-  .vf-portfolio-toolbar .vf-input {
-    flex: 0 0 auto;
-    max-width: none;
+/* Mantém o cliente/operação focado abaixo da barra sticky de contexto. */
+.vf-page-carteira :is(.vf-portfolio-row, .vf-op-chip, .vf-portfolio-group) {
+  scroll-margin-top: var(--vf-sp-4);
+}
+@media (max-width: 1200px) {
+  .vf-page-carteira :is(.vf-portfolio-row, .vf-op-chip, .vf-portfolio-group) {
+    scroll-margin-top: 160px;
   }
 }
 
+@media (min-width: 1380px) {
+  .vf-page-carteira .vf-portfolio-toolbar {
+    grid-template-columns: minmax(200px, 1fr) auto auto;
+    gap: var(--vf-sp-2);
+  }
+  .vf-portfolio-toolbar .vf-cluster {
+    grid-column: auto;
+    gap: var(--vf-sp-3);
+  }
+}
+@media (max-width: 1100px) {
+  .vf-portfolio-row {
+    grid-template-columns: minmax(0, 1fr);
+    padding-block: var(--vf-sp-2);
+  }
+  .vf-portfolio-row__foot {
+    margin-top: var(--vf-sp-2);
+    text-align: left;
+  }
+}
 @media (max-width: 640px) {
-  .vf-portfolio-toolbar {
+  .vf-page-carteira .vf-page-shell {
+    padding: var(--vf-sp-4) 0 var(--vf-sp-8);
+  }
+  .vf-page-carteira .vf-portfolio-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vf-portfolio-toolbar .vf-cluster {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: var(--vf-sp-2);
+  }
+  .vf-portfolio-toolbar .vf-toolbar__field {
     flex-direction: column;
     align-items: stretch;
+    gap: var(--vf-sp-1);
   }
-  .vf-cluster {
-    margin-left: 0;
-    flex-wrap: wrap;
+  .vf-portfolio-toolbar .vf-toolbar__field:only-child {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
   }
-  .vf-op-chip {
-    min-width: 0;
-    flex: 1 1 140px;
+  .vf-portfolio-toolbar .vf-select {
+    width: 100%;
+    max-width: none;
+  }
+  .vf-portfolio-toolbar .vf-filter-group {
+    justify-content: space-between;
+  }
+  .vf-filter-chip {
+    min-height: 36px;
+  }
+  .vf-portfolio-row__head {
+    gap: var(--vf-sp-1) var(--vf-sp-2);
+  }
+  .vf-portfolio-row__name {
+    flex-basis: 100%;
+  }
+  .vf-portfolio-row__head > .vf-status {
+    margin-left: auto;
+  }
+  .vf-page-carteira .vf-op-chip {
+    flex: 1 1 260px;
+  }
+  button.vf-portfolio-row__name {
+    min-height: 32px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vf-page-carteira .vf-skeleton {
+    animation: none;
   }
 }
