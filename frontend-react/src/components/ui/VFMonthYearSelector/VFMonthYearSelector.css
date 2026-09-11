@@ -56,10 +56,14 @@
   transform: rotate(180deg);
 }
 
+/* `fixed`, não `absolute`: o popover é montado via createPortal em
+   document.body (ver VFMonthYearSelector.jsx), então `top`/`left` chegam
+   como estilo inline em px (coordenadas de viewport), calculados a partir
+   do trigger. Isso tira o popover de dentro de qualquer item de flex/grid
+   de página — nenhuma tela precisa saber disso para o popover ficar por
+   cima do próprio conteúdo (ver comentário no topo do .jsx). */
 .vf-month-year-selector__popover {
-  position: absolute;
-  top: calc(100% + var(--vf-sp-2));
-  left: 50%;
+  position: fixed;
   transform: translateX(-50%);
   z-index: var(--vf-z-dropdown);
   width: 280px;

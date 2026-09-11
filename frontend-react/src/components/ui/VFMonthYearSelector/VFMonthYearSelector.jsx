@@ -7,8 +7,19 @@
 // value é a fonte da verdade: quando ausente ou inválido, o componente cai no
 // mês atual apenas como proteção visual — isso NUNCA dispara onChange. Só o
 // clique num mês confirma uma competência (sem botão de OK/confirmar).
+//
+// O popover é montado via createPortal em document.body, não como filho do
+// trigger. `.vf-month-year-selector__trigger` normalmente vive dentro de um
+// item de flex/grid de página (ex.: `.vf-page-header`, `.vf-page-header__actions`)
+// que não é um stacking context próprio — um `z-index` no popover só domina
+// irmãos de página quando não há, no caminho até a raiz, nenhum ancestral que
+// já tenha "prendido" o conteúdo num nível de pintura mais baixo (comum com
+// itens de flex/grid). Portal evita depender de qualquer hierarquia de
+// stacking fora deste componente: o popover sempre nasce direto em <body>,
+// então `--vf-z-dropdown` vale sozinho, sem checar cada tela que o usa.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cx } from "../../../utils/cx.js";
 import "./VFMonthYearSelector.css";
 
@@ -70,11 +81,25 @@ export function VFMonthYearSelector({ value, onChange, disabled = false, classNa
   const [open, setOpen] = useState(false);
   const [yearMenuOpen, setYearMenuOpen] = useState(false);
   const [viewYear, setViewYear] = useState(competencia.year);
+  const [popoverPos, setPopoverPos] = useState(/** @type {{ top: number, left: number } | null} */ (null));
   const rootRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const triggerRef = useRef(/** @type {HTMLButtonElement | null} */ (null));
+  const popoverRef = useRef(/** @type {HTMLDivElement | null} */ (null));
 
   function fechar() {
     setOpen(false);
     setYearMenuOpen(false);
+  }
+
+  // Reposiciona o popover contra o trigger a cada abertura/resize/scroll —
+  // necessário porque, montado em <body> via portal, ele é `position: fixed`
+  // e não acompanha o fluxo/scroll da página sozinho como um `absolute`
+  // filho acompanharia.
+  function posicionarPopover() {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    setPopoverPos({ top: rect.bottom + 8, left: rect.left + rect.width / 2 });
   }
 
   function abrirOuFechar() {
@@ -92,14 +117,32 @@ export function VFMonthYearSelector({ value, onChange, disabled = false, classNa
     fechar();
   }
 
-  // Fecha ao clicar fora ou pressionar Esc — sem disparar onChange.
+  // Posiciona antes do paint (sem flash em 0,0) e mantém colado no trigger
+  // enquanto aberto, já que o portal tira o popover do fluxo desta página.
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+
+    posicionarPopover();
+    window.addEventListener("resize", posicionarPopover);
+    window.addEventListener("scroll", posicionarPopover, true);
+    return () => {
+      window.removeEventListener("resize", posicionarPopover);
+      window.removeEventListener("scroll", posicionarPopover, true);
+    };
+  }, [open]);
+
+  // Fecha ao clicar fora ou pressionar Esc — sem disparar onChange. "Fora"
+  // considera trigger E popover: o popover mora em <body> (portal), fora de
+  // rootRef, então um clique nele conta como clique fora se não checarmos os
+  // dois.
   useEffect(() => {
     if (!open) return undefined;
 
     function aoClicarFora(event) {
-      if (rootRef.current && !rootRef.current.contains(/** @type {Node} */ (event.target))) {
-        fechar();
-      }
+      const alvo = /** @type {Node} */ (event.target);
+      const dentroDoTrigger = rootRef.current?.contains(alvo);
+      const dentroDoPopover = popoverRef.current?.contains(alvo);
+      if (!dentroDoTrigger && !dentroDoPopover) fechar();
     }
 
     function aoPressionarTecla(event) {
@@ -122,6 +165,7 @@ export function VFMonthYearSelector({ value, onChange, disabled = false, classNa
   return (
     <div ref={rootRef} className={cx("vf-month-year-selector", className)}>
       <button
+        ref={triggerRef}
         type="button"
         className={cx(
           "vf-month-year-selector__trigger",
@@ -146,8 +190,14 @@ export function VFMonthYearSelector({ value, onChange, disabled = false, classNa
         </svg>
       </button>
 
-      {open && (
-        <div className="vf-month-year-selector__popover" role="dialog" aria-label="Selecionar competência">
+      {open && popoverPos && createPortal(
+        <div
+          ref={popoverRef}
+          className="vf-month-year-selector__popover"
+          style={{ top: popoverPos.top, left: popoverPos.left }}
+          role="dialog"
+          aria-label="Selecionar competência"
+        >
           <div className="vf-month-year-selector__header">
             <button
               type="button"
@@ -235,7 +285,8 @@ export function VFMonthYearSelector({ value, onChange, disabled = false, classNa
               ))}
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
