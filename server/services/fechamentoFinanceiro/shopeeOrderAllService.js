@@ -741,10 +741,107 @@ function selectShopeeIdentityFromRecords(rawRecords, line, source, bridgeSku) {
   return { ambiguous: true, record: null, records: narrowed, source, bridgeSku, ambiguityKey };
 }
 
+// Palavras de conexão que não identificam o produto — filtradas antes do
+// token overlap do último fallback para não inflar nem distorcer o score.
+const SHOPEE_TITLE_STOPWORDS = new Set([
+  "de", "da", "do", "das", "dos", "e", "com", "para", "em", "no", "na", "a", "o", "os", "as",
+]);
+
+function normalizeShopeeTitleTokens(value) {
+  const normalized = normalizeText(value).replace(/[^a-z0-9]+/g, " ").trim();
+  if (!normalized) return [];
+  const tokens = normalized
+    .split(" ")
+    .filter((token) => token && !SHOPEE_TITLE_STOPWORDS.has(token));
+  return Array.from(new Set(tokens));
+}
+
+// Evidência de que dois títulos descrevem o mesmo produto reordenado/editado:
+// proporção dos tokens do título menor presentes no outro. É só um insumo do
+// corte de segurança em selectShopeeBridgeIdentityByTitleVariation — nunca a
+// verdade financeira, e nunca exposto como afirmação de identidade sozinho.
+function shopeeTitleOverlapScore(tokensA, tokensB) {
+  if (!tokensA.length || !tokensB.length) return 0;
+  const setB = new Set(tokensB);
+  let intersection = 0;
+  for (const token of tokensA) {
+    if (setB.has(token)) intersection += 1;
+  }
+  return intersection / Math.min(tokensA.length, tokensB.length);
+}
+
+// Corte conservador: exige que a maioria expressiva dos tokens do título
+// menor apareça no outro título. Candidatos empatados nesse corte NUNCA são
+// resolvidos por "o primeiro" — ver o tratamento de empate abaixo.
+const SHOPEE_TITLE_OVERLAP_THRESHOLD = 0.6;
+
+// Último fallback da ponte, só tentado quando SKU e produto+variação exatos
+// (as estratégias acima) não resolveram nada:
+//   1. exige VARIAÇÃO EXATA normalizada — nunca cruza "Preto,G" com "Preto,GG";
+//   2. só compara título ENTRE os candidatos dessa mesma variação exata;
+//   3. um candidato claramente seguro (único no topo do corte) -> resolve;
+//   4. mais de um candidato empatado no topo -> quem decide é a equivalência
+//      financeira (custo + imposto iguais) já usada pela ponte; sem isso, é
+//      AMBIGUOUS e o item permanece sem custo.
+function selectShopeeBridgeIdentityByTitleVariation(line, allRecords) {
+  const variationKey = normalizeShopeeIdentityText(line.variationName);
+  if (!variationKey) return null;
+
+  const productTokens = normalizeShopeeTitleTokens(line.product);
+  if (productTokens.length === 0) return null;
+
+  const sameVariation = uniqueBridgeRecords(
+    allRecords.filter(
+      (record) => normalizeShopeeIdentityText(record.variationName) === variationKey
+    )
+  );
+  if (sameVariation.length === 0) return null;
+
+  const scored = sameVariation.map((record) => ({
+    record,
+    score: shopeeTitleOverlapScore(
+      productTokens,
+      normalizeShopeeTitleTokens(record.productName)
+    ),
+  }));
+
+  const passing = scored.filter((entry) => entry.score >= SHOPEE_TITLE_OVERLAP_THRESHOLD);
+  if (passing.length === 0) return null;
+
+  const maxScore = Math.max(...passing.map((entry) => entry.score));
+  const topRecords = uniqueBridgeRecords(
+    passing.filter((entry) => entry.score === maxScore).map((entry) => entry.record)
+  );
+  const ambiguityKey = `${line.product} / ${line.variationName}`;
+
+  if (topRecords.length === 1) {
+    return {
+      ambiguous: false,
+      record: topRecords[0],
+      records: topRecords,
+      source: "title_variation",
+      bridgeSku: null,
+      ambiguityKey,
+      titleScore: maxScore,
+    };
+  }
+
+  return {
+    ambiguous: true,
+    record: null,
+    records: topRecords,
+    source: "title_variation",
+    bridgeSku: null,
+    ambiguityKey,
+    titleScore: maxScore,
+  };
+}
+
 // Ordem estrita da ponte:
 //   1. Número de referência SKU -> índice SKU da Variação;
 //   2. produto + variação exatos (preserva identidade quando o SKU mudou);
-//   3. SKU principal, em índice separado e somente se for inequívoco.
+//   3. SKU principal, em índice separado e somente se for inequívoco;
+//   4. variação exata + evidência de título (último recurso, ver acima).
 function selectShopeeBridgeIdentity(line, costBridge) {
   const allRecords = getShopeeCostBridgeRecords(costBridge);
   if (allRecords.length === 0) return null;
@@ -819,7 +916,7 @@ function selectShopeeBridgeIdentity(line, costBridge) {
     return selectShopeeIdentityFromRecords(entry.records, line, "principal_sku", sku);
   }
 
-  return null;
+  return selectShopeeBridgeIdentityByTitleVariation(line, allRecords);
 }
 
 // Conciliação de custo de UMA linha do Order.all.
@@ -888,7 +985,10 @@ function resolveShopeeLineCost(costMap, line, costBridge, debugCollector) {
     if (equivalentCost) {
       return {
         costRow: equivalentCost.costRow,
-        source: "bridge_equivalent_cost",
+        source:
+          identity.source === "title_variation"
+            ? "bridge_title_variation_equivalent"
+            : "bridge_equivalent_cost",
         bridgeUsed: true,
         bridgeIds,
         bridgeSku: identity.bridgeSku,
@@ -918,7 +1018,12 @@ function resolveShopeeLineCost(costMap, line, costBridge, debugCollector) {
   // Quando a identidade exata fornece Model ID, SOMENTE ele pode fornecer o
   // custo. Não há fallback para o item pai, que pode ter outra variação/custo.
   const matchedId = modelId || itemId;
-  const sourceName = modelId ? "bridge_variation_id" : "bridge_item_id";
+  const sourceName =
+    identity.source === "title_variation"
+      ? "bridge_title_variation"
+      : modelId
+      ? "bridge_variation_id"
+      : "bridge_item_id";
   const stage = modelId ? "cost_bridge_variation" : "cost_bridge_item";
   const costRow = matchedId ? costMap.get(normalizeMatchKey(matchedId)) || null : null;
 
@@ -995,7 +1100,18 @@ function describeShopeeCostGap(line, costMatch, orderId) {
     const type = String(costMatch.source || "").replace(/^(direct|bridge)_/, "") || "sku";
     const value = costMatch.matchedValue ?? "";
     const sku = costMatch.bridgeUsed ? costMatch.bridgeSku : null;
-    return { type, value: String(value), sku, reason: "zero_cost_in_base" };
+    // rawCost/costValid (quando presentes na base) distinguem #N/A (inválido,
+    // sem dígito) de custo vazio e de custo 0 real — só diagnóstico, a regra
+    // financeira (inválido/vazio/<=0 → sem LC/MC) não muda.
+    return {
+      type,
+      value: String(value),
+      sku,
+      reason: "zero_cost_in_base",
+      rawCost: costMatch.costRow.rawCost ?? null,
+      costValid:
+        typeof costMatch.costRow.costValid === "boolean" ? costMatch.costRow.costValid : null,
+    };
   }
 
   if (costMatch.bridgeUsed) {
@@ -1102,6 +1218,7 @@ function processShopeeFinancialOrders({
   let bridgeCostMatchCount = 0;
   let bridgeEquivalentCostMatchCount = 0;
   let bridgeHistoricalSkuMatchCount = 0;
+  let bridgeTitleVariationMatchCount = 0;
   let bridgeMissCount = 0;
   let bridgeAmbiguousCount = 0;
   let zeroCostRowsCount = 0;
@@ -1289,6 +1406,9 @@ function processShopeeFinancialOrders({
           if (costMatch.identitySource === "historical_variation_sku") {
             bridgeHistoricalSkuMatchCount += 1;
           }
+          if (costMatch.identitySource === "title_variation") {
+            bridgeTitleVariationMatchCount += 1;
+          }
           revenueBridgeMatched = round2(revenueBridgeMatched + lineGross);
         } else {
           costSource = "base_custos";
@@ -1395,6 +1515,13 @@ function processShopeeFinancialOrders({
       'de SKU histórico (somente sufixos "-V" e "-0").'
     );
   }
+  if (bridgeTitleVariationMatchCount > 0) {
+    executiveNotes.push(
+      `COST_BRIDGE_TITLE_VARIATION: ${bridgeTitleVariationMatchCount} linha(s) foram conciliadas pela variação exata ` +
+      "mais evidência de título (o nome do anúncio mudou/foi reordenado entre as planilhas, mas a variação e o " +
+      "produto continuam os mesmos)."
+    );
+  }
   if (coverage.financialConfidence !== "confiavel") {
     executiveNotes.push(
       "Fechamento parcial: existem vendas sem custo cadastrado. O faturamento total está completo; LC e MC cobrem apenas a receita com custo identificado."
@@ -1481,6 +1608,7 @@ function processShopeeFinancialOrders({
       bridgeCostMatchCount,
       bridgeEquivalentCostMatchCount,
       bridgeHistoricalSkuMatchCount,
+      bridgeTitleVariationMatchCount,
       bridgeMissCount,
       bridgeAmbiguousCount,
       bridgeAmbiguousKeys,

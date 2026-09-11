@@ -699,18 +699,17 @@ function parseCostRows(rows) {
 
     if (!id && !modelId && !skuKey) continue;
 
-    const cost = toNumber(
-      findField(row, [
-        "preco custo",
-        "preço custo",
-        "custo",
-        "custo produto",
-        "custo do produto",
-        "custo unitario",
-        "custo unitário",
-        "product cost",
-      ])
-    );
+    const costFieldRaw = findField(row, [
+      "preco custo",
+      "preço custo",
+      "custo",
+      "custo produto",
+      "custo do produto",
+      "custo unitario",
+      "custo unitário",
+      "product cost",
+    ]);
+    const cost = toNumber(costFieldRaw);
 
     let taxPercent = toNumber(
       findField(row, [
@@ -752,11 +751,23 @@ function parseCostRows(rows) {
       rawModelId: String(modelIdRaw ?? "").trim(),
       matchKeys: keys,
       cost,
+      // Preserva o texto cru e se ele era numérico — diferencia "#N/A"
+      // (preenchido, sem dígito → inválido) de vazio e de "0" (preenchido,
+      // com dígito → válido, mesmo que zero). Só diagnóstico: `cost` acima
+      // continua sendo o único valor usado no cálculo financeiro.
+      rawCost: String(costFieldRaw ?? "").trim(),
+      costValid: isShopeeCostValueValid(costFieldRaw),
       taxPercent,
     });
   }
 
   return parsed;
+}
+
+function isShopeeCostValueValid(rawValue) {
+  const text = String(rawValue ?? "").trim();
+  if (!text) return false;
+  return /\d/.test(text);
 }
 
 
