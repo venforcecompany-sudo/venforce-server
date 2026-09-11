@@ -157,7 +157,13 @@
   width: 100%;
   display: flex;
   align-items: center;
-  gap: var(--vf-sp-2);
+  /* row-gap baixo de propósito: `gap` sozinho valia tanto pro espaço
+     rótulo/valor/sub (vertical, entre as linhas quebradas) quanto pro
+     espaço valor/seta (horizontal) — ficava alto demais entre as linhas
+     de texto. column-gap mantém o respiro horizontal, row-gap fica quase
+     colado (cards mais compactos). */
+  column-gap: var(--vf-sp-2);
+  row-gap: 2px;
   flex-wrap: wrap;
   padding: var(--vf-sp-2) var(--vf-sp-3);
   border: 1px solid var(--vf-border-strong);
@@ -189,7 +195,6 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--vf-text-secondary);
-  margin-bottom: 2px;
 }
 .vf-ctx-selector__value {
   flex: 1 1 auto;
@@ -236,6 +241,9 @@
 
 .vf-shell__item {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
   padding: 7px var(--vf-sp-3);
   border-radius: var(--vf-radius-sm);
   color: var(--vf-text-secondary);
@@ -245,6 +253,10 @@
   transition: background-color var(--vf-duration-fast) var(--vf-ease), color var(--vf-duration-fast) var(--vf-ease);
 }
 .vf-shell__item:hover { background: var(--vf-surface-hover); color: var(--vf-text); }
+.vf-shell__item-icon { flex-shrink: 0; opacity: 0.6; }
+.vf-shell__item:hover .vf-shell__item-icon { opacity: 0.9; }
+.vf-shell__item.is-active .vf-shell__item-icon { opacity: 1; color: var(--vf-primary); }
+.vf-shell__item.is-disabled .vf-shell__item-icon { opacity: 0.4; }
 
 /* Item ativo: primary-soft de fundo + faixa. Roxo sólido seria "roxo demais"
    (DESIGN.md, The One Accent Rule). */
@@ -336,7 +348,7 @@
 .is-collapsed .vf-shell__context,
 .is-collapsed .vf-shell__section-label,
 .is-collapsed .vf-shell__user { display: none; }
-.is-collapsed .vf-shell__item { text-align: center; padding-inline: 0; font-size: var(--vf-fs-2xs); }
+.is-collapsed .vf-shell__item { justify-content: center; padding-inline: 0; font-size: var(--vf-fs-2xs); }
 
 /* ── Carteira: lista densa (§16.3) ───────────────────────────────────────── */
 /* Lista, não card: a moldura é uma régua de 1px. Card só quando agrupa
@@ -495,7 +507,7 @@
   .vf-shell__footer { padding: var(--vf-sp-3) var(--vf-sp-2); justify-content: center; }
   .vf-shell__nav { padding-inline: 6px; }
   .vf-shell__item {
-    text-align: center;
+    justify-content: center; /* era text-align:center — some com o item virando flex (ícone+span) */
     padding-inline: 0;
     font-size: var(--vf-fs-2xs);
     font-weight: var(--vf-fw-semibold);
