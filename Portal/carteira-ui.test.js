@@ -135,11 +135,12 @@ const GRANDE = carteiraGrande(120);
 function harnessHtml(squadsJson) {
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="vf-api-base" content="__API_BASE__">
 <link rel="stylesheet" href="/css/vf-tokens-v2.css">
 <link rel="stylesheet" href="/css/vf-components-v2.css">
-<link rel="stylesheet" href="/css/pages/carteira-v2.css">
 <link rel="stylesheet" href="/css/vf-shell.css">
+<link rel="stylesheet" href="/css/pages/carteira-v2.css">
 </head>
 <body class="vf-page vf-page-carteira" data-vf-scope="global" data-vf-module="carteira">
 <script>
@@ -623,6 +624,145 @@ async function run() {
       `);
       assert.deepStrictEqual(labels.sort(), ["n97outlet", "n97store"], "chips não voltaram pelo caminho anterior");
     });
+
+    /* Refinamento: fixtures adicionais, mantendo intactos os casos P01–C1. */
+    const nomes = ['Aurora Comercial', 'N97 Comercial', 'Extra Máquinas', 'Casa & Cia', 'Loja do Pedro', 'Horizonte Distribuidora', 'Fênix Store', 'Ipê Atacado', 'Cedro Comércio', 'Olinda Antiga', 'Petrópolis Antiga'];
+    function carteiraRefino(n) {
+      const squads = [{ id: 3, nome: 'Squad Alpha', principal: true }, { id: 5, nome: 'Squad Beta' }, { id: 8, nome: 'Squad 8 · Legado' }];
+      const clientes = Array.from({ length: n }, (_, i) => {
+        const qtd = [1, 2, 1, 4, 0, 1, 2, 1, 1, 1, 0][i % 11];
+        const s = squads[i % 11 < 5 ? 0 : i % 11 < 9 ? 1 : 2];
+        const contas = Array.from({ length: qtd }, (_, k) => contaMe(2000 + i * 10 + k, k === 3 ? 'shopee' : 'meli', k === 3 ? 'Shopee' : `Mercado Livre ${k + 1}`, `loja-${i + 1}${k ? '-outlet' : ''}`, {
+          external_account_id: String(2000585272 + i * 10 + k),
+          grantStatus: k === 3 ? null : i % 11 === 0 ? 'sem_grant' : i % 11 === 3 && k === 0 ? 'atencao' : 'conectado',
+          baseVinculada: i % 11 === 1 || (i % 11 === 3 && k === 1) ? null : { id: 9, nome: 'Custo 2026' },
+          ultimaSync: i % 2 ? '2026-09-10T14:00:00Z' : null,
+        }));
+        return { id: 1000 + i, slug: `refino-${i}`, nome: nomes[i % 11] + (i >= 11 ? ` ${i + 1}` : ''), squadId: s.id, squad: s, responsavelDireto: i % 3 === 0,
+          statusOperacional: !qtd || i % 11 === 0 ? 'critico' : i % 11 === 1 || i % 11 === 3 ? 'atencao' : 'pronto',
+          pendencias: !qtd ? [{ tipo: 'sem_grant' }, { tipo: 'sem_base' }] : i % 11 === 0 ? [{ tipo: 'sem_grant' }] : i % 11 === 1 || i % 11 === 3 ? [{ tipo: 'sem_base' }] : [],
+          ultimaSincronizacao: i % 2 ? '2026-09-10T14:00:00Z' : null, contas };
+      });
+      return { ok: true, squads, clientes };
+    }
+    const refino = carteiraRefino(11);
+    currentFixture = { portfolio: { ok: true, clientes: refino.clientes }, contas: {}, mePortfolio: refino };
+    await goto('squads=null');
+    await waitFor(cdp, "document.querySelectorAll('.vf-portfolio-row').length === 11");
+
+    // Fonte opcional local para screenshots: a suíte não baixa assets da rede.
+    if (process.env.VF_UI_FONT_DIR) {
+      for (const peso of [400, 500, 600, 700]) {
+        const font = fs.readFileSync(path.join(process.env.VF_UI_FONT_DIR, `${peso}.ttf`)).toString('base64');
+        await cdp.evaluate(`(async () => { const f = new FontFace('Hanken Grotesk', 'url(data:font/ttf;base64,${font})', { weight: '${peso}' }); await f.load(); document.fonts.add(f); })()`);
+      }
+    }
+    async function screenshot(nome) {
+      if (!process.env.VF_UI_SCREENSHOTS) return;
+      fs.mkdirSync(process.env.VF_UI_SCREENSHOTS, { recursive: true });
+      const shot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+      fs.writeFileSync(path.join(process.env.VF_UI_SCREENSHOTS, `${nome}.png`), Buffer.from(shot.data, 'base64'));
+    }
+    for (const width of [1440, 1280, 1024, 900, 768, 390]) {
+      await cdp.send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 500 });
+      await cdp.evaluate('document.activeElement.blur(); window.scrollTo(0, 0)');
+      await sleep(300); // Shell reorganiza o contexto após debounce de 120ms.
+      await screenshot(`carteira-${width}`);
+      await check(`refino ${width}px — toolbar compacta, conteúdo inteiro e status legíveis`, async () => {
+        const m = await cdp.evaluate(`(() => {
+          const rect = s => document.querySelector(s).getBoundingClientRect();
+          return { overflow: document.documentElement.scrollWidth - innerWidth, busca: rect('#cart-busca').height,
+            toolbar: rect('.vf-portfolio-toolbar').height,
+            cortados: [...document.querySelectorAll('[data-conta]')].filter(e => e.scrollWidth > e.clientWidth + 1).length,
+            meta: getComputedStyle(document.querySelector('.vf-op-chip__meta')).fontSize,
+            quatro: document.querySelectorAll('[data-slug="refino-3"] [data-conta]').length,
+            contextoContido: !document.querySelector('.vf-shell__contextbar .vf-shell__context') ||
+              (rect('.vf-shell__contextbar .vf-shell__context').top >= rect('.vf-shell__contextbar').top &&
+              rect('.vf-shell__contextbar .vf-shell__context').bottom <= rect('.vf-shell__contextbar').bottom),
+            primeiraLinha: rect('.vf-portfolio-row').height };
+        })()`);
+        assert.ok(m.overflow <= 0, JSON.stringify(m));
+        assert.ok(m.busca >= 30 && m.busca < 60, JSON.stringify(m));
+        assert.ok(m.toolbar < 180, JSON.stringify(m));
+        assert.strictEqual(m.cortados, 0, JSON.stringify(m));
+        assert.ok(parseFloat(m.meta) >= 12, JSON.stringify(m));
+        assert.strictEqual(m.quatro, 4);
+        assert.strictEqual(m.contextoContido, true, JSON.stringify(m));
+        if (width >= 768) assert.ok(m.primeiraLinha < 160, JSON.stringify(m));
+        console.log('  medidas:', JSON.stringify(m));
+      });
+    }
+    await cdp.evaluate("document.querySelector('[data-slug=\"refino-3\"]').scrollIntoView({ block: 'start' })");
+    await screenshot('carteira-390-quatro-operacoes');
+    await cdp.evaluate("document.querySelectorAll('.vf-portfolio-group')[2].scrollIntoView({ block: 'start' })");
+    await screenshot('carteira-390-legado');
+    await cdp.evaluate('window.scrollTo(0, 0)');
+    await check('refino — conexão é texto visível; ausência de sync continua honesta', async () => {
+      const states = await cdp.evaluate(`[...document.querySelectorAll('.vf-op-chip__health .vf-status')].map(e => ({text:e.innerText, width:e.getBoundingClientRect().width}))`);
+      assert.ok(states.some(s => s.text === 'Sem Grant' && s.width > 30));
+      assert.ok(states.some(s => s.text === 'Conectado' && s.width > 30));
+      assert.ok(states.some(s => s.text === 'Grant com problema'));
+      assert.ok(states.some(s => s.text === 'Configurada'));
+    });
+    async function buscar(texto) {
+      await cdp.evaluate(`(() => { const b = document.querySelector('#cart-busca'); b.value = ${JSON.stringify(texto)}; b.dispatchEvent(new Event('input')); })()`);
+    }
+    await check('refino — busca nome, slug, conta, label e seller já carregados; zero chamadas extras', async () => {
+      const antes = contasRequestCount;
+      for (const [q, n] of [['maquinas', 1], ['refino-2', 1], ['Mercado Livre 2', 3], ['loja-4-outlet', 1], ['2000585272', 1]]) {
+        await buscar(q);
+        assert.strictEqual(await cdp.evaluate("document.querySelectorAll('.vf-portfolio-row').length"), n, q);
+      }
+      assert.strictEqual(contasRequestCount, antes);
+      await screenshot('carteira-busca-seller');
+      await buscar('');
+    });
+    await check('refino — filtros preservam foco, contagem, aria-pressed e URL', async () => {
+      await cdp.evaluate(`(() => { const b = document.querySelector('[data-filtro=pendencia]'); b.focus(); b.click(); })()`);
+      assert.strictEqual(await cdp.evaluate('document.activeElement.dataset.filtro'), 'pendencia');
+      assert.strictEqual(await cdp.evaluate("document.activeElement.getAttribute('aria-pressed')"), 'true');
+      assert.ok(await cdp.evaluate("document.querySelector('#cart-contagem').textContent.includes('5 de 11 clientes · 5 com pendência')"));
+      assert.strictEqual(await cdp.evaluate("new URLSearchParams(location.search).get('filtro')"), 'pendencia');
+      await cdp.evaluate("document.querySelector('[data-filtro=todos]').click()");
+    });
+    await check('refino — resumo acompanha Squad e limpar filtros recupera a lista e o foco', async () => {
+      await cdp.evaluate(`(() => { const s = document.querySelector('#cart-squad'); s.focus(); s.value = '8'; s.dispatchEvent(new Event('change')); })()`);
+      assert.strictEqual(await cdp.evaluate('document.activeElement.id'), 'cart-squad');
+      assert.ok(await cdp.evaluate("document.querySelector('#cart-contagem').textContent.includes('2 de 11 clientes · 1 com pendência · Squad 8 · Legado')"));
+      await buscar('nenhum resultado');
+      await screenshot('carteira-filtro-vazio');
+      await cdp.evaluate("document.querySelector('#cart-limpar').click()");
+      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('.vf-portfolio-row').length"), 11);
+      assert.strictEqual(await cdp.evaluate('document.activeElement.id'), 'cart-busca');
+    });
+    await check('refino — uma seta move exatamente uma linha após várias buscas e ordenações', async () => {
+      for (const value of ['nome', 'meus', 'sync', 'atencao']) {
+        await cdp.evaluate(`(() => { const s = document.querySelector('#cart-ordem'); s.value = '${value}'; s.dispatchEvent(new Event('change')); })()`);
+      }
+      const r = await cdp.evaluate(`(() => {
+        const linhas = [...document.querySelectorAll('.vf-portfolio-row')];
+        const atual = linhas.findIndex(e => e.querySelector('[data-conta]'));
+        linhas[atual].querySelector('[data-conta]').focus();
+        document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+        const depois = linhas.indexOf(document.activeElement.closest('.vf-portfolio-row'));
+        document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+        return { atual, depois, voltou: linhas.indexOf(document.activeElement.closest('.vf-portfolio-row')) };
+      })()`);
+      assert.strictEqual(r.depois, r.atual + 1);
+      assert.strictEqual(r.voltou, r.atual);
+    });
+    for (const n of [30, 80, 100]) {
+      currentFixture = { portfolio: { ok: true, clientes: refino.clientes }, contas: {}, mePortfolio: carteiraRefino(n) };
+      await goto('squads=null');
+      await waitFor(cdp, `document.querySelectorAll('.vf-portfolio-row').length === ${n}`);
+      await check(`refino — ${n} clientes, busca local e uma chamada rica sem N+1`, async () => {
+        await buscar(`refino-${n - 1}`);
+        assert.strictEqual(await cdp.evaluate("document.querySelectorAll('.vf-portfolio-row').length"), 1);
+        assert.strictEqual(contasRequestCount, 0);
+        assert.strictEqual(mePortfolioRequestCount, 1);
+      });
+    }
+    await cdp.send('Emulation.clearDeviceMetricsOverride');
 
     await check("sem erros de console em nenhum cenário (rede de produção sempre interceptada)", async () => {
       const relevantes = consoleErrors.filter((m) => !/favicon/i.test(m) && !/Failed to load resource/i.test(m));
