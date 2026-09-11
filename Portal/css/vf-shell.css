@@ -102,8 +102,11 @@
   width: 26px;
   height: 26px;
   border-radius: var(--vf-radius-sm);
-  background: var(--vf-primary);
-  color: var(--vf-text-on-primary);
+  /* Roxo sólido seria "roxo demais" (mesma regra já aplicada a
+     .vf-shell__item.is-active e .vf-shell__avatar — The One Accent Rule,
+     DESIGN.md). A marca ficava como único bloco de cor cheia da sidebar. */
+  background: var(--vf-primary-soft);
+  color: var(--vf-primary-strong);
   font-size: var(--vf-fs-xs);
   letter-spacing: 0.02em;
 }
