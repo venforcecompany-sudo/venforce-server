@@ -31,6 +31,11 @@
     anuncios: [],
     paginacao: { page: 1, limit: 24, total: 0, totalPaginas: 1 },
     filtros: { q: "", status: "", filtro: "" },
+    // Card de KPI atualmente selecionado como filtro rápido (V3 — os cards
+    // do resumo substituem os antigos <select> de Status/Qualidade). Guarda
+    // só a CHAVE do KPI; o valor real que vai para AM.filtros.status/filtro
+    // continua vindo do mesmo mapa usado para montar os cards (KPI_DEFS).
+    kpiAtivo: null,
     buscaTimer: null,
     carregandoCatalogo: false,
     // Guarda de corrida (mesma classe de bug corrigida em automacoes.js/
@@ -90,6 +95,74 @@
     if (s >= 80) return "is-success";
     if (s >= 60) return "is-warning";
     return "is-danger";
+  }
+
+  function scoreLegenda(s) {
+    if (s >= 80) return "Score muito bom";
+    if (s >= 60) return "Score razoável";
+    return "Score baixo";
+  }
+
+  // Medidor semicircular do Score VenForce (estilo Mercado Livre): arco de
+  // fundo cinza + arco colorido proporcional ao score, número central e
+  // legenda curta abaixo. Path fixo (raio 28, viewBox 64x34) — só o
+  // stroke-dasharray do arco de progresso muda por item.
+  var AM_GAUGE_ARC_LEN = 87.96; // comprimento do semicírculo (pi * raio 28)
+  function scoreGaugeHtml(score) {
+    var s = score === null || score === undefined ? 0 : Number(score);
+    if (isNaN(s)) s = 0;
+    var pct = Math.max(0, Math.min(100, s));
+    var classe = scoreClasse(s);
+    var dash = (pct / 100 * AM_GAUGE_ARC_LEN).toFixed(1);
+    var scoreTxt = score === null || score === undefined ? "—" : s;
+    return '<div class="am-gauge">' +
+      '<div class="am-gauge__wrap">' +
+        '<svg viewBox="0 0 64 34" width="64" height="34" aria-hidden="true">' +
+          '<path d="M4 32 A28 28 0 0 1 60 32" fill="none" stroke-width="6" stroke-linecap="round" class="am-gauge__track"/>' +
+          '<path d="M4 32 A28 28 0 0 1 60 32" fill="none" stroke-width="6" stroke-linecap="round" ' +
+            'class="am-gauge__arc ' + classe + '" stroke-dasharray="' + dash + ' 200"/>' +
+        "</svg>" +
+        '<span class="am-gauge__value ' + classe + '">' + scoreTxt + "</span>" +
+      "</div>" +
+      '<span class="am-gauge__legenda">' + scoreLegenda(s) + "</span>" +
+    "</div>";
+  }
+
+  // ===========================================================================
+  // KPIs do resumo — também funcionam como filtros rápidos da listagem (V3).
+  // `campo` lê o valor pronto de AM.resumo; `tipo`+`valor` dizem o que setar
+  // em AM.filtros ao clicar (mesmo mecanismo de query string que os antigos
+  // <select> de Status/Qualidade já usavam — só a forma de disparar mudou).
+  // ===========================================================================
+  var KPI_DEFS = [
+    { key: "total", label: "Total de anúncios", campo: "total", meta: "Catálogo sincronizado", estado: "neutral" },
+    { key: "ativos", label: "Ativos", campo: "ativos", meta: "Disponíveis no ML", estado: "neutral", tipo: "status", valor: "active" },
+    { key: "pausados", label: "Pausados", campo: "pausados", meta: "Pedem acompanhamento", estado: "neutral", tipo: "status", valor: "paused" },
+    { key: "score_muito_bom", label: "Score muito bom", campo: "scoreMuitoBom", meta: "80 pontos ou mais", estado: "success", tipo: "filtro", valor: "score_muito_bom" },
+    { key: "score_medio", label: "Score médio", campo: "scoreMedio", meta: "Média de 100 pontos", estado: "warning", tipo: "filtro", valor: "score_medio" },
+    { key: "score_baixo", label: "Score baixo", campo: "scoreBaixo", meta: "Abaixo de 60 pontos", estado: "danger", tipo: "filtro", valor: "score_baixo" },
+    { key: "mercado_full", label: "Mercado Full", campo: "full", meta: "Com logística Full", estado: "info", tipo: "filtro", valor: "mercado_full" },
+    { key: "sem_sku", label: "Sem SKU", campo: "semSku", meta: "Sem identificação interna", estado: "danger", tipo: "filtro", valor: "sem_sku" },
+  ];
+
+  function alternarFiltroKpi(key) {
+    var def = null;
+    for (var i = 0; i < KPI_DEFS.length; i++) if (KPI_DEFS[i].key === key) def = KPI_DEFS[i];
+
+    if (AM.kpiAtivo === key || key === "total" || !def || !def.tipo) {
+      // clicar de novo no mesmo card (ou em "Total") limpa o filtro
+      AM.kpiAtivo = null;
+      AM.filtros.status = "";
+      AM.filtros.filtro = "";
+    } else {
+      AM.kpiAtivo = key;
+      AM.filtros.status = def.tipo === "status" ? def.valor : "";
+      AM.filtros.filtro = def.tipo === "filtro" ? def.valor : "";
+    }
+    AM.paginacao.page = 1;
+    atualizarIndicadorFiltros();
+    renderResumo();
+    carregarAnuncios();
   }
 
   function tryParseJSON(v, fallback) {
@@ -247,9 +320,8 @@
     AM.resumo = null;
     AM.paginacao.page = 1;
     AM.filtros = { q: "", status: "", filtro: "" };
+    AM.kpiAtivo = null;
     if (el("am-busca")) el("am-busca").value = "";
-    if (el("am-filtro-status")) el("am-filtro-status").value = "";
-    if (el("am-filtro-problema")) el("am-filtro-problema").value = "";
     atualizarIndicadorFiltros();
     renderHudHeader();
     carregarResumo();
@@ -263,12 +335,6 @@
       atualizarIndicadorFiltros();
       if (AM.buscaTimer) clearTimeout(AM.buscaTimer);
       AM.buscaTimer = setTimeout(function () { AM.paginacao.page = 1; carregarAnuncios(); }, 350);
-    });
-    el("am-filtro-status").addEventListener("change", function (e) {
-      AM.filtros.status = e.target.value; AM.paginacao.page = 1; atualizarIndicadorFiltros(); carregarAnuncios();
-    });
-    el("am-filtro-problema").addEventListener("change", function (e) {
-      AM.filtros.filtro = e.target.value; AM.paginacao.page = 1; atualizarIndicadorFiltros(); carregarAnuncios();
     });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") fecharDetalhe();
@@ -350,25 +416,21 @@
 
   function renderResumo() {
     var r = AM.resumo || {};
-    var cards = [
-      { label: "Total de anúncios", valor: r.total || 0, estado: "neutral", meta: "Catálogo sincronizado" },
-      { label: "Ativos", valor: r.ativos || 0, estado: "success", meta: "Disponíveis no ML" },
-      { label: "Pausados", valor: r.pausados || 0, estado: r.pausados ? "warning" : "neutral", meta: "Pedem acompanhamento" },
-      { label: "Fotos insuficientes", valor: r.fotosInsuficientes || 0, estado: r.fotosInsuficientes ? "warning" : "success", meta: "Menos de 3 fotos" },
-      { label: "Sem SKU", valor: r.semSku || 0, estado: r.semSku ? "warning" : "success", meta: "Sem identificação interna" },
-      { label: "Score baixo", valor: r.scoreBaixo || 0, estado: r.scoreBaixo ? "danger" : "success", meta: "Abaixo de 60 pontos" },
-      { label: "Mercado Full", valor: r.full || 0, estado: "neutral", meta: "Com logística Full" },
-      { label: "Score médio", valor: r.scoreMedio || 0,
-        estado: r.scoreMedio >= 80 ? "success" : r.scoreMedio >= 60 ? "warning" : "danger", meta: "De 100 pontos" },
-    ];
     var html = "";
-    cards.forEach(function (c) {
-      html += '<article class="vf-kpi am-kpi is-' + c.estado + '">' +
-        '<span class="vf-kpi__label">' + c.label + "</span>" +
-        '<strong class="vf-kpi__value">' + c.valor + "</strong>" +
-        '<span class="vf-kpi__foot is-' + c.estado + '">' + c.meta + "</span></article>";
+    KPI_DEFS.forEach(function (k) {
+      var ativo = AM.kpiAtivo === k.key;
+      html += '<button type="button" class="vf-kpi am-kpi vf-kpi--interactive is-' + k.estado +
+        (ativo ? " is-active" : "") + '" data-kpi="' + k.key + '"' +
+        (ativo ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>' +
+        '<span class="vf-kpi__label">' + k.label + "</span>" +
+        '<strong class="vf-kpi__value">' + (r[k.campo] || 0) + "</strong>" +
+        '<span class="vf-kpi__foot is-' + k.estado + '">' + k.meta + "</span></button>";
     });
-    el("am-resumo").innerHTML = html;
+    var box = el("am-resumo");
+    box.innerHTML = html;
+    box.querySelectorAll("[data-kpi]").forEach(function (btn) {
+      btn.addEventListener("click", function () { alternarFiltroKpi(this.getAttribute("data-kpi")); });
+    });
   }
 
   function carregarAnuncios() {
@@ -411,18 +473,28 @@
       return;
     }
 
-    var html = '<div class="am-catalogo" aria-label="Lista de anúncios">';
-    AM.anuncios.forEach(function (a) { html += cardAnuncioHtml(a); });
+    var html = '<div class="am-listagem" aria-label="Lista de anúncios">' +
+      '<div class="am-listagem__head" aria-hidden="true">' +
+        "<span></span><span>Anúncio</span><span>Status</span><span>Preço</span>" +
+        "<span>Estoque</span><span>Vendidos</span><span>Score VenForce</span><span></span>" +
+      "</div>";
+    AM.anuncios.forEach(function (a) { html += rowAnuncioHtml(a); });
     html += "</div>" + paginacaoHtml();
     box.innerHTML = html;
 
-    aplicarLargurasScore(box);
-
-    var cards = box.querySelectorAll(".am-card[data-item]");
-    for (var i = 0; i < cards.length; i++) {
-      cards[i].querySelector(".am-card__acao").addEventListener("click", function (e) {
-        abrirDetalhe(this.closest(".am-card").getAttribute("data-item"), this);
-      });
+    var rows = box.querySelectorAll(".am-row[data-item]");
+    for (var i = 0; i < rows.length; i++) {
+      (function (row) {
+        function abrir() { abrirDetalhe(row.getAttribute("data-item"), row); }
+        row.addEventListener("click", function (e) {
+          if (e.target.closest(".am-row__link")) return; // ação externa não abre o drawer
+          abrir();
+        });
+        row.addEventListener("keydown", function (e) {
+          if (e.target.closest(".am-row__link")) return; // deixa o link nativo agir (Enter = navegar)
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrir(); }
+        });
+      })(rows[i]);
     }
 
     var btnPrev = el("am-pag-prev"), btnNext = el("am-pag-next");
@@ -434,36 +506,58 @@
     });
   }
 
-  function cardAnuncioHtml(a) {
+  function iconeImagemSvg() {
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">' +
+      '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/>' +
+      '<path d="M21 15l-5-5-4 4-3-3-6 6"/></svg>';
+  }
+
+  function iconeExternoSvg() {
+    return '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">' +
+      '<path d="M7 17 17 7M9 7h8v8"/></svg>';
+  }
+
+  // Uma linha do catálogo (V3 — grid, não mais card): imagem, título/MLB/SKU,
+  // badges, status, preço, estoque, vendidos, score em medidor semicircular
+  // e ação externa para o Mercado Livre. A linha inteira abre o drawer
+  // existente (abrirDetalhe) — mesmo endpoint/handler de sempre.
+  function rowAnuncioHtml(a) {
     var st = statusInfo(a.status);
-    var score = a.score_venforce;
-    var scoreTxt = score === null || score === undefined ? "—" : score;
-    var badges = '<span class="vf-status ' + st.classe + '">' + st.label + "</span>";
+    var badges = "";
     if (a.is_full) badges += '<span class="vf-tag is-info">Full</span>';
     if ((a.pictures_count || 0) < 3) badges += '<span class="vf-tag is-warning">' + (a.pictures_count || 0) + "/3 fotos</span>";
     if (!a.sku) badges += '<span class="vf-tag is-danger">Sem SKU</span>';
     if (a.revisado) badges += '<span class="vf-tag is-success">Revisado</span>';
 
     var img = a.thumbnail
-      ? '<img src="' + escapeHtml(a.thumbnail) + '" alt="Imagem do anúncio ' + escapeHtml(a.titulo || a.item_id) + '" loading="lazy" />'
-      : '<span class="am-card__img-vazia">Sem imagem</span>';
+      ? '<img src="' + escapeHtml(a.thumbnail) + '" alt="" loading="lazy" />'
+      : iconeImagemSvg();
 
-    return '<article class="am-card vf-card" data-item="' + escapeHtml(a.item_id) + '">' +
-      '<div class="am-card__img">' + img +
-      '<span class="am-card__score vf-tag ' + scoreClasse(score) + '">Score ' + scoreTxt + "/100</span></div>" +
-      '<div class="am-card__body">' +
-      '<h3 class="am-card__titulo">' + escapeHtml(a.titulo || "(sem título)") + "</h3>" +
-      '<div class="am-card__ids"><span class="vf-mono">' + escapeHtml(a.item_id) + "</span>" +
-      '<span>SKU <span class="vf-mono">' + escapeHtml(a.sku || "—") + "</span></span></div>" +
-      '<div class="am-card__metricas"><span><small>Preço</small><strong>' + formatMoeda(a.preco, a.moeda) + "</strong></span>" +
-      '<span><small>Estoque</small><strong>' + (a.estoque != null ? a.estoque : "—") + "</strong></span>" +
-      '<span><small>Vendidos</small><strong>' + (a.vendidos != null ? a.vendidos : "—") + "</strong></span></div>" +
-      '<div class="am-card__score-row"><span>Score VenForce</span><strong class="' + scoreClasse(score) + '">' + scoreTxt + "/100</strong></div>" +
-      '<div class="vf-progress vf-progress--sm" aria-label="Score VenForce ' + scoreTxt + ' de 100">' +
-        '<div class="vf-progress__bar ' + scoreClasse(score) + '" data-score="' + (score || 0) + '"></div></div>' +
-      '<div class="am-card__badges">' + badges + "</div>" +
-      '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm am-card__acao">Ver detalhes</button>' +
-      "</div></article>";
+    var skuHtml = a.sku
+      ? '<span>SKU <span class="vf-mono">' + escapeHtml(a.sku) + "</span></span>"
+      : '<span>SKU <span class="vf-mono am-row__sem-sku">—</span></span>';
+
+    var linkMl = a.permalink
+      ? '<a class="am-row__link" href="' + escapeHtml(a.permalink) + '" target="_blank" rel="noopener" ' +
+        'aria-label="Abrir ' + escapeHtml(a.titulo || a.item_id) + ' no Mercado Livre" title="Abrir no Mercado Livre">' +
+        iconeExternoSvg() + "</a>"
+      : "";
+
+    return '<div class="am-row" data-item="' + escapeHtml(a.item_id) + '" tabindex="0" role="button" ' +
+      'aria-label="Ver detalhes de ' + escapeHtml(a.titulo || a.item_id) + '">' +
+      '<div class="am-row__thumb" aria-hidden="true">' + img + "</div>" +
+      '<div class="am-row__main">' +
+        '<h3 class="am-row__titulo">' + escapeHtml(a.titulo || "(sem título)") + "</h3>" +
+        '<div class="am-row__ids"><span class="vf-mono">' + escapeHtml(a.item_id) + "</span>" + skuHtml + "</div>" +
+        '<div class="am-row__badges">' + badges + "</div>" +
+      "</div>" +
+      '<span class="vf-status ' + st.classe + '">' + st.label + "</span>" +
+      '<span class="am-row__preco">' + formatMoeda(a.preco, a.moeda) + "</span>" +
+      '<span class="am-row__num">' + (a.estoque != null ? a.estoque : "—") + "</span>" +
+      '<span class="am-row__num">' + (a.vendidos != null ? a.vendidos : "—") + "</span>" +
+      scoreGaugeHtml(a.score_venforce) +
+      '<div class="am-row__acao">' + linkMl + "</div>" +
+    "</div>";
   }
 
   function paginacaoHtml() {

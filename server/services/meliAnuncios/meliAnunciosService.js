@@ -194,7 +194,10 @@ async function itemIdsExistentes(clienteId) {
 }
 
 // Listagem paginada com filtros. Filtros possíveis em `filtro`:
-//   sem_fotos | score_baixo | sem_sku | ficha_incompleta | pausados
+//   sem_fotos | score_baixo | sem_sku | ficha_incompleta | pausados |
+//   score_muito_bom | score_medio | mercado_full
+// (os três últimos foram adicionados junto com os cards de KPI clicáveis
+// da listagem — mesmos limiares 60/80 já usados em scoreClasse() no front.)
 async function listarAnuncios({
   clienteId,
   clienteContaId = null,
@@ -247,6 +250,15 @@ async function listarAnuncios({
       break;
     case "pausados":
       where.push(`status = 'paused'`);
+      break;
+    case "score_muito_bom":
+      where.push(`COALESCE(score_venforce, 0) >= 80`);
+      break;
+    case "score_medio":
+      where.push(`COALESCE(score_venforce, 0) >= 60 AND COALESCE(score_venforce, 0) < 80`);
+      break;
+    case "mercado_full":
+      where.push(`is_full = true`);
       break;
     default:
       break;
@@ -314,6 +326,7 @@ async function obterResumo(clienteId, clienteContaId = null, includeLegacy = tru
         COUNT(*) FILTER (WHERE COALESCE(pictures_count,0) < 3)::int     AS fotos_insuficientes,
         COUNT(*) FILTER (WHERE sku IS NULL OR sku = '')::int            AS sem_sku,
         COUNT(*) FILTER (WHERE COALESCE(score_venforce,0) < 60)::int    AS score_baixo,
+        COUNT(*) FILTER (WHERE COALESCE(score_venforce,0) >= 80)::int   AS score_muito_bom,
         COUNT(*) FILTER (WHERE is_full = true)::int                     AS full,
         ROUND(AVG(score_venforce))::int                                AS score_medio,
         MAX(last_synced_at)                                            AS ultima_sync
@@ -331,6 +344,7 @@ async function obterResumo(clienteId, clienteContaId = null, includeLegacy = tru
     fotosInsuficientes: r.fotos_insuficientes || 0,
     semSku: r.sem_sku || 0,
     scoreBaixo: r.score_baixo || 0,
+    scoreMuitoBom: r.score_muito_bom || 0,
     full: r.full || 0,
     scoreMedio: r.score_medio || 0,
     ultimaSync: r.ultima_sync || null,
