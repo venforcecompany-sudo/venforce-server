@@ -81,7 +81,7 @@ function importRow({ id, contaId, pedidos, publication = "published", publishedA
   };
 }
 
-function makeDeps({ importsPorConta, fechamentos = [], existente = null, lockConflito = false, upsertErro = null, ads = { adsInvestido: null, faturamentoAds: null } } = {}) {
+function makeDeps({ importsPorConta, fechamentos = [], existente = null, lockConflito = false, upsertErro = null, ads = { disponivel: false, adsInvestido: null, gmvAds: null, roas: null, faturamentoAds: null, updatedAt: null } } = {}) {
   const chamadas = { lock: [], upsert: [], finalize: [], sql: [], resolve: [] };
   const todosPedidos = [...PEDIDOS_A, ...PEDIDOS_B];
   const deps = {
@@ -228,15 +228,29 @@ async function run() {
     const u = chamadas.upsert[0];
     eq("escala: mcMedia gravado como fração", u.mcMedia, 0.008);
     eq("escala: Painel normaliza para 0,008", normalizarMcFracao(u.mcMedia), 0.008);
-    eq("contrato Painel: LC derivado = LC da Central (sem receita bloqueada)", deriveResumo({ faturamento: u.faturamento, mcMedia: u.mcMedia }).lc, 8);
+    eq("contrato Painel: LC usa o valor real da Central", deriveResumo({
+      faturamento: u.faturamento,
+      mcMedia: u.mcMedia,
+      lucroContribuicao: u.payloadJson.centralVendas.lucroContribuicao,
+      lucroContribuicaoPresente: true,
+    }).lc, 8);
   }
 
   // Ads presente em ads_resumos_mensais → usado como está, TACoS oficial.
   {
-    const { deps, chamadas } = makeDeps({ importsPorConta: { 1: [importRow({ id: 501, contaId: 1, pedidos: PEDIDOS_A })] }, ads: { adsInvestido: 22, faturamentoAds: 90 } });
+    const { deps, chamadas } = makeDeps({
+      importsPorConta: { 1: [importRow({ id: 501, contaId: 1, pedidos: PEDIDOS_A })] },
+      ads: { disponivel: true, adsInvestido: 22, gmvAds: 90, roas: 4.09, faturamentoAds: 0, updatedAt: "2026-09-24T06:06:00Z" },
+    });
     await adapter.reconstruirSnapshotMensal({ cliente: CLIENTE, competencia: "2026-09", contas: [{ clienteContaId: 1 }], segmento: SEGMENTO }, deps);
     eq("ads: investido preservado", chamadas.upsert[0].adsInvestido, 22);
     eq("ads: TACoS pela função do fluxo manual", chamadas.upsert[0].tacos, calcularTacos(220, 22));
+    eq("ads: investimento e GMV persistidos na mesma versão do snapshot", chamadas.upsert[0].payloadJson.ads, {
+      investimentoAds: 22,
+      gmvAds: 90,
+      roas: 4.09,
+      resumoAtualizadoEm: "2026-09-24T06:06:00.000Z",
+    });
   }
 
   // =========================================================================
@@ -314,6 +328,15 @@ async function run() {
     const r = await adapter.reconstruirSnapshotMensal({ cliente: CLIENTE, competencia: "2026-09", contas: [{ clienteContaId: 1 }], segmento: SEGMENTO }, deps);
     eq("ordem: snapshot mais novo preservado", [r.atualizado, r.motivo], [false, "SNAPSHOT_JA_ATUALIZADO"]);
     eq("ordem: nem lock nem upsert", [chamadas.lock.length, chamadas.upsert.length], [0, 0]);
+  }
+  {
+    const { deps, chamadas } = makeDeps({
+      importsPorConta: { 1: [importRow({ id: 501, contaId: 1, pedidos: PEDIDOS_A, publishedAt: "2026-09-24T06:05:00Z" })] },
+      existente: { sincronizado_em: "2026-09-24T14:00:00Z" },
+      ads: { disponivel: true, adsInvestido: 22, gmvAds: 90, roas: 4.09, updatedAt: "2026-09-24T15:00:00Z" },
+    });
+    const r = await adapter.reconstruirSnapshotMensal({ cliente: CLIENTE, competencia: "2026-09", contas: [{ clienteContaId: 1 }], segmento: SEGMENTO }, deps);
+    eq("ordem: Ads mais novo força reconstrução mesmo com vendas já incorporadas", [r.atualizado, chamadas.upsert.length], [true, 1]);
   }
   {
     const { deps, chamadas } = makeDeps({

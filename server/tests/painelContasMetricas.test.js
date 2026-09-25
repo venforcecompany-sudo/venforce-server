@@ -53,4 +53,24 @@ ok("deriveResumo: mc em escala percentual (22) normaliza antes de calcular LC", 
 ok("deriveResumo: LC usa mc já normalizado (fat*0.22, não fat*22)", r3.lc === Math.round(50000 * 0.22 * 100) / 100);
 ok("deriveResumo: ads=0 é dado real, não ausência — tacos calculável (0)", r3.tacos === 0);
 
+const novoCentral = deriveResumo({
+  faturamento: 1000,
+  mcMedia: 0.20,
+  lucroContribuicao: 150,
+  lucroContribuicaoPresente: true,
+});
+ok("LC novo: usa lucroContribuicao real da Central", novoCentral.lc === 150);
+ok("LC novo: não recalcula FAT × MC", novoCentral.lc !== 200);
+
+const legado = deriveResumo({ faturamento: 1000, mcMedia: 0.20 });
+ok("LC legado: sem campo no payload mantém fallback FAT × MC", legado.lc === 200);
+
+const centralSemLc = deriveResumo({
+  faturamento: 1000,
+  mcMedia: 0.20,
+  lucroContribuicao: null,
+  lucroContribuicaoPresente: true,
+});
+ok("LC Central explicitamente ausente: não fabrica fallback", centralSemLc.lc === null);
+
 console.log(`\npainelContasMetricas.test.js: ${checks} verificações passaram.`);

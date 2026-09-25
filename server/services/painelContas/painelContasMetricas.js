@@ -1,11 +1,10 @@
 // server/services/painelContas/painelContasMetricas.js
 // Derivação PURA dos números do Painel de Contas por Squad a partir do
-// snapshot batch (cliente_360_resumos_mensais + ads_resumos_mensais).
+// snapshot batch de cliente_360_resumos_mensais.
 // Nenhuma query aqui — só matemática, testável sem banco (Auditoria §7/§8/§9).
 //
-// LC nunca é persistido diretamente no snapshot: é derivado de fat * mc,
-// já que MC = LC / Venda Total (Auditoria §8) e ambos (faturamento, mc_media)
-// já vêm da mesma leitura em lote.
+// Snapshots da Central de Vendas carregam o LC oficial no payload. FAT * MC
+// permanece apenas como fallback para snapshots legados sem esse campo.
 //
 // mc_media tem escala ambígua na base real — alguns registros a gravam como
 // fração (0.18) e outros como percentual (18), a mesma ambiguidade que
@@ -51,14 +50,20 @@ function calcularAcos(investimentoAds, gmvAds) {
 }
 
 // Deriva o bloco `resumo` de um cliente/competência a partir de UMA linha já
-// lida em lote (cliente_360_resumos_mensais + gmv_ads de ads_resumos_mensais).
+// lida em lote de cliente_360_resumos_mensais.
 // com/atv/nps: sempre null nesta fase — GAP DE PRODUTO documentado (§10),
 // nunca inventado.
-function deriveResumo({ faturamento, mcMedia, adsInvestido, gmvAds } = {}) {
+function deriveResumo({
+  faturamento, mcMedia, adsInvestido, gmvAds,
+  lucroContribuicao, lucroContribuicaoPresente = false,
+} = {}) {
   const fat = asFiniteOrNull(faturamento);
   const mc = normalizarMcFracao(mcMedia);
   const ads = asFiniteOrNull(adsInvestido);
-  const lc = fat !== null && mc !== null ? round2(fat * mc) : null;
+  const lcCentral = asFiniteOrNull(lucroContribuicao);
+  const lc = lucroContribuicaoPresente
+    ? round2(lcCentral)
+    : (fat !== null && mc !== null ? round2(fat * mc) : null);
   const tacos = calcularTacos(ads, fat);
   const acos = calcularAcos(ads, gmvAds);
   return {
