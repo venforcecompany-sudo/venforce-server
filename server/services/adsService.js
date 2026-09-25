@@ -178,18 +178,18 @@ async function buscarResumoMensalAds({ clienteSlug, mes, lojaCampanha }) {
   return rowToResumo(result.rows[0]);
 }
 
-async function salvarResumoMensalAds({ clienteSlug, mes, lojaCampanha, dados, userId }) {
+async function salvarResumoMensalAds({ clienteSlug, mes, lojaCampanha, dados, userId, somentePerformance = false }) {
   const loja = lojaCampanha || "todas";
-  const result = await pool.query(
-    `INSERT INTO ads_resumos_mensais
-       (cliente_slug, mes_ref, loja_campanha,
-        investimento_ads, gmv_ads, roas, faturamento_total,
-        cancelados_valor, cancelados_pct, devolvidos_valor, tacos,
-        created_by, updated_by, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, NOW())
-     ON CONFLICT (cliente_slug, mes_ref, loja_campanha)
-     DO UPDATE SET
-       investimento_ads  = EXCLUDED.investimento_ads,
+  // O sincronismo automatico do Mercado Ads atualiza somente os campos que
+  // vieram da API. Os demais campos sao gerenciais/manuais e nao podem ser
+  // zerados a cada rodada noturna.
+  const updates = somentePerformance
+    ? `investimento_ads = EXCLUDED.investimento_ads,
+       gmv_ads          = EXCLUDED.gmv_ads,
+       roas             = EXCLUDED.roas,
+       updated_by       = EXCLUDED.updated_by,
+       updated_at       = NOW()`
+    : `investimento_ads  = EXCLUDED.investimento_ads,
        gmv_ads           = EXCLUDED.gmv_ads,
        roas              = EXCLUDED.roas,
        faturamento_total = EXCLUDED.faturamento_total,
@@ -198,12 +198,22 @@ async function salvarResumoMensalAds({ clienteSlug, mes, lojaCampanha, dados, us
        devolvidos_valor  = EXCLUDED.devolvidos_valor,
        tacos             = EXCLUDED.tacos,
        updated_by        = EXCLUDED.updated_by,
-       updated_at        = NOW()
+       updated_at        = NOW()`;
+  const result = await pool.query(
+    `INSERT INTO ads_resumos_mensais
+       (cliente_slug, mes_ref, loja_campanha,
+        investimento_ads, gmv_ads, roas, faturamento_total,
+        cancelados_valor, cancelados_pct, devolvidos_valor, tacos,
+        created_by, updated_by, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, NOW())
+     ON CONFLICT (cliente_slug, mes_ref, loja_campanha)
+     DO UPDATE SET ${updates}
      RETURNING *`,
     [
       clienteSlug, mes, loja,
-      dados.investimentoAds, dados.gmvAds, dados.roas, dados.faturamentoTotal,
-      dados.canceladosValor, dados.canceladosPct, dados.devolvidosValor, dados.tacos,
+      dados.investimentoAds, dados.gmvAds, dados.roas,
+      dados.faturamentoTotal ?? 0, dados.canceladosValor ?? 0,
+      dados.canceladosPct ?? 0, dados.devolvidosValor ?? 0, dados.tacos ?? 0,
       userId ?? null,
     ]
   );
