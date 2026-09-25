@@ -74,6 +74,13 @@ function makeDb() {
         const row = ativo(params);
         return { rows: row ? [row] : [] };
       }
+      if (sql.includes("FROM central_vendas_sync_runs r") && sql.includes("i.publication_status = 'published'")) {
+        const row = runs.find((r) =>
+          r.cliente_id === params[0] && same(r.cliente_conta_id, params[1]) && r.marketplace === params[2]
+          && r.date_from === params[3] && r.date_to === params[4] && r.status === "completed"
+          && this.publicados.has(r.id));
+        return { rows: row ? [row] : [] };
+      }
       if (sql.includes("INSERT INTO central_vendas_sync_runs")) {
         const [clienteId, clienteSlug, clienteContaId, marketplace, ext, grantId, baseId, baseMode, dateFrom, dateTo, requestedBy] = params;
         if (ativo([clienteId, clienteContaId, marketplace, dateFrom, dateTo])) {
@@ -213,16 +220,91 @@ async function run() {
     eq("cron×cron: ambos sucesso", [a.status, b.status], ["sucesso", "sucesso"]);
   }
 
-  // 4. Depois de concluído, uma nova rodada para a mesma tupla cria um run
-  //    NOVO (re-sincronizar é legítimo); o anterior continua completed.
+  // 4. Depois de concluído/publicado, outra rodada automatica equivalente
+  //    reaproveita o terminal; o fluxo manual continua podendo reprocessar.
   {
     const db = makeDb();
     const { executarSyncRun, stats } = makeExecutor(db, { duracaoMs: 1 });
     const primeiro = await svc.processarUnidade(unidade, depsCron(db, executarSyncRun));
     const segundo = await svc.processarUnidade(unidade, depsCron(db, executarSyncRun));
-    ok("sequencial: runs diferentes", primeiro.runId !== segundo.runId);
-    eq("sequencial: 2 ingestões, uma por run", [...stats.porRun.values()], [1, 1]);
+    eq("sequencial cron: mesmo run publicado reaproveitado", segundo.runId, primeiro.runId);
+    eq("sequencial cron: uma unica ingestão", [...stats.porRun.values()], [1]);
+    const manualNovo = await manual(db, executarSyncRun);
+    ok("manual: reprocessamento explicito ainda cria novo run", manualNovo.run.id !== primeiro.runId);
     eq("sequencial: nenhum run preso em queued/running", db.runs.map((r) => r.status), ["completed", "completed"]);
+  }
+
+  // 5. Restart depois de ocupar os 3 primeiros workers: os 10 runs ja
+  //    existem. A recuperacao fecha o running orfao, reaproveita os queued e
+  //    nao executa/publica novamente os 2 completed.
+  {
+    const rows = Array.from({ length: 10 }, (_, i) => ({
+      cliente_conta_id: i + 1, cliente_id: i + 1, marketplace: "meli",
+      external_account_id: `ML${i + 1}`, conta_ativa: true, conta_nome: `Conta ${i + 1}`,
+      cliente_slug: `cliente-${i + 1}`, cliente_nome: `Cliente ${i + 1}`, cliente_ativo: true,
+    }));
+    const estados = new Map(rows.map((r, i) => [r.cliente_conta_id, {
+      id: 100 + i,
+      status: i < 2 ? "completed" : (i === 2 ? "running" : "queued"),
+      completenessStatus: i < 2 ? "complete" : null,
+      publicado: i < 2,
+    }]));
+    const executados = [];
+    const publicacoesIniciais = [...estados.values()].filter((r) => r.publicado).length;
+    let proximoId = 1000;
+    const deps = {
+      db: {
+        async query(sql, params) {
+          if (sql.includes("FROM central_vendas_imports")) {
+            const run = [...estados.values()].find((r) => r.id === params[0]);
+            return { rows: run?.publicado ? [{ id: run.id * 10, competencia: "2026-09" }] : [] };
+          }
+          throw new Error(`SQL inesperado: ${sql.slice(0, 80)}`);
+        },
+      },
+      async listarPeriodosNoturnosPendentes() { return [{ competencia: "2026-09", dateFrom: "2026-09-01", dateTo: "2026-09-24" }]; },
+      async reconciliarRunsNoturnosInterrompidos() {
+        const run = estados.get(3);
+        run.status = "failed";
+        return [{ id: run.id }];
+      },
+      async listarContas() { return rows; },
+      async criarSyncRun(p) {
+        let run = estados.get(p.clienteContaId);
+        if (run.status === "failed") {
+          run = { id: proximoId++, status: "queued", completenessStatus: null, publicado: false };
+          estados.set(p.clienteContaId, run);
+          return { run, context: {}, reaproveitado: false };
+        }
+        return { run, context: {}, reaproveitado: true };
+      },
+      async executarSyncRun({ run }) {
+        executados.push(run.id);
+        run.status = "completed";
+        run.completenessStatus = "complete";
+        run.publicado = true;
+        return { ok: true };
+      },
+      async obterSyncRun({ runId }) {
+        return [...estados.values()].find((r) => r.id === runId);
+      },
+      async sincronizarAdsCliente({ contas }) { return { atualizado: true, contas: contas.length, investimentoAds: 0, gmvAds: 0 }; },
+      async reconstruirSnapshotMensal() { return { atualizado: true }; },
+      sleep: async () => {},
+      agora: () => Date.now(),
+      observarIntervaloMs: 1,
+      observarTimeoutMs: 5,
+      logger: { log() {}, warn() {}, error() {} },
+    };
+    const recuperacao = await svc.recuperarRodadasPendentes({
+      env: { SYNC_CENTRAL_CONCURRENCY: "3" },
+      iniciadoEm: new Date(),
+    }, deps);
+    eq("restart: recuperacao executada", recuperacao.recuperada, true);
+    eq("restart: running orfao explicitamente reconciliado", recuperacao.runningInterrompidos, 1);
+    eq("restart: todos os 10 chegam a completed", recuperacao.resumo.completed, 10);
+    eq("restart: 2 publicados anteriores nao sao reexecutados", executados.length, 8);
+    eq("restart: publicacoes totais sem duplicar as 2 anteriores", [...estados.values()].filter((r) => r.publicado).length, publicacoesIniciais + 8);
   }
 
   concluido = true;

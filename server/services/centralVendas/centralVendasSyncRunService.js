@@ -100,7 +100,8 @@ function sanitizeRun(row) {
 // ---------------------------------------------------------------------------
 
 async function criarSyncRun({
-  clienteSlug, clienteContaId = null, marketplace = "meli", dateFrom, dateTo, requestedBy = null, db = pool,
+  clienteSlug, clienteContaId = null, marketplace = "meli", dateFrom, dateTo,
+  requestedBy = null, reutilizarCompletedPublicado = false, db = pool,
 }) {
   const slug = normalizeSlug(clienteSlug);
   const marketplaceNorm = String(marketplace || "meli").trim().toLowerCase();
@@ -162,6 +163,22 @@ async function criarSyncRun({
     db,
   });
   if (existenteAntes) return { run: sanitizeRun(existenteAntes), context, reaproveitado: true };
+
+  // A rodada automatica pode ser retomada/repetida depois de restart. Nesse
+  // caso um run equivalente ja concluido E publicado e trabalho terminal, nao
+  // uma autorizacao para consultar a API e publicar tudo novamente. O fluxo
+  // manual preserva o comportamento de reprocessar porque o opt-in e falso.
+  if (reutilizarCompletedPublicado) {
+    const completed = await buscarRunCompletedPublicadoEquivalente({
+      clienteId: cliente.id,
+      clienteContaId: context.conta?.id || null,
+      marketplace: marketplaceNorm,
+      dateFrom: from,
+      dateTo: to,
+      db,
+    });
+    if (completed) return { run: sanitizeRun(completed), context, reaproveitado: true };
+  }
 
   let insertResult;
   try {
@@ -259,6 +276,80 @@ async function buscarRunAtivoEquivalente({ clienteId, clienteContaId, marketplac
     [clienteId, clienteContaId, marketplace, dateFrom, dateTo]
   );
   return result.rows[0] || null;
+}
+
+async function buscarRunCompletedPublicadoEquivalente({ clienteId, clienteContaId, marketplace, dateFrom, dateTo, db = pool }) {
+  const result = await db.query(
+    `SELECT r.* FROM central_vendas_sync_runs r
+      WHERE r.cliente_id = $1
+        AND r.cliente_conta_id IS NOT DISTINCT FROM $2
+        AND r.marketplace = $3
+        AND r.date_from = $4
+        AND r.date_to = $5
+        AND r.status = 'completed'
+        AND EXISTS (
+          SELECT 1 FROM central_vendas_imports i
+           WHERE i.sync_run_id = r.id AND i.publication_status = 'published'
+        )
+      ORDER BY r.id DESC
+      LIMIT 1`,
+    [clienteId, clienteContaId, marketplace, dateFrom, dateTo]
+  );
+  return result.rows[0] || null;
+}
+
+// Recuperacao no boot, executada sob o MESMO advisory lock da rodada. Runs
+// noturnos que estavam running antes deste processo nascer nao possuem mais
+// worker neste processo; fecha-os explicitamente para que a rodada equivalente
+// possa criar uma nova tentativa. Queued permanecem queued e sao reivindicados.
+async function reconciliarRunsNoturnosInterrompidos({ antesDe, db = pool }) {
+  const result = await db.query(
+    `UPDATE central_vendas_sync_runs
+        SET status = 'failed', finished_at = NOW(), updated_at = NOW(),
+            error_code = 'SYNC_RUN_PROCESS_RESTART',
+            error_message = 'Run interrompido por restart do processo; uma rodada equivalente podera retomar o trabalho.'
+      WHERE requested_by IS NULL
+        AND status = 'running'
+        AND started_at < $1
+      RETURNING id, date_from, date_to`,
+    [antesDe]
+  );
+  return result.rows || [];
+}
+
+async function listarPeriodosNoturnosPendentes({ antesDe, db = pool }) {
+  const result = await db.query(
+    `SELECT DISTINCT date_from, date_to
+       FROM central_vendas_sync_runs r
+      WHERE r.requested_by IS NULL
+        AND r.created_at < $1
+        AND (
+          r.status IN ('queued','running')
+          OR (
+            r.status = 'completed'
+            AND EXISTS (
+              SELECT 1 FROM central_vendas_imports i
+               WHERE i.sync_run_id = r.id AND i.publication_status = 'published'
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM cliente_360_resumos_mensais s
+               WHERE s.cliente_id = r.cliente_id
+                 AND s.competencia = TO_CHAR(r.date_from, 'YYYY-MM')
+                 AND s.sincronizado_em >= COALESCE((
+                   SELECT MAX(i2.published_at) FROM central_vendas_imports i2
+                    WHERE i2.sync_run_id = r.id AND i2.publication_status = 'published'
+                 ), r.finished_at)
+            )
+          )
+        )
+      ORDER BY date_from, date_to`,
+    [antesDe]
+  );
+  return result.rows.map((row) => ({
+    competencia: String(row.date_from).slice(0, 7),
+    dateFrom: String(row.date_from).slice(0, 10),
+    dateTo: String(row.date_to).slice(0, 10),
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +484,9 @@ module.exports = {
   marcarRunFailed,
   atualizarCompletenessRun,
   reconciliarRunsStale,
+  buscarRunCompletedPublicadoEquivalente,
+  reconciliarRunsNoturnosInterrompidos,
+  listarPeriodosNoturnosPendentes,
   sanitizeRun,
   ESTADOS_FINAIS,
   QUEUED_STALE_MINUTES,

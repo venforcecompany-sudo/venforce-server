@@ -197,13 +197,17 @@ function defaultDeps() {
   const runService = require("./centralVendasSyncRunService");
   const worker = require("./centralVendasSyncWorker");
   const adapter = require("./centralVendasCliente360Adapter");
+  const adsSync = require("./centralVendasAdsSyncService");
   return {
     db: pool,
     listarContas,
     criarSyncRun: runService.criarSyncRun,
     obterSyncRun: runService.obterSyncRun,
     executarSyncRun: worker.executarSyncRun,
+    sincronizarAdsCliente: adsSync.sincronizarAdsCliente,
     reconstruirSnapshotMensal: adapter.reconstruirSnapshotMensal,
+    listarPeriodosNoturnosPendentes: runService.listarPeriodosNoturnosPendentes,
+    reconciliarRunsNoturnosInterrompidos: runService.reconciliarRunsNoturnosInterrompidos,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     agora: () => Date.now(),
     observarIntervaloMs: OBSERVAR_INTERVALO_MS,
@@ -266,15 +270,17 @@ async function processarUnidade(unidade, deps) {
   };
   deps.logger.log(`${LOG} conta ${rotulo} iniciada`);
 
-  let criado;
+  let criado = unidade.criado || null;
   try {
-    criado = await deps.criarSyncRun({
+    if (unidade.preparacaoErro) throw unidade.preparacaoErro;
+    if (!criado) criado = await deps.criarSyncRun({
       clienteSlug: conta.clienteSlug,
       clienteContaId: conta.clienteContaId,
       marketplace: MARKETPLACE,
       dateFrom: periodo.dateFrom,
       dateTo: periodo.dateTo,
       requestedBy: null,
+      reutilizarCompletedPublicado: true,
       db: deps.db,
     });
   } catch (err) {
@@ -365,7 +371,10 @@ function chaveGrupo(clienteId, competencia) {
 async function executarRodada(opts, depsOverride = {}) {
   const deps = { ...defaultDeps(), ...depsOverride };
   const inicio = deps.agora();
-  const { periodos, concorrencia, clientes = null, dryRun = false, origem = "cron-central" } = opts;
+  const {
+    periodos, concorrencia, clientes = null, dryRun = false,
+    origem = "cron-central", onProgresso = null,
+  } = opts;
 
   deps.logger.log(
     `${LOG} início origem=${origem} períodos=${periodos.map((p) => `${p.dateFrom}..${p.dateTo}`).join(",")}`
@@ -401,6 +410,7 @@ async function executarRodada(opts, depsOverride = {}) {
           contas: contasPorCliente.get(conta.clienteId),
           pendentes: 0,
           resultados: [],
+          ads: null,
           snapshot: null,
         });
       }
@@ -416,6 +426,37 @@ async function executarRodada(opts, depsOverride = {}) {
     return resumo;
   }
 
+  if (typeof onProgresso === "function") {
+    onProgresso({ concluidas: 0, total: unidades.length, unidade: null, fase: "preparacao" });
+  }
+
+  // Persiste a carteira inteira como runs queued ANTES de iniciar chamadas
+  // externas. Se o processo cair depois de ocupar os primeiros workers, as
+  // unidades restantes continuam visiveis e reaproveitaveis no banco.
+  let preparadas = 0;
+  const preparacoes = await executarComConcorrencia(unidades, concorrencia, async (unidade) => {
+    let criado = null;
+    let preparacaoErro = null;
+    try {
+      criado = await deps.criarSyncRun({
+        clienteSlug: unidade.conta.clienteSlug,
+        clienteContaId: unidade.conta.clienteContaId,
+        marketplace: MARKETPLACE,
+        dateFrom: unidade.periodo.dateFrom,
+        dateTo: unidade.periodo.dateTo,
+        requestedBy: null,
+        reutilizarCompletedPublicado: true,
+        db: deps.db,
+      });
+    } catch (err) {
+      preparacaoErro = err;
+    }
+    preparadas += 1;
+    deps.logger.log(`${LOG} preparação ${preparadas}/${unidades.length} ${rotuloConta(unidade.conta)} ${unidade.periodo.dateFrom}..${unidade.periodo.dateTo}`);
+    return { ...unidade, criado, preparacaoErro };
+  });
+  const unidadesPreparadas = preparacoes.map((r) => r.valor);
+
   async function fecharGrupoSePronto(grupo) {
     if (grupo.pendentes > 0) return;
     const algumPublicado = grupo.resultados.some((r) => r.publicado);
@@ -424,6 +465,29 @@ async function executarRodada(opts, depsOverride = {}) {
       grupo.snapshot = { atualizado: false, motivo: "NENHUM_RUN_PUBLICADO_NESTA_RODADA" };
       deps.logger.log(`${LOG} snapshot ${rotulo} não atualizado: ${grupo.snapshot.motivo}`);
       return;
+    }
+    const todasPublicadas = grupo.resultados.every((r) => r.publicado);
+    if (todasPublicadas) {
+      try {
+        grupo.ads = await deps.sincronizarAdsCliente({
+          cliente: grupo.cliente,
+          competencia: grupo.competencia,
+          contas: grupo.contas.map((c) => ({ clienteContaId: c.clienteContaId })),
+          segmento: grupo.segmento,
+        });
+        deps.logger.log(
+          `${LOG} ads ${rotulo} atualizado contas=${grupo.ads.contas}`
+            + ` investimento=${grupo.ads.investimentoAds} gmv=${grupo.ads.gmvAds}`
+        );
+      } catch (err) {
+        grupo.ads = { atualizado: false, motivo: "ADS_NAO_ATUALIZADO", erro: resumirErro(err) };
+        deps.logger.warn(
+          `${LOG} ads ${rotulo} não atualizado: ${grupo.ads.erro.code ? `${grupo.ads.erro.code} ` : ""}${grupo.ads.erro.message}`
+        );
+      }
+    } else {
+      grupo.ads = { atualizado: false, motivo: "VENDAS_NAO_PUBLICADAS_PARA_TODAS_CONTAS" };
+      deps.logger.log(`${LOG} ads ${rotulo} não atualizado: ${grupo.ads.motivo}`);
     }
     try {
       grupo.snapshot = await deps.reconstruirSnapshotMensal({
@@ -443,7 +507,8 @@ async function executarRodada(opts, depsOverride = {}) {
     );
   }
 
-  const execucoes = await executarComConcorrencia(unidades, concorrencia, async (unidade) => {
+  let concluidas = 0;
+  const execucoes = await executarComConcorrencia(unidadesPreparadas, concorrencia, async (unidade) => {
     let resultado;
     try {
       resultado = await processarUnidade(unidade, deps);
@@ -463,6 +528,12 @@ async function executarRodada(opts, depsOverride = {}) {
     grupo.resultados.push(resultado);
     grupo.pendentes -= 1;
     await fecharGrupoSePronto(grupo);
+    concluidas += 1;
+    const unidadeRotulo = `${rotuloConta(unidade.conta)} ${unidade.periodo.dateFrom}..${unidade.periodo.dateTo}`;
+    deps.logger.log(`${LOG} progresso ${concluidas}/${unidades.length} ${unidadeRotulo} status=${resultado.status}`);
+    if (typeof onProgresso === "function") {
+      onProgresso({ concluidas, total: unidades.length, unidade: unidadeRotulo, status: resultado.status, fase: "execucao" });
+    }
     return resultado;
   });
 
@@ -484,7 +555,10 @@ async function executarRodada(opts, depsOverride = {}) {
 // pelo scheduler interno do Web Service (centralVendasNoturnoScheduler), para
 // os dois nunca divergirem de configuração.
 async function executarRodadaNoturna(
-  { env = process.env, dataReferencia = null, clientes = null, dryRun = false, origem = "cron-central" } = {},
+  {
+    env = process.env, dataReferencia = null, clientes = null, dryRun = false,
+    origem = "cron-central", onProgresso = null,
+  } = {},
   depsOverride = {}
 ) {
   const hoje = dataReferencia || hojeNoFuso();
@@ -494,7 +568,34 @@ async function executarRodadaNoturna(
     clientes,
     dryRun,
     origem,
+    onProgresso,
   }, depsOverride);
+}
+
+// Retoma no boot periodos que possuam runs noturnos ativos. O proprio periodo
+// persistido e a identidade da rodada; nao ha tabela/fila paralela. A chamada
+// deve ocorrer sob o advisory lock global do scheduler.
+async function recuperarRodadasPendentes(
+  { env = process.env, iniciadoEm = new Date(), onProgresso = null } = {},
+  depsOverride = {}
+) {
+  const deps = { ...defaultDeps(), ...depsOverride };
+  const antesDe = iniciadoEm instanceof Date ? iniciadoEm.toISOString() : new Date(iniciadoEm).toISOString();
+  const periodos = await deps.listarPeriodosNoturnosPendentes({ antesDe, db: deps.db });
+  if (!periodos.length) return { recuperada: false, motivo: "SEM_PENDENCIAS" };
+
+  const interrompidos = await deps.reconciliarRunsNoturnosInterrompidos({ antesDe, db: deps.db });
+  deps.logger.warn(
+    `${LOG} recuperação de restart períodos=${periodos.map((p) => `${p.dateFrom}..${p.dateTo}`).join(",")}`
+      + ` runningInterrompidos=${interrompidos.length}`
+  );
+  const resumo = await executarRodada({
+    periodos,
+    concorrencia: resolverConcorrencia(env.SYNC_CENTRAL_CONCURRENCY),
+    origem: "restart-central",
+    onProgresso,
+  }, deps);
+  return { recuperada: true, resumo, runningInterrompidos: interrompidos.length };
 }
 
 function contarPor(lista, campo) {
@@ -509,6 +610,7 @@ function montarResumo({ total, elegiveis, ignoradas, execucoes, grupos, inicio, 
   const porStatus = contarPor(execucoes, "status");
   const ignoradosExecucao = execucoes.filter((e) => e.status === "ignorado");
   const snapshots = grupos.map((g) => g.snapshot).filter(Boolean);
+  const ads = grupos.map((g) => g.ads).filter(Boolean);
   return {
     total,
     elegiveis: elegiveis.length,
@@ -516,6 +618,9 @@ function montarResumo({ total, elegiveis, ignoradas, execucoes, grupos, inicio, 
     sucesso: porStatus.sucesso || 0,
     parcial: porStatus.parcial || 0,
     falha: porStatus.falha || 0,
+    completed: porStatus.sucesso || 0,
+    partial: porStatus.parcial || 0,
+    failed: porStatus.falha || 0,
     // Contas inelegíveis + execuções puladas (run equivalente preso em outro processo).
     ignorados: ignoradas.length + ignoradosExecucao.length,
     ignoradosPorMotivo: { ...contarPor(ignoradas, "motivo"), ...contarPor(ignoradosExecucao, "motivo") },
@@ -523,6 +628,11 @@ function montarResumo({ total, elegiveis, ignoradas, execucoes, grupos, inicio, 
       atualizados: snapshots.filter((s) => s.atualizado).length,
       naoAtualizados: snapshots.filter((s) => !s.atualizado).length,
       porMotivo: contarPor(snapshots.filter((s) => !s.atualizado), "motivo"),
+    },
+    ads: {
+      atualizados: ads.filter((a) => a.atualizado).length,
+      naoAtualizados: ads.filter((a) => !a.atualizado).length,
+      porMotivo: contarPor(ads.filter((a) => !a.atualizado), "motivo"),
     },
     falhas: execucoes
       .filter((e) => e.status === "falha")
@@ -545,6 +655,7 @@ function exitCodeDoResumo(resumo) {
 module.exports = {
   executarRodada,
   executarRodadaNoturna,
+  recuperarRodadasPendentes,
   processarUnidade,
   executarComConcorrencia,
   classificarContas,
