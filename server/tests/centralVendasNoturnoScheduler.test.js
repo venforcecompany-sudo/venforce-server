@@ -58,11 +58,11 @@ function fakeTimers() {
   };
 }
 
-function makeScheduler({ env = { CENTRAL_VENDAS_NOTURNO_ENABLED: "true" }, agoraInicial, rodada, lock } = {}) {
+function makeScheduler({ env = { CENTRAL_VENDAS_NOTURNO_ENABLED: "true" }, agoraInicial, rodada, recuperacao, lock, esperar } = {}) {
   let agora = T(agoraInicial || "2026-09-24T05:00:00Z"); // 02:00 em SP
   const timers = fakeTimers();
   const logs = [];
-  const chamadas = { rodada: [], lock: 0, liberar: 0 };
+  const chamadas = { rodada: [], recuperacao: [], lock: 0, liberar: 0 };
   const logger = {
     log: (...a) => logs.push(`LOG ${a.join(" ")}`),
     warn: (...a) => logs.push(`WARN ${a.join(" ")}`),
@@ -78,11 +78,16 @@ function makeScheduler({ env = { CENTRAL_VENDAS_NOTURNO_ENABLED: "true" }, agora
       chamadas.rodada.push(opts);
       return rodada ? rodada(opts) : { elegiveis: 2, sucesso: 2, parcial: 0, falha: 0, ignorados: 0 };
     },
+    recuperarRodadasPendentes: async (opts) => {
+      chamadas.recuperacao.push(opts);
+      return recuperacao ? recuperacao(opts) : { recuperada: false, motivo: "SEM_PENDENCIAS" };
+    },
     adquirirLockGlobal: async () => {
       chamadas.lock += 1;
       if (lock) return lock();
       return { adquirido: true, liberar: async () => { chamadas.liberar += 1; } };
     },
+    ...(esperar ? { esperar } : {}),
     logger,
   });
   return {
@@ -217,7 +222,7 @@ async function run() {
     eq("disparo: mesma entrada do job, origem do scheduler", h.chamadas.rodada[0].origem, "scheduler-central");
     ok("disparo: env repassado (SYNC_CENTRAL_CONCURRENCY etc.)", h.chamadas.rodada[0].env && h.chamadas.rodada[0].env.CENTRAL_VENDAS_NOTURNO_ENABLED === "true");
     eq("disparo: lock obtido e liberado", [h.chamadas.lock, h.chamadas.liberar], [1, 1]);
-    ok("disparo: logs iniciando/concluída", h.logs.some((l) => l.includes("[sync-scheduler] iniciando rodada...")) && h.logs.some((l) => l.includes("[sync-scheduler] rodada concluída: elegíveis=2 sucesso=2")));
+    ok("disparo: logs iniciada/concluída", h.logs.some((l) => l.includes("[sync-scheduler] rodada iniciada")) && h.logs.some((l) => l.includes("[sync-scheduler] rodada concluída:") && l.includes("elegíveis=2") && l.includes("completed=2")));
     eq("disparo: reagendado (1 timer ativo)", h.timers.ativos().length, 1);
     eq("disparo: próximo = amanhã 03:00 SP", iso(h.s.estado().proximoEm), "2026-09-25T06:00:00.000Z");
     eq("disparo: 24h até o próximo", h.timers.ativos()[0].ms, 24 * 3600 * 1000);
@@ -403,6 +408,30 @@ async function run() {
     eq("parar durante rodada: não reagenda", h.timers.ativos().length, 0);
   }
   {
+    let liberarRodada;
+    const h = makeScheduler({
+      rodada: (opts) => new Promise((resolve) => {
+        opts.onProgresso({ concluidas: 3, total: 10, unidade: "cliente-3#3" });
+        liberarRodada = () => resolve({});
+      }),
+      esperar: async () => {},
+    });
+    const disparo = h.s.dispararRodada();
+    await flush();
+    const parada = await h.s.parar({ aguardarMs: 20_000 });
+    eq("shutdown: timeout informa rodada não drenada", parada.drenada, false);
+    ok("shutdown: log informa progresso e recuperação", h.logs.some((l) => l.includes("após 3/10") && l.includes("serão recuperados")));
+    liberarRodada();
+    await disparo;
+  }
+  {
+    const h = makeScheduler({ recuperacao: async () => ({ recuperada: true, resumo: { total: 10, elegiveis: 10, execucoes: 10, completed: 10, partial: 0, failed: 0, ignorados: 0, snapshots: { atualizados: 10 } } }) });
+    const r = await h.s.recuperarPendencias();
+    eq("restart: recuperação usa o mesmo lock global", [r.executada, h.chamadas.lock, h.chamadas.liberar], [true, 1, 1]);
+    eq("restart: chama o recuperador uma vez", h.chamadas.recuperacao.length, 1);
+    ok("restart: resumo observável", h.logs.some((l) => l.includes("recuperação concluída") && l.includes("tentadas=10")));
+  }
+  {
     // Instância padrão do módulo: parar() sem iniciar é seguro.
     sched.parar();
     ok("módulo: parar() sem iniciar não lança", true);
@@ -414,9 +443,10 @@ async function run() {
   {
     const index = fs.readFileSync(path.join(__dirname, "../index.js"), "utf8");
     ok("index: importa o scheduler", index.includes('require("./services/centralVendas/centralVendasNoturnoScheduler")'));
-    ok("index: inicia só depois de ensureCentralVendasTables", /ensureCentralVendasTables\(\)\.then\(\s*\(\) => centralVendasNoturnoScheduler\.iniciar\(\)/.test(index));
+    ok("index: inicia só depois de ensureCentralVendasTables", /ensureCentralVendasTables\(\)\.then\(\s*\(\) => \{[\s\S]*centralVendasNoturnoScheduler\.iniciar\(\)/.test(index));
+    ok("index: recupera pendências depois de iniciar", index.includes("centralVendasNoturnoScheduler.recuperarPendencias()"));
     const encerrar = index.slice(index.indexOf("function encerrarComGraca"), index.indexOf('process.on("SIGTERM"'));
-    ok("index: encerrarComGraca para o scheduler", encerrar.includes("centralVendasNoturnoScheduler.parar()"));
+    ok("index: encerrarComGraca drena o scheduler com prazo", encerrar.includes("centralVendasNoturnoScheduler.parar({ aguardarMs: 20000 })"));
     ok("index: não chama a rodada direto", !index.includes("executarRodada"));
   }
 

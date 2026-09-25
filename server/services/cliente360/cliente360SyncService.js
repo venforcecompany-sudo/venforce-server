@@ -78,12 +78,19 @@ async function consolidarAdsMes(clienteSlug, competencia) {
     await adsService.ensureAdsResumoTables();
   } catch (_) { /* ignora */ }
   const ads = await adsService.buscarResumoMensalAds({ clienteSlug, mes: competencia, lojaCampanha: "todas" });
-  if (!ads || ads.status === "sem_dados") {
-    return { adsInvestido: null, faturamentoAds: null };
+  // updatedAt distingue ausencia de linha de um zero real persistido pela API.
+  // O status gerencial "sem_dados" tambem pode ocorrer numa linha valida com
+  // investimento/GMV exatamente zero e, por isso, nao e usado como sentinela.
+  if (!ads || !ads.updatedAt) {
+    return { disponivel: false, adsInvestido: null, gmvAds: null, roas: null, faturamentoAds: null, updatedAt: null };
   }
   return {
+    disponivel: true,
     adsInvestido: numOrNull(ads.investimentoAds),
+    gmvAds: numOrNull(ads.gmvAds),
+    roas: numOrNull(ads.roas),
     faturamentoAds: numOrNull(ads.faturamentoTotal),
+    updatedAt: ads.updatedAt,
   };
 }
 
@@ -156,6 +163,16 @@ async function sincronizarResumoMensal(slug, competenciaRaw, userId) {
       payloadJson: {
         metricasOk: metricas.ok,
         motivoMetricas: metricas.motivo || null,
+        ...(ads.disponivel
+          ? {
+              ads: {
+                investimentoAds: ads.adsInvestido,
+                gmvAds: ads.gmvAds,
+                roas: ads.roas,
+                resumoAtualizadoEm: ads.updatedAt ? new Date(ads.updatedAt).toISOString() : null,
+              },
+            }
+          : {}),
         // Detalhe por produto só quando as métricas vieram OK; ausência da
         // chave = snapshot sem detalhamento (nunca lista vazia inventada).
         ...(metricas.ok && Array.isArray(metricas.topProdutos)

@@ -50,7 +50,15 @@ function novoModelo() {
     // cliente_360_resumos_mensais
     resumos: [
       { cliente_id: 1, competencia: "2026-01", faturamento: 100000, mc_media: 0.18, ads_investido: 3500, sincronizado_em: "2026-02-01T09:00:00.000Z", payload_json: { porDia: [{ data: "2026-01-05", vendasBrutas: 5000 }] } },
-      { cliente_id: 1, competencia: "2026-02", faturamento: 113000, mc_media: 0.181, ads_investido: 3900, sincronizado_em: "2026-03-01T09:10:00.000Z", payload_json: { porDia: [{ data: "2026-02-03", vendasBrutas: 6000 }] } },
+      {
+        cliente_id: 1, competencia: "2026-02", faturamento: 113000, mc_media: 0.181,
+        ads_investido: 3900, sincronizado_em: "2026-03-01T09:10:00.000Z",
+        payload_json: {
+          porDia: [{ data: "2026-02-03", vendasBrutas: 6000 }],
+          centralVendas: { lucroContribuicao: 15000 },
+          ads: { investimentoAds: 3900, gmvAds: 100000, roas: 25.64, resumoAtualizadoEm: "2026-03-01T09:09:00.000Z" },
+        },
+      },
       // Cliente B: mc_media gravado em ESCALA PERCENTUAL (22 = 22%), não fração.
       { cliente_id: 2, competencia: "2026-02", faturamento: 50000, mc_media: 22, ads_investido: null, sincronizado_em: "2026-03-01T09:15:00.000Z", payload_json: {} },
       { cliente_id: 3, competencia: "2026-02", faturamento: 80000, mc_media: 0.2, ads_investido: 1000, sincronizado_em: "2026-03-01T09:20:00.000Z", payload_json: {} },
@@ -92,11 +100,10 @@ function resumoMaisRecente(m, ids, anoLike) {
       if (!doCliente.length) return null;
       const recente = [...doCliente].sort((a, b) => b.competencia.localeCompare(a.competencia))[0];
       const cliente = m.clientes.find((c) => c.id === id);
-      const ads = m.adsResumos.find((a) => a.cliente_slug === cliente.slug && a.mes_ref === recente.competencia && a.loja_campanha === "todas");
       return {
         cliente_id: id, cliente_slug: cliente.slug, competencia: recente.competencia,
         faturamento: recente.faturamento, mc_media: recente.mc_media, ads_investido: recente.ads_investido,
-        sincronizado_em: recente.sincronizado_em, gmv_ads: ads ? ads.gmv_ads : null,
+        payload_json: recente.payload_json, sincronizado_em: recente.sincronizado_em,
       };
     })
     .filter(Boolean);
@@ -108,11 +115,10 @@ function resumosDoAno(m, clienteId, ano) {
     .filter((r) => r.cliente_id === clienteId && r.competencia.startsWith(`${ano}-`))
     .sort((a, b) => a.competencia.localeCompare(b.competencia))
     .map((r) => {
-      const ads = m.adsResumos.find((a) => a.cliente_slug === cliente.slug && a.mes_ref === r.competencia && a.loja_campanha === "todas");
       return {
         cliente_id: clienteId, cliente_slug: cliente.slug, competencia: r.competencia,
         faturamento: r.faturamento, mc_media: r.mc_media, ads_investido: r.ads_investido,
-        sincronizado_em: r.sincronizado_em, gmv_ads: ads ? ads.gmv_ads : null,
+        payload_json: r.payload_json, sincronizado_em: r.sincronizado_em,
       };
     });
 }
@@ -270,7 +276,8 @@ async function run() {
 
     const clienteA = listaAlpha.clientes.find((c) => c.id === 1);
     ok("cliente A: ultimoMesDisponivel é o mais recente (2026-02, não 2026-01)", clienteA.ultimoMesDisponivel === "2026-02");
-    ok("cliente A: gmv_ads presente -> acos derivado (não null)", clienteA.resumo.acos !== null && Math.abs(clienteA.resumo.acos - 3900 / 100000) < 1e-9);
+    ok("cliente A: investimento/GMV do mesmo payload -> acos derivado", clienteA.resumo.acos !== null && Math.abs(clienteA.resumo.acos - 3900 / 100000) < 1e-9);
+    ok("cliente A: LC real do payload vence FAT × MC", clienteA.resumo.lc === 15000);
 
     const mesesA = await service.listarMeses(U.alpha, "1", { ano: 2026 });
     ok("meses do cliente A: 2 competências (jan, fev)", mesesA.meses.length === 2);

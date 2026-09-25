@@ -16,7 +16,8 @@
 // scheduler viria junto com QUALQUER boot do servidor — inclusive um boot
 // local cujo server/.env aponta para o banco de produção.
 //
-// Não roda no boot: deploy/restart só recalcula o próximo horário.
+// No boot não cria uma rodada nova, mas retoma períodos que tenham runs
+// noturnos queued/running persistidos por um processo anterior.
 //
 // Proteção de rodada (além do sync_run, que já protege cada conta/período):
 //   - neste processo: flag `emExecucao` (dois disparos não se sobrepõem);
@@ -35,6 +36,7 @@ const LOCK_CHAVE_RODADA = 1;
 // Timer que dispara antes do alvo (relógio ajustado, clamp do Node) é
 // reagendado em vez de rodar cedo demais.
 const TOLERANCIA_DISPARO_MS = 1000;
+const RECUPERACAO_RETRY_MS = 30000;
 
 const LOG = "[sync-scheduler]";
 
@@ -169,13 +171,24 @@ function createScheduler(depsOverride = {}) {
     clearTimeoutFn: (t) => clearTimeout(t),
     getPool: () => require("../../config/database"),
     executarRodadaNoturna: (opts) => require("./centralVendasNoturnoService").executarRodadaNoturna(opts),
+    recuperarRodadasPendentes: (opts) => require("./centralVendasNoturnoService").recuperarRodadasPendentes(opts),
     adquirirLockGlobal,
+    esperar: (ms) => {
+      let timer;
+      const promise = new Promise((resolve) => { timer = setTimeout(resolve, ms); });
+      if (timer && typeof timer.unref === "function") timer.unref();
+      return { promise, cancelar: () => clearTimeout(timer) };
+    },
     logger: console,
     timeZone: TIMEZONE,
     ...depsOverride,
   };
 
-  const estado = { iniciado: false, parado: false, timer: null, proximoEm: null, emExecucao: false, horario: null };
+  const estado = {
+    iniciado: false, parado: false, timer: null, timerRecuperacao: null, proximoEm: null,
+    emExecucao: false, horario: null, promessaAtiva: null,
+    progresso: null, iniciadoEm: new Date(deps.agora()),
+  };
 
   function agendar() {
     if (estado.parado) return;
@@ -203,14 +216,15 @@ function createScheduler(depsOverride = {}) {
       .catch((err) => deps.logger.error(`${LOG} erro: ${mensagemSegura(err)}`));
   }
 
-  async function dispararRodada() {
+  async function executarProtegido(tipo) {
     if (estado.emExecucao) {
       deps.logger.warn(`${LOG} rodada já em andamento neste processo — disparo ignorado`);
       return { executada: false, motivo: "EM_ANDAMENTO_NESTE_PROCESSO" };
     }
     estado.emExecucao = true;
+    estado.progresso = null;
     const inicio = deps.agora();
-    try {
+    const promessa = (async () => {
       let lock;
       try {
         lock = await deps.adquirirLockGlobal(deps.getPool());
@@ -223,27 +237,61 @@ function createScheduler(depsOverride = {}) {
         return { executada: false, motivo: "RODADA_EM_OUTRA_INSTANCIA" };
       }
       try {
-        deps.logger.log(`${LOG} iniciando rodada...`);
-        const resumo = await deps.executarRodadaNoturna({ env: deps.env, origem: "scheduler-central" });
+        const recuperacao = tipo === "recuperacao";
+        deps.logger.log(`${LOG} ${recuperacao ? "recuperação" : "rodada"} iniciada`);
+        const onProgresso = (p) => { estado.progresso = p; };
+        const resultado = recuperacao
+          ? await deps.recuperarRodadasPendentes({ env: deps.env, iniciadoEm: estado.iniciadoEm, onProgresso })
+          : await deps.executarRodadaNoturna({ env: deps.env, origem: "scheduler-central", onProgresso });
+        if (recuperacao && !resultado?.recuperada) {
+          deps.logger.log(`${LOG} recuperação concluída: sem pendências`);
+          return { executada: true, recuperacao: true, resumo: null };
+        }
+        const resumo = recuperacao ? resultado?.resumo : resultado;
         deps.logger.log(
-          `${LOG} rodada concluída: elegíveis=${resumo?.elegiveis ?? "?"} sucesso=${resumo?.sucesso ?? "?"}`
-            + ` parcial=${resumo?.parcial ?? "?"} falha=${resumo?.falha ?? "?"} ignorados=${resumo?.ignorados ?? "?"}`
+          `${LOG} ${recuperacao ? "recuperação" : "rodada"} concluída: avaliadas=${resumo?.total ?? "?"}`
+            + ` elegíveis=${resumo?.elegiveis ?? "?"} tentadas=${resumo?.execucoes ?? "?"}`
+            + ` completed=${resumo?.completed ?? resumo?.sucesso ?? "?"}`
+            + ` partial=${resumo?.partial ?? resumo?.parcial ?? "?"}`
+            + ` failed=${resumo?.failed ?? resumo?.falha ?? "?"} ignoradas=${resumo?.ignorados ?? "?"}`
+            + ` snapshots=${resumo?.snapshots?.atualizados ?? "?"}`
             + ` duracaoMs=${deps.agora() - inicio}`
         );
-        return { executada: true, resumo };
+        return { executada: true, recuperacao, resumo };
       } catch (err) {
-        deps.logger.error(`${LOG} erro na rodada: ${mensagemSegura(err)}`);
+        deps.logger.error(`${LOG} erro na ${tipo === "recuperacao" ? "recuperação" : "rodada"}: ${mensagemSegura(err)}`);
         return { executada: false, motivo: "ERRO_RODADA" };
       } finally {
         await lock.liberar().catch(() => {});
       }
-    } catch (err) {
+    })().catch((err) => {
       // Rede de segurança: nada daqui pode virar unhandled rejection no Web Service.
       deps.logger.error(`${LOG} erro: ${mensagemSegura(err)}`);
       return { executada: false, motivo: "ERRO" };
-    } finally {
+    }).finally(() => {
       estado.emExecucao = false;
-    }
+      estado.promessaAtiva = null;
+    });
+    estado.promessaAtiva = promessa;
+    return promessa;
+  }
+
+  function dispararRodada() {
+    return executarProtegido("rodada");
+  }
+
+  function recuperarPendencias() {
+    return executarProtegido("recuperacao").then((resultado) => {
+      if (!estado.parado && resultado?.motivo === "RODADA_EM_OUTRA_INSTANCIA" && !estado.timerRecuperacao) {
+        deps.logger.log(`${LOG} recuperação aguardará ${RECUPERACAO_RETRY_MS}ms pelo lock da instância anterior`);
+        estado.timerRecuperacao = deps.setTimeoutFn(() => {
+          estado.timerRecuperacao = null;
+          recuperarPendencias().catch((err) => deps.logger.error(`${LOG} erro: ${mensagemSegura(err)}`));
+        }, RECUPERACAO_RETRY_MS);
+        if (estado.timerRecuperacao && typeof estado.timerRecuperacao.unref === "function") estado.timerRecuperacao.unref();
+      }
+      return resultado;
+    });
   }
 
   function iniciar() {
@@ -271,20 +319,41 @@ function createScheduler(depsOverride = {}) {
     return true;
   }
 
-  function parar() {
+  async function parar({ aguardarMs = 0 } = {}) {
     const tinhaTimer = !!estado.timer;
     estado.parado = true;
     if (estado.timer) deps.clearTimeoutFn(estado.timer);
+    if (estado.timerRecuperacao) deps.clearTimeoutFn(estado.timerRecuperacao);
     estado.timer = null;
+    estado.timerRecuperacao = null;
     estado.proximoEm = null;
     if (estado.iniciado) deps.logger.log(`${LOG} parado${tinhaTimer ? " (timer limpo)" : ""}`);
     estado.iniciado = false;
+    const ativa = estado.promessaAtiva;
+    if (!ativa) return { drenada: true, progresso: estado.progresso };
+    if (!(aguardarMs > 0)) return { drenada: false, progresso: estado.progresso };
+    const espera = deps.esperar(aguardarMs);
+    const prazoPromise = espera?.promise || espera;
+    const terminou = await Promise.race([
+      ativa.then(() => true, () => true),
+      Promise.resolve(prazoPromise).then(() => false),
+    ]);
+    if (terminou && typeof espera?.cancelar === "function") espera.cancelar();
+    if (!terminou) {
+      const p = estado.progresso || {};
+      deps.logger.warn(
+        `${LOG} shutdown interrompeu rodada após ${p.concluidas ?? 0}/${p.total ?? "?"}`
+          + `${p.unidade ? ` últimaUnidade=${p.unidade}` : ""}; runs queued/running serão recuperados no próximo boot`
+      );
+    }
+    return { drenada: terminou, progresso: estado.progresso };
   }
 
   return {
     iniciar,
     parar,
     dispararRodada,
+    recuperarPendencias,
     estado: () => ({
       iniciado: estado.iniciado,
       emExecucao: estado.emExecucao,
@@ -303,7 +372,8 @@ function instancia() {
 
 module.exports = {
   iniciar: () => instancia().iniciar(),
-  parar: () => { if (padrao) padrao.parar(); },
+  parar: (opts) => (padrao ? padrao.parar(opts) : Promise.resolve({ drenada: true, progresso: null })),
+  recuperarPendencias: () => instancia().recuperarPendencias(),
   createScheduler,
   calcularProximoDisparo,
   instanteDaHoraLocal,

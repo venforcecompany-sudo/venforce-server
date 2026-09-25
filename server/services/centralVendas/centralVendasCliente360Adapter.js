@@ -277,11 +277,18 @@ async function reconstruirSnapshotMensal({ cliente, competencia, contas, segment
 
   await deps.ensureCliente360Tables();
 
+  // Ads e vendas formam juntos a versao do snapshot. Ler o resumo antes da
+  // guarda de frescor evita ignorar um Ads recem-atualizado so porque os
+  // imports de vendas ja tinham sido incorporados anteriormente.
+  const ads = await deps.consolidarAdsMes(cliente.slug, competencia);
+  const adsUpdatedAt = ads?.updatedAt ? new Date(ads.updatedAt).getTime() : 0;
+  const fontesMax = Math.max(publishedMax, Number.isFinite(adsUpdatedAt) ? adsUpdatedAt : 0);
+
   // Proteção de ordem: um snapshot gravado depois da publicação mais recente
-  // dos imports escolhidos já é igual ou mais novo — não regrava e, portanto,
-  // não mexe em sincronizado_em.
+  // dos imports E do resumo Ads usados já é igual ou mais novo — não regrava
+  // e, portanto, não mexe em sincronizado_em.
   const existente = await deps.findResumoMensal(cliente.id, competencia);
-  if (existente?.sincronizado_em && new Date(existente.sincronizado_em).getTime() >= publishedMax) {
+  if (existente?.sincronizado_em && new Date(existente.sincronizado_em).getTime() >= fontesMax) {
     return { atualizado: false, motivo: "SNAPSHOT_JA_ATUALIZADO", detalhe: { sincronizadoEm: existente.sincronizado_em } };
   }
 
@@ -298,8 +305,7 @@ async function reconstruirSnapshotMensal({ cliente, competencia, contas, segment
     const { pedidos, itens } = await carregarPedidosEItens(importIds, deps.db);
     const central = consolidarCentral({ imports, pedidos, itens });
 
-    const [ads, fechamentosCount, relatorios, diagnosticosCount] = await Promise.all([
-      deps.consolidarAdsMes(cliente.slug, competencia),
+    const [fechamentosCount, relatorios, diagnosticosCount] = await Promise.all([
       deps.consolidarFechamentosMes(cliente.id, cliente.slug, competencia),
       deps.findRelatoriosByCliente(cliente.slug, { limit: 1 }),
       deps.countDiagnosticos(cliente.slug, competencia),
@@ -342,6 +348,16 @@ async function reconstruirSnapshotMensal({ cliente, competencia, contas, segment
         topProdutosTruncado: central.topProdutosTruncado,
         topProdutosEm: new Date().toISOString(),
         porDia: central.porDia,
+        ...(ads?.disponivel
+          ? {
+              ads: {
+                investimentoAds: ads.adsInvestido,
+                gmvAds: ads.gmvAds,
+                roas: ads.roas,
+                resumoAtualizadoEm: ads.updatedAt ? new Date(ads.updatedAt).toISOString() : null,
+              },
+            }
+          : {}),
         centralVendas: {
           origem,
           dadosAte,

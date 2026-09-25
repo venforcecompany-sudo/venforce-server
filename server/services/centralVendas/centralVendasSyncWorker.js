@@ -10,13 +10,12 @@
 // server/services/automacoes/promocoesDiagnosticoService.js): array em
 // memória + setImmediate. LIMITAÇÃO CONHECIDA: não há fila externa (Redis/
 // BullMQ/SQS) — se o processo Node reiniciar com um run em 'running', ele
-// fica preso nesse estado (não vira 'completed' magicamente, mas também não
-// é retomado sozinho). A reconciliação é preguiçosa: só acontece quando o
-// operador tenta criar um novo run equivalente (ver
-// centralVendasSyncRunService — o índice único de runs ativos cobre queued/
-// running, então um run travado bloquearia uma nova tentativa idêntica até
-// alguém investigar). Trocar por fila externa no futuro é uma troca desta
-// implementação sem mudar o contrato de central_vendas_sync_runs.
+// fica preso nesse estado dentro deste worker. Runs manuais continuam com a
+// reconciliação preguiçosa ao criar uma tentativa equivalente; runs noturnos
+// são reconciliados e retomados pelo scheduler no boot, reutilizando a mesma
+// central_vendas_sync_runs (ver centralVendasNoturnoService). Trocar por fila
+// externa no futuro continua sendo uma troca desta implementação sem mudar o
+// contrato de central_vendas_sync_runs.
 
 const pool = require("../../config/database");
 const runService = require("./centralVendasSyncRunService");

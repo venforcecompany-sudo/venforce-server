@@ -81,9 +81,10 @@ function makeDeps({ rows, comportamento = {}, execDelayMs = 5, adaptador = null 
   let clock = 1_000_000;
   let nextRunId = 100;
   const runs = new Map();
-  const chamadas = { criar: [], executar: [], obter: 0, snapshot: [], sleeps: 0 };
+  const chamadas = { criar: [], executar: [], obter: 0, ads: [], snapshot: [], sleeps: 0 };
   let emVoo = 0;
   let maxEmVoo = 0;
+  let criadosAoPrimeiroExec = null;
 
   const deps = {
     db: {
@@ -125,6 +126,7 @@ function makeDeps({ rows, comportamento = {}, execDelayMs = 5, adaptador = null 
       };
     },
     async executarSyncRun({ run }) {
+      if (criadosAoPrimeiroExec === null) criadosAoPrimeiroExec = chamadas.criar.length;
       chamadas.executar.push(run.id);
       const r = runs.get(run.id);
       const c = r.comportamento;
@@ -166,6 +168,10 @@ function makeDeps({ rows, comportamento = {}, execDelayMs = 5, adaptador = null 
       }
       return { id: r.id, status: r.status, completenessStatus: r.completenessStatus, error: r.error || null };
     },
+    async sincronizarAdsCliente(p) {
+      chamadas.ads.push(p);
+      return { atualizado: true, contas: p.contas.length, investimentoAds: 10, gmvAds: 50 };
+    },
     async reconstruirSnapshotMensal(p) {
       chamadas.snapshot.push(p);
       if (adaptador) return adaptador(p);
@@ -177,7 +183,12 @@ function makeDeps({ rows, comportamento = {}, execDelayMs = 5, adaptador = null 
     observarTimeoutMs: 5000,
     logger,
   };
-  return { deps, logs, chamadas, runs, maxEmVoo: () => maxEmVoo, avancar: (ms) => { clock += ms; } };
+  return {
+    deps, logs, chamadas, runs,
+    maxEmVoo: () => maxEmVoo,
+    criadosAoPrimeiroExec: () => criadosAoPrimeiroExec,
+    avancar: (ms) => { clock += ms; },
+  };
 }
 
 const PERIODO_SET = [{ competencia: "2026-09", dateFrom: "2026-09-01", dateTo: "2026-09-23" }];
@@ -302,11 +313,12 @@ async function run() {
   // 6. Concorrência máxima respeitada
   // =========================================================================
   for (const limite of [1, 3]) {
-    const rows = Array.from({ length: 9 }, (_, i) => contaRow({ contaId: i + 1, clienteId: i + 1, slug: `c${i + 1}` }));
-    const { deps, chamadas, maxEmVoo } = makeDeps({ rows, execDelayMs: 15 });
+    const rows = Array.from({ length: 10 }, (_, i) => contaRow({ contaId: i + 1, clienteId: i + 1, slug: `c${i + 1}` }));
+    const { deps, chamadas, maxEmVoo, criadosAoPrimeiroExec } = makeDeps({ rows, execDelayMs: 15, comportamento: limite === 3 ? { 4: { erroExec: true } } : {} });
     await svc.executarRodada({ periodos: PERIODO_SET, concorrencia: limite }, deps);
-    eq(`concorrência ${limite}: todas as 9 contas executadas`, chamadas.executar.length, 9);
+    eq(`concorrência ${limite}: todas as 10 contas processadas apesar de falha isolada`, chamadas.executar.length, 10);
     eq(`concorrência ${limite}: no máximo ${limite} em voo`, maxEmVoo(), limite);
+    eq(`concorrência ${limite}: 10 runs persistidos antes da primeira ingestão`, criadosAoPrimeiroExec(), 10);
   }
   {
     // Pool genérico: rejeição de uma tarefa não interrompe as outras.
@@ -412,6 +424,24 @@ async function run() {
   // =========================================================================
   // 10. Adaptador falha → rodada continua; resumo registra o motivo
   // =========================================================================
+  {
+    const rows = [contaRow({ contaId: 1, clienteId: 10, slug: "alfa" })];
+    const { deps, chamadas, logs } = makeDeps({ rows });
+    deps.sincronizarAdsCliente = async () => {
+      const err = new Error("Mercado Ads indisponivel");
+      err.code = "ML_ADS_API_ERROR";
+      throw err;
+    };
+    const resumo = await svc.executarRodada({ periodos: PERIODO_SET, concorrencia: 1 }, deps);
+    eq("ads falhou: vendas continuam sucesso", [resumo.sucesso, resumo.falha], [1, 0]);
+    eq("ads falhou: snapshot financeiro ainda e reconstruido", chamadas.snapshot.length, 1);
+    eq("ads falhou: resumo informa ausencia de atualizacao", resumo.ads, {
+      atualizados: 0,
+      naoAtualizados: 1,
+      porMotivo: { ADS_NAO_ATUALIZADO: 1 },
+    });
+    ok("ads falhou: log explicito", logs.some((l) => l.includes("ads alfa 2026-09 não atualizado") && l.includes("ML_ADS_API_ERROR")));
+  }
   {
     const rows = [contaRow({ contaId: 1, clienteId: 10, slug: "alfa" }), contaRow({ contaId: 2, clienteId: 20, slug: "beta" })];
     const { deps } = makeDeps({
