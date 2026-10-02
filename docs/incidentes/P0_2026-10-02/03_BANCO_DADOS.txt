@@ -1,0 +1,328 @@
+================================================================================
+INCIDENTE P0 2026-10-02 — 03_BANCO_DADOS
+Resultados das auditorias SQL, runs órfãos, integridade e dados pendentes
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
+
+ANONIMIZAÇÃO: este repositório é PÚBLICO. Nomes/slugs de clientes e ids de usuários foram omitidos;
+só aparecem ids técnicos (run, import, conta) e "usuário A/B" (requested_by 4/5). Quem tem acesso
+ao banco resolve os ids com a consulta correspondente. Nenhuma credencial aparece aqui.
+
+--------------------------------------------------------------------------------
+1. METODOLOGIA E ESTADO DAS AUDITORIAS
+--------------------------------------------------------------------------------
+Parte 1 (Q1-Q12): EXECUTADA pelo usuário em produção, SOMENTE LEITURA, em ~2026-10-02 14:47 BRT.
+  Transação BEGIN READ ONLY, statement_timeout 30s, lock_timeout 3s,
+  idle_in_transaction_session_timeout 120s, ROLLBACK no fim. Saída bruta guardada pelo usuário
+  (arquivo local ~/verificacao_pos_incidente_saida.txt, 563 linhas, NÃO versionado por conter slugs).
+Parte 2 (R1-R8):  PREPARADA e validada em PGlite; NÃO EXECUTADA em produção. [NÃO VERIFICADO]
+Pré-voo + simulação (F1-F5, S1-S4): PREPARADOS e validados em PGlite; NÃO EXECUTADOS. [NÃO VERIFICADO]
+Os SQLs estão em 07_ANEXO_SQL_E_SCRIPTS.txt. O relógio da auditoria é ~14:47:15 BRT (idade dos runs).
+Limite: o PGlite valida sintaxe/colunas contra o schema do repositório; não reproduz o tamanho nem o
+pg_stat_activity reais.
+
+--------------------------------------------------------------------------------
+2. Q1 — RUNS ATIVOS (queued/running): 91, TODOS ÓRFÃOS  [FATO SQL]
+--------------------------------------------------------------------------------
+Total 91 = 80 noturnos queued + 10 manuais running + 1 manual queued. Classificação do SQL: todos
+"ORFAO_*" (queued > 15 min ou running > 60 min). Q12 confirma que não há worker vivo (item 12).
+Noturnos (requested_by IS NULL), todos queued e com started_at VAZIO (nunca executaram):
+  noturno queued | criados 2026-09-29 | periodo 2026-09-01..2026-09-28 | 6 runs | ids 254-269 (não contíguos)
+  noturno queued | criados 2026-09-30 | periodo 2026-09-01..2026-09-29 | 24 runs | ids 339-362 (não contíguos)
+  noturno queued | criados 2026-10-01 | periodo 2026-09-01..2026-09-30 | 50 runs | ids 415-464 (não contíguos)
+
+  run_id | conta | status | usuario* | periodo | criado
+  472 | 81 | running | A | 2026-09-01..2026-09-30 | 2026-10-01 15:03:38
+  487 | 35 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:44
+  490 | 16 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:49
+  491 | 9 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:51
+  492 | 14 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:52
+  493 | 27 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:54
+  494 | 37 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:55
+  508 | 14 | running | B | 2026-10-01..2026-10-02 | 2026-10-02 00:27:35
+  513 | 21 | running | B | 2026-10-01..2026-10-02 | 2026-10-02 00:27:48
+  514 | 40 | running | B | 2026-10-01..2026-10-02 | 2026-10-02 00:27:50
+  515 | 49 | queued | B | 2026-10-01..2026-10-02 | 2026-10-02 00:27:53
+  * usuário A/B = requested_by 4/5 (anonimizado).
+
+IDs dos 80 noturnos:
+  254, 260, 261, 265, 268, 269, 339, 340, 341, 342, 343, 344, 345, 346, 347, 348, 349, 350, 351, 352, 353, 354, 355, 356, 357, 358, 359, 360, 361, 362, 415, 416, 417, 418, 419, 420, 421, 422, 423, 424, 425, 426, 427, 428, 429, 430, 431, 432, 433, 434, 435, 436, 437, 438, 439, 440, 441, 442, 443, 444, 445, 446, 447, 448, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464
+
+--------------------------------------------------------------------------------
+3. Q2 — PANORAMA POR DIA / ORIGEM / STATUS (janela 2026-09-29 em diante)  [FATO SQL]
+--------------------------------------------------------------------------------
+  dia | origem | status | error_code | runs
+  -----------------------------------------
+  2026-09-29 | manual | completed |  | 7
+  2026-09-29 | noturno | completed |  | 56
+  2026-09-29 | noturno | failed | 40P01 | 20
+  2026-09-29 | noturno | failed | SYNC_RUN_PROCESS_RESTART | 5
+  2026-09-29 | noturno | failed | SYNC_RUN_STALE_QUEUED | 16
+  2026-09-29 | noturno | queued |  | 6
+  2026-09-30 | manual | completed |  | 5
+  2026-09-30 | manual | failed | SYNC_RUN_STALE_RUNNING | 3
+  2026-09-30 | noturno | completed |  | 34
+  2026-09-30 | noturno | failed | SYNC_RUN_PROCESS_RESTART | 3
+  2026-09-30 | noturno | queued |  | 24
+  2026-10-01 | manual | completed |  | 23
+  2026-10-01 | manual | running |  | 7
+  2026-10-01 | noturno | completed |  | 11
+  2026-10-01 | noturno | failed | SYNC_RUN_PROCESS_RESTART | 3
+  2026-10-01 | noturno | queued |  | 50
+  2026-10-02 | manual | completed |  | 17
+  2026-10-02 | manual | queued |  | 1
+  2026-10-02 | manual | running |  | 3
+Leitura: em 29/09 o código 40P01 ainda aparece (20 runs, rodada das 03:0x); a partir de 30/09 só
+aparecem PROCESS_RESTART, STALE_* e queued. "manual" inclui Painel e Central (ver 01_RESUMO_GERAL).
+
+--------------------------------------------------------------------------------
+4. Q3 — RUNS ENCERRADOS À FORÇA PELO SISTEMA (30 runs)  [FATO SQL]
+--------------------------------------------------------------------------------
+Esses runs NÃO publicam. Duração = encerrado - início (ou criação, se nunca iniciou).
+  run_id | conta | origem | error_code | periodo | criado | encerrado | duracao
+  ----------------------------------------------------------------------------------------------------
+  249 | 20 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:51:31 | 01:06:35
+  252 | 30 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:51:31 | 00:57:48
+  253 | 31 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:51:31 | 00:57:11
+  255 | 42 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  256 | 19 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  257 | 103 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  258 | 98 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  259 | 67 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  262 | 48 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  263 | 43 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  264 | 34 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  266 | 18 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  267 | 45 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:45 | 01:02:13
+  270 | 90 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:45 | 01:02:13
+  271 | 66 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:45 | 01:02:13
+  272 | 25 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:45 | 01:02:13
+  273 | 38 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:46 | 01:02:13
+  274 | 46 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:46 | 01:02:13
+  275 | 92 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:46 | 01:02:13
+  289 | 25 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-28 | 2026-09-29 12:13:46 | 2026-09-29 12:51:31 | 00:07:51
+  290 | 66 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-28 | 2026-09-29 12:13:46 | 2026-09-29 12:51:31 | 00:07:15
+  334 | 8 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-29 | 2026-09-30 03:00:01 | 2026-09-30 12:02:25 | 08:38:40
+  337 | 20 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-29 | 2026-09-30 03:00:02 | 2026-09-30 12:02:25 | 08:36:37
+  338 | 28 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-29 | 2026-09-30 03:00:02 | 2026-09-30 12:02:25 | 08:36:25
+  363 | 81 | manual | SYNC_RUN_STALE_RUNNING | 2026-09-01..2026-09-30 | 2026-09-30 09:28:05 | 2026-09-30 17:27:17 | 07:59:11
+  399 | 83 | manual | SYNC_RUN_STALE_RUNNING | 2026-09-01..2026-09-30 | 2026-09-30 17:27:17 | 2026-10-01 03:00:00 | 09:32:43
+  400 | 81 | manual | SYNC_RUN_STALE_RUNNING | 2026-09-01..2026-09-30 | 2026-09-30 17:27:17 | 2026-10-01 03:00:00 | 09:32:42
+  402 | 81 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-30 | 2026-10-01 03:00:00 | 2026-10-01 15:03:02 | 12:02:09
+  411 | 35 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-30 | 2026-10-01 03:00:00 | 2026-10-01 15:03:02 | 11:57:05
+  414 | 16 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-30 | 2026-10-01 03:00:01 | 2026-10-01 15:03:02 | 11:55:30
+Códigos: SYNC_RUN_PROCESS_RESTART (reconciliação de boot, só noturnos running),
+SYNC_RUN_STALE_QUEUED (>15 min queued) e SYNC_RUN_STALE_RUNNING (>60 min running), ambos aplicados por
+reconciliarRunsStale dentro do próximo criarSyncRun do mesmo escopo.
+Horários de boot inferidos pelos finished_at idênticos de PROCESS_RESTART: 2026-09-29 12:51:31,
+2026-09-30 12:02:25 e 2026-10-01 15:03:02. [FATO SQL; "foi deploy" = HIPÓTESE]
+
+--------------------------------------------------------------------------------
+5. Q4 — RUNS MANUAIS DA JANELA (66)  [FATO SQL]
+--------------------------------------------------------------------------------
+  status | completeness | error_code | runs manuais
+  ------------------------------------------------------------
+  completed | complete | - | 51
+  completed | partial | - | 1
+  failed | - | SYNC_RUN_STALE_RUNNING | 3
+  queued | - | - | 1
+  running | - | - | 10
+  TOTAL manuais na janela: 66
+(O Q4 completo por run, com imports candidate/published, está só na saída bruta local.)
+
+--------------------------------------------------------------------------------
+6. Q5 — FONTES DOS RUNS NÃO CONCLUÍDOS  [FATO SQL]
+--------------------------------------------------------------------------------
+Runs manuais com status diferente de completed na janela, fontes por run. Formato fonte=status(recebidos/
+esperados). Runs #487, #490-#494, #508, #513, #514: cortados NO MEIO da coleta (claims/payments/shipments
+running; sem import candidate). Run #472: todas as fontes completas e 1 candidate (o caso do travamento
+pós-coleta). Runs #363, #399: já fechados por STALE_RUNNING, mesmo caso.
+  run 363 [failed]: base=complete, claims=complete(402/402), orders=complete(4144/4144), payments=complete(4418/4418), returns=complete(0/0), shipments=complete(4133/4133)
+  run 399 [failed]: base=complete, claims=complete(137/137), orders=complete(1729/1729), payments=complete(1852/1852), returns=complete(0/0), shipments=complete(1716/1716)
+  run 400 [failed]: base=complete, claims=running, orders=complete(4219/4219), payments=running, shipments=running
+  run 472 [running]: base=complete, claims=complete(422/422), orders=complete(4277/4277), payments=complete(4563/4563), returns=complete(0/0), shipments=complete(4265/4265)
+  run 487 [running]: base=complete, claims=running, orders=complete(117/117), payments=running, shipments=running
+  run 490 [running]: base=complete, claims=running, orders=complete(46/46), payments=running, shipments=running
+  run 491 [running]: base=complete, claims=running, orders=complete(39/39), payments=running, shipments=running
+  run 492 [running]: base=complete, claims=running, orders=complete(49/49), payments=running, shipments=running
+  run 493 [running]: base=complete, claims=running, orders=complete(20/20), payments=running, shipments=running
+  run 494 [running]: base=complete, orders=complete(19/19)
+  run 508 [running]: base=complete, claims=running, orders=complete(56/56), payments=running, shipments=running
+  run 513 [running]: base=complete, claims=running, orders=complete(15/15), payments=running, shipments=running
+  run 514 [running]: base=complete, claims=running, orders=complete(9/9), payments=running, shipments=running
+
+--------------------------------------------------------------------------------
+7. Q6 — PUBLICAÇÃO  [FATO SQL]
+--------------------------------------------------------------------------------
+(a) import published cujo run NÃO está completed: 0 linhas (esperado 0).
+(b) imports candidate de runs completed (nunca promovidos):
+  tipo | import_id | sync_run_id | run_status | cliente_conta_id | competencia | publication_status
+  -------------------------------------------------------------------------------------------------
+  b_candidate_de_run_completed | 243 | 223 | completed | 35 | 2026-08 | candidate
+  b_candidate_de_run_completed | 244 | 223 | completed | 35 | 2026-09 | candidate
+  b_candidate_de_run_completed | 320 | 278 | completed | 42 | 2026-08 | candidate
+  b_candidate_de_run_completed | 321 | 278 | completed | 42 | 2026-09 | candidate
+  b_candidate_de_run_completed | 614 | 507 | completed | 9 | 2026-09 | candidate
+  b_candidate_de_run_completed | 615 | 507 | completed | 9 | 2026-10 | candidate
+  Leitura: run #507 terminou às 00:27:53, no minuto do impasse, com 2 candidates e 0 published => suspeito
+  de vítima do impasse (a promoção por publicarRun não chegou a rodar) [HIPÓTESE]. Os runs #223 e #278
+  são anteriores à janela; pode ser comportamento correto (orders incompleto não publica) [NÃO VERIFICADO: R4].
+(c) imports por status do run e publication_status (runs criados desde 29/09):
+  run_status | publication_status | imports
+  -----------------------------------------
+  completed | candidate | 6
+  completed | published | 200
+  failed | candidate | 7
+  running | candidate | 1
+
+--------------------------------------------------------------------------------
+8. Q7 — DUPLICAÇÃO NOS DADOS PUBLICADOS  [FATO SQL]
+--------------------------------------------------------------------------------
+Desenho: vários imports published por conta x competência é NORMAL; a leitura escolhe um.
+(a) empates de published_at na mesma conta x competência: 0 linhas (esperado 0).
+(b) pedido repetido dentro do mesmo import: impossível (UNIQUE (import_id, pedido_id)); não consultado.
+(c) imports published SEM pedido nenhum (10):
+  import_id | sync_run_id | cliente_conta_id | competencia | published_at
+  -----------------------------------------------------------------------
+  236 | 221 | 50 | 2026-09 | 2026-09-29 11:18:18.090433-03
+  252 | 231 | 76 | 2026-09 | 2026-09-29 11:32:43.409467-03
+  259 | 235 | 94 | 2026-09 | 2026-09-29 11:35:12.692127-03
+  384 | 310 | 50 | 2026-09 | 2026-09-30 03:03:01.920641-03
+  400 | 319 | 76 | 2026-09 | 2026-09-30 03:15:51.995034-03
+  406 | 324 | 94 | 2026-09 | 2026-09-30 03:18:00.390274-03
+  494 | 410 | 50 | 2026-09 | 2026-10-01 03:05:09.294124-03
+  582 | 483 | 97 | 2026-10 | 2026-10-01 19:37:40.690561-03
+  595 | 498 | 97 | 2026-10 | 2026-10-02 00:26:41.89158-03
+  608 | 511 | 76 | 2026-10 | 2026-10-02 00:27:43.208587-03
+  Pode ser conta sem vendas no período (vazio legítimo) ou perda de dado. [NÃO VERIFICADO: R6]
+
+--------------------------------------------------------------------------------
+9. Q8 — PAGAMENTOS E REPASSES DO MERCADO PAGO  [FATO SQL]
+--------------------------------------------------------------------------------
+Pagamentos por status do run (UNIQUE (sync_run_id, payment_id) impede duplicata dentro do run):
+  run_status | runs | payments
+  ----------------------------
+  completed | 143 | 82322
+  failed | 13 | 29388
+  running | 8 | 4654
+34.042 pagamentos (13 runs failed + 8 running) estão em runs que não completaram: inertes, nunca
+publicados/lidos como oficiais; limpeza NÃO é recomendada agora (nada de DELETE).
+Repasses (central_vendas_mp_settlement_reports) na janela: 0 linhas => o recurso não foi usado.
+
+--------------------------------------------------------------------------------
+10. Q9 — DEFASAGEM DO RESUMO DO CLIENTE 360 / ADS  [FATO SQL; interpretação = HIPÓTESE]
+--------------------------------------------------------------------------------
+9 linhas onde o último import published é mais novo que cliente_360_resumos_mensais.sincronizado_em:
+  competencia | resumo_sincronizado_em | ultimo_published | defasagem
+  ------------------------------------------------------------------------------------------
+  2026-06 | 2026-07-14 11:02:39 | 2026-08-22 19:21:20 | 39 days 08:18:41
+  2026-08 | 2026-09-22 15:26:32 | 2026-09-29 12:17:35 | 6 days 20:51:02
+  2026-09 | 2026-09-25 16:40:05 | 2026-09-29 11:52:41 | 3 days 19:12:36
+  2026-09 | 2026-09-30 03:14:19 | 2026-10-02 00:27:44 | 1 day 21:13:25
+  2026-09 | 2026-09-30 03:17:59 | 2026-10-02 00:27:47 | 1 day 21:09:47
+  2026-09 | 2026-09-30 03:01:07 | 2026-10-01 19:10:50 | 1 day 16:09:43
+  2026-09 | 2026-09-30 03:18:12 | 2026-10-01 15:13:48 | 1 day 11:55:36
+  2026-09 | 2026-10-01 03:04:31 | 2026-10-02 00:26:48 | 21:22:16
+  2026-09 | 2026-10-01 03:04:48 | 2026-10-02 00:26:45 | 21:21:56
+  - 3 linhas antigas (competências 2026-06, 2026-08 e a de 25/09): anteriores ao incidente.
+  - 6 linhas de set/2026 com published de 01-02/10: possível FALSO POSITIVO se esses imports de setembro
+    foram gerados por runs de outubro com cobertura vazia (a leitura os ignora). [HIPÓTESE; R5 decide]
+Ads (ads_resumos_mensais): 0 linhas duplicadas na janela. UNIQUE (cliente_slug, mes_ref, loja_campanha).
+
+--------------------------------------------------------------------------------
+11. Q10 / Q11 — AGENDADOR NOTURNO  [FATO SQL]
+--------------------------------------------------------------------------------
+Q10: contas MELI ativas (81) x períodos de 02/10 [set/2026 completo; out/2026 01..01]: 162 combinações,
+  0 com run noturno criado desde 2026-10-02 03:00 BRT => a rodada de 02/10 NÃO rodou. A consulta é uma
+  aproximação (inclui contas que o scheduler considera inelegíveis).
+Q10b (runs noturnos dos últimos 7 dias por dia/status/código):
+  dia | status | error_code | runs
+  --------------------------------
+  2026-09-25 | completed |  | 3
+  2026-09-25 | failed | 40P01 | 28
+  2026-09-26 | completed |  | 3
+  2026-09-26 | failed | 40P01 | 38
+  2026-09-27 | completed |  | 3
+  2026-09-27 | failed | 40P01 | 17
+  2026-09-28 | completed |  | 3
+  2026-09-28 | failed | 40P01 | 29
+  2026-09-29 | completed |  | 56
+  2026-09-29 | failed | 40P01 | 20
+  2026-09-29 | failed | SYNC_RUN_PROCESS_RESTART | 5
+  2026-09-29 | failed | SYNC_RUN_STALE_QUEUED | 16
+  2026-09-29 | queued |  | 6
+  2026-09-30 | completed |  | 34
+  2026-09-30 | failed | SYNC_RUN_PROCESS_RESTART | 3
+  2026-09-30 | queued |  | 24
+  2026-10-01 | completed |  | 11
+  2026-10-01 | failed | SYNC_RUN_PROCESS_RESTART | 3
+  2026-10-01 | queued |  | 50
+Q11 (períodos que o próximo boot tentaria recuperar; mesma query de listarPeriodosNoturnosPendentes):
+  date_from | date_to
+  -------------------
+  2026-09-01 | 2026-09-28
+  2026-09-01 | 2026-09-29
+  2026-09-01 | 2026-09-30
+  3 períodos obsoletos => a recuperação seria tentada de novo a cada restart. Hoje ela falha pelo bug do
+  Date (02_DIAGNOSTICO, seção 3); corrigido o bug sem limpar os órfãos, ela executaria de verdade.
+
+--------------------------------------------------------------------------------
+12. Q12 — SESSÕES DO POSTGRES NO MOMENTO DA AUDITORIA  [FATO SQL]
+--------------------------------------------------------------------------------
+2 sessões: 1 idle (ClientRead) sem application_name (pool do app) e 1 active (o próprio psql).
+Nenhuma sessão "venforce-painel-atualizar-lock" e nenhuma sessão presa => pool saudável e nenhum job em
+execução. Conclusão: os 91 runs ativos são órfãos de fato.
+
+--------------------------------------------------------------------------------
+13. CLASSIFICAÇÃO DOS 91 ÓRFÃOS (decisão proposta, NÃO executada)
+--------------------------------------------------------------------------------
+Podem ser encerrados (90), após backup:
+  - 80 noturnos queued: nunca iniciaram; nada a perder.
+  - 9 manuais running (#487, #490-#494, #508, #513, #514): cortados no meio da coleta; sem candidate.
+  - 1 manual queued (#515): nunca iniciou.
+Preservar para investigação (1): run #472 (conta 81, set completo): todas as fontes completas + 1 candidate,
+  nunca completou. Encerrá-lo não perde dado (candidate de run não completed nunca publica), mas altera
+  finished_at/error_code e é a única evidência viva do travamento pós-coleta. Só entra na reconciliação
+  depois de R3 + logs + backup.
+Fora dos 91: run #507 (conta 9) está completed com candidates não promovidos — não é fechamento, é promoção.
+Código novo proposto: error_code = SYNC_RUN_ORPHAN_POST_INCIDENT_20261002 (nenhum código/front depende dos
+  valores de error_code [FATO: grep]). marcarRunCompleted/marcarRunFailed só atuam com status 'running';
+  um worker "zumbi" que tentasse fechar um run já encerrado recebe null, sem erro.
+Os runs órfãos de escopo manual se autocuram no próximo clique do mesmo escopo (reconciliarRunsStale).
+Os noturnos de tuplas obsoletas (09-01..09-28, 09-01..09-29) NUNCA seriam repetidos pelo agendador
+(o dia seguinte usa outra tupla), por isso ficam queued para sempre e alimentam o Q11.
+
+--------------------------------------------------------------------------------
+14. DADOS A RECONCILIAR / VERIFICAR  [pendências de dados]
+--------------------------------------------------------------------------------
+D-1  90 runs órfãos (item 13). Intervenção: UPDATE controlado, com autorização. NÃO executado.
+D-2  Run #472: preservar; fechar depois da investigação.
+D-3  Run #507: 2 candidates sem promoção. Caminho proposto: um "Atualizar dados" controlado do cliente
+     correspondente (cliente pequeno), que cria run novo e publica pela rota normal. NÃO executado.
+D-4  Setembro/2026 sem import published que cubra 09-01..09-30 por conta: tamanho NÃO medido (R1).
+D-5  Candidates de runs failed/running (8 imports) e 34.042 pagamentos inertes: sem ação.
+D-6  Defasagem do resumo do Cliente 360 (Q9): confirmar falso positivo (R5) e deixar a rodada das 03:00
+     de 03/10 refazer o snapshot.
+D-7  Imports published sem pedido (10): comparar com orders esperados (R6).
+D-8  Rodada noturna de 02/10: não rodou; a de 03/10 (set completo + out 01..02) deve cobrir. [HIPÓTESE]
+
+--------------------------------------------------------------------------------
+15. TABELAS E COLUNAS RELEVANTES (para quem for consultar)
+--------------------------------------------------------------------------------
+central_vendas_sync_runs  (id, cliente_id, cliente_conta_id, marketplace, date_from DATE, date_to DATE, status,
+  requested_by, created_at, started_at, finished_at, error_code, error_message, completeness_status);
+  índice único parcial uq_central_vendas_sync_runs_ativo_v2 sobre (cliente_id, COALESCE(cliente_conta_id,0),
+  marketplace, date_from, date_to) WHERE status IN ('queued','running').
+central_vendas_sync_sources (sync_run_id, source, status, complete, expected_count, received_count)
+central_vendas_imports (id, cliente_slug, competencia, cliente_conta_id, sync_run_id, publication_status
+  candidate|published|legacy, coverage_date_from, coverage_date_to, published_at)
+central_vendas_pedidos (import_id, pedido_id UNIQUE por import) | central_vendas_mp_payments |
+central_vendas_mp_settlement_reports | cliente_360_resumos_mensais | ads_resumos_mensais | cliente_contas
+Definição: server/sql/central_vendas_schema.sql, server/sql/cliente360_schema.sql.
+Limiares: QUEUED_STALE 15 min, RUNNING_STALE 60 min (centralVendasSyncRunService.js).
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo com os resultados da parte 1 (Q1-Q12). Partes 2/pré-voo pendentes.

@@ -1,0 +1,178 @@
+================================================================================
+INCIDENTE P0 2026-10-02 — 02_DIAGNOSTICO
+Investigações, hipóteses, evidências e conclusões
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
+
+--------------------------------------------------------------------------------
+1. COMO A INVESTIGAÇÃO FOI CONDUZIDA
+--------------------------------------------------------------------------------
+- Fase 1 (somente leitura): leitura de código e histórico git; sem tocar produção.
+- Fase 2 (somente leitura): análise da evidência do pg_stat_activity trazida pelo usuário.
+- Fase 3: reprodução LOCAL do impasse com o pg-pool real (sem banco real), correção em branch
+  isolada, testes, PR #218.
+- Fase 4: verificação de "retomada após restart sem duplicação" (item 6 do pedido do hotfix).
+- Fase 5: verificação pós-incidente em produção SOMENTE LEITURA: SQL executado pelo usuário
+  (parte 1); análise; segundo defeito (datas) isolado e corrigido em branch local.
+Restrições vigentes durante todo o trabalho: sem migrations, sem escrita em produção, sem merge /
+push / deploy sem autorização, sem mexer em fórmulas financeiras, sem misturar a unificação de
+clientes. server/.env aponta para o banco de PRODUÇÃO: nunca subir o servidor local sem
+sobrescrever DATABASE_URL (os testes usam DATABASE_URL apontando para uma porta morta).
+
+--------------------------------------------------------------------------------
+2. DIAGNÓSTICO PRINCIPAL: IMPASSE DO POOL (RESOLVIDO PELO PR #218)
+--------------------------------------------------------------------------------
+Conclusão: o "Atualizar dados" do Painel esgotava o pool compartilhado do PostgreSQL.
+Descrição do mecanismo e das provas: 01_RESUMO_GERAL, seção 4.
+Arquivos e referências (estado anterior ao #218; o #218 reescreveu esses trechos):
+  - server/services/painelContas/painelContasAtualizacao.js  (lock em pool.connect() por todo o job)
+  - server/config/database.js                                (pg.Pool max 10, sem connectionTimeoutMillis)
+  - server/services/centralVendas/centralVendasSyncRunService.js  (criarSyncRun etc.; grava via pool)
+Estado atual em main (1249d98): painelContasAtualizacao.js usa pg.Client dedicado
+  (criarConexaoDedicada ~linha 200, adquirirLockEscopo ~217, executarJob ~322, iniciarAtualizacao ~387);
+  server/config/database.js:13 define connectionTimeoutMillis (padrão 30000 ms).
+
+--------------------------------------------------------------------------------
+3. DIAGNÓSTICO SECUNDÁRIO: 201 FALHAS DO AGENDADOR ("dateFrom e dateTo")
+--------------------------------------------------------------------------------
+Mensagem: "dateFrom e dateTo (YYYY-MM-DD) sao obrigatorios." (HTTP 400 de criarSyncRun).
+Causa [FATO: código + TESTE LOCAL]:
+  - central_vendas_sync_runs.date_from / date_to são colunas DATE NOT NULL
+    (server/sql/central_vendas_schema.sql, ~linha 157).
+  - O driver pg devolve um objeto Date (meia-noite LOCAL) para colunas DATE; não há setTypeParser global.
+  - listarPeriodosNoturnosPendentes (server/services/centralVendas/centralVendasSyncRunService.js,
+    linhas 354-386 em 1249d98) fazia String(row.date_from).slice(0, 10) => "Thu Oct 01".
+  - criarSyncRun (mesmo arquivo, linha ~113) valida com /^\d{4}-\d{2}-\d{2}$/ e recusa.
+  - A recuperação de boot (recuperarRodadasPendentes, centralVendasNoturnoService.js linha ~610)
+    passa esses períodos para executarRodada; cada conta x período falha ANTES de criar run.
+Por que nenhum teste pegou: o teste de recuperação usava um mock que já devolvia strings
+  (server/tests/centralVendasNoturnoIdempotencia.test.js, ~linha 265).
+Desde quando: 4600446 (2026-09-25). A recuperação de restart NUNCA funcionou em produção. [FATO: código;
+  e nenhum run criado por recuperação foi identificado — mas ver D10 abaixo]
+Impacto nos dados: nenhum — a validação falha antes do INSERT. [FATO: código; SQL não mostra run
+  criado por esse caminho]
+Origem das 201: compatível com 3 períodos pendentes (Q11) x 67 contas elegíveis (3 x 67 = 201).
+  O número 67 NÃO foi confirmado (há 81 contas MELI ativas; elegibilidade = regra do scheduler). [HIPÓTESE forte]
+  Também é uma HIPÓTESE (não verificada em log) que as 201 ocorreram no boot que se seguiu ao restart
+  manual/deploy; o horário e o log do Render dessas falhas ainda não foram coletados. [NÃO VERIFICADO]
+Segundo ponto afetado pelo mesmo padrão: sanitizeRun (linhas 83-84 em 1249d98) => run.dateFrom/dateTo;
+  consumidor: server/controllers/centralVendasController.js ~linha 477 (iniciarOuRetomarMercadoPago
+  Settlement). Provavelmente quebrado, sem uso observado (0 linhas em central_vendas_mp_settlement_reports
+  na janela). [FATO: código; efeito exato NÃO VERIFICADO]
+Latente (NÃO corrigido, de propósito): a função dia() em buscarRunAtivoDaConta usa toISOString();
+  erra o dia em fuso a leste de UTC (Tóquio => 2026-09-30). No Render (UTC) não causa dano. [TESTE LOCAL]
+Medição do parser real do pg (pg-types, OID 1082) em vários fusos, dia 2026-10-01:
+  TZ                    getters locais   toISOString   String(Date).slice(0,10)
+  UTC                   2026-10-01       2026-10-01    "Thu Oct 01"
+  America/Sao_Paulo     2026-10-01       2026-10-01    "Thu Oct 01"
+  Asia/Tokyo            2026-10-01       2026-09-30    "Thu Oct 01"
+  Pacific/Kiritimati    2026-10-01       2026-09-30    "Thu Oct 01"
+  Pacific/Pago_Pago     2026-10-01       2026-10-01    "Thu Oct 01"
+Conclusão: getters locais = correto em qualquer fuso (adotado no hotfix de datas, ver 04_HOTFIXES).
+O erro era um "freio involuntário": sem ele, o próximo boot dispararia a recuperação sobre períodos
+obsoletos. Isso orienta a ordem do plano (06): fechar órfãos ANTES de publicar o hotfix de datas.
+Correção de uma estimativa anterior: "~201 sincronizações no próximo boot" era só um TETO. O caminho
+noturno usa reutilizarCompletedPublicado: true (criarSyncRun, linha ~171), então contas que já têm run
+completed+published para a mesma tupla são REAPROVEITADAS, sem chamar o Mercado Livre. A carga real é só
+das contas sem esse run; o pré-voo (F5) calcula isso.
+
+--------------------------------------------------------------------------------
+4. QUADRO DE HIPÓTESES
+--------------------------------------------------------------------------------
+ID  Hipótese                                                        Situação
+D1  Lock do Painel esgota o pool => /me/* pendura                   COMPROVADA (local) + coerente com prod
+D2  PRs #211-#216 causaram o incidente                              DESCARTADA (análise de código)
+D3  Bug do Date derruba a recuperação do scheduler no boot          COMPROVADA (local)
+D4  O mesmo bug quebra o endpoint de repasse MP (run.dateFrom)       PROVÁVEL; efeito não verificado
+D5  Pool esgotado explica os runs que travam DEPOIS de coletar      ENFRAQUECIDA: em 30/09 09:31-09:32
+    todas as fontes (#363, #399, #472)                              outros runs usaram o pool e
+                                                                    completaram; o processo seguiu vivo
+                                                                    até o restart das 12:02
+D6  OOM/crash do processo em contas grandes mata o run              ENFRAQUECIDA: as reconciliações de
+                                                                    boot só ocorreram em 29/09 12:51,
+                                                                    30/09 12:02 e 01/10 15:03; um OOM às
+                                                                    09:34 de 30/09 teria fechado antes os
+                                                                    3 runs noturnos que estavam running
+D7  Espera por lock de banco (não de pool) trava a finalização      NÃO TESTADA (possível; o #218 não cobre,
+                                                                    pois só limita a OBTENÇÃO de conexão)
+D8  Deploys de #212-#216 (17:57 a 00:07) mataram os runs manuais    HIPÓTESE: explicaria #487,#490-#494
+    da rajada das 19:37 (running para sempre)                       sem precisar de impasse. Requer o histórico
+                                                                    de Events do Render (NÃO VERIFICADO)
+D9  3 unidades noturnas travam por rodada e ocupam as 3 vagas de   COMPROVADO o padrão nos dados (Q2/Q3);
+    concorrência (CONCORRENCIA_PADRAO = 3, centralVendasNoturno      causa do travamento NÃO provada
+    Service.js:30) até o restart; o resto da fila fica queued
+D10 Origem do lote de 27 runs criados em ~1s em 29/09 11:11:31      NÃO EXPLICADA (ver abaixo)
+D11 Q9 (defasagem do Cliente 360) é falso positivo para 6 de 9      HIPÓTESE: imports de set/2026 produzidos
+    linhas                                                          por runs de 01-02/10 com cobertura vazia;
+                                                                    R5 da parte 2 decide (NÃO EXECUTADA)
+D12 10 imports published sem pedido são vazios legítimos            NÃO VERIFICADO (R6 da parte 2)
+Detalhe de D10: a recuperação de boot não explica esses runs (ela falharia com o bug do Date antes de criar
+qualquer run); então o lote veio de uma rodada normal (por exemplo o job CLI "npm run
+sync:central-vendas:noturno" ou um disparo manual/agendado). Sem log, não dá para afirmar.
+
+--------------------------------------------------------------------------------
+5. PADRÃO DAS RODADAS NOTURNAS (PRÉ-EXISTENTE AO INCIDENTE)  [FATO SQL]
+--------------------------------------------------------------------------------
+Rodada                      Unidades  completed  running(preso)  queued(nunca rodou)
+2026-09-30 03:00            61        34         3               24
+2026-10-01 03:00            64        11         3               50
+Cada rodada cria todos os runs (fase de preparação) e executa com concorrência 3. Em 30/09 e 01/10
+três unidades travaram e ocuparam todas as vagas até um restart do processo; as demais ficaram queued.
+Os travados foram fechados por reconciliação de boot (SYNC_RUN_PROCESS_RESTART): #249, #252, #253, #289,
+#290 (29/09, 5 runs); #334, #337, #338 (30/09); #402, #411, #414 (01/10). Não existe timeout por unidade.
+[FATO: código]
+Consequência provável (NÃO verificada, é o item R1): a rodada de 01/10, que fecha setembro (09-01..09-30),
+concluiu só 11 de 64 unidades; contas sem import published cobrindo o mês inteiro podem ficar sem dado de
+setembro na leitura mensal. A leitura só aceita um published cuja cobertura CONTENHA o trecho pedido:
+server/services/centralVendas/centralVendasRepository.js, selecionarMelhorImportPorCompetencia (~linha 443).
+
+--------------------------------------------------------------------------------
+6. RUNS QUE TRAVARAM DEPOIS DE COLETAR TODAS AS FONTES
+--------------------------------------------------------------------------------
+Runs #363 (30/09 09:28), #399 (30/09 17:27), #472 (01/10 15:03), contas 81 e 83, período 09-01..09-30:
+base/orders/shipments/claims/returns/payments todas "complete"; 1 import candidate criado; o run NÃO
+virou completed (#363/#399 fechados por STALE_RUNNING; #472 continua running). [FATO SQL]
+Sequência de código depois das fontes (server/services/centralVendas/centralVendasSyncService.js e
+centralVendasSyncWorker.js): grava imports candidate -> log "[centralVendas] sync <slug> ...: orders=..."
+(linha ~1316) -> worker: calcularCompletudeDoRun, atualizarCompletenessRun, marcarRunCompleted ->
+log "[centralVendas] sync-run #N completeness ..." (worker ~linha 107) -> publicarRun.
+Todo esse trecho é trabalho de banco (nenhuma chamada ao Mercado Livre). A autostart de relatório de
+repasse MP está inativa (0 linhas em central_vendas_mp_settlement_reports). [FATO SQL]
+Causa do travamento: NÃO PROVADA. As consultas R2/R3 (parte 2) e as linhas de log do Render (marcos a-d
+em 06_PLANO_RECUPERACAO) separam "travou gravando pedidos" de "travou na finalização do worker".
+
+--------------------------------------------------------------------------------
+7. VERIFICAÇÃO "RETOMADA APÓS RESTART SEM DUPLICAÇÃO" (item 6 do pedido do hotfix)
+--------------------------------------------------------------------------------
+Conclusão [FATO: código + TESTE LOCAL]:
+  - Imports, pagamentos e repasses MP são gravados por sync_run_id; a leitura escolhe UM import published
+    por conta x competência (maior published_at, cobertura contendo o trecho). Ads (ads_resumos_mensais,
+    UNIQUE (cliente_slug, mes_ref, loja_campanha)) e o resumo do Cliente 360 (cliente_360_resumos_mensais,
+    UNIQUE (cliente_id, competencia)) são upsert. Run interrompido nunca publica (publicarRun exige
+    status completed e orders "complete").
+  - Locks e vagas do Painel morrem com o processo (teste da seção 8 de painelContasPoolDeadlock.test.js).
+Auditoria SQL confirma [FATO SQL]: 0 imports published de run não completed; 0 empates de published_at;
+  0 linhas duplicadas de Ads.
+Lacuna conhecida: um run MANUAL órfão em running só é reconciliado após RUNNING_STALE_MINUTES (60 min,
+  centralVendasSyncRunService.js, reconciliarRunsStale ~linha 233); um clique nesse intervalo reaproveita
+  o órfão e a conta sai "ignorada". Não dá para fechar órfãos manuais no boot com segurança (a Central
+  também cria runs manuais; pode haver mais de uma instância).
+
+--------------------------------------------------------------------------------
+8. RISCOS RESIDUAIS DECLARADOS NO PR #218 (FORA DO ESCOPO DELE)
+--------------------------------------------------------------------------------
+Ver 05_FALHAS_PENDENTES.txt, itens P-13 a P-20.
+
+--------------------------------------------------------------------------------
+9. O QUE NÃO FOI INVESTIGADO / LIMITES
+--------------------------------------------------------------------------------
+- Nenhum log do Render foi lido por mim; tudo que vem de logs depende do usuário (06, passo 0).
+- A parte 2 da auditoria e o pré-voo ainda NÃO foram executados em produção.
+- O número real de cliques simultâneos no minuto do impasse não está comprovado.
+- Não há medição de memória/CPU do serviço nas janelas relevantes.
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo.

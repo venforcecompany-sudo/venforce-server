@@ -1,0 +1,842 @@
+================================================================================
+INCIDENTE P0 2026-10-02 — 07_ANEXO_SQL_E_SCRIPTS
+Cópia canônica dos SQLs e scripts usados/preparados (os arquivos originais ficam no scratchpad da
+sessão do agente, que é efêmero e NÃO é versionado)
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
+
+AVISOS
+  - Tudo aqui foi validado só em PGlite local (com o schema do repositório) e, quando indicado, com um
+    psql falso para os scripts de shell. NADA daqui foi executado em produção, EXCETO a seção 2 (parte 1
+    da auditoria), que o usuário executou em modo somente leitura.
+  - Seções 2, 3, 4, 5 = SOMENTE LEITURA (BEGIN READ ONLY ... ROLLBACK).
+  - Seção 6 = ESCREVE (UPDATE). NÃO EXECUTAR sem autorização expressa do usuário (ver 06, A-3 e A-4).
+  - Nenhuma credencial aparece. DATABASE_URL deve ser definido no shell de quem executa; nunca colar em chat.
+  - Os arquivos .sql citados nos scripts de shell vivem na pasta do agente; ao reutilizar, salve cada seção
+    com o nome indicado e ajuste os caminhos.
+
+ÍNDICE DO ANEXO
+  1  passo0_coletar.sh / passo1_backup.sh / passo2b_dryrun_COM_ROLLBACK.sh (orquestração)
+  2  verificacao_pos_incidente.sql           (parte 1: Q1-Q12; EXECUTADA em produção, somente leitura)
+  3  verificacao_pos_incidente_parte2.sql    (R1-R8; NÃO executada)
+  4  preflight_reconciliacao.sql              (F1-F5; NÃO executado)
+  5  simulacao_reconciliacao_SOMENTE_LEITURA.sql (S1-S4; NÃO executada)
+  6  reconciliacao_orfaos_DRYRUN.sql / APLICAR / REVERTER (ESCREVEM; NÃO executar sem autorização)
+  7  Como os testes locais (PGlite) foram feitos
+
+================================================================================
+SEÇÃO 1 — SCRIPTS DE ORQUESTRAÇÃO (bash)
+================================================================================
+Os caminhos $AQUI/... referem-se à pasta do agente; adapte. Idéia central: sessão read-only, ON_ERROR_STOP,
+saídas em ~/recuperacao_p0_20261002/. passo2b ABORTA se o SQL não terminar em ROLLBACK ou se o backup não existir.
+--------------------------------------------------------------------------------
+
+
+# ---------- passo0_coletar.sh ----------
+#!/usr/bin/env bash
+# PASSO 0 — coleta SOMENTE LEITURA: parte 2 da auditoria + pré-voo da reconciliação.
+# Uso:  export DATABASE_URL='<url externa de producao, com sslmode=require>'   (no SEU shell; não cole aqui)
+#       bash passo0_coletar.sh
+set -euo pipefail
+: "${DATABASE_URL:?defina DATABASE_URL no seu shell (nao cole a URL no chat)}"
+command -v psql >/dev/null || { echo "psql nao encontrado"; exit 1; }
+AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SAIDA="${HOME}/recuperacao_p0_20261002"; mkdir -p "$SAIDA"
+# Segunda trava além do BEGIN READ ONLY dos arquivos: a sessão inteira nasce somente-leitura.
+export PGAPPNAME=recup-p0-passo0 PGOPTIONS='-c default_transaction_read_only=on'
+rodar() { # $1=arquivo sql  $2=nome da saida
+  echo ""; echo ">>> $2  ($(date '+%d/%m %H:%M:%S'))"
+  psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -f "$1" 2>&1 | tee "$SAIDA/$2.txt"
+}
+rodar "$AQUI/../verificacao_pos_incidente_parte2.sql"          parte2_saida
+rodar "$AQUI/preflight_reconciliacao.sql"                       preflight_saida
+rodar "$AQUI/simulacao_reconciliacao_SOMENTE_LEITURA.sql"       simulacao_saida
+echo ""; echo "Pronto. Envie o conteudo de:"; ls -1 "$SAIDA"/*_saida.txt
+
+# ---------- passo1_backup.sh ----------
+#!/usr/bin/env bash
+# PASSO 1 — BACKUP em CSV (somente leitura no banco; escreve só arquivos na SUA máquina).
+# Rode DEPOIS de enviar e eu aprovar o resultado do passo 0.
+set -euo pipefail
+: "${DATABASE_URL:?defina DATABASE_URL no seu shell}"
+SAIDA="${HOME}/recuperacao_p0_20261002"; mkdir -p "$SAIDA"; cd "$SAIDA"
+export PGAPPNAME=recup-p0-backup PGOPTIONS='-c default_transaction_read_only=on'
+IDS="ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,472,487,490,491,492,493,494,508,513,514,515]::bigint[]"
+copiar() { # $1=arquivo $2=select
+  psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "\\copy ($2) TO '$1' CSV HEADER"
+}
+# O nome backup_orfaos_runs.csv é o que o script de REVERSÃO espera (na mesma pasta).
+copiar backup_orfaos_runs.csv    "SELECT * FROM central_vendas_sync_runs WHERE id = ANY($IDS) ORDER BY id"
+copiar backup_orfaos_sources.csv "SELECT * FROM central_vendas_sync_sources WHERE sync_run_id = ANY($IDS) ORDER BY sync_run_id, source"
+copiar backup_orfaos_imports.csv "SELECT * FROM central_vendas_imports WHERE sync_run_id = ANY($IDS) ORDER BY id"
+echo ""; echo "Linhas (sem cabecalho). Esperado: runs=91, sources/imports = o que existir para esses runs:"
+for f in backup_orfaos_runs.csv backup_orfaos_sources.csv backup_orfaos_imports.csv; do
+  printf '%-28s %s\n' "$f" "$(( $(wc -l < "$f") - 1 ))"
+done
+sha256sum backup_orfaos_*.csv | tee backup_orfaos_SHA256.txt
+echo "Guarde esta pasta: $SAIDA  (nao a apague antes de a recuperacao terminar)"
+
+# ---------- passo2b_dryrun_COM_ROLLBACK.sh ----------
+#!/usr/bin/env bash
+# PASSO 2b — DRY-RUN COMPLETO. *** Executa o UPDATE de verdade dentro de uma transação e DESFAZ com ROLLBACK. ***
+# NÃO rode sem a minha confirmação e a sua autorização expressa (você pediu para conferir antes de qualquer UPDATE).
+# O resultado final do banco é idêntico ao inicial; o ROLLBACK está na ultima linha do arquivo SQL.
+set -euo pipefail
+: "${DATABASE_URL:?defina DATABASE_URL no seu shell}"
+AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SAIDA="${HOME}/recuperacao_p0_20261002"; mkdir -p "$SAIDA"
+tail -n 1 "$AQUI/reconciliacao_orfaos_DRYRUN.sql" | grep -q '^ROLLBACK;' || { echo "ABORTADO: o arquivo DRYRUN nao termina em ROLLBACK"; exit 1; }
+[ -f "$SAIDA/backup_orfaos_runs.csv" ] && [ "$(wc -l < "$SAIDA/backup_orfaos_runs.csv")" -ge 92 ] || { echo "ABORTADO: faca o passo 1 (backup) antes"; exit 1; }
+export PGAPPNAME=recup-p0-dryrun
+psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -f "$AQUI/reconciliacao_orfaos_DRYRUN.sql" 2>&1 | tee "$SAIDA/dryrun_saida.txt"
+
+================================================================================
+SEÇÃO 2 — PARTE 1 DA AUDITORIA (Q1-Q12) — EXECUTADA, SOMENTE LEITURA
+================================================================================
+Resultados em 03_BANCO_DADOS.txt.
+--------------------------------------------------------------------------------
+-- ============================================================================
+-- Verificação pós-incidente P0 (02/10/2026) — SOMENTE LEITURA
+--
+-- Como rodar: no psql ou no console SQL do banco, o arquivo inteiro.
+-- A transação é READ ONLY: qualquer escrita falha com "cannot execute ... in a
+-- read-only transaction". Termina em ROLLBACK, não deixa nada para trás.
+--
+-- Janela: 29/09/2026 (deploy do PR #195) em diante. Ajuste o literal abaixo
+-- (procure por JANELA) se quiser olhar menos.
+-- Fuso de negócio: America/Sao_Paulo. Colunas TIMESTAMPTZ aparecem em BRT.
+-- ============================================================================
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '30s';                    -- teto por comando
+SET LOCAL lock_timeout = '3s';                          -- nunca espera lock de DDL/escrita alheia
+SET LOCAL idle_in_transaction_session_timeout = '120s'; -- se o terminal travar, o banco derruba a sessão
+SET LOCAL TIME ZONE 'America/Sao_Paulo';
+
+-- ---------------------------------------------------------------------------
+-- Q1 — Runs AINDA ativos (queued/running) agora. Separa manual × noturno.
+-- manual = requested_by preenchido (clique em "Atualizar dados" ou Central);
+-- noturno = requested_by NULL (scheduler).
+-- idade > 60 min em running ou > 15 min em queued = órfão (o próximo clique
+-- do mesmo escopo o fecha sozinho como SYNC_RUN_STALE_*).
+-- ---------------------------------------------------------------------------
+SELECT r.id, r.cliente_slug, r.cliente_conta_id, c.nome AS conta,
+       r.status,
+       CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem,
+       r.requested_by, r.date_from, r.date_to,
+       r.created_at, r.started_at,
+       NOW() - COALESCE(r.started_at, r.created_at) AS idade,
+       CASE
+         WHEN r.status = 'queued'  AND r.created_at < NOW() - INTERVAL '15 minutes' THEN 'ORFAO_QUEUED'
+         WHEN r.status = 'running' AND r.started_at < NOW() - INTERVAL '60 minutes' THEN 'ORFAO_RUNNING'
+         ELSE 'dentro_do_prazo'
+       END AS classificacao
+  FROM central_vendas_sync_runs r
+  LEFT JOIN cliente_contas c ON c.id = r.cliente_conta_id
+ WHERE r.status IN ('queued', 'running')
+ ORDER BY r.created_at;
+
+-- ---------------------------------------------------------------------------
+-- Q2 — Panorama da janela: status e código de erro por origem e dia (BRT).
+-- Mostra quando os runs pararam de terminar (incidente) e o que cada
+-- mecanismo de limpeza fechou (SYNC_RUN_STALE_*, SYNC_RUN_PROCESS_RESTART).
+-- ---------------------------------------------------------------------------
+SELECT (r.created_at AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+       CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem,
+       r.status, r.error_code,
+       COUNT(*) AS runs,
+       MIN(r.created_at) AS primeiro, MAX(r.created_at) AS ultimo
+  FROM central_vendas_sync_runs r
+ WHERE r.created_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'   -- JANELA
+ GROUP BY 1, 2, 3, 4
+ ORDER BY 1, 2, 3, 4;
+
+-- ---------------------------------------------------------------------------
+-- Q3 — Runs encerrados à força pelo sistema (não por terminarem de fato).
+-- Esses runs NÃO publicam. Lista o que foi interrompido e a duração real.
+-- ---------------------------------------------------------------------------
+SELECT r.id, r.cliente_slug, r.cliente_conta_id, r.status, r.error_code,
+       CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem,
+       r.date_from, r.date_to, r.created_at, r.started_at, r.finished_at,
+       r.finished_at - COALESCE(r.started_at, r.created_at) AS duracao
+  FROM central_vendas_sync_runs r
+ WHERE r.error_code IN ('SYNC_RUN_STALE_QUEUED', 'SYNC_RUN_STALE_RUNNING', 'SYNC_RUN_PROCESS_RESTART')
+   AND r.created_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'   -- JANELA
+ ORDER BY r.created_at;
+
+-- ---------------------------------------------------------------------------
+-- Q4 — Runs MANUAIS da janela: desfecho, completude e o que produziram.
+-- candidatos = imports 'candidate' ainda não promovidos; publicados = imports
+-- 'published' deste run. Run completed COM candidatos e SEM publicados é o
+-- sinal de "terminou mas não promoveu" (ver Q6).
+-- ---------------------------------------------------------------------------
+SELECT r.id, r.cliente_slug, r.cliente_conta_id, r.status, r.completeness_status,
+       r.error_code, r.date_from, r.date_to, r.created_at, r.finished_at,
+       COUNT(i.id) FILTER (WHERE i.publication_status = 'candidate') AS imports_candidate,
+       COUNT(i.id) FILTER (WHERE i.publication_status = 'published') AS imports_published
+  FROM central_vendas_sync_runs r
+  LEFT JOIN central_vendas_imports i ON i.sync_run_id = r.id
+ WHERE r.requested_by IS NOT NULL
+   AND r.created_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'   -- JANELA
+ GROUP BY r.id
+ ORDER BY r.created_at;
+
+-- ---------------------------------------------------------------------------
+-- Q5 — Fontes (orders/shipments/...) de runs manuais que NÃO fecharam.
+-- Mostra até onde cada run interrompido chegou.
+-- ---------------------------------------------------------------------------
+SELECT r.id AS run_id, r.status AS run_status, s.source, s.status AS source_status,
+       s.complete, s.expected_count, s.received_count, s.error_code, s.finished_at
+  FROM central_vendas_sync_runs r
+  JOIN central_vendas_sync_sources s ON s.sync_run_id = r.id
+ WHERE r.requested_by IS NOT NULL
+   AND r.status <> 'completed'
+   AND r.created_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'   -- JANELA
+ ORDER BY r.id, s.source;
+
+-- ---------------------------------------------------------------------------
+-- Q6 — INCONSISTÊNCIAS DE PUBLICAÇÃO (o que não deveria existir).
+-- (a) import 'published' cujo run não está 'completed'  → deveria ser 0 linhas
+-- (b) import 'candidate' de run 'completed' (nunca promovido) → depende: run
+--     completed mas parcial/incompleto não promove de propósito; investigue
+-- (c) import 'candidate' de run 'failed'/'queued'/'running' → esperado (lixo
+--     inerte: nunca é lido), só dimensiona
+-- ---------------------------------------------------------------------------
+SELECT 'a_published_com_run_nao_completed' AS tipo, i.id AS import_id, i.sync_run_id,
+       r.status AS run_status, i.cliente_slug, i.cliente_conta_id, i.competencia,
+       i.publication_status, i.published_at
+  FROM central_vendas_imports i
+  JOIN central_vendas_sync_runs r ON r.id = i.sync_run_id
+ WHERE i.publication_status = 'published' AND r.status <> 'completed'
+UNION ALL
+SELECT 'b_candidate_de_run_completed', i.id, i.sync_run_id, r.status, i.cliente_slug,
+       i.cliente_conta_id, i.competencia, i.publication_status, i.published_at
+  FROM central_vendas_imports i
+  JOIN central_vendas_sync_runs r ON r.id = i.sync_run_id
+ WHERE i.publication_status = 'candidate' AND r.status = 'completed'
+   AND r.created_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'   -- JANELA
+ORDER BY 1, 2;
+
+SELECT r.status AS run_status, i.publication_status, COUNT(*) AS imports
+  FROM central_vendas_imports i
+  JOIN central_vendas_sync_runs r ON r.id = i.sync_run_id
+ WHERE r.created_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'   -- JANELA
+ GROUP BY 1, 2
+ ORDER BY 1, 2;
+
+-- ---------------------------------------------------------------------------
+-- Q7 — "Duplicação" nos dados publicados.
+-- O desenho PERMITE vários imports published para a mesma conta×competência
+-- (cada run completo publica o seu; a leitura escolhe UM, o de maior
+-- published_at). Então >1 published NÃO é erro por si só. O que é anomalia:
+--   (a) dois published com o MESMO published_at (leitura ambígua);
+--   (b) pedido repetido DENTRO de um mesmo import (UNIQUE impede; não consultado);
+--   (c) published sem nenhum pedido.
+-- ---------------------------------------------------------------------------
+-- (a) empate de published_at na mesma conta×competência
+SELECT i.cliente_slug, i.cliente_conta_id, i.competencia, i.published_at,
+       COUNT(*) AS imports_empatados, ARRAY_AGG(i.id ORDER BY i.id) AS import_ids
+  FROM central_vendas_imports i
+ WHERE i.publication_status = 'published'
+ GROUP BY 1, 2, 3, 4
+HAVING COUNT(*) > 1
+ ORDER BY 3 DESC, 1;
+
+-- (b) pedido repetido dentro do mesmo import: IMPOSSÍVEL (UNIQUE (import_id,
+--     pedido_id) no schema); consulta removida por ser pesada e inútil.
+
+-- (c) published sem pedido nenhum, na janela
+SELECT i.id AS import_id, i.sync_run_id, i.cliente_slug, i.cliente_conta_id,
+       i.competencia, i.published_at
+  FROM central_vendas_imports i
+ WHERE i.publication_status = 'published'
+   AND i.created_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'   -- JANELA
+   AND NOT EXISTS (SELECT 1 FROM central_vendas_pedidos p WHERE p.import_id = i.id)
+ ORDER BY i.id;
+
+-- ---------------------------------------------------------------------------
+-- Q8 — Pagamentos do Mercado Pago: gravados por sync_run_id (UNIQUE
+-- (sync_run_id, payment_id) impede duplicata dentro do run). Dimensiona o
+-- que ficou em runs que NÃO completaram (inerte, nunca publicado).
+-- ---------------------------------------------------------------------------
+SELECT r.status AS run_status, COUNT(DISTINCT r.id) AS runs, COUNT(p.id) AS payments
+  FROM central_vendas_sync_runs r
+  JOIN central_vendas_mp_payments p ON p.sync_run_id = r.id
+ WHERE r.created_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'   -- JANELA
+ GROUP BY 1
+ ORDER BY 1;
+
+SELECT r.status AS run_status, rep.status AS repasse_status, COUNT(*) AS relatorios
+  FROM central_vendas_sync_runs r
+  JOIN central_vendas_mp_settlement_reports rep ON rep.sync_run_id = r.id
+ WHERE r.created_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'   -- JANELA
+ GROUP BY 1, 2
+ ORDER BY 1, 2;
+
+-- ---------------------------------------------------------------------------
+-- Q9 — Resumos derivados (upsert): Cliente 360 e Ads.
+-- UNIQUE (cliente_id, competencia) e (cliente_slug, mes_ref, loja_campanha)
+-- impedem duplicata. O que checar é DEFASAGEM: resumo C360 mais velho que o
+-- último import published da mesma competência (é o critério que o scheduler
+-- usa para reprocessar).
+-- ---------------------------------------------------------------------------
+SELECT s.cliente_slug, s.competencia, s.sincronizado_em AS resumo_sincronizado_em,
+       MAX(i.published_at) AS ultimo_published,
+       MAX(i.published_at) - s.sincronizado_em AS defasagem
+  FROM cliente_360_resumos_mensais s
+  JOIN central_vendas_imports i
+    ON i.cliente_slug = s.cliente_slug
+   AND i.competencia = s.competencia
+   AND i.publication_status = 'published'
+ GROUP BY s.cliente_slug, s.competencia, s.sincronizado_em
+HAVING MAX(i.published_at) > COALESCE(s.sincronizado_em, 'epoch'::timestamptz)
+ ORDER BY defasagem DESC
+ LIMIT 100;
+
+-- Ads atualizado na janela (só para confirmar que o upsert não multiplicou linhas)
+SELECT cliente_slug, mes_ref, COUNT(*) AS linhas, MAX(updated_at) AS ultima_atualizacao
+  FROM ads_resumos_mensais
+ WHERE updated_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'   -- JANELA
+ GROUP BY 1, 2
+HAVING COUNT(*) > 1
+ ORDER BY 1, 2;
+
+-- ---------------------------------------------------------------------------
+-- Q10 — Agendador noturno: o que a rodada de 02/10 03:00 (BRT) deveria ter
+-- feito versus o que existe. Dia 2 => períodos: setembro/2026 completo e
+-- outubro/2026 01..01 (mês corrente até ontem). Ajuste as datas em outros dias.
+-- Contas MELI ativas SEM run noturno criado desde 02/10 03:00. Aproximação:
+-- inclui contas que o scheduler considera inelegíveis (sem grant etc.).
+-- ---------------------------------------------------------------------------
+SELECT c.id AS conta_id, c.cliente_id, c.nome,
+       p.date_from, p.date_to,
+       EXISTS (
+         SELECT 1 FROM central_vendas_sync_runs r
+          WHERE r.cliente_conta_id = c.id AND r.requested_by IS NULL
+            AND r.date_from = p.date_from AND r.date_to = p.date_to
+            AND r.created_at >= TIMESTAMPTZ '2026-10-02 03:00:00-03'
+       ) AS tem_run_noturno
+  FROM cliente_contas c
+  JOIN clientes cl ON cl.id = c.cliente_id AND cl.ativo = true
+ CROSS JOIN (VALUES (DATE '2026-09-01', DATE '2026-09-30'),
+                    (DATE '2026-10-01', DATE '2026-10-01')) AS p(date_from, date_to)
+ WHERE c.marketplace = 'meli' AND c.ativo = true
+ ORDER BY tem_run_noturno, c.id, p.date_from;
+
+-- Resumo dos runs noturnos por dia/status (últimos 7 dias)
+SELECT (r.created_at AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+       r.status, r.error_code, COUNT(*) AS runs
+  FROM central_vendas_sync_runs r
+ WHERE r.requested_by IS NULL
+   AND r.created_at >= NOW() - INTERVAL '7 days'
+ GROUP BY 1, 2, 3
+ ORDER BY 1, 2, 3;
+
+-- ---------------------------------------------------------------------------
+-- Q11 — O QUE O PRÓXIMO BOOT TENTARIA RECUPERAR (mesma query de
+-- listarPeriodosNoturnosPendentes, com antesDe = agora). Se retornar linhas,
+-- um novo restart dispararia a recuperação — que hoje falha por causa do bug
+-- do tipo DATE (ver relatório). Esperado após a falha de hoje: poucas/nenhuma.
+-- ---------------------------------------------------------------------------
+SELECT DISTINCT r.date_from, r.date_to
+  FROM central_vendas_sync_runs r
+ WHERE r.requested_by IS NULL
+   AND r.created_at < NOW()
+   AND (
+     r.status IN ('queued', 'running')
+     OR (
+       r.status = 'completed'
+       AND EXISTS (
+         SELECT 1 FROM central_vendas_imports i
+          WHERE i.sync_run_id = r.id AND i.publication_status = 'published'
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM cliente_360_resumos_mensais s
+          WHERE s.cliente_id = r.cliente_id
+            AND s.competencia = TO_CHAR(r.date_from, 'YYYY-MM')
+            AND s.sincronizado_em >= COALESCE((
+              SELECT MAX(i2.published_at) FROM central_vendas_imports i2
+               WHERE i2.sync_run_id = r.id AND i2.publication_status = 'published'
+            ), r.finished_at)
+       )
+     )
+   )
+ ORDER BY r.date_from, r.date_to;
+
+-- ---------------------------------------------------------------------------
+-- Q12 — Sessões do banco agora (confirma que o pool não está preso e que as
+-- conexões de lock do Painel só existem enquanto há atualização em curso).
+-- ---------------------------------------------------------------------------
+SELECT application_name, state, wait_event_type, wait_event, COUNT(*) AS sessoes,
+       MAX(NOW() - state_change) AS mais_antiga
+  FROM pg_stat_activity
+ WHERE datname = current_database()
+ GROUP BY 1, 2, 3, 4
+ ORDER BY sessoes DESC;
+
+ROLLBACK;
+
+================================================================================
+SEÇÃO 3 — PARTE 2 DA AUDITORIA (R1-R8) — NÃO EXECUTADA, SOMENTE LEITURA
+================================================================================
+R1 = lacuna de setembro; R2/R3 = onde travaram; R4 = candidates; R5 = cobertura; R6 = published sem pedido; R7 = órfãos já cobertos; R8 = rajadas de cliques.
+--------------------------------------------------------------------------------
+-- ============================================================================
+-- Verificação pós-incidente P0 — PARTE 2 — SOMENTE LEITURA
+-- Mesmas travas da parte 1: BEGIN READ ONLY, statement_timeout 30s,
+-- lock_timeout 3s, idle_in_transaction 120s, ROLLBACK no final.
+-- Os ids dos runs vêm do relatório da parte 1 (verificacao_pos_incidente_saida.txt).
+-- ============================================================================
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '3s';
+SET LOCAL idle_in_transaction_session_timeout = '120s';
+SET LOCAL TIME ZONE 'America/Sao_Paulo';
+
+-- ---------------------------------------------------------------------------
+-- R1 — LACUNA REAL DE SETEMBRO: contas MELI ativas SEM import published cuja
+-- cobertura contenha 2026-09-01..2026-09-30 inteiro. A leitura só aceita um
+-- published que contenha o trecho pedido inteiro; sem ele cai no legado/vazio.
+-- ultima_cobertura_ate mostra até onde o melhor published chega.
+-- ---------------------------------------------------------------------------
+SELECT c.id AS conta_id, cl.slug AS cliente_slug, c.nome AS conta,
+       BOOL_OR(i.publication_status = 'published'
+               AND i.coverage_date_from <= DATE '2026-09-01'
+               AND i.coverage_date_to   >= DATE '2026-09-30') AS tem_setembro_completo,
+       MAX(i.coverage_date_to) FILTER (WHERE i.publication_status = 'published'
+                                         AND i.coverage_date_from <= DATE '2026-09-01') AS ultima_cobertura_ate,
+       MAX(i.published_at) FILTER (WHERE i.publication_status = 'published') AS ultimo_published
+  FROM cliente_contas c
+  JOIN clientes cl ON cl.id = c.cliente_id AND cl.ativo = true
+  LEFT JOIN central_vendas_imports i
+         ON i.cliente_conta_id = c.id AND i.competencia = '2026-09'
+ WHERE c.marketplace = 'meli' AND c.ativo = true
+ GROUP BY c.id, cl.slug, c.nome
+ ORDER BY tem_setembro_completo, ultima_cobertura_ate NULLS FIRST, c.id;
+
+-- Resumo do R1 (quantas contas têm / não têm setembro completo)
+SELECT COALESCE(t.tem, false) AS tem_setembro_completo, COUNT(*) AS contas
+  FROM cliente_contas c
+  JOIN clientes cl ON cl.id = c.cliente_id AND cl.ativo = true
+  LEFT JOIN LATERAL (
+    SELECT TRUE AS tem
+      FROM central_vendas_imports i
+     WHERE i.cliente_conta_id = c.id AND i.competencia = '2026-09'
+       AND i.publication_status = 'published'
+       AND i.coverage_date_from <= DATE '2026-09-01' AND i.coverage_date_to >= DATE '2026-09-30'
+     LIMIT 1) t ON TRUE
+ WHERE c.marketplace = 'meli' AND c.ativo = true
+ GROUP BY 1 ORDER BY 1;
+
+-- ---------------------------------------------------------------------------
+-- R2 — Onde cada run órfão ficou preso. Fontes dos runs NOTURNOS que
+-- travaram (running por horas até o restart) e dos manuais da conta 81.
+-- ---------------------------------------------------------------------------
+SELECT r.id AS run_id, r.cliente_slug, r.cliente_conta_id, r.status, r.error_code,
+       s.source, s.status AS source_status, s.complete, s.expected_count, s.received_count, s.finished_at
+  FROM central_vendas_sync_runs r
+  JOIN central_vendas_sync_sources s ON s.sync_run_id = r.id
+ WHERE r.id IN (249,252,253,289,290,334,337,338,402,411,414)
+ ORDER BY r.id, s.source;
+
+-- ---------------------------------------------------------------------------
+-- R3 — Persistência dos runs que travaram DEPOIS de coletar as fontes
+-- (363, 399, 472): o import candidate tem todos os pedidos esperados?
+-- pedidos_gravados = expected_count de orders => parou depois de gravar;
+-- pedidos_gravados < expected_count (ou 0) => parou no meio da gravação.
+-- ---------------------------------------------------------------------------
+SELECT r.id AS run_id, r.cliente_slug, r.cliente_conta_id, r.status,
+       i.id AS import_id, i.competencia, i.publication_status,
+       i.coverage_date_from, i.coverage_date_to,
+       (SELECT s.expected_count FROM central_vendas_sync_sources s
+         WHERE s.sync_run_id = r.id AND s.source = 'orders') AS orders_esperados,
+       (SELECT COUNT(*) FROM central_vendas_pedidos p WHERE p.import_id = i.id) AS pedidos_gravados
+  FROM central_vendas_sync_runs r
+  LEFT JOIN central_vendas_imports i ON i.sync_run_id = r.id
+ WHERE r.id IN (363, 399, 472)
+ ORDER BY r.id, i.competencia;
+
+-- ---------------------------------------------------------------------------
+-- R4 — Candidates de runs COMPLETED que nunca foram promovidos (223, 278, 507).
+-- 507 (conta 9) terminou às 00:27:53, o minuto do impasse: suspeito de vítima.
+-- 223/278 são anteriores: ver se orders ficou incompleto (não publicar é o
+-- comportamento correto nesse caso).
+-- ---------------------------------------------------------------------------
+SELECT r.id AS run_id, r.cliente_slug, r.cliente_conta_id, r.status, r.completeness_status,
+       r.created_at, r.finished_at,
+       (SELECT s.status FROM central_vendas_sync_sources s WHERE s.sync_run_id = r.id AND s.source = 'orders') AS orders_status,
+       (SELECT s.received_count FROM central_vendas_sync_sources s WHERE s.sync_run_id = r.id AND s.source = 'orders') AS orders_recebidos,
+       i.id AS import_id, i.competencia, i.publication_status, i.coverage_date_from, i.coverage_date_to
+  FROM central_vendas_sync_runs r
+  JOIN central_vendas_imports i ON i.sync_run_id = r.id
+ WHERE r.id IN (223, 278, 507)
+ ORDER BY r.id, i.competencia;
+
+-- ---------------------------------------------------------------------------
+-- R5 — Sanidade de cobertura dos published da janela: cobertura nula ou
+-- invertida (de > até) significa import que nunca é escolhido pela leitura
+-- (ex.: competência 2026-09 produzida por um run de 01/10).
+-- ---------------------------------------------------------------------------
+SELECT CASE WHEN i.coverage_date_from IS NULL OR i.coverage_date_to IS NULL THEN 'cobertura_nula'
+            WHEN i.coverage_date_from > i.coverage_date_to THEN 'cobertura_invertida'
+            ELSE 'ok' END AS cobertura,
+       i.competencia, COUNT(*) AS imports
+  FROM central_vendas_imports i
+ WHERE i.publication_status = 'published'
+   AND i.created_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'
+ GROUP BY 1, 2
+ ORDER BY 1, 2;
+
+-- ---------------------------------------------------------------------------
+-- R6 — Published SEM pedidos: o run realmente viu 0 orders? (compara com a
+-- fonte orders). expected_count = 0 => vazio legítimo; > 0 => perda de dado.
+-- ---------------------------------------------------------------------------
+SELECT i.id AS import_id, i.sync_run_id, i.cliente_slug, i.cliente_conta_id, i.competencia,
+       i.coverage_date_from, i.coverage_date_to,
+       s.status AS orders_status, s.expected_count, s.received_count
+  FROM central_vendas_imports i
+  LEFT JOIN central_vendas_sync_sources s ON s.sync_run_id = i.sync_run_id AND s.source = 'orders'
+ WHERE i.id IN (236,252,259,384,400,406,494,582,595,608)
+ ORDER BY i.id;
+
+-- ---------------------------------------------------------------------------
+-- R7 — Para cada run ÓRFÃO (queued/running) de hoje: existe um run COMPLETED
+-- posterior, da mesma conta, cobrindo o mesmo período? Se sim, o dado já foi
+-- produzido por outro run (sem dano); se não, o período ficou sem atualização.
+-- ---------------------------------------------------------------------------
+SELECT o.id AS orfao_id, o.cliente_slug, o.cliente_conta_id,
+       CASE WHEN o.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem,
+       o.status, o.date_from, o.date_to,
+       EXISTS (SELECT 1 FROM central_vendas_sync_runs c
+                WHERE c.cliente_conta_id = o.cliente_conta_id AND c.status = 'completed'
+                  AND c.date_from <= o.date_from AND c.date_to >= o.date_to
+                  AND c.created_at > o.created_at) AS coberto_por_run_posterior
+  FROM central_vendas_sync_runs o
+ WHERE o.status IN ('queued', 'running')
+ ORDER BY coberto_por_run_posterior, o.created_at, o.id;
+
+-- ---------------------------------------------------------------------------
+-- R8 — Quem clicou: runs manuais da janela por usuário e dia (explica as
+-- rajadas de 01/10 19:37 e 02/10 00:26 que precederam o impasse).
+-- ---------------------------------------------------------------------------
+SELECT r.requested_by, date_trunc('minute', r.created_at) AS minuto, COUNT(*) AS cliques
+  FROM central_vendas_sync_runs r
+ WHERE r.requested_by IS NOT NULL
+   AND r.created_at >= TIMESTAMPTZ '2026-09-29 00:00:00-03'
+ GROUP BY 1, 2
+HAVING COUNT(*) >= 3
+ ORDER BY 2;
+
+ROLLBACK;
+
+================================================================================
+SEÇÃO 4 — PRÉ-VOO (F1-F5) — NÃO EXECUTADO, SOMENTE LEITURA
+================================================================================
+F5 projeta a carga real da recuperação (contas reaproveitáveis x sincronizações reais no máximo).
+--------------------------------------------------------------------------------
+-- ============================================================================
+-- PRÉ-VOO da reconciliação — SOMENTE LEITURA (BEGIN READ ONLY ... ROLLBACK)
+-- ============================================================================
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '3s';
+SET LOCAL idle_in_transaction_session_timeout = '120s';
+SET LOCAL TIME ZONE 'America/Sao_Paulo';
+
+-- F1 — Os 91 órfãos do relatório ainda estão no estado do relatório? (esperado: 80 noturno queued,
+-- 9 manual running, 1 manual running = 472, 1 manual queued; nada 'AUSENTE' nem mudado)
+WITH esperado(id, origem, status) AS (
+  SELECT id,'noturno','queued'  FROM unnest(ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464]::bigint[]) id
+  UNION ALL SELECT id,'manual','running' FROM unnest(ARRAY[487,490,491,492,493,494,508,513,514,472]::bigint[]) id
+  UNION ALL SELECT id,'manual','queued'  FROM unnest(ARRAY[515]::bigint[]) id)
+SELECT e.origem, e.status AS esperado, COALESCE(r.status,'AUSENTE') AS atual, COUNT(*) AS runs
+  FROM esperado e LEFT JOIN central_vendas_sync_runs r ON r.id = e.id
+ GROUP BY 1,2,3 ORDER BY 1,2,3;
+
+-- F2 — Runs ativos que NÃO estavam no relatório (criados depois). Se houver, ficam FORA da reconciliação;
+-- avaliar um a um (podem ser cliques legítimos pós-deploy).
+SELECT r.id, r.cliente_slug, r.status, CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem,
+       r.created_at, NOW() - COALESCE(r.started_at, r.created_at) AS idade
+  FROM central_vendas_sync_runs r
+ WHERE r.status IN ('queued','running') AND r.id <> ALL(ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,472,487,490,491,492,493,494,508,513,514,515]::bigint[])
+ ORDER BY r.created_at;
+
+-- F3 — Há algum processo vivo? (esperado: nenhuma sessão 'venforce-painel-atualizar-lock'; sessões do app só 'idle')
+SELECT application_name, state, wait_event_type, wait_event, COUNT(*) AS sessoes,
+       MAX(NOW() - state_change) AS mais_antiga
+  FROM pg_stat_activity WHERE datname = current_database() GROUP BY 1,2,3,4 ORDER BY sessoes DESC;
+
+-- F4 — Quem segura lock nas linhas-alvo agora? (esperado: 0 linhas)
+SELECT l.pid, l.locktype, l.mode, l.granted, a.application_name, a.state
+  FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+ WHERE l.relation = 'central_vendas_sync_runs'::regclass AND l.pid <> pg_backend_pid();
+
+-- F5 — PROJEÇÃO DA RECUPERAÇÃO DO BOOT (o que o scheduler tentaria no próximo restart).
+-- 'antes' = Q11 como está; 'depois' = Q11 se os alvos forem fechados. Para cada tupla pendente:
+-- contas MELI ativas, quantas seriam REAPROVEITADAS (run completed+published equivalente existe,
+-- sem chamar o Mercado Livre) e quantas sincronizariam de fato (teto: inclui contas inelegíveis).
+WITH alvo AS (SELECT unnest(ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,487,490,491,492,493,494,508,513,514,515]::bigint[]) AS id),
+pend AS (
+  SELECT 'antes' AS cenario, r.date_from, r.date_to FROM central_vendas_sync_runs r
+   WHERE r.requested_by IS NULL AND r.created_at < NOW()
+     AND (r.status IN ('queued','running')
+          OR (r.status='completed'
+              AND EXISTS (SELECT 1 FROM central_vendas_imports i WHERE i.sync_run_id=r.id AND i.publication_status='published')
+              AND NOT EXISTS (SELECT 1 FROM cliente_360_resumos_mensais s
+                               WHERE s.cliente_id=r.cliente_id AND s.competencia=TO_CHAR(r.date_from,'YYYY-MM')
+                                 AND s.sincronizado_em >= COALESCE((SELECT MAX(i2.published_at) FROM central_vendas_imports i2
+                                       WHERE i2.sync_run_id=r.id AND i2.publication_status='published'), r.finished_at))))
+  UNION
+  SELECT 'depois', r.date_from, r.date_to FROM central_vendas_sync_runs r
+   WHERE r.requested_by IS NULL AND r.created_at < NOW() AND r.id NOT IN (SELECT id FROM alvo)
+     AND (r.status IN ('queued','running')
+          OR (r.status='completed'
+              AND EXISTS (SELECT 1 FROM central_vendas_imports i WHERE i.sync_run_id=r.id AND i.publication_status='published')
+              AND NOT EXISTS (SELECT 1 FROM cliente_360_resumos_mensais s
+                               WHERE s.cliente_id=r.cliente_id AND s.competencia=TO_CHAR(r.date_from,'YYYY-MM')
+                                 AND s.sincronizado_em >= COALESCE((SELECT MAX(i2.published_at) FROM central_vendas_imports i2
+                                       WHERE i2.sync_run_id=r.id AND i2.publication_status='published'), r.finished_at))))
+),
+contas AS (SELECT c.id AS conta_id, c.cliente_id FROM cliente_contas c JOIN clientes cl ON cl.id=c.cliente_id AND cl.ativo
+            WHERE c.marketplace='meli' AND c.ativo)
+SELECT p.cenario, p.date_from, p.date_to, COUNT(*) AS contas_ativas,
+       COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM central_vendas_sync_runs r
+            WHERE r.cliente_id=ct.cliente_id AND r.cliente_conta_id IS NOT DISTINCT FROM ct.conta_id AND r.marketplace='meli'
+              AND r.date_from=p.date_from AND r.date_to=p.date_to AND r.status='completed'
+              AND EXISTS (SELECT 1 FROM central_vendas_imports i WHERE i.sync_run_id=r.id AND i.publication_status='published'))) AS reaproveitaveis,
+       COUNT(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM central_vendas_sync_runs r
+            WHERE r.cliente_id=ct.cliente_id AND r.cliente_conta_id IS NOT DISTINCT FROM ct.conta_id AND r.marketplace='meli'
+              AND r.date_from=p.date_from AND r.date_to=p.date_to AND r.status='completed'
+              AND EXISTS (SELECT 1 FROM central_vendas_imports i WHERE i.sync_run_id=r.id AND i.publication_status='published'))) AS sincronizacoes_reais_no_maximo
+  FROM pend p CROSS JOIN contas ct GROUP BY 1,2,3 ORDER BY 1,2,3;
+
+ROLLBACK;
+
+================================================================================
+SEÇÃO 5 — SIMULAÇÃO DA RECONCILIAÇÃO — NÃO EXECUTADA, 100% SOMENTE LEITURA
+================================================================================
+Mesmos filtros e mesma trava G1 da reconciliação, sem nenhum UPDATE; o #472 fica de fora.
+--------------------------------------------------------------------------------
+-- ============================================================================
+-- SIMULAÇÃO da reconciliação — 100% SOMENTE LEITURA (BEGIN READ ONLY ... ROLLBACK).
+-- Aplica os MESMOS filtros e a MESMA conferência G1 do script de reconciliação, mas só
+-- com SELECT: diz quais dos 90 alvos seriam encerrados e quais seriam recusados, e por quê.
+-- Não cria tabela (nem temporária), não faz UPDATE. O run 472 fica de fora (preservado).
+-- ============================================================================
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '3s';
+SET LOCAL idle_in_transaction_session_timeout = '120s';
+SET LOCAL TIME ZONE 'America/Sao_Paulo';
+
+WITH alvo(id, origem, status_esperado) AS (
+  SELECT id, 'noturno', 'queued'  FROM unnest(ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464]::bigint[]) AS id
+  UNION ALL SELECT id, 'manual', 'running' FROM unnest(ARRAY[487,490,491,492,493,494,508,513,514]::bigint[]) AS id
+  UNION ALL SELECT id, 'manual', 'queued'  FROM unnest(ARRAY[515]::bigint[]) AS id
+), avaliado AS (
+  SELECT a.id, a.origem, a.status_esperado, r.status AS status_atual,
+         CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem_atual,
+         r.created_at, r.started_at,
+         (r.id IS NOT NULL
+          AND r.status = a.status_esperado
+          AND (a.origem = 'noturno') = (r.requested_by IS NULL)
+          AND r.created_at < TIMESTAMPTZ '2026-10-02 01:00:00-03'
+          AND (   (r.status = 'queued'  AND r.started_at IS NULL AND r.created_at < NOW() - INTERVAL '15 minutes')
+               OR (r.status = 'running' AND r.started_at < NOW() - INTERVAL '60 minutes'))) AS conforme
+    FROM alvo a LEFT JOIN central_vendas_sync_runs r ON r.id = a.id
+)
+-- S1: resultado por categoria. G1 passa se conformes = alvos em todas as linhas e o total é 90.
+SELECT origem, status_esperado,
+       COUNT(*) AS alvos,
+       COUNT(*) FILTER (WHERE conforme) AS seriam_encerrados,
+       COUNT(*) FILTER (WHERE NOT conforme) AS seriam_RECUSADOS,
+       MIN(id) AS menor_id, MAX(id) AS maior_id
+  FROM avaliado GROUP BY 1, 2
+ UNION ALL
+SELECT 'TOTAL', '', COUNT(*), COUNT(*) FILTER (WHERE conforme), COUNT(*) FILTER (WHERE NOT conforme), MIN(id), MAX(id) FROM avaliado
+ ORDER BY 1, 2;
+
+-- S2: alvos que o script RECUSARIA (esperado: 0 linhas).
+WITH alvo(id, origem, status_esperado) AS (
+  SELECT id, 'noturno', 'queued'  FROM unnest(ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464]::bigint[]) AS id
+  UNION ALL SELECT id, 'manual', 'running' FROM unnest(ARRAY[487,490,491,492,493,494,508,513,514]::bigint[]) AS id
+  UNION ALL SELECT id, 'manual', 'queued'  FROM unnest(ARRAY[515]::bigint[]) AS id
+)
+SELECT a.id, a.origem AS origem_esperada, a.status_esperado,
+       COALESCE(r.status, 'AUSENTE') AS status_atual,
+       CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem_atual,
+       r.created_at, r.started_at
+  FROM alvo a LEFT JOIN central_vendas_sync_runs r ON r.id = a.id
+ WHERE r.id IS NULL OR r.status <> a.status_esperado
+    OR (a.origem = 'noturno') <> (r.requested_by IS NULL)
+    OR r.created_at >= TIMESTAMPTZ '2026-10-02 01:00:00-03'
+    OR NOT ((r.status = 'queued' AND r.started_at IS NULL AND r.created_at < NOW() - INTERVAL '15 minutes')
+         OR (r.status = 'running' AND r.started_at < NOW() - INTERVAL '60 minutes'))
+ ORDER BY a.id;
+
+-- S3: o código de reconciliação já existe em algum run? (esperado: 0 — senão já foi aplicada)
+SELECT COUNT(*) AS runs_com_o_codigo_do_incidente
+  FROM central_vendas_sync_runs WHERE error_code = 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002';
+
+-- S4: runs ativos que NÃO são alvo (esperado: só o 472 + eventuais cliques legítimos novos).
+SELECT r.id, r.cliente_slug, r.status, CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem,
+       r.created_at, NOW() - COALESCE(r.started_at, r.created_at) AS idade,
+       CASE WHEN r.id = 472 THEN 'PRESERVADO (investigacao)' ELSE 'fora do alvo' END AS situacao
+  FROM central_vendas_sync_runs r
+ WHERE r.status IN ('queued','running')
+   AND r.id <> ALL(ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,487,490,491,492,493,494,508,513,514,515]::bigint[])
+ ORDER BY r.created_at;
+
+ROLLBACK;
+
+================================================================================
+SEÇÃO 6 — RECONCILIAÇÃO — *** ESCREVE (UPDATE) — NÃO EXECUTAR SEM AUTORIZAÇÃO EXPRESSA ***
+================================================================================
+DRYRUN (abaixo) termina em ROLLBACK. O arquivo APLICAR é IDÊNTICO a este, exceto a última linha (COMMIT no lugar de
+ROLLBACK, e o comentário); por segurança ele NÃO é reproduzido aqui. O REVERTER restaura o estado anterior a partir do CSV.
+--------------------------------------------------------------------------------
+# ---------- reconciliacao_orfaos_DRYRUN.sql ----------
+-- ============================================================================
+-- RECONCILIAÇÃO DOS RUNS ÓRFÃOS — INCIDENTE P0 02/10/2026
+-- *** NÃO EXECUTAR SEM AUTORIZAÇÃO EXPLÍCITA. Gerado em modo planejamento. ***
+-- Altera APENAS central_vendas_sync_runs (status/finished_at/updated_at/error_*)
+-- de 90 runs listados por id. Não toca imports, pedidos, pagamentos, fontes,
+-- resumos, Ads nem nenhuma outra tabela. Nada é deletado.
+-- Rodar com:  psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f <arquivo>
+-- ============================================================================
+BEGIN;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '3s';
+SET LOCAL idle_in_transaction_session_timeout = '300s';
+SET LOCAL TIME ZONE 'America/Sao_Paulo';
+
+-- Alvo declarado (ids do relatório Q1, 02/10/2026 ~14:47 BRT). 472 FICA DE FORA de propósito
+-- (travou depois de coletar todas as fontes; só entra após R3 + logs do Render coletados).
+CREATE TEMP TABLE alvo_orfaos (
+  id BIGINT PRIMARY KEY, origem TEXT NOT NULL, status_esperado TEXT NOT NULL
+) ON COMMIT DROP;
+INSERT INTO alvo_orfaos SELECT id, 'noturno', 'queued'  FROM unnest(ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464]::bigint[]) AS id;
+INSERT INTO alvo_orfaos SELECT id, 'manual',  'running' FROM unnest(ARRAY[487,490,491,492,493,494,508,513,514]::bigint[]) AS id;
+INSERT INTO alvo_orfaos SELECT id, 'manual',  'queued'  FROM unnest(ARRAY[515]::bigint[]) AS id;
+
+-- G1 — conferência ANTES: todo alvo existe, tem o status/origem esperados e a idade
+-- mínima. Qualquer divergência aborta a transação inteira (nada é alterado).
+DO $$
+DECLARE n_alvo INT; n_ok INT;
+BEGIN
+  SELECT COUNT(*) INTO n_alvo FROM alvo_orfaos;
+  IF n_alvo <> 90 THEN RAISE EXCEPTION 'G1: esperado 90 alvos declarados, achei %', n_alvo; END IF;
+  SELECT COUNT(*) INTO n_ok FROM alvo_orfaos a JOIN central_vendas_sync_runs r ON r.id = a.id
+   WHERE r.status = a.status_esperado
+       AND (a.origem = 'noturno') = (r.requested_by IS NULL)
+       AND r.created_at < TIMESTAMPTZ '2026-10-02 01:00:00-03'
+       AND (   (r.status = 'queued'  AND r.started_at IS NULL AND r.created_at < NOW() - INTERVAL '15 minutes')
+            OR (r.status = 'running' AND r.started_at < NOW() - INTERVAL '60 minutes'));
+  IF n_ok <> n_alvo THEN
+    RAISE EXCEPTION 'G1: so % de % alvos estao no estado esperado (status/origem/idade/corte); abortando', n_ok, n_alvo;
+  END IF;
+END $$;
+
+-- Quantos runs já carregam o código de reconciliação (deve ser 0 antes; garante que não é segunda execução).
+DO $$
+DECLARE n INT;
+BEGIN
+  SELECT COUNT(*) INTO n FROM central_vendas_sync_runs WHERE error_code = 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002';
+  IF n <> 0 THEN RAISE EXCEPTION 'G1: ja existem % runs com error_code SYNC_RUN_ORPHAN_POST_INCIDENT_20261002; reconciliacao ja aplicada?', n; END IF;
+END $$;
+
+-- UPDATE: trava as linhas (NOWAIT: se um worker vivo segura a linha, aborta em vez de esperar)
+-- e repete o predicado de G1 (status/idade) no próprio UPDATE — fecha a janela de corrida.
+WITH travados AS (
+  SELECT r.id FROM central_vendas_sync_runs r JOIN alvo_orfaos a ON a.id = r.id
+   WHERE r.status = a.status_esperado
+       AND (a.origem = 'noturno') = (r.requested_by IS NULL)
+       AND r.created_at < TIMESTAMPTZ '2026-10-02 01:00:00-03'
+       AND (   (r.status = 'queued'  AND r.started_at IS NULL AND r.created_at < NOW() - INTERVAL '15 minutes')
+            OR (r.status = 'running' AND r.started_at < NOW() - INTERVAL '60 minutes'))
+   ORDER BY r.id
+     FOR UPDATE OF r NOWAIT
+), alterados AS (
+  UPDATE central_vendas_sync_runs r
+     SET status = 'failed', finished_at = NOW(), updated_at = NOW(),
+         error_code = 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002',
+         error_message = 'Run orfao encerrado manualmente apos o incidente P0 de 2026-10-02: processo morto, sem worker ativo. Nenhum dado foi publicado por este run.'
+    FROM travados t
+   WHERE r.id = t.id
+  RETURNING r.id, r.cliente_slug, r.cliente_conta_id, r.date_from, r.date_to, r.requested_by
+)
+SELECT a.origem, a.status_esperado AS status_anterior, COUNT(*) AS runs_encerrados,
+       MIN(al.id) AS menor_id, MAX(al.id) AS maior_id
+  FROM alterados al JOIN alvo_orfaos a ON a.id = al.id
+ GROUP BY 1, 2 ORDER BY 1, 2;
+
+-- G2 — conferência DEPOIS (ainda dentro da transação).
+DO $$
+DECLARE n_falhos INT; n_codigo INT; n_ativos_alvo INT; n_alvo INT;
+BEGIN
+  SELECT COUNT(*) INTO n_alvo FROM alvo_orfaos;
+  SELECT COUNT(*) INTO n_falhos FROM alvo_orfaos a JOIN central_vendas_sync_runs r ON r.id = a.id
+   WHERE r.status = 'failed' AND r.error_code = 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002' AND r.finished_at IS NOT NULL;
+  SELECT COUNT(*) INTO n_codigo FROM central_vendas_sync_runs WHERE error_code = 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002';
+  SELECT COUNT(*) INTO n_ativos_alvo FROM alvo_orfaos a JOIN central_vendas_sync_runs r ON r.id = a.id
+   WHERE r.status IN ('queued','running');
+  IF n_falhos <> n_alvo THEN RAISE EXCEPTION 'G2: % de % alvos encerrados', n_falhos, n_alvo; END IF;
+  IF n_codigo <> n_alvo THEN RAISE EXCEPTION 'G2: % linhas com o codigo (esperado %): alguma linha fora do alvo foi tocada', n_codigo, n_alvo; END IF;
+  IF n_ativos_alvo <> 0 THEN RAISE EXCEPTION 'G2: % alvos ainda ativos', n_ativos_alvo; END IF;
+END $$;
+
+-- Panorama final dos runs ativos que SOBRARAM (esperado: 472 e eventuais runs legítimos novos).
+SELECT r.id, r.cliente_slug, r.status, CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem,
+       r.created_at, NOW() - COALESCE(r.started_at, r.created_at) AS idade
+  FROM central_vendas_sync_runs r WHERE r.status IN ('queued','running') ORDER BY r.created_at;
+
+-- DRY-RUN: executa o UPDATE de verdade dentro da transação e DESFAZ no fim.
+ROLLBACK;
+
+# ---------- reconciliacao_orfaos_REVERTER.sql ----------
+-- ============================================================================
+-- REVERSÃO da reconciliação (restaura o estado anterior a partir do CSV de backup).
+-- *** NÃO EXECUTAR SEM AUTORIZAÇÃO. *** Rodar na pasta onde está o backup:
+--   psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f reconciliacao_orfaos_REVERTER.sql
+-- Só restaura linhas que AINDA têm o código de reconciliação. Se nesse meio-tempo foi
+-- criado um run ativo para o mesmo escopo, o índice único parcial impede (23505) e a
+-- transação aborta inteira — nada fica pela metade.
+-- ============================================================================
+BEGIN;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '3s';
+CREATE TEMP TABLE bk (LIKE central_vendas_sync_runs) ON COMMIT DROP;
+\copy bk FROM 'backup_orfaos_runs.csv' CSV HEADER
+DO $$
+DECLARE n INT;
+BEGIN
+  SELECT COUNT(*) INTO n FROM bk;
+  IF n < 90 THEN RAISE EXCEPTION 'REVERTER: backup tem % linhas (esperado >= 90)', n; END IF;
+END $$;
+WITH rev AS (
+  UPDATE central_vendas_sync_runs r
+     SET status = b.status, finished_at = b.finished_at, updated_at = b.updated_at,
+         error_code = b.error_code, error_message = b.error_message
+    FROM bk b
+   WHERE r.id = b.id AND r.status = 'failed' AND r.error_code = 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002'
+     AND b.status IN ('queued','running')
+  RETURNING r.id
+)
+SELECT COUNT(*) AS runs_restaurados FROM rev;
+-- Conferir o número acima = linhas encerradas na reconciliação; depois: COMMIT ou ROLLBACK.
+-- (Este arquivo termina em ROLLBACK por segurança; troque por COMMIT conscientemente.)
+ROLLBACK;
+
+================================================================================
+SEÇÃO 7 — COMO OS TESTES LOCAIS FORAM FEITOS (PGlite)
+================================================================================
+- @electric-sql/pglite instalado FORA do repositório (scratchpad); não é dependência do projeto.
+- Schema: server/sql/central_vendas_schema.sql + server/sql/cliente360_schema.sql sobre stubs mínimos de
+  users, clientes, ml_tokens, bases e cliente_contas.
+- Massa: os 91 runs órfãos reais (ids, status, origem, timestamps do Q1, sem nomes) + "iscas" que NÃO podem ser
+  tocadas (2 completed, 1 queued criado há 2 min, 1 running há 5 min, 1 queued criado após o corte de 01:00).
+- Verificado: o pré-voo e a simulação não alteram nada; o DRY-RUN conta noturno/queued=80, manual/running=9,
+  manual/queued=1 e termina em ROLLBACK (estado idêntico); se UM alvo é adulterado, a trava G1 aborta e nada
+  é alterado; o APLICAR altera EXATAMENTE os 90 alvos (nenhum a mais, nenhum a menos; #472 e iscas intactos);
+  reaplicar é recusado; o REVERTER restaura os 90 (status/finished_at/error_code originais).
+- Limites: PGlite não reproduz pg_stat_activity/pg_locks reais, tamanho de produção nem concorrência.

@@ -1,0 +1,104 @@
+================================================================================
+INCIDENTE P0 2026-10-02 — 00_INDICE
+Índice, estado atual e referências dos demais arquivos
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+
+COMECE AQUI (para outro agente ou pessoa que recebeu só o link)
+  - Leia este índice e depois o RELATORIO_COMPLETO.txt (consolida 00 a 06). O arquivo 07 (SQL/scripts) é um
+    anexo à parte, por ser longo.
+  - Tudo é documentação. Nada aqui é uma instrução de execução: nenhuma escrita em produção está autorizada
+    além do que 06_PLANO_RECUPERACAO.txt marcar como autorizado.
+
+RESUMO DE UMA LINHA
+  Em 2026-10-02 o Portal da Venforce caiu porque o "Atualizar dados" do Painel de Contas esgotava o pool do
+  PostgreSQL; o PR #218 corrigiu e está em produção. Resta: runs órfãos e dados a reconciliar, um bug
+  independente de datas no agendador (corrigido só em branch local) e unidades noturnas que travam (causa
+  não provada).
+
+ESTADO ATUAL (2026-10-02 ~16:00 BRT)
+  Item                                              Estado
+  Causa raiz do incidente                           COMPROVADA (local) + coerente com produção
+  Hotfix 1 (PR #218, commit 387de56, merge 1249d98) PUBLICADO no Render [relato do usuário]
+  Hotfix 2 (datas)                                  IMPLEMENTADO E TESTADO LOCAL; sem commit/PR/deploy
+  Auditoria SQL parte 1 (Q1-Q12)                    EXECUTADA em produção (somente leitura)
+  Auditoria parte 2 + pré-voo + simulação           PREPARADAS; NÃO executadas (passo 0 autorizado)
+  Backup dos runs / dry-run / reconciliação         PREPARADOS e testados em PGlite; NÃO executados
+  Run #472 (investigação)                           PRESERVADO (fora da reconciliação)
+  Logs do Render (#363/#399/#472, 201 falhas)       NÃO coletados
+  Unificação de clientes                            NÃO retomar até cumprir 06, seção 5
+
+ARQUIVOS DESTA PASTA
+  00_INDICE.txt              este arquivo: índice, estado, convenções, referências
+  01_RESUMO_GERAL.txt        cronologia, causa comprovada, recuperação
+  02_DIAGNOSTICO.txt         investigações, hipóteses (D1-D12), evidências e conclusões
+  03_BANCO_DADOS.txt         resultados Q1-Q12, runs órfãos, integridade, dados pendentes (anonimizado)
+  04_HOTFIXES.txt            PR #218 e hotfix de datas: alterações, testes, status de publicação
+  05_FALHAS_PENDENTES.txt    falhas e riscos (P-01 a P-27) com impacto, severidade e status
+  06_PLANO_RECUPERACAO.txt   etapas executadas, plano e ordem, condições de segurança, decisões pendentes
+  07_ANEXO_SQL_E_SCRIPTS.txt cópia dos SQLs e scripts (parte 1, parte 2, pré-voo, simulação, reconciliação)
+  RELATORIO_COMPLETO.txt     consolidação de 00 a 06 (regenerado a cada atualização; ver abaixo)
+
+CONVENÇÕES
+  Rótulos (usar SEMPRE; nunca misturar fato com hipótese):
+    [FATO]           comprovado por evidência citada (SQL de produção, git, código lido, relato do usuário)
+    [TESTE LOCAL]    comprovado só em ambiente local/teste (PGlite, fakes, pg-pool real sem banco real)
+    [HIPÓTESE]       plausível, não provado
+    [NÃO VERIFICADO] não checado em produção / depende de dado que ainda não existe
+    [RELATO]         informação dada pelo usuário que o agente não verificou
+  Horários: America/Sao_Paulo (BRT, UTC-3), formato AAAA-MM-DD HH:MM.
+  Identificadores: runs/imports/contas por id numérico. NUNCA nomes de clientes, ids de usuários, e-mails,
+  tokens, senhas ou URLs de conexão (o repositório é PÚBLICO).
+  Referências de código: caminho a partir da raiz do repositório + função (+ linha aproximada e o commit em
+  que ela vale, ex.: "linhas 354-386 em 1249d98"), pois as linhas mudam.
+  Cada arquivo termina com "REGISTRO DE ATUALIZAÇÕES": acrescente uma linha nova (data/hora + o que mudou);
+  NÃO apague nem reescreva entradas antigas. Ao corrigir um erro de fato, registre a correção também lá.
+
+COMO ATUALIZAR (para quem continuar o trabalho)
+  1. Edite SÓ os arquivos pertinentes (ex.: resultados da parte 2 => 03_BANCO_DADOS; logs do Render =>
+     02_DIAGNOSTICO e 05; commit do hotfix 2 => 04; nova decisão => 06) e atualize "Última atualização".
+  2. Atualize a tabela "ESTADO ATUAL" deste índice.
+  3. Regenerar o RELATORIO_COMPLETO.txt (concatenação de 00 a 06), a partir desta pasta:
+       { echo "RELATORIO COMPLETO — INCIDENTE P0 2026-10-02 (gerado de 00..06; NÃO editar à mão)";
+         echo "Gerado em: $(date '+%Y-%m-%d %H:%M %z')";
+         for f in 00_INDICE.txt 01_RESUMO_GERAL.txt 02_DIAGNOSTICO.txt 03_BANCO_DADOS.txt \
+                  04_HOTFIXES.txt 05_FALHAS_PENDENTES.txt 06_PLANO_RECUPERACAO.txt; do
+           printf '\n\n########## ARQUIVO: %s ##########\n\n' "$f"; cat "$f"; done; } > RELATORIO_COMPLETO.txt
+  4. Commit só desta pasta, push com refspec explícito; merge na main somente com autorização do usuário.
+
+REFERÊNCIAS
+  Repositório:   github.com/venforcecompany-sudo/venforce-server (público)
+  PRs/commits:   #218 = 387de56 (fix), merge 1249d98 | base do #218 = 5b702e1 (merge do #216)
+                 #195 (feat/painel-contas-operacional-v2, merge dd50160; 5f33e5b introduz o "Atualizar dados")
+                 #192 (fix/sync-noturno-deadlock-preparacao, merge 7f27330, 2026-09-29 11:08)
+                 4600446 (2026-09-25, recuperação do agendador) | e62d6a9 e a469bcc (2026-09-24, sync/scheduler)
+                 #211-#216 (2026-10-01/02): descartados como causa
+  Branches:      hotfix/painel-contas-pool-deadlock (publicada/mergeada)
+                 hotfix/central-vendas-date-parse (LOCAL, sem commit; worktree .claude/worktrees/hotfix-central-date-parse)
+                 docs/incidente-p0-2026-10-02 (esta documentação; NÃO mergeada na main)
+  Código-chave:  server/services/painelContas/painelContasAtualizacao.js
+                 server/config/database.js, server/config/databaseConexao.js
+                 server/services/centralVendas/centralVendasSyncRunService.js (criarSyncRun, reconciliarRunsStale,
+                   reconciliarRunsNoturnosInterrompidos, listarPeriodosNoturnosPendentes, sanitizeRun)
+                 server/services/centralVendas/centralVendasNoturnoService.js (recuperarRodadasPendentes,
+                   calcularPeriodosNoturnos, CONCORRENCIA_PADRAO)
+                 server/services/centralVendas/centralVendasNoturnoScheduler.js
+                 server/services/centralVendas/centralVendasSyncWorker.js, centralVendasSyncService.js,
+                   centralVendasPublicationService.js, centralVendasRepository.js (selecionarMelhorImportPorCompetencia)
+                 server/services/mlTokenService.js (refreshMlGrant, ~linha 365)
+  Testes:        server/tests/painelContasPoolDeadlock.test.js (54), server/tests/painelContasAtualizacao.test.js (62),
+                 server/tests/centralVendasDatasDate.test.js (41; só na branch local do hotfix 2),
+                 server/tests/centralVendasNoturnoIdempotencia.test.js (recuperação; mock com strings)
+  Schema:        server/sql/central_vendas_schema.sql, server/sql/cliente360_schema.sql
+  Arquivos locais NÃO versionados (máquina do usuário/agente): saída bruta da auditoria SQL (contém slugs de
+                 clientes), CSVs de backup (a gerar), scratchpad do agente com os .sql/.sh originais.
+
+LINKS (valem enquanto a pasta estiver na branch; após o merge, trocar o ramo por "main")
+  Pasta:      https://github.com/venforcecompany-sudo/venforce-server/tree/docs/incidente-p0-2026-10-02/docs/incidentes/P0_2026-10-02
+  Relatório:  https://github.com/venforcecompany-sudo/venforce-server/blob/docs/incidente-p0-2026-10-02/docs/incidentes/P0_2026-10-02/RELATORIO_COMPLETO.txt
+  Texto puro: https://raw.githubusercontent.com/venforcecompany-sudo/venforce-server/docs/incidente-p0-2026-10-02/docs/incidentes/P0_2026-10-02/RELATORIO_COMPLETO.txt
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação da central de documentação (arquivos 00 a 07 e RELATORIO_COMPLETO).

@@ -1,0 +1,138 @@
+================================================================================
+INCIDENTE P0 2026-10-02 — 05_FALHAS_PENDENTES
+Todas as falhas identificadas, riscos residuais e respectivos impactos
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
+Status possíveis: RESOLVIDO (em produção) | CORRIGIDO LOCAL (não publicado) | ABERTO | EM INVESTIGAÇÃO |
+                  ACEITO (risco conhecido, sem ação planejada)
+Severidade: ALTA = pode afetar dados do cliente ou disponibilidade; MÉDIA = degrada operação; BAIXA = higiene.
+Para acrescentar uma falha nova, use o próximo número livre (P-NN) e registre no fim deste arquivo.
+
+--------------------------------------------------------------------------------
+A. FALHAS DO INCIDENTE E DERIVADAS
+--------------------------------------------------------------------------------
+P-01  Lock do "Atualizar dados" em conexão do pool esgota o pool compartilhado
+      Severidade ALTA | Status RESOLVIDO pelo PR #218 (deploy no Render) [RELATO]
+      Impacto: Portal inteiro fora (/me/context, /me/portfolio). Evidência: 01_RESUMO_GERAL, seção 4.
+      Pendência: validar em produção UMA atualização controlada (06, etapa 5). [NÃO VERIFICADO]
+
+P-02  Bug do Date na recuperação de boot do agendador noturno (201 falhas)
+      Severidade MÉDIA | Status CORRIGIDO LOCAL (hotfix 2, sem commit) [TESTE LOCAL]
+      Impacto: a retomada de runs noturnos após restart nunca funcionou desde 2026-09-25 (4600446);
+      cada conta x período falha antes de criar run; sem dano a dados. Ref.: centralVendasSyncRunService.js
+      (listarPeriodosNoturnosPendentes, linhas 354-386 em 1249d98).
+      ATENÇÃO: publicar a correção sem antes fechar os órfãos faz a recuperação rodar de verdade (06).
+
+P-03  sanitizeRun converte DATE com String(Date).slice(0,10)
+      Severidade MÉDIA (provável) | Status CORRIGIDO LOCAL (hotfix 2) [TESTE LOCAL]
+      Impacto: run.dateFrom/dateTo inválidos; consumidor conhecido: endpoint de repasse MP
+      (centralVendasController.js ~477, iniciarOuRetomarMercadoPagoSettlement). Efeito exato [NÃO VERIFICADO];
+      sem uso observado (0 relatórios de repasse na janela).
+
+P-04  Rodada noturna de 02/10 03:00 não rodou
+      Severidade MÉDIA | Status ABERTO (efeito) / provável causa resolvida pelo #218
+      Impacto: dados de set/2026 e de 01/10 não foram atualizados pelo agendador nessa madrugada.
+      Evidência: Q10 (0 de 162 combinações com run noturno). Causa: pool esgotado [HIPÓTESE].
+      Ação: observar a rodada de 03/10 (06, etapa 8).
+
+P-05  3 unidades noturnas travam por rodada e ocupam as 3 vagas de concorrência
+      Severidade ALTA | Status ABERTO (causa NÃO provada)
+      Impacto: rodada de 30/09: 34 de 61 unidades concluídas; rodada de 01/10 (fecha setembro): 11 de 64.
+      Unidades restantes ficam queued até um restart. Evidência: Q2/Q3. Não há timeout por unidade.
+      Hipótese em teste: ver P-06. O #218 NÃO garante resolver (D7: espera por lock de banco não é coberta).
+      Pode haver contas sem setembro completo publicado (item P-07).
+
+P-06  Runs que travam DEPOIS de coletar todas as fontes (#363, #399, #472; contas 81 e 83, 09-01..09-30)
+      Severidade ALTA | Status EM INVESTIGAÇÃO
+      Impacto: run nunca completa, candidate nunca publica; #472 continua running.
+      Falta: R2/R3 (SQL) e linhas de log do Render (marcos a-d, 06). Hipóteses: 02_DIAGNOSTICO D5-D7.
+
+P-07  Possível lacuna de setembro/2026 publicada por conta
+      Severidade ALTA (se confirmada) | Status NÃO VERIFICADO (consulta R1 pronta, não executada)
+      Impacto: a leitura exige published com cobertura que CONTENHA o trecho pedido; contas cujo melhor
+      import cobre só até 09-28/09-29 podem cair no legado/vazio na leitura de setembro (mês fechado).
+      Origem provável: P-05 na rodada de 01/10 (64 unidades, 11 concluídas) [HIPÓTESE].
+
+P-08  91 runs órfãos (80 noturnos queued + 11 manuais)
+      Severidade MÉDIA | Status ABERTO (reconciliação preparada, NÃO executada)
+      Impacto: poluem a visão de runs ativos e alimentam a recuperação de boot (Q11: 3 períodos obsoletos).
+      Os de escopo manual se autocuram no próximo clique do mesmo escopo; os noturnos de tuplas antigas
+      nunca seriam repetidos. Ver 03_BANCO_DADOS, itens 13-14; plano em 06.
+
+P-09  Run #507 com 2 imports candidate não promovidos
+      Severidade MÉDIA | Status ABERTO
+      Impacto: o cliente do run #507 continua exibindo o published anterior para as competências afetadas.
+      Provável vítima do impasse (terminou às 00:27:53) [HIPÓTESE]. Ação: clique controlado (06, etapa 5).
+
+P-10  Defasagem do resumo do Cliente 360 (9 linhas)
+      Severidade BAIXA a MÉDIA | Status NÃO VERIFICADO
+      3 linhas antigas (anteriores ao incidente); 6 podem ser falso positivo (R5). O snapshot é refeito pela
+      rodada noturna / pelo "Atualizar dados" quando todas as contas do cliente publicam.
+
+P-11  10 imports published sem pedido
+      Severidade BAIXA | Status NÃO VERIFICADO (R6): vazio legítimo x perda de dado.
+
+P-12  Origem do lote de 27 runs de 2026-09-29 11:11:31 não explicada
+      Severidade BAIXA | Status NÃO VERIFICADO (depende de log do Render).
+
+--------------------------------------------------------------------------------
+B. RISCOS RESIDUAIS DECLARADOS NO PR #218 (FORA DO ESCOPO DELE)
+--------------------------------------------------------------------------------
+P-13  server/services/mlTokenService.js:365 (refreshMlGrant) segura uma conexão do pool (db.connect()) durante
+      o fetch OAuth ao Mercado Livre, sem timeout.
+      Severidade MÉDIA | ABERTO. Impacto: um ML lento prende conexões do pool; vários refresh simultâneos
+      reproduzem a classe de problema do incidente em escala menor.
+
+P-14  Os schedulers noturno e de margem projetada seguram 1 conexão do pool cada durante a rodada.
+      Severidade BAIXA a MÉDIA | ABERTO. Reduz a folga do pool (max 10).
+
+P-15  ensureSquadsTables roda DDL dentro do request de /me.
+      Severidade MÉDIA | ABERTO. DDL em caminho quente pode bloquear/serializar requisições.
+
+P-16  /health não consulta o banco.
+      Severidade MÉDIA | ABERTO. Um pool preso não dispara restart automático (foi o que aconteceu).
+
+P-17  Fetches ao Mercado Livre da rodada sem prazo por job.
+      Severidade MÉDIA | ABERTO. Um job pendurado agora ocupa só 1 vaga do Painel, sem afetar o pool, mas
+      no agendador noturno ocupa uma das 3 vagas de concorrência (ver P-05).
+
+P-18  Com o pool cheio por mais de 30 s, uma operação passa a falhar com erro em vez de esperar para sempre.
+      Severidade BAIXA | ACEITO. O erro não entra no retry de 40P01/40001 da Central; a etapa falha de forma
+      visível e a regra "só publicar run completo" continua valendo. Não há statement_timeout global
+      (de propósito); portanto espera por LOCK de banco não é limitada.
+
+P-19  Lacuna de runs manuais órfãos em running por até 60 min (RUNNING_STALE_MINUTES).
+      Severidade BAIXA | ACEITO. Um clique nessa janela reaproveita o órfão, observa até 20 min
+      (OBSERVAR_TIMEOUT_MS) e a conta sai "ignorada". Fechar órfãos manuais no boot não é seguro (a Central
+      também cria runs manuais; pode haver múltiplas instâncias).
+
+P-20  A recuperação de boot retoma qualquer período antigo queued/running (acumula tuplas obsoletas).
+      Severidade MÉDIA | ABERTO (decisão do usuário: correção separada). Ver C-1 em 04_HOTFIXES.
+
+--------------------------------------------------------------------------------
+C. HIGIENE E PROCESSO
+--------------------------------------------------------------------------------
+P-21  dia() em buscarRunAtivoDaConta usa toISOString(): errado a leste de UTC. BAIXA | ACEITO (Render é UTC).
+P-22  3 testes falham desde antes dos hotfixes (iguais na main): designStudioWorkspace,
+      meliAnunciosOrdenacaoGlobal, mlTokenService. BAIXA | ABERTO, não relacionados.
+P-23  Teste da recuperação usava mock com strings (não exercitava o tipo real). Coberto pelo hotfix 2 [TESTE LOCAL].
+P-24  A branch hotfix/... local tem upstream = origin/main: "git push" sem refspec miraria a main. Processo:
+      sempre refspec explícito. O remote "gpt" aponta para outro repositório: não usar.
+P-25  gh CLI não autenticado nesta máquina: PRs precisam ser abertos pelo navegador ou após "gh auth login".
+P-26  server/.env local aponta para o banco de PRODUÇÃO: nunca subir o backend local sem sobrescrever
+      DATABASE_URL (migrations rodam no boot). ALTA como risco operacional | ACEITO com disciplina.
+P-27  Este repositório é PÚBLICO: documentos de incidente não devem conter nomes de clientes, ids de
+      usuários, credenciais ou URLs de conexão (esta documentação segue essa regra).
+
+--------------------------------------------------------------------------------
+D. MATRIZ RESUMIDA (o que bloqueia o quê)
+--------------------------------------------------------------------------------
+Bloqueia retomar a unificação de clientes (critério do usuário): P-08 (órfãos), P-05/P-06 (nenhuma unidade
+  presa na rodada de 03/10), P-02 publicado e validado, P-09 (promoção do #507) e uma atualização controlada
+  validada em produção. Ver 06_PLANO_RECUPERACAO.txt, seção 5.
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo (P-01 a P-27).

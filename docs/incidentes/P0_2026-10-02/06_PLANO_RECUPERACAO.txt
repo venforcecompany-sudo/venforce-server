@@ -1,0 +1,133 @@
+================================================================================
+INCIDENTE P0 2026-10-02 — 06_PLANO_RECUPERACAO
+Etapas executadas, próximas ações, condições de segurança e decisões aguardando autorização
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
+
+REGRAS PERMANENTES (do usuário, valem para quem continuar o trabalho)
+  - Não executar migrations; não alterar dados de produção; não excluir registros; não fazer merge, push
+    ou deploy sem autorização EXPRESSA e específica daquela etapa; não encerrar sessões do banco; não
+    reiniciar servidor. Aprovação de uma etapa não vale para a seguinte.
+  - Não alterar fórmulas financeiras; não fazer refatorações gerais; não misturar a unificação de clientes
+    (branch feat/unificacao-clientes-contas) nem usar o remote "gpt".
+  - Todo push usa refspec explícito (refs/heads/X:refs/heads/X); as branches locais têm upstream = origin/main.
+  - Todo SQL de produção nesta fase é SOMENTE LEITURA, salvo a reconciliação autorizada.
+  - Não expor credenciais, tokens ou URLs de conexão; repositório PÚBLICO: sem nomes de clientes nos docs.
+
+--------------------------------------------------------------------------------
+1. ETAPAS JÁ EXECUTADAS
+--------------------------------------------------------------------------------
+E-1  Investigação somente leitura; causa raiz provada e reproduzida localmente.            [FATO / TESTE LOCAL]
+E-2  Restart manual do Web Service no Render: Portal volta.                                [RELATO]
+E-3  Hotfix 1 (PR #218): implementado, testado (54 + 62; suíte 303/306), commit 387de56, push só dessa
+     branch, PR aberto, merge 1249d98, deploy no Render.                                   [FATO git / RELATO]
+E-4  Verificação "retomada após restart sem duplicação" (código + teste, seção 8 do teste novo).  [TESTE LOCAL]
+E-5  Auditoria SQL parte 1 (Q1-Q12) executada pelo usuário em produção, somente leitura.     [FATO]
+E-6  Análise: 91 órfãos, rodada de 02/10 ausente, padrão de unidades travadas, bug do Date.  [FATO + HIPÓTESE]
+E-7  Hotfix 2 (datas) implementado e testado em branch local; sem commit.                    [TESTE LOCAL]
+E-8  Scripts preparados e testados em PGlite (nada executado em produção): parte 2 da auditoria, pré-voo,
+     simulação somente leitura, backup, dry-run com ROLLBACK, aplicação, reversão.            [TESTE LOCAL]
+E-9  Esta central de documentação (docs/incidentes/P0_2026-10-02/) em branch própria.
+
+--------------------------------------------------------------------------------
+2. PLANO — ORDEM SEGURA E CRITÉRIOS DE LIBERAÇÃO
+--------------------------------------------------------------------------------
+Etapa 0 — COLETA SOMENTE LEITURA (AUTORIZADA pelo usuário em 2026-10-02; AINDA NÃO EXECUTADA)
+  Quem: usuário roda; o agente analisa. Comando: passo0_coletar.sh (07_ANEXO_SQL_E_SCRIPTS, seção 1).
+  Conteúdo: parte 2 da auditoria (R1-R8), pré-voo (F1-F5) e simulação da reconciliação (S1-S4).
+  Segurança: sessão com default_transaction_read_only=on + BEGIN READ ONLY + timeouts + ROLLBACK.
+  Em paralelo, coletar do Render (itens 3 abaixo).
+  Liberar a etapa 1 quando: F1 mostrar os 91 no estado do relatório; F3/F4 sem sessão de lock nem lock nas
+  linhas; Render com 1 instância no deploy 1249d98; simulação S1 = 90 conformes / 0 recusados; R1-R8 lidos.
+  Limite de planejamento do F5 (usuário): até 15 sincronizações reais; sujeito à capacidade verificada;
+  NÃO autoriza execução automática.
+
+Etapa 1 — BACKUP EM CSV (depende da etapa 0; leitura no banco, escreve só arquivos na máquina do usuário)
+  Comando: passo1_backup.sh. Gera runs/sources/imports dos 91 runs (inclui #472) + SHA-256.
+  Critério: runs = 91 linhas; arquivos guardados até o fim da recuperação.
+
+Etapa 2a — SIMULAÇÃO SOMENTE LEITURA (já incluída no passo 0)
+  Mostra quais alvos seriam encerrados/recusados pelos MESMOS filtros e pela MESMA trava G1.
+Etapa 2b — DRY-RUN COMPLETO COM ROLLBACK (NÃO autorizado; exige OK expresso)
+  Executa o UPDATE de verdade dentro de uma transação e DESFAZ (ROLLBACK). Só depois de o usuário conferir
+  a simulação e autorizar. Critério: resumo exato noturno/queued=80, manual/running=9, manual/queued=1;
+  nenhum erro G1/G2.
+
+Etapa 3 — RECONCILIAÇÃO (APLICAR) — NÃO AUTORIZADA
+  Fecha 90 runs (80 noturnos queued + 9 manuais running + #515 queued) com error_code
+  SYNC_RUN_ORPHAN_POST_INCIDENT_20261002. PRESERVA o run #472.
+  Pré-condições: etapas 0, 1 e 2 conferidas; Q12/F3 limpos; janela fora de 02:00-04:00 BRT (rodada noturna).
+  Pós-condição: Q1 só com #472 e eventuais runs legítimos novos; Q11 reavaliado com o F5.
+  Rollback: reconciliacao_orfaos_REVERTER.sql a partir do CSV (aborta se já existir run ativo do mesmo escopo).
+
+Etapa 4 — #472 (após R3 + logs + backup): encerrar com script derivado ou deixar o autocuramento agir;
+  registrar a causa do travamento ou declará-la "não provada".
+
+Etapa 5 — ATUALIZAÇÃO CONTROLADA (valida o #218 e promove o #507)
+  Um único "Atualizar dados" de um cliente pequeno (o do run #507), sem outras atualizações simultâneas.
+  Esperado: durante a execução, 1 sessão "venforce-painel-atualizar-lock" no pg_stat_activity (0 ao fim);
+  run completed e imports published novos (os anteriores permanecem; a leitura passa a escolher o novo);
+  sem pedido repetido; resumo do Cliente 360 e Ads atualizados sem linha duplicada; /me/context e
+  /me/portfolio 200 o tempo todo; um 2º clique simultâneo recebe 429 (esperado, não é falha).
+  Parar se: 5xx em /me, sessão presa idle/ClientRead, run running sem avanço por mais de 20 min.
+
+Etapa 6 — HOTFIX 2 (datas): commit, PR e revisão (cada um com autorização expressa).
+  Critério: testes T1-T6 verdes (04_HOTFIXES), diff só no serviço e no teste, mesmas 3 falhas preexistentes.
+
+Etapa 7 — DEPLOY do hotfix 2 (fora de 02:00-04:00 BRT; usuário executa)
+  Antes: Q11 vazio (ou F5 dentro do limite de 15 sincronizações reais). Depois: boot sem a mensagem
+  "dateFrom e dateTo", Q1 sem novos órfãos, Q12 limpo.
+
+Etapa 8 — OBSERVAR A RODADA DAS 03:00 DE 03/10 (set completo + out 01..02)
+  Enviar Q2, Q10 e Q12 na manhã seguinte. Critério: unidades concluídas sem 3 travadas e sem sessão presa.
+  Se travar de novo: abre a frente do timeout por unidade (C-2).
+
+Etapa 9 — LACUNA DE SETEMBRO (R1): ressincronizar contas sem cobertura completa — DECISÃO DO USUÁRIO,
+  só depois da etapa 8 e escalonada, para não repetir o travamento.
+
+--------------------------------------------------------------------------------
+3. EVIDÊNCIAS DO RENDER AINDA NECESSÁRIAS (runs #363, #399 e #472)  [NÃO COLETADAS]
+--------------------------------------------------------------------------------
+Janelas: #363 = 30/09 09:28-17:27 | #399 = 30/09 17:27 em diante | #472 = 01/10 15:03 em diante.
+Marcos de log (em ordem) e o que a presença/ausência diz:
+  a) "[centralVendas] claims classificados: devolucoes=..."          fim da classificação, antes de gravar
+  b) "[centralVendas] sync <slug> <de>..<até>: orders=... pedidos=..." logo DEPOIS de gravar o candidate
+  c) "[centralVendas] sync-run #N completeness {...} overall=..."     logo depois de marcarRunCompleted
+  d) "[centralVendas] sync-run #N publicado" | "nao publicado: ..." | "erro ao tentar publicar"
+  Tem (b) e não tem (c): travou na finalização do worker (espera de banco).
+  Tem (a) e não tem (b): travou gravando pedidos. Não tem (a): travou antes.
+Outras evidências: qualquer "error"/"unhandledRejection"/"timeout"; histórico de Events do serviço (deploys,
+restarts, OOM/crash) com horários; gráficos de memória/CPU nessas janelas; nº de instâncias do serviço;
+deploy ativo (esperado 1249d98); valores (não segredos) de CENTRAL_VENDAS_NOTURNO_ENABLED,
+SYNC_CENTRAL_CONCURRENCY, PG_POOL_CONNECTION_TIMEOUT_MS, PAINEL_ATUALIZAR_MAX_SIMULTANEAS; retenção de logs
+do plano (se 30/09 já expirou, #472 e a rodada de hoje são a única evidência).
+Também: log das 201 falhas (horário e confirmação de que vieram do boot) e o histórico de deploys de 29/09
+11:08 em diante (para D8 e para o lote de 29/09 11:11:31).
+
+--------------------------------------------------------------------------------
+4. DECISÕES AGUARDANDO AUTORIZAÇÃO DO USUÁRIO
+--------------------------------------------------------------------------------
+  A-1  Rodar o passo 0 (já autorizado) e enviar a saída + logs do Render.
+  A-2  Rodar o backup (passo 1) após a análise do passo 0.
+  A-3  Dry-run completo com ROLLBACK (2b) ou considerar a simulação suficiente.
+  A-4  APLICAR a reconciliação (UPDATE de 90 runs) — NÃO autorizado.
+  A-5  Commit / PR / deploy do hotfix 2 — NÃO autorizados (hoje só implementação + testes locais).
+  A-6  Incorporar à main a pasta docs/incidentes/P0_2026-10-02/ (esta documentação) — NÃO autorizado.
+  A-7  Ressincronização de setembro (etapa 9) e eventual troca de dia() por formatarDiaIso (C-5).
+  A-8  Escopo da limitação da recuperação a períodos recentes (C-1): correção separada, ainda sem prazo.
+
+--------------------------------------------------------------------------------
+5. CRITÉRIOS PARA RETOMAR A UNIFICAÇÃO DE CLIENTES (pedido do usuário)
+--------------------------------------------------------------------------------
+  1. Q11 sem períodos obsoletos e Q1 sem órfãos (além do que estiver em investigação).
+  2. R1 mostra setembro completo nas contas, ou lacuna conhecida e aceita.
+  3. Rodada das 03:00 de 03/10 concluída sem unidades travadas e sem sessão presa (Q2, Q10, Q12).
+  4. Hotfix 2 publicado com suíte verde (mesmas 3 falhas preexistentes) e boot sem erro de datas.
+  5. Atualização controlada concluída, publicada e sem duplicação (etapa 5).
+  6. 24 h sem sessão de banco presa e sem "timeout exceeded when trying to connect" recorrente nos logs.
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo. Etapa 0 autorizada e ainda não executada; nada de escrita autorizado.

@@ -1,0 +1,131 @@
+================================================================================
+INCIDENTE P0 2026-10-02 — 04_HOTFIXES
+PR #218, hotfix de datas, alterações, testes e status de publicação
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
+
+QUADRO DE STATUS
+  Hotfix                         Branch / commit                              Status
+  1. Pool/lock do Painel         hotfix/painel-contas-pool-deadlock           PUBLICADO: PR #218, commit
+                                 commit 387de56, merge 1249d98 em main        387de56, merge 1249d98;
+                                                                              deploy no Render [RELATO]
+  2. Datas (dateFrom/dateTo)     hotfix/central-vendas-date-parse             IMPLEMENTADO E TESTADO LOCALMENTE;
+                                 (sobre 1249d98)                              SEM commit, SEM push, SEM PR,
+                                                                              SEM deploy [TESTE LOCAL]
+
+--------------------------------------------------------------------------------
+1. HOTFIX 1 — PR #218 (PUBLICADO)
+--------------------------------------------------------------------------------
+Título: fix: impedir que "Atualizar dados" do Painel de Contas esgote o pool do PostgreSQL
+Base: origin/main 5b702e1 (merge do PR #216). Resultado em main: 1249d98 (merge do PR #218, 2026-10-02).
+Diff: exatamente 4 arquivos, +678/-64, um commit (387de56). Nada da unificação de clientes
+  (feat/unificacao-clientes-contas), nenhuma migration, nenhum frontend. [FATO git]
+Arquivos:
+  server/config/database.js                              (modificado)
+  server/config/databaseConexao.js                       (novo; configConexao(), lerMsPositivo())
+  server/services/painelContas/painelContasAtualizacao.js (modificado)
+  server/tests/painelContasPoolDeadlock.test.js          (novo, 472 linhas, 54 verificações)
+
+O que mudou:
+  a) Lock FORA do pool: pg.Client dedicado (application_name "venforce-painel-atualizar-lock"),
+     timeout de conexão 10 s e de query 10 s, keepAlive; encerrar a sessão solta lock e vaga de uma vez.
+     Liberação no fim do job, em qualquer erro, na queda da conexão (há listener de 'error') e no
+     restart do processo.
+  b) Limite de atualizações simultâneas: padrão 2 (env PAINEL_ATUALIZAR_MAX_SIMULTANEAS, máximo 10).
+     Contador local síncrono (checado antes de abrir conexão) + vagas globais entre instâncias
+     (N vagas = N advisory locks na mesma sessão dedicada). Acima do limite: HTTP 429 código
+     LIMITE_ATUALIZACOES_SIMULTANEAS, mensagem "Já há N atualizações em andamento. Aguarde uma terminar e
+     tente de novo." Mesmo cliente x competência continua recebendo 409. A chave do lock por escopo é a
+     mesma de antes, então a versão nova e a antiga convivem durante o deploy.
+  c) Prazo no pool: connectionTimeoutMillis 30 s (env PG_POOL_CONNECTION_TIMEOUT_MS). Limita só a
+     OBTENÇÃO da conexão; não há statement_timeout global (nenhuma query/transação em curso é interrompida).
+  d) Fórmulas financeiras, sincronização, publicação, grants e Ads NÃO foram alterados.
+Mudança de comportamento visível: a partir da 3ª atualização simultânea o admin recebe 429 com mensagem
+  clara (o frontend já exibe a mensagem do servidor).
+
+Testes do #218 [TESTE LOCAL, usa o pg-pool real com as opções reais; sem banco real]
+  - painelContasPoolDeadlock.test.js (novo): 54 verificações OK. Seções: (1) configuração; (2) 10 cliques
+    com o limite padrão => 2 executam e 8 recebem 429, nenhuma conexão do pool reservada, /me/context e
+    /me/portfolio respondem (app Express real, HTTP); (3) limite 10: as 10 executam, /me responde, todas
+    as gravações passam, locks e conexões liberados exatamente uma vez; (4) desfechos de
+    adquirirLockEscopo; (5) limite global entre instâncias => 429; (6) falha antes do job nascer libera
+    lock e vaga; (7) queda da conexão dedicada no meio do job; (8) restart no meio de atualizações: nenhum
+    409/429 indevido e run manual novo criado.
+  - Prova de mutação: com o lock de volta no pool, o teste falha.
+  - painelContasAtualizacao.test.js (existente, inalterado): 62 OK.
+  - pg.Client real contra endereços mortos (nunca produção): falha em 6 ms (porta fechada) e em 10 s
+    (host sem resposta), sem conexão vazada.
+  - Suíte completa: 303/306 com o hotfix; 302/305 na main sem ele (a diferença é o teste novo).
+  - 3 falhas PREEXISTENTES, idênticas na main: tests/designStudioWorkspace.test.js,
+    tests/meliAnunciosOrdenacaoGlobal.test.js, tests/mlTokenService.test.js.
+Status de publicação: merge em main (1249d98) e deploy no Render [RELATO do usuário; confirmou HTTP 200 em
+  /me/context e /me/portfolio, Carteira e Painel de Contas carregando]. NÃO foi feito, ainda, um clique
+  controlado de "Atualizar dados" em produção para validar o caminho novo. [NÃO VERIFICADO]
+Riscos residuais declarados no PR: ver 05_FALHAS_PENDENTES.txt (P-13 a P-18).
+Observação de processo: o PR foi aberto fora do gh (gh CLI não autenticado nesta máquina); a branch foi
+  enviada com refspec explícita. O upstream configurado da branch local apontava para origin/main, então um
+  "git push" sem refspec teria alvo a main. O remote "gpt" aponta para um repositório diferente (não usar).
+
+--------------------------------------------------------------------------------
+2. HOTFIX 2 — DATAS (dateFrom/dateTo) — IMPLEMENTADO LOCALMENTE, NÃO PUBLICADO
+--------------------------------------------------------------------------------
+Branch: hotfix/central-vendas-date-parse. Worktree local: .claude/worktrees/hotfix-central-date-parse
+  (dentro do clone do repositório). Base: origin/main 1249d98. Upstream da branch aponta para origin/main
+  (cuidado: nunca "git push" sem refspec). Estado: alterações no working tree, SEM commit.
+Causa: ver 02_DIAGNOSTICO, seção 3.
+Diff (2 arquivos, sem unificação/migration/.sql/frontend):
+  server/services/centralVendas/centralVendasSyncRunService.js   (+26/-8)
+  server/tests/centralVendasDatasDate.test.js                    (novo, 41 verificações)
+Mudanças no serviço:
+  1. formatarDiaIso(valor) (novo, exportado): Date válida => getters LOCAIS (getFullYear/getMonth/getDate);
+     string "YYYY-MM-DD" (ou com T/espaço depois) => os 10 primeiros caracteres; resto/inválido => null.
+  2. sanitizeRun: dateFrom/dateTo passam por formatarDiaIso (antes: String(...).slice(0,10)).
+  3. listarPeriodosNoturnosPendentes: a query devolve TO_CHAR(r.date_from,'YYYY-MM-DD') AS date_from e
+     TO_CHAR(r.date_to,'YYYY-MM-DD') AS date_to (o dia sai como texto do banco, independe do fuso do Node);
+     o mapeamento também usa formatarDiaIso (defesa em profundidade: aceita texto ou Date).
+Fora do escopo, de propósito (decisões do usuário em 2026-10-02):
+  - A função dia() (toISOString) fica como está, salvo se testes provarem que é necessária para a
+    recuperação (não é: a recuperação não a usa).
+  - Limitar a recuperação do boot a períodos recentes = correção SEPARADA.
+Testes [TESTE LOCAL] — server/tests/centralVendasDatasDate.test.js
+  - Toda Date de teste vem do parser REAL do pg (require('pg-types').getTypeParser(1082)(...)), nunca
+    construída à mão.
+  - Helper: Date real (2026-10-01, 12-31, 01-01, 03-01, 2028-02-29), ida e volta de 94 dias (set-nov/2026
+    + fev/mar bissexto), texto, texto ISO com hora, null/undefined/vazio, Date inválida => null (nunca
+    "NaN"), texto que não é data ("Thu Oct 01") => null, número => null.
+  - sanitizeRun com Date real / texto / nulo.
+  - listarPeriodosNoturnosPendentes com Date real e com texto; a SQL contém TO_CHAR para as duas colunas.
+  - Composição REAL (o buraco do teste antigo): recuperarRodadasPendentes -> listarPeriodosNoturnosPendentes
+    real -> criarSyncRun real; o banco falso lança uma sentinela na primeira query após a validação.
+    O teste afirma que nenhuma unidade falha por "dateFrom e dateTo" e que todas só param na sentinela.
+  - Os checks sensíveis a fuso rodam em subprocessos com TZ = UTC, America/Sao_Paulo, America/New_York,
+    Asia/Tokyo, Pacific/Kiritimati e Pacific/Pago_Pago (22 verificações cada). Total: 41 OK.
+  - Prova de mutação (4 regressões, todas detectadas; arquivo restaurado com hash idêntico):
+      M1 helper volta a String(Date).slice(0,10)        => "Thu Oct 01"
+      M2 helper usa toISOString (como o dia() atual)    => 2026-09-30 em Tóquio
+      M3 query volta a devolver a coluna crua (sem TO_CHAR)
+      M4 listar volta ao String(row.date_from).slice (código de produção original)
+  - Query final validada com a função REAL contra PGlite (schema real do repositório): períodos
+    distintos, ordenados, YYYY-MM-DD; run manual excluído. (PGlite NÃO é dependência do repositório, por
+    isso esse teste de SQL não é automatizado.)
+  - Suíte completa: 304/307 no hotfix 2 contra 303/306 na base (1249d98 ≡ 387de56 em árvore). As mesmas 3
+    falhas preexistentes; a única diferença é centralVendasDatasDate.test.js (OK).
+Status: SEM commit, SEM push, SEM PR, SEM deploy. Aguardando autorização do usuário.
+Restrição de ORDEM (importante): publicar este hotfix ANTES de fechar os runs órfãos faria o próximo boot
+  executar de verdade a recuperação para 3 períodos obsoletos. Ver 06_PLANO_RECUPERACAO.txt.
+
+--------------------------------------------------------------------------------
+3. TRABALHO FUTURO (CORREÇÕES SEPARADAS, NÃO IMPLEMENTADAS)
+--------------------------------------------------------------------------------
+  C-1  Limitar a recuperação de boot a períodos/rodadas recentes (evita acumular tuplas obsoletas).
+  C-2  Timeout por unidade no agendador noturno (3 unidades presas ocupam todas as vagas de concorrência).
+  C-3  Investigar e tratar o travamento depois da coleta (#363, #399, #472), conforme a evidência de logs.
+  C-4  /health consultar o banco (um pool preso hoje não dispara restart automático).
+  C-5  Trocar dia() por formatarDiaIso (opcional, higiene).
+  C-6  Riscos P-13 a P-17 de 05_FALHAS_PENDENTES.txt.
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo: #218 publicado; hotfix de datas implementado e testado, sem commit.

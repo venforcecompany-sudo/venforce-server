@@ -1,0 +1,164 @@
+================================================================================
+INCIDENTE P0 2026-10-02 — 01_RESUMO_GERAL
+Cronologia, causa comprovada e recuperação
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+
+RÓTULOS USADOS EM TODOS OS ARQUIVOS (ver 00_INDICE.txt)
+  [FATO]           comprovado por evidência citada (SQL de produção, git, código lido, relato do usuário)
+  [TESTE LOCAL]    comprovado só em ambiente local/teste (PGlite, fakes, pg-pool real sem banco real)
+  [HIPÓTESE]       explicação plausível ainda NÃO provada
+  [NÃO VERIFICADO] não foi checado em produção / depende de dado que ainda não temos
+  [RELATO]         informação dada pelo usuário que não pude verificar por conta própria
+
+--------------------------------------------------------------------------------
+1. RESUMO EM POUCAS LINHAS
+--------------------------------------------------------------------------------
+- Em 2026-10-02 o Portal ficou indisponível: GET /me/context e GET /me/portfolio ficaram
+  pendurados para todos os usuários. [RELATO]
+- Causa comprovada em ambiente local e coerente com a evidência de produção: o botão "Atualizar
+  dados" do Painel de Contas segurava um advisory lock de sessão numa conexão DO POOL
+  COMPARTILHADO (max 10, sem prazo de espera) durante toda a sincronização, e a própria
+  sincronização grava pelo MESMO pool. Com 10 atualizações simultâneas, as 10 conexões ficaram
+  reservadas e nada conseguia terminar nem liberar. [FATO + TESTE LOCAL]
+- Recuperação: restart manual do Web Service no Render restaurou o Portal; depois o hotfix
+  PR #218 (commit 387de56, mergeado como 1249d98) foi publicado no Render. [RELATO]
+- Efeitos colaterais em dados/agendador identificados numa auditoria SQL somente leitura:
+  91 runs órfãos (80 noturnos queued + 11 manuais), rodada noturna das 03:00 de 02/10 que não
+  rodou, e um segundo defeito, independente: 201 falhas do agendador por "dateFrom e dateTo"
+  (objeto Date do driver convertido errado). [FATO]
+- Um segundo hotfix (datas) está implementado e testado LOCALMENTE em branch própria, SEM commit
+  e SEM publicação. A reconciliação dos órfãos está PREPARADA e NÃO foi executada. [TESTE LOCAL]
+
+--------------------------------------------------------------------------------
+2. SINTOMA E IMPACTO
+--------------------------------------------------------------------------------
+Sintoma:   /me/context e /me/portfolio sem resposta; o resto da API ficava esperando conexão.
+Evidência de produção (fornecida pelo usuário, pg_stat_activity): 10 sessões em estado
+           idle / wait_event ClientRead, todas com a última query
+           "SELECT pg_try_advisory_lock(hashtextextended($1, 0))", sem nenhum bloqueador. [RELATO]
+Por que o Render não reiniciou sozinho: /health não consulta o banco. [FATO: código]
+Duração do impacto: [NÃO VERIFICADO] — o horário exato do início e do restart manual não foi
+           registrado nesta documentação. O último run criado antes do impasse é de
+           2026-10-02 00:27:53 (BRT); a rodada noturna das 03:00 não chegou a criar nenhum run.
+
+--------------------------------------------------------------------------------
+3. CRONOLOGIA (America/Sao_Paulo, BRT)
+--------------------------------------------------------------------------------
+Data/hora            Evento                                                      Rótulo
+2026-09-24           e62d6a9 sync noturno da Central de Vendas; a469bcc          [FATO git]
+                     scheduler interno do Web Service.
+2026-09-25           4600446 "make nightly central vendas run resilient": é onde  [FATO git]
+                     nasce a recuperação de runs noturnos após restart
+                     (listarPeriodosNoturnosPendentes / recuperarRodadasPendentes).
+2026-09-25..29 03h   Rodadas noturnas com falhas 40P01 (deadlock): 28, 38, 17,   [FATO SQL Q10b]
+                     29 e 20 por dia.
+2026-09-29 11:04/    PR #192 (fix/sync-noturno-deadlock-preparacao: retry de     [FATO git]
+11:08                deadlocks transitórios, ensure de schema serializado).
+                     Depois disso não há mais 40P01 nos dados (correlação        [HIPÓTESE: causa]
+                     temporal forte; causalidade não provada).
+2026-09-29 15:05/    PR #195 (feat/painel-contas-operacional-v2) mergeado;       [FATO git]
+15:14                5f33e5b introduz o "Atualizar dados" (painelContasAtualizacao.js).
+2026-09-29 11:11:31  27 runs noturnos criados em ~1s (tupla 09-01..09-28) —      [FATO SQL]
+                     origem NÃO explicada: pode ter sido a rodada disparada por  [NÃO VERIFICADO]
+                     alguém/CLI ou outro caminho. Ver 02_DIAGNOSTICO (item D10).
+2026-09-29 12:51:31  Reconciliação de boot fecha 5 runs noturnos como            [FATO SQL]
+                     SYNC_RUN_PROCESS_RESTART => um boot do processo nesse horário.
+2026-09-30 03:00     Rodada de 61 unidades: 34 completed, 3 running (presos até   [FATO SQL]
+                     12:02:25), 24 queued que nunca executaram.
+2026-09-30 09:28     Run manual #363 (conta 81, set/2026 completo): TODAS as      [FATO SQL]
+                     fontes completas às 09:33:45, import candidate criado,
+                     e o run nunca virou completed (fechado como STALE às 17:27:17).
+2026-09-30 12:02:25  Reconciliação de boot (3 runs noturnos PROCESS_RESTART).     [FATO SQL]
+2026-10-01 03:00     Rodada do dia 1 (só o mês anterior completo, 09-01..09-30): [FATO SQL]
+                     64 unidades: 11 completed, 3 running (até 15:03:02), 50 queued.
+2026-10-01 15:00     PR #211 (feat/painel-contas-operacional-v3) mergeado.        [FATO git]
+2026-10-01 15:03:02  Reconciliação de boot (3 runs noturnos PROCESS_RESTART);     [FATO SQL]
+                     coincide com o deploy do #211 (3 min depois).                [HIPÓTESE: foi o deploy]
+2026-10-01 15:03:38  Runs manuais #471-#473 (contas 82/81/83, set completo);      [FATO SQL]
+                     #472 (conta 81) coleta todas as fontes e nunca fecha.
+2026-10-01 17:57..   PRs #212, #213, #214, #215 mergeados (17:57, 18:49, 21:37,   [FATO git]
+23:25 e 02/10 00:07  23:25) e #216 (02/10 00:07). Deploys prováveis do serviço.   [HIPÓTESE]
+2026-10-01 19:37:36  Rajada de 16 runs manuais (#479-#494) pelo usuário B; 6      [FATO SQL]
+..19:37:55           ficam running para sempre (#487, #490-#494).
+2026-10-02 00:26:37  Rajada de 21 runs manuais (#495-#515) pelo usuário B em 76s: [FATO SQL]
+..00:27:53           17 completed, 3 running (#508, #513, #514), 1 queued (#515).
+                     O run #507 termina às 00:27:53.036 com 2 imports candidate
+                     NÃO promovidos; o último run é criado às 00:27:53.107.
+                     Coerente com o início do impasse do pool nesse minuto.       [HIPÓTESE]
+2026-10-02 03:00     A rodada noturna NÃO rodou: 0 de 162 combinações conta x     [FATO SQL Q10]
+                     período têm run noturno criado desde as 03:00.
+                     Causa provável: pool esgotado.                               [HIPÓTESE]
+2026-10-02 (hora n/d) Portal fora do ar reportado; evidência do pg_stat_activity;  [RELATO]
+                     investigação somente leitura; causa reproduzida localmente.   [TESTE LOCAL]
+2026-10-02 (hora n/d) Restart manual do Web Service no Render restaura o Portal.    [RELATO]
+2026-10-02 (hora n/d) PR #218 (387de56) mergeado como 1249d98 e deploy no Render;    [RELATO]
+                     usuário confirma HTTP 200 em /me/context e /me/portfolio;
+                     Carteira e Painel de Contas carregam normalmente.
+2026-10-02 (hora n/d) 201 falhas do agendador da Central de Vendas, com a mensagem  [RELATO]
+                     "dateFrom e dateTo (YYYY-MM-DD) sao obrigatorios". Origem =
+                     recuperação de boot (item 3 de 02_DIAGNOSTICO).              [HIPÓTESE forte]
+2026-10-02 ~14:47    Auditoria SQL (parte 1) executada pelo usuário em modo        [FATO]
+                     somente leitura, terminada com ROLLBACK (03_BANCO_DADOS).
+2026-10-02 ~15:45    Hotfix de datas implementado em branch local, testado,        [TESTE LOCAL]
+                     SEM commit (04_HOTFIXES).
+
+Observação sobre "manual": no banco, run MANUAL = requested_by preenchido. Isso inclui cliques do
+Painel de Contas E da Central de Vendas (controller). Não há campo que diferencie os dois.
+
+--------------------------------------------------------------------------------
+4. CAUSA COMPROVADA (PRINCIPAL)
+--------------------------------------------------------------------------------
+Mecanismo [FATO: código lido em server/services/painelContas/painelContasAtualizacao.js, versão
+anterior ao PR #218; TESTE LOCAL: reprodução]:
+  1. "Atualizar dados" pegava uma conexão do pool (server/config/database.js, pg.Pool, max 10) e
+     chamava pg_try_advisory_lock de SESSÃO nela, mantendo-a reservada até o fim do job.
+  2. O job (criarSyncRun -> executarSyncRun -> publicação) grava no banco pelo MESMO pool.
+  3. O pool não tinha connectionTimeoutMillis (padrão do pg = espera infinita).
+  4. Com 10 jobs em andamento, as 10 conexões estavam presas pelos locks; nenhum job conseguia
+     obter conexão para gravar e terminar (e soltar a sua); qualquer outra requisição (/me/*)
+     ficava na fila do pool para sempre.
+  5. /health não toca o banco; o Render não detectou o problema.
+Provas:
+  - Evidência de produção: 10 sessões idle/ClientRead com a última query igual ao pg_try_advisory_lock
+    do Painel, sem bloqueador. [RELATO]
+  - Reprodução local com o pg-pool real e as opções reais: 10 cliques => impasse permanente. [TESTE LOCAL]
+  - Prova de mutação: com o lock de volta no pool, o teste novo falha ("nenhuma conexão do pool
+    reservada" e "/me/context responde com 10 atualizações em curso"). [TESTE LOCAL]
+  - Dados do banco: rajada de 21 runs manuais em 76 s às 00:26-00:27 de 02/10, seguida de nenhum run
+    novo e da rodada noturna ausente. [FATO SQL; interpretação = HIPÓTESE]
+Limite honesto: não há log de aplicação do Render nesta documentação que confirme o número de
+cliques simultâneos no momento do impasse (a consulta R8 da parte 2, ainda não rodada, mostra quem
+clicou e quando).
+PRs descartados como causa: #211 a #216 (SEO ML, promo snapshot, Shopee, Painel v3) — análise de
+código na investigação inicial; não tocam o lock do Painel nem o pool. [FATO: análise de código]
+
+--------------------------------------------------------------------------------
+5. RECUPERAÇÃO — O QUE JÁ FOI FEITO E O QUE FALTA
+--------------------------------------------------------------------------------
+Feito:
+  - Restart manual do Web Service (Render): Portal volta. [RELATO]
+  - PR #218 / commit 387de56 / merge 1249d98: lock fora do pool, limite de cliques simultâneos,
+    prazo de 30 s na obtenção de conexão do pool; publicado no Render. [RELATO: deploy; FATO: git]
+  - Auditoria SQL (parte 1) executada e analisada. [FATO]
+  - Reconciliação dos 90 órfãos preparada (dry-run, simulação somente leitura, aplicação,
+    reversão, backup) e testada em PGlite local. [TESTE LOCAL] — NÃO executada.
+  - Hotfix de datas implementado em branch local, testado, sem commit. [TESTE LOCAL]
+Falta (detalhes e ordem em 06_PLANO_RECUPERACAO.txt):
+  - Rodar o passo 0 (parte 2 da auditoria + pré-voo + simulação) e coletar logs do Render.
+  - Backup dos runs; decidir dry-run completo; só então a reconciliação (precisa de autorização).
+  - Commit/PR/deploy do hotfix de datas (precisa de autorização).
+  - Investigar o travamento de unidades noturnas e a lacuna de setembro (03_BANCO_DADOS, item R1).
+  - Validar em produção UMA atualização controlada pós-hotfix.
+
+--------------------------------------------------------------------------------
+6. ESTADO EM UMA FRASE
+--------------------------------------------------------------------------------
+Portal restabelecido e protegido contra a causa raiz (PR #218, publicado); permanecem em aberto
+dados órfãos, um bug independente na recuperação do agendador (corrigido só em branch local) e um
+padrão de unidades noturnas que travam, cuja causa ainda não foi provada.
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo a partir do histórico da sessão e da auditoria SQL parte 1.

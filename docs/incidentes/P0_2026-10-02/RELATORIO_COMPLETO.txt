@@ -1,0 +1,1206 @@
+RELATORIO COMPLETO — INCIDENTE P0 2026-10-02 (gerado de 00..06; NÃO editar à mão)
+Gerado em: 2026-10-02 15:52 -0300
+
+
+########## ARQUIVO: 00_INDICE.txt ##########
+
+================================================================================
+INCIDENTE P0 2026-10-02 — 00_INDICE
+Índice, estado atual e referências dos demais arquivos
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+
+COMECE AQUI (para outro agente ou pessoa que recebeu só o link)
+  - Leia este índice e depois o RELATORIO_COMPLETO.txt (consolida 00 a 06). O arquivo 07 (SQL/scripts) é um
+    anexo à parte, por ser longo.
+  - Tudo é documentação. Nada aqui é uma instrução de execução: nenhuma escrita em produção está autorizada
+    além do que 06_PLANO_RECUPERACAO.txt marcar como autorizado.
+
+RESUMO DE UMA LINHA
+  Em 2026-10-02 o Portal da Venforce caiu porque o "Atualizar dados" do Painel de Contas esgotava o pool do
+  PostgreSQL; o PR #218 corrigiu e está em produção. Resta: runs órfãos e dados a reconciliar, um bug
+  independente de datas no agendador (corrigido só em branch local) e unidades noturnas que travam (causa
+  não provada).
+
+ESTADO ATUAL (2026-10-02 ~16:00 BRT)
+  Item                                              Estado
+  Causa raiz do incidente                           COMPROVADA (local) + coerente com produção
+  Hotfix 1 (PR #218, commit 387de56, merge 1249d98) PUBLICADO no Render [relato do usuário]
+  Hotfix 2 (datas)                                  IMPLEMENTADO E TESTADO LOCAL; sem commit/PR/deploy
+  Auditoria SQL parte 1 (Q1-Q12)                    EXECUTADA em produção (somente leitura)
+  Auditoria parte 2 + pré-voo + simulação           PREPARADAS; NÃO executadas (passo 0 autorizado)
+  Backup dos runs / dry-run / reconciliação         PREPARADOS e testados em PGlite; NÃO executados
+  Run #472 (investigação)                           PRESERVADO (fora da reconciliação)
+  Logs do Render (#363/#399/#472, 201 falhas)       NÃO coletados
+  Unificação de clientes                            NÃO retomar até cumprir 06, seção 5
+
+ARQUIVOS DESTA PASTA
+  00_INDICE.txt              este arquivo: índice, estado, convenções, referências
+  01_RESUMO_GERAL.txt        cronologia, causa comprovada, recuperação
+  02_DIAGNOSTICO.txt         investigações, hipóteses (D1-D12), evidências e conclusões
+  03_BANCO_DADOS.txt         resultados Q1-Q12, runs órfãos, integridade, dados pendentes (anonimizado)
+  04_HOTFIXES.txt            PR #218 e hotfix de datas: alterações, testes, status de publicação
+  05_FALHAS_PENDENTES.txt    falhas e riscos (P-01 a P-27) com impacto, severidade e status
+  06_PLANO_RECUPERACAO.txt   etapas executadas, plano e ordem, condições de segurança, decisões pendentes
+  07_ANEXO_SQL_E_SCRIPTS.txt cópia dos SQLs e scripts (parte 1, parte 2, pré-voo, simulação, reconciliação)
+  RELATORIO_COMPLETO.txt     consolidação de 00 a 06 (regenerado a cada atualização; ver abaixo)
+
+CONVENÇÕES
+  Rótulos (usar SEMPRE; nunca misturar fato com hipótese):
+    [FATO]           comprovado por evidência citada (SQL de produção, git, código lido, relato do usuário)
+    [TESTE LOCAL]    comprovado só em ambiente local/teste (PGlite, fakes, pg-pool real sem banco real)
+    [HIPÓTESE]       plausível, não provado
+    [NÃO VERIFICADO] não checado em produção / depende de dado que ainda não existe
+    [RELATO]         informação dada pelo usuário que o agente não verificou
+  Horários: America/Sao_Paulo (BRT, UTC-3), formato AAAA-MM-DD HH:MM.
+  Identificadores: runs/imports/contas por id numérico. NUNCA nomes de clientes, ids de usuários, e-mails,
+  tokens, senhas ou URLs de conexão (o repositório é PÚBLICO).
+  Referências de código: caminho a partir da raiz do repositório + função (+ linha aproximada e o commit em
+  que ela vale, ex.: "linhas 354-386 em 1249d98"), pois as linhas mudam.
+  Cada arquivo termina com "REGISTRO DE ATUALIZAÇÕES": acrescente uma linha nova (data/hora + o que mudou);
+  NÃO apague nem reescreva entradas antigas. Ao corrigir um erro de fato, registre a correção também lá.
+
+COMO ATUALIZAR (para quem continuar o trabalho)
+  1. Edite SÓ os arquivos pertinentes (ex.: resultados da parte 2 => 03_BANCO_DADOS; logs do Render =>
+     02_DIAGNOSTICO e 05; commit do hotfix 2 => 04; nova decisão => 06) e atualize "Última atualização".
+  2. Atualize a tabela "ESTADO ATUAL" deste índice.
+  3. Regenerar o RELATORIO_COMPLETO.txt (concatenação de 00 a 06), a partir desta pasta:
+       { echo "RELATORIO COMPLETO — INCIDENTE P0 2026-10-02 (gerado de 00..06; NÃO editar à mão)";
+         echo "Gerado em: $(date '+%Y-%m-%d %H:%M %z')";
+         for f in 00_INDICE.txt 01_RESUMO_GERAL.txt 02_DIAGNOSTICO.txt 03_BANCO_DADOS.txt \
+                  04_HOTFIXES.txt 05_FALHAS_PENDENTES.txt 06_PLANO_RECUPERACAO.txt; do
+           printf '\n\n########## ARQUIVO: %s ##########\n\n' "$f"; cat "$f"; done; } > RELATORIO_COMPLETO.txt
+  4. Commit só desta pasta, push com refspec explícito; merge na main somente com autorização do usuário.
+
+REFERÊNCIAS
+  Repositório:   github.com/venforcecompany-sudo/venforce-server (público)
+  PRs/commits:   #218 = 387de56 (fix), merge 1249d98 | base do #218 = 5b702e1 (merge do #216)
+                 #195 (feat/painel-contas-operacional-v2, merge dd50160; 5f33e5b introduz o "Atualizar dados")
+                 #192 (fix/sync-noturno-deadlock-preparacao, merge 7f27330, 2026-09-29 11:08)
+                 4600446 (2026-09-25, recuperação do agendador) | e62d6a9 e a469bcc (2026-09-24, sync/scheduler)
+                 #211-#216 (2026-10-01/02): descartados como causa
+  Branches:      hotfix/painel-contas-pool-deadlock (publicada/mergeada)
+                 hotfix/central-vendas-date-parse (LOCAL, sem commit; worktree .claude/worktrees/hotfix-central-date-parse)
+                 docs/incidente-p0-2026-10-02 (esta documentação; NÃO mergeada na main)
+  Código-chave:  server/services/painelContas/painelContasAtualizacao.js
+                 server/config/database.js, server/config/databaseConexao.js
+                 server/services/centralVendas/centralVendasSyncRunService.js (criarSyncRun, reconciliarRunsStale,
+                   reconciliarRunsNoturnosInterrompidos, listarPeriodosNoturnosPendentes, sanitizeRun)
+                 server/services/centralVendas/centralVendasNoturnoService.js (recuperarRodadasPendentes,
+                   calcularPeriodosNoturnos, CONCORRENCIA_PADRAO)
+                 server/services/centralVendas/centralVendasNoturnoScheduler.js
+                 server/services/centralVendas/centralVendasSyncWorker.js, centralVendasSyncService.js,
+                   centralVendasPublicationService.js, centralVendasRepository.js (selecionarMelhorImportPorCompetencia)
+                 server/services/mlTokenService.js (refreshMlGrant, ~linha 365)
+  Testes:        server/tests/painelContasPoolDeadlock.test.js (54), server/tests/painelContasAtualizacao.test.js (62),
+                 server/tests/centralVendasDatasDate.test.js (41; só na branch local do hotfix 2),
+                 server/tests/centralVendasNoturnoIdempotencia.test.js (recuperação; mock com strings)
+  Schema:        server/sql/central_vendas_schema.sql, server/sql/cliente360_schema.sql
+  Arquivos locais NÃO versionados (máquina do usuário/agente): saída bruta da auditoria SQL (contém slugs de
+                 clientes), CSVs de backup (a gerar), scratchpad do agente com os .sql/.sh originais.
+
+LINKS (valem enquanto a pasta estiver na branch; após o merge, trocar o ramo por "main")
+  Pasta:      https://github.com/venforcecompany-sudo/venforce-server/tree/docs/incidente-p0-2026-10-02/docs/incidentes/P0_2026-10-02
+  Relatório:  https://github.com/venforcecompany-sudo/venforce-server/blob/docs/incidente-p0-2026-10-02/docs/incidentes/P0_2026-10-02/RELATORIO_COMPLETO.txt
+  Texto puro: https://raw.githubusercontent.com/venforcecompany-sudo/venforce-server/docs/incidente-p0-2026-10-02/docs/incidentes/P0_2026-10-02/RELATORIO_COMPLETO.txt
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação da central de documentação (arquivos 00 a 07 e RELATORIO_COMPLETO).
+
+
+########## ARQUIVO: 01_RESUMO_GERAL.txt ##########
+
+================================================================================
+INCIDENTE P0 2026-10-02 — 01_RESUMO_GERAL
+Cronologia, causa comprovada e recuperação
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+
+RÓTULOS USADOS EM TODOS OS ARQUIVOS (ver 00_INDICE.txt)
+  [FATO]           comprovado por evidência citada (SQL de produção, git, código lido, relato do usuário)
+  [TESTE LOCAL]    comprovado só em ambiente local/teste (PGlite, fakes, pg-pool real sem banco real)
+  [HIPÓTESE]       explicação plausível ainda NÃO provada
+  [NÃO VERIFICADO] não foi checado em produção / depende de dado que ainda não temos
+  [RELATO]         informação dada pelo usuário que não pude verificar por conta própria
+
+--------------------------------------------------------------------------------
+1. RESUMO EM POUCAS LINHAS
+--------------------------------------------------------------------------------
+- Em 2026-10-02 o Portal ficou indisponível: GET /me/context e GET /me/portfolio ficaram
+  pendurados para todos os usuários. [RELATO]
+- Causa comprovada em ambiente local e coerente com a evidência de produção: o botão "Atualizar
+  dados" do Painel de Contas segurava um advisory lock de sessão numa conexão DO POOL
+  COMPARTILHADO (max 10, sem prazo de espera) durante toda a sincronização, e a própria
+  sincronização grava pelo MESMO pool. Com 10 atualizações simultâneas, as 10 conexões ficaram
+  reservadas e nada conseguia terminar nem liberar. [FATO + TESTE LOCAL]
+- Recuperação: restart manual do Web Service no Render restaurou o Portal; depois o hotfix
+  PR #218 (commit 387de56, mergeado como 1249d98) foi publicado no Render. [RELATO]
+- Efeitos colaterais em dados/agendador identificados numa auditoria SQL somente leitura:
+  91 runs órfãos (80 noturnos queued + 11 manuais), rodada noturna das 03:00 de 02/10 que não
+  rodou, e um segundo defeito, independente: 201 falhas do agendador por "dateFrom e dateTo"
+  (objeto Date do driver convertido errado). [FATO]
+- Um segundo hotfix (datas) está implementado e testado LOCALMENTE em branch própria, SEM commit
+  e SEM publicação. A reconciliação dos órfãos está PREPARADA e NÃO foi executada. [TESTE LOCAL]
+
+--------------------------------------------------------------------------------
+2. SINTOMA E IMPACTO
+--------------------------------------------------------------------------------
+Sintoma:   /me/context e /me/portfolio sem resposta; o resto da API ficava esperando conexão.
+Evidência de produção (fornecida pelo usuário, pg_stat_activity): 10 sessões em estado
+           idle / wait_event ClientRead, todas com a última query
+           "SELECT pg_try_advisory_lock(hashtextextended($1, 0))", sem nenhum bloqueador. [RELATO]
+Por que o Render não reiniciou sozinho: /health não consulta o banco. [FATO: código]
+Duração do impacto: [NÃO VERIFICADO] — o horário exato do início e do restart manual não foi
+           registrado nesta documentação. O último run criado antes do impasse é de
+           2026-10-02 00:27:53 (BRT); a rodada noturna das 03:00 não chegou a criar nenhum run.
+
+--------------------------------------------------------------------------------
+3. CRONOLOGIA (America/Sao_Paulo, BRT)
+--------------------------------------------------------------------------------
+Data/hora            Evento                                                      Rótulo
+2026-09-24           e62d6a9 sync noturno da Central de Vendas; a469bcc          [FATO git]
+                     scheduler interno do Web Service.
+2026-09-25           4600446 "make nightly central vendas run resilient": é onde  [FATO git]
+                     nasce a recuperação de runs noturnos após restart
+                     (listarPeriodosNoturnosPendentes / recuperarRodadasPendentes).
+2026-09-25..29 03h   Rodadas noturnas com falhas 40P01 (deadlock): 28, 38, 17,   [FATO SQL Q10b]
+                     29 e 20 por dia.
+2026-09-29 11:04/    PR #192 (fix/sync-noturno-deadlock-preparacao: retry de     [FATO git]
+11:08                deadlocks transitórios, ensure de schema serializado).
+                     Depois disso não há mais 40P01 nos dados (correlação        [HIPÓTESE: causa]
+                     temporal forte; causalidade não provada).
+2026-09-29 15:05/    PR #195 (feat/painel-contas-operacional-v2) mergeado;       [FATO git]
+15:14                5f33e5b introduz o "Atualizar dados" (painelContasAtualizacao.js).
+2026-09-29 11:11:31  27 runs noturnos criados em ~1s (tupla 09-01..09-28) —      [FATO SQL]
+                     origem NÃO explicada: pode ter sido a rodada disparada por  [NÃO VERIFICADO]
+                     alguém/CLI ou outro caminho. Ver 02_DIAGNOSTICO (item D10).
+2026-09-29 12:51:31  Reconciliação de boot fecha 5 runs noturnos como            [FATO SQL]
+                     SYNC_RUN_PROCESS_RESTART => um boot do processo nesse horário.
+2026-09-30 03:00     Rodada de 61 unidades: 34 completed, 3 running (presos até   [FATO SQL]
+                     12:02:25), 24 queued que nunca executaram.
+2026-09-30 09:28     Run manual #363 (conta 81, set/2026 completo): TODAS as      [FATO SQL]
+                     fontes completas às 09:33:45, import candidate criado,
+                     e o run nunca virou completed (fechado como STALE às 17:27:17).
+2026-09-30 12:02:25  Reconciliação de boot (3 runs noturnos PROCESS_RESTART).     [FATO SQL]
+2026-10-01 03:00     Rodada do dia 1 (só o mês anterior completo, 09-01..09-30): [FATO SQL]
+                     64 unidades: 11 completed, 3 running (até 15:03:02), 50 queued.
+2026-10-01 15:00     PR #211 (feat/painel-contas-operacional-v3) mergeado.        [FATO git]
+2026-10-01 15:03:02  Reconciliação de boot (3 runs noturnos PROCESS_RESTART);     [FATO SQL]
+                     coincide com o deploy do #211 (3 min depois).                [HIPÓTESE: foi o deploy]
+2026-10-01 15:03:38  Runs manuais #471-#473 (contas 82/81/83, set completo);      [FATO SQL]
+                     #472 (conta 81) coleta todas as fontes e nunca fecha.
+2026-10-01 17:57..   PRs #212, #213, #214, #215 mergeados (17:57, 18:49, 21:37,   [FATO git]
+23:25 e 02/10 00:07  23:25) e #216 (02/10 00:07). Deploys prováveis do serviço.   [HIPÓTESE]
+2026-10-01 19:37:36  Rajada de 16 runs manuais (#479-#494) pelo usuário B; 6      [FATO SQL]
+..19:37:55           ficam running para sempre (#487, #490-#494).
+2026-10-02 00:26:37  Rajada de 21 runs manuais (#495-#515) pelo usuário B em 76s: [FATO SQL]
+..00:27:53           17 completed, 3 running (#508, #513, #514), 1 queued (#515).
+                     O run #507 termina às 00:27:53.036 com 2 imports candidate
+                     NÃO promovidos; o último run é criado às 00:27:53.107.
+                     Coerente com o início do impasse do pool nesse minuto.       [HIPÓTESE]
+2026-10-02 03:00     A rodada noturna NÃO rodou: 0 de 162 combinações conta x     [FATO SQL Q10]
+                     período têm run noturno criado desde as 03:00.
+                     Causa provável: pool esgotado.                               [HIPÓTESE]
+2026-10-02 (hora n/d) Portal fora do ar reportado; evidência do pg_stat_activity;  [RELATO]
+                     investigação somente leitura; causa reproduzida localmente.   [TESTE LOCAL]
+2026-10-02 (hora n/d) Restart manual do Web Service no Render restaura o Portal.    [RELATO]
+2026-10-02 (hora n/d) PR #218 (387de56) mergeado como 1249d98 e deploy no Render;    [RELATO]
+                     usuário confirma HTTP 200 em /me/context e /me/portfolio;
+                     Carteira e Painel de Contas carregam normalmente.
+2026-10-02 (hora n/d) 201 falhas do agendador da Central de Vendas, com a mensagem  [RELATO]
+                     "dateFrom e dateTo (YYYY-MM-DD) sao obrigatorios". Origem =
+                     recuperação de boot (item 3 de 02_DIAGNOSTICO).              [HIPÓTESE forte]
+2026-10-02 ~14:47    Auditoria SQL (parte 1) executada pelo usuário em modo        [FATO]
+                     somente leitura, terminada com ROLLBACK (03_BANCO_DADOS).
+2026-10-02 ~15:45    Hotfix de datas implementado em branch local, testado,        [TESTE LOCAL]
+                     SEM commit (04_HOTFIXES).
+
+Observação sobre "manual": no banco, run MANUAL = requested_by preenchido. Isso inclui cliques do
+Painel de Contas E da Central de Vendas (controller). Não há campo que diferencie os dois.
+
+--------------------------------------------------------------------------------
+4. CAUSA COMPROVADA (PRINCIPAL)
+--------------------------------------------------------------------------------
+Mecanismo [FATO: código lido em server/services/painelContas/painelContasAtualizacao.js, versão
+anterior ao PR #218; TESTE LOCAL: reprodução]:
+  1. "Atualizar dados" pegava uma conexão do pool (server/config/database.js, pg.Pool, max 10) e
+     chamava pg_try_advisory_lock de SESSÃO nela, mantendo-a reservada até o fim do job.
+  2. O job (criarSyncRun -> executarSyncRun -> publicação) grava no banco pelo MESMO pool.
+  3. O pool não tinha connectionTimeoutMillis (padrão do pg = espera infinita).
+  4. Com 10 jobs em andamento, as 10 conexões estavam presas pelos locks; nenhum job conseguia
+     obter conexão para gravar e terminar (e soltar a sua); qualquer outra requisição (/me/*)
+     ficava na fila do pool para sempre.
+  5. /health não toca o banco; o Render não detectou o problema.
+Provas:
+  - Evidência de produção: 10 sessões idle/ClientRead com a última query igual ao pg_try_advisory_lock
+    do Painel, sem bloqueador. [RELATO]
+  - Reprodução local com o pg-pool real e as opções reais: 10 cliques => impasse permanente. [TESTE LOCAL]
+  - Prova de mutação: com o lock de volta no pool, o teste novo falha ("nenhuma conexão do pool
+    reservada" e "/me/context responde com 10 atualizações em curso"). [TESTE LOCAL]
+  - Dados do banco: rajada de 21 runs manuais em 76 s às 00:26-00:27 de 02/10, seguida de nenhum run
+    novo e da rodada noturna ausente. [FATO SQL; interpretação = HIPÓTESE]
+Limite honesto: não há log de aplicação do Render nesta documentação que confirme o número de
+cliques simultâneos no momento do impasse (a consulta R8 da parte 2, ainda não rodada, mostra quem
+clicou e quando).
+PRs descartados como causa: #211 a #216 (SEO ML, promo snapshot, Shopee, Painel v3) — análise de
+código na investigação inicial; não tocam o lock do Painel nem o pool. [FATO: análise de código]
+
+--------------------------------------------------------------------------------
+5. RECUPERAÇÃO — O QUE JÁ FOI FEITO E O QUE FALTA
+--------------------------------------------------------------------------------
+Feito:
+  - Restart manual do Web Service (Render): Portal volta. [RELATO]
+  - PR #218 / commit 387de56 / merge 1249d98: lock fora do pool, limite de cliques simultâneos,
+    prazo de 30 s na obtenção de conexão do pool; publicado no Render. [RELATO: deploy; FATO: git]
+  - Auditoria SQL (parte 1) executada e analisada. [FATO]
+  - Reconciliação dos 90 órfãos preparada (dry-run, simulação somente leitura, aplicação,
+    reversão, backup) e testada em PGlite local. [TESTE LOCAL] — NÃO executada.
+  - Hotfix de datas implementado em branch local, testado, sem commit. [TESTE LOCAL]
+Falta (detalhes e ordem em 06_PLANO_RECUPERACAO.txt):
+  - Rodar o passo 0 (parte 2 da auditoria + pré-voo + simulação) e coletar logs do Render.
+  - Backup dos runs; decidir dry-run completo; só então a reconciliação (precisa de autorização).
+  - Commit/PR/deploy do hotfix de datas (precisa de autorização).
+  - Investigar o travamento de unidades noturnas e a lacuna de setembro (03_BANCO_DADOS, item R1).
+  - Validar em produção UMA atualização controlada pós-hotfix.
+
+--------------------------------------------------------------------------------
+6. ESTADO EM UMA FRASE
+--------------------------------------------------------------------------------
+Portal restabelecido e protegido contra a causa raiz (PR #218, publicado); permanecem em aberto
+dados órfãos, um bug independente na recuperação do agendador (corrigido só em branch local) e um
+padrão de unidades noturnas que travam, cuja causa ainda não foi provada.
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo a partir do histórico da sessão e da auditoria SQL parte 1.
+
+
+########## ARQUIVO: 02_DIAGNOSTICO.txt ##########
+
+================================================================================
+INCIDENTE P0 2026-10-02 — 02_DIAGNOSTICO
+Investigações, hipóteses, evidências e conclusões
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
+
+--------------------------------------------------------------------------------
+1. COMO A INVESTIGAÇÃO FOI CONDUZIDA
+--------------------------------------------------------------------------------
+- Fase 1 (somente leitura): leitura de código e histórico git; sem tocar produção.
+- Fase 2 (somente leitura): análise da evidência do pg_stat_activity trazida pelo usuário.
+- Fase 3: reprodução LOCAL do impasse com o pg-pool real (sem banco real), correção em branch
+  isolada, testes, PR #218.
+- Fase 4: verificação de "retomada após restart sem duplicação" (item 6 do pedido do hotfix).
+- Fase 5: verificação pós-incidente em produção SOMENTE LEITURA: SQL executado pelo usuário
+  (parte 1); análise; segundo defeito (datas) isolado e corrigido em branch local.
+Restrições vigentes durante todo o trabalho: sem migrations, sem escrita em produção, sem merge /
+push / deploy sem autorização, sem mexer em fórmulas financeiras, sem misturar a unificação de
+clientes. server/.env aponta para o banco de PRODUÇÃO: nunca subir o servidor local sem
+sobrescrever DATABASE_URL (os testes usam DATABASE_URL apontando para uma porta morta).
+
+--------------------------------------------------------------------------------
+2. DIAGNÓSTICO PRINCIPAL: IMPASSE DO POOL (RESOLVIDO PELO PR #218)
+--------------------------------------------------------------------------------
+Conclusão: o "Atualizar dados" do Painel esgotava o pool compartilhado do PostgreSQL.
+Descrição do mecanismo e das provas: 01_RESUMO_GERAL, seção 4.
+Arquivos e referências (estado anterior ao #218; o #218 reescreveu esses trechos):
+  - server/services/painelContas/painelContasAtualizacao.js  (lock em pool.connect() por todo o job)
+  - server/config/database.js                                (pg.Pool max 10, sem connectionTimeoutMillis)
+  - server/services/centralVendas/centralVendasSyncRunService.js  (criarSyncRun etc.; grava via pool)
+Estado atual em main (1249d98): painelContasAtualizacao.js usa pg.Client dedicado
+  (criarConexaoDedicada ~linha 200, adquirirLockEscopo ~217, executarJob ~322, iniciarAtualizacao ~387);
+  server/config/database.js:13 define connectionTimeoutMillis (padrão 30000 ms).
+
+--------------------------------------------------------------------------------
+3. DIAGNÓSTICO SECUNDÁRIO: 201 FALHAS DO AGENDADOR ("dateFrom e dateTo")
+--------------------------------------------------------------------------------
+Mensagem: "dateFrom e dateTo (YYYY-MM-DD) sao obrigatorios." (HTTP 400 de criarSyncRun).
+Causa [FATO: código + TESTE LOCAL]:
+  - central_vendas_sync_runs.date_from / date_to são colunas DATE NOT NULL
+    (server/sql/central_vendas_schema.sql, ~linha 157).
+  - O driver pg devolve um objeto Date (meia-noite LOCAL) para colunas DATE; não há setTypeParser global.
+  - listarPeriodosNoturnosPendentes (server/services/centralVendas/centralVendasSyncRunService.js,
+    linhas 354-386 em 1249d98) fazia String(row.date_from).slice(0, 10) => "Thu Oct 01".
+  - criarSyncRun (mesmo arquivo, linha ~113) valida com /^\d{4}-\d{2}-\d{2}$/ e recusa.
+  - A recuperação de boot (recuperarRodadasPendentes, centralVendasNoturnoService.js linha ~610)
+    passa esses períodos para executarRodada; cada conta x período falha ANTES de criar run.
+Por que nenhum teste pegou: o teste de recuperação usava um mock que já devolvia strings
+  (server/tests/centralVendasNoturnoIdempotencia.test.js, ~linha 265).
+Desde quando: 4600446 (2026-09-25). A recuperação de restart NUNCA funcionou em produção. [FATO: código;
+  e nenhum run criado por recuperação foi identificado — mas ver D10 abaixo]
+Impacto nos dados: nenhum — a validação falha antes do INSERT. [FATO: código; SQL não mostra run
+  criado por esse caminho]
+Origem das 201: compatível com 3 períodos pendentes (Q11) x 67 contas elegíveis (3 x 67 = 201).
+  O número 67 NÃO foi confirmado (há 81 contas MELI ativas; elegibilidade = regra do scheduler). [HIPÓTESE forte]
+  Também é uma HIPÓTESE (não verificada em log) que as 201 ocorreram no boot que se seguiu ao restart
+  manual/deploy; o horário e o log do Render dessas falhas ainda não foram coletados. [NÃO VERIFICADO]
+Segundo ponto afetado pelo mesmo padrão: sanitizeRun (linhas 83-84 em 1249d98) => run.dateFrom/dateTo;
+  consumidor: server/controllers/centralVendasController.js ~linha 477 (iniciarOuRetomarMercadoPago
+  Settlement). Provavelmente quebrado, sem uso observado (0 linhas em central_vendas_mp_settlement_reports
+  na janela). [FATO: código; efeito exato NÃO VERIFICADO]
+Latente (NÃO corrigido, de propósito): a função dia() em buscarRunAtivoDaConta usa toISOString();
+  erra o dia em fuso a leste de UTC (Tóquio => 2026-09-30). No Render (UTC) não causa dano. [TESTE LOCAL]
+Medição do parser real do pg (pg-types, OID 1082) em vários fusos, dia 2026-10-01:
+  TZ                    getters locais   toISOString   String(Date).slice(0,10)
+  UTC                   2026-10-01       2026-10-01    "Thu Oct 01"
+  America/Sao_Paulo     2026-10-01       2026-10-01    "Thu Oct 01"
+  Asia/Tokyo            2026-10-01       2026-09-30    "Thu Oct 01"
+  Pacific/Kiritimati    2026-10-01       2026-09-30    "Thu Oct 01"
+  Pacific/Pago_Pago     2026-10-01       2026-10-01    "Thu Oct 01"
+Conclusão: getters locais = correto em qualquer fuso (adotado no hotfix de datas, ver 04_HOTFIXES).
+O erro era um "freio involuntário": sem ele, o próximo boot dispararia a recuperação sobre períodos
+obsoletos. Isso orienta a ordem do plano (06): fechar órfãos ANTES de publicar o hotfix de datas.
+Correção de uma estimativa anterior: "~201 sincronizações no próximo boot" era só um TETO. O caminho
+noturno usa reutilizarCompletedPublicado: true (criarSyncRun, linha ~171), então contas que já têm run
+completed+published para a mesma tupla são REAPROVEITADAS, sem chamar o Mercado Livre. A carga real é só
+das contas sem esse run; o pré-voo (F5) calcula isso.
+
+--------------------------------------------------------------------------------
+4. QUADRO DE HIPÓTESES
+--------------------------------------------------------------------------------
+ID  Hipótese                                                        Situação
+D1  Lock do Painel esgota o pool => /me/* pendura                   COMPROVADA (local) + coerente com prod
+D2  PRs #211-#216 causaram o incidente                              DESCARTADA (análise de código)
+D3  Bug do Date derruba a recuperação do scheduler no boot          COMPROVADA (local)
+D4  O mesmo bug quebra o endpoint de repasse MP (run.dateFrom)       PROVÁVEL; efeito não verificado
+D5  Pool esgotado explica os runs que travam DEPOIS de coletar      ENFRAQUECIDA: em 30/09 09:31-09:32
+    todas as fontes (#363, #399, #472)                              outros runs usaram o pool e
+                                                                    completaram; o processo seguiu vivo
+                                                                    até o restart das 12:02
+D6  OOM/crash do processo em contas grandes mata o run              ENFRAQUECIDA: as reconciliações de
+                                                                    boot só ocorreram em 29/09 12:51,
+                                                                    30/09 12:02 e 01/10 15:03; um OOM às
+                                                                    09:34 de 30/09 teria fechado antes os
+                                                                    3 runs noturnos que estavam running
+D7  Espera por lock de banco (não de pool) trava a finalização      NÃO TESTADA (possível; o #218 não cobre,
+                                                                    pois só limita a OBTENÇÃO de conexão)
+D8  Deploys de #212-#216 (17:57 a 00:07) mataram os runs manuais    HIPÓTESE: explicaria #487,#490-#494
+    da rajada das 19:37 (running para sempre)                       sem precisar de impasse. Requer o histórico
+                                                                    de Events do Render (NÃO VERIFICADO)
+D9  3 unidades noturnas travam por rodada e ocupam as 3 vagas de   COMPROVADO o padrão nos dados (Q2/Q3);
+    concorrência (CONCORRENCIA_PADRAO = 3, centralVendasNoturno      causa do travamento NÃO provada
+    Service.js:30) até o restart; o resto da fila fica queued
+D10 Origem do lote de 27 runs criados em ~1s em 29/09 11:11:31      NÃO EXPLICADA (ver abaixo)
+D11 Q9 (defasagem do Cliente 360) é falso positivo para 6 de 9      HIPÓTESE: imports de set/2026 produzidos
+    linhas                                                          por runs de 01-02/10 com cobertura vazia;
+                                                                    R5 da parte 2 decide (NÃO EXECUTADA)
+D12 10 imports published sem pedido são vazios legítimos            NÃO VERIFICADO (R6 da parte 2)
+Detalhe de D10: a recuperação de boot não explica esses runs (ela falharia com o bug do Date antes de criar
+qualquer run); então o lote veio de uma rodada normal (por exemplo o job CLI "npm run
+sync:central-vendas:noturno" ou um disparo manual/agendado). Sem log, não dá para afirmar.
+
+--------------------------------------------------------------------------------
+5. PADRÃO DAS RODADAS NOTURNAS (PRÉ-EXISTENTE AO INCIDENTE)  [FATO SQL]
+--------------------------------------------------------------------------------
+Rodada                      Unidades  completed  running(preso)  queued(nunca rodou)
+2026-09-30 03:00            61        34         3               24
+2026-10-01 03:00            64        11         3               50
+Cada rodada cria todos os runs (fase de preparação) e executa com concorrência 3. Em 30/09 e 01/10
+três unidades travaram e ocuparam todas as vagas até um restart do processo; as demais ficaram queued.
+Os travados foram fechados por reconciliação de boot (SYNC_RUN_PROCESS_RESTART): #249, #252, #253, #289,
+#290 (29/09, 5 runs); #334, #337, #338 (30/09); #402, #411, #414 (01/10). Não existe timeout por unidade.
+[FATO: código]
+Consequência provável (NÃO verificada, é o item R1): a rodada de 01/10, que fecha setembro (09-01..09-30),
+concluiu só 11 de 64 unidades; contas sem import published cobrindo o mês inteiro podem ficar sem dado de
+setembro na leitura mensal. A leitura só aceita um published cuja cobertura CONTENHA o trecho pedido:
+server/services/centralVendas/centralVendasRepository.js, selecionarMelhorImportPorCompetencia (~linha 443).
+
+--------------------------------------------------------------------------------
+6. RUNS QUE TRAVARAM DEPOIS DE COLETAR TODAS AS FONTES
+--------------------------------------------------------------------------------
+Runs #363 (30/09 09:28), #399 (30/09 17:27), #472 (01/10 15:03), contas 81 e 83, período 09-01..09-30:
+base/orders/shipments/claims/returns/payments todas "complete"; 1 import candidate criado; o run NÃO
+virou completed (#363/#399 fechados por STALE_RUNNING; #472 continua running). [FATO SQL]
+Sequência de código depois das fontes (server/services/centralVendas/centralVendasSyncService.js e
+centralVendasSyncWorker.js): grava imports candidate -> log "[centralVendas] sync <slug> ...: orders=..."
+(linha ~1316) -> worker: calcularCompletudeDoRun, atualizarCompletenessRun, marcarRunCompleted ->
+log "[centralVendas] sync-run #N completeness ..." (worker ~linha 107) -> publicarRun.
+Todo esse trecho é trabalho de banco (nenhuma chamada ao Mercado Livre). A autostart de relatório de
+repasse MP está inativa (0 linhas em central_vendas_mp_settlement_reports). [FATO SQL]
+Causa do travamento: NÃO PROVADA. As consultas R2/R3 (parte 2) e as linhas de log do Render (marcos a-d
+em 06_PLANO_RECUPERACAO) separam "travou gravando pedidos" de "travou na finalização do worker".
+
+--------------------------------------------------------------------------------
+7. VERIFICAÇÃO "RETOMADA APÓS RESTART SEM DUPLICAÇÃO" (item 6 do pedido do hotfix)
+--------------------------------------------------------------------------------
+Conclusão [FATO: código + TESTE LOCAL]:
+  - Imports, pagamentos e repasses MP são gravados por sync_run_id; a leitura escolhe UM import published
+    por conta x competência (maior published_at, cobertura contendo o trecho). Ads (ads_resumos_mensais,
+    UNIQUE (cliente_slug, mes_ref, loja_campanha)) e o resumo do Cliente 360 (cliente_360_resumos_mensais,
+    UNIQUE (cliente_id, competencia)) são upsert. Run interrompido nunca publica (publicarRun exige
+    status completed e orders "complete").
+  - Locks e vagas do Painel morrem com o processo (teste da seção 8 de painelContasPoolDeadlock.test.js).
+Auditoria SQL confirma [FATO SQL]: 0 imports published de run não completed; 0 empates de published_at;
+  0 linhas duplicadas de Ads.
+Lacuna conhecida: um run MANUAL órfão em running só é reconciliado após RUNNING_STALE_MINUTES (60 min,
+  centralVendasSyncRunService.js, reconciliarRunsStale ~linha 233); um clique nesse intervalo reaproveita
+  o órfão e a conta sai "ignorada". Não dá para fechar órfãos manuais no boot com segurança (a Central
+  também cria runs manuais; pode haver mais de uma instância).
+
+--------------------------------------------------------------------------------
+8. RISCOS RESIDUAIS DECLARADOS NO PR #218 (FORA DO ESCOPO DELE)
+--------------------------------------------------------------------------------
+Ver 05_FALHAS_PENDENTES.txt, itens P-13 a P-20.
+
+--------------------------------------------------------------------------------
+9. O QUE NÃO FOI INVESTIGADO / LIMITES
+--------------------------------------------------------------------------------
+- Nenhum log do Render foi lido por mim; tudo que vem de logs depende do usuário (06, passo 0).
+- A parte 2 da auditoria e o pré-voo ainda NÃO foram executados em produção.
+- O número real de cliques simultâneos no minuto do impasse não está comprovado.
+- Não há medição de memória/CPU do serviço nas janelas relevantes.
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo.
+
+
+########## ARQUIVO: 03_BANCO_DADOS.txt ##########
+
+================================================================================
+INCIDENTE P0 2026-10-02 — 03_BANCO_DADOS
+Resultados das auditorias SQL, runs órfãos, integridade e dados pendentes
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
+
+ANONIMIZAÇÃO: este repositório é PÚBLICO. Nomes/slugs de clientes e ids de usuários foram omitidos;
+só aparecem ids técnicos (run, import, conta) e "usuário A/B" (requested_by 4/5). Quem tem acesso
+ao banco resolve os ids com a consulta correspondente. Nenhuma credencial aparece aqui.
+
+--------------------------------------------------------------------------------
+1. METODOLOGIA E ESTADO DAS AUDITORIAS
+--------------------------------------------------------------------------------
+Parte 1 (Q1-Q12): EXECUTADA pelo usuário em produção, SOMENTE LEITURA, em ~2026-10-02 14:47 BRT.
+  Transação BEGIN READ ONLY, statement_timeout 30s, lock_timeout 3s,
+  idle_in_transaction_session_timeout 120s, ROLLBACK no fim. Saída bruta guardada pelo usuário
+  (arquivo local ~/verificacao_pos_incidente_saida.txt, 563 linhas, NÃO versionado por conter slugs).
+Parte 2 (R1-R8):  PREPARADA e validada em PGlite; NÃO EXECUTADA em produção. [NÃO VERIFICADO]
+Pré-voo + simulação (F1-F5, S1-S4): PREPARADOS e validados em PGlite; NÃO EXECUTADOS. [NÃO VERIFICADO]
+Os SQLs estão em 07_ANEXO_SQL_E_SCRIPTS.txt. O relógio da auditoria é ~14:47:15 BRT (idade dos runs).
+Limite: o PGlite valida sintaxe/colunas contra o schema do repositório; não reproduz o tamanho nem o
+pg_stat_activity reais.
+
+--------------------------------------------------------------------------------
+2. Q1 — RUNS ATIVOS (queued/running): 91, TODOS ÓRFÃOS  [FATO SQL]
+--------------------------------------------------------------------------------
+Total 91 = 80 noturnos queued + 10 manuais running + 1 manual queued. Classificação do SQL: todos
+"ORFAO_*" (queued > 15 min ou running > 60 min). Q12 confirma que não há worker vivo (item 12).
+Noturnos (requested_by IS NULL), todos queued e com started_at VAZIO (nunca executaram):
+  noturno queued | criados 2026-09-29 | periodo 2026-09-01..2026-09-28 | 6 runs | ids 254-269 (não contíguos)
+  noturno queued | criados 2026-09-30 | periodo 2026-09-01..2026-09-29 | 24 runs | ids 339-362 (não contíguos)
+  noturno queued | criados 2026-10-01 | periodo 2026-09-01..2026-09-30 | 50 runs | ids 415-464 (não contíguos)
+
+  run_id | conta | status | usuario* | periodo | criado
+  472 | 81 | running | A | 2026-09-01..2026-09-30 | 2026-10-01 15:03:38
+  487 | 35 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:44
+  490 | 16 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:49
+  491 | 9 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:51
+  492 | 14 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:52
+  493 | 27 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:54
+  494 | 37 | running | B | 2026-10-01..2026-10-01 | 2026-10-01 19:37:55
+  508 | 14 | running | B | 2026-10-01..2026-10-02 | 2026-10-02 00:27:35
+  513 | 21 | running | B | 2026-10-01..2026-10-02 | 2026-10-02 00:27:48
+  514 | 40 | running | B | 2026-10-01..2026-10-02 | 2026-10-02 00:27:50
+  515 | 49 | queued | B | 2026-10-01..2026-10-02 | 2026-10-02 00:27:53
+  * usuário A/B = requested_by 4/5 (anonimizado).
+
+IDs dos 80 noturnos:
+  254, 260, 261, 265, 268, 269, 339, 340, 341, 342, 343, 344, 345, 346, 347, 348, 349, 350, 351, 352, 353, 354, 355, 356, 357, 358, 359, 360, 361, 362, 415, 416, 417, 418, 419, 420, 421, 422, 423, 424, 425, 426, 427, 428, 429, 430, 431, 432, 433, 434, 435, 436, 437, 438, 439, 440, 441, 442, 443, 444, 445, 446, 447, 448, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464
+
+--------------------------------------------------------------------------------
+3. Q2 — PANORAMA POR DIA / ORIGEM / STATUS (janela 2026-09-29 em diante)  [FATO SQL]
+--------------------------------------------------------------------------------
+  dia | origem | status | error_code | runs
+  -----------------------------------------
+  2026-09-29 | manual | completed |  | 7
+  2026-09-29 | noturno | completed |  | 56
+  2026-09-29 | noturno | failed | 40P01 | 20
+  2026-09-29 | noturno | failed | SYNC_RUN_PROCESS_RESTART | 5
+  2026-09-29 | noturno | failed | SYNC_RUN_STALE_QUEUED | 16
+  2026-09-29 | noturno | queued |  | 6
+  2026-09-30 | manual | completed |  | 5
+  2026-09-30 | manual | failed | SYNC_RUN_STALE_RUNNING | 3
+  2026-09-30 | noturno | completed |  | 34
+  2026-09-30 | noturno | failed | SYNC_RUN_PROCESS_RESTART | 3
+  2026-09-30 | noturno | queued |  | 24
+  2026-10-01 | manual | completed |  | 23
+  2026-10-01 | manual | running |  | 7
+  2026-10-01 | noturno | completed |  | 11
+  2026-10-01 | noturno | failed | SYNC_RUN_PROCESS_RESTART | 3
+  2026-10-01 | noturno | queued |  | 50
+  2026-10-02 | manual | completed |  | 17
+  2026-10-02 | manual | queued |  | 1
+  2026-10-02 | manual | running |  | 3
+Leitura: em 29/09 o código 40P01 ainda aparece (20 runs, rodada das 03:0x); a partir de 30/09 só
+aparecem PROCESS_RESTART, STALE_* e queued. "manual" inclui Painel e Central (ver 01_RESUMO_GERAL).
+
+--------------------------------------------------------------------------------
+4. Q3 — RUNS ENCERRADOS À FORÇA PELO SISTEMA (30 runs)  [FATO SQL]
+--------------------------------------------------------------------------------
+Esses runs NÃO publicam. Duração = encerrado - início (ou criação, se nunca iniciou).
+  run_id | conta | origem | error_code | periodo | criado | encerrado | duracao
+  ----------------------------------------------------------------------------------------------------
+  249 | 20 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:51:31 | 01:06:35
+  252 | 30 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:51:31 | 00:57:48
+  253 | 31 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:51:31 | 00:57:11
+  255 | 42 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  256 | 19 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  257 | 103 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  258 | 98 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  259 | 67 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  262 | 48 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  263 | 43 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  264 | 34 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  266 | 18 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:31 | 2026-09-29 12:13:45 | 01:02:13
+  267 | 45 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:45 | 01:02:13
+  270 | 90 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:45 | 01:02:13
+  271 | 66 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:45 | 01:02:13
+  272 | 25 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:45 | 01:02:13
+  273 | 38 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:46 | 01:02:13
+  274 | 46 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:46 | 01:02:13
+  275 | 92 | noturno | SYNC_RUN_STALE_QUEUED | 2026-09-01..2026-09-28 | 2026-09-29 11:11:32 | 2026-09-29 12:13:46 | 01:02:13
+  289 | 25 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-28 | 2026-09-29 12:13:46 | 2026-09-29 12:51:31 | 00:07:51
+  290 | 66 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-28 | 2026-09-29 12:13:46 | 2026-09-29 12:51:31 | 00:07:15
+  334 | 8 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-29 | 2026-09-30 03:00:01 | 2026-09-30 12:02:25 | 08:38:40
+  337 | 20 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-29 | 2026-09-30 03:00:02 | 2026-09-30 12:02:25 | 08:36:37
+  338 | 28 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-29 | 2026-09-30 03:00:02 | 2026-09-30 12:02:25 | 08:36:25
+  363 | 81 | manual | SYNC_RUN_STALE_RUNNING | 2026-09-01..2026-09-30 | 2026-09-30 09:28:05 | 2026-09-30 17:27:17 | 07:59:11
+  399 | 83 | manual | SYNC_RUN_STALE_RUNNING | 2026-09-01..2026-09-30 | 2026-09-30 17:27:17 | 2026-10-01 03:00:00 | 09:32:43
+  400 | 81 | manual | SYNC_RUN_STALE_RUNNING | 2026-09-01..2026-09-30 | 2026-09-30 17:27:17 | 2026-10-01 03:00:00 | 09:32:42
+  402 | 81 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-30 | 2026-10-01 03:00:00 | 2026-10-01 15:03:02 | 12:02:09
+  411 | 35 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-30 | 2026-10-01 03:00:00 | 2026-10-01 15:03:02 | 11:57:05
+  414 | 16 | noturno | SYNC_RUN_PROCESS_RESTART | 2026-09-01..2026-09-30 | 2026-10-01 03:00:01 | 2026-10-01 15:03:02 | 11:55:30
+Códigos: SYNC_RUN_PROCESS_RESTART (reconciliação de boot, só noturnos running),
+SYNC_RUN_STALE_QUEUED (>15 min queued) e SYNC_RUN_STALE_RUNNING (>60 min running), ambos aplicados por
+reconciliarRunsStale dentro do próximo criarSyncRun do mesmo escopo.
+Horários de boot inferidos pelos finished_at idênticos de PROCESS_RESTART: 2026-09-29 12:51:31,
+2026-09-30 12:02:25 e 2026-10-01 15:03:02. [FATO SQL; "foi deploy" = HIPÓTESE]
+
+--------------------------------------------------------------------------------
+5. Q4 — RUNS MANUAIS DA JANELA (66)  [FATO SQL]
+--------------------------------------------------------------------------------
+  status | completeness | error_code | runs manuais
+  ------------------------------------------------------------
+  completed | complete | - | 51
+  completed | partial | - | 1
+  failed | - | SYNC_RUN_STALE_RUNNING | 3
+  queued | - | - | 1
+  running | - | - | 10
+  TOTAL manuais na janela: 66
+(O Q4 completo por run, com imports candidate/published, está só na saída bruta local.)
+
+--------------------------------------------------------------------------------
+6. Q5 — FONTES DOS RUNS NÃO CONCLUÍDOS  [FATO SQL]
+--------------------------------------------------------------------------------
+Runs manuais com status diferente de completed na janela, fontes por run. Formato fonte=status(recebidos/
+esperados). Runs #487, #490-#494, #508, #513, #514: cortados NO MEIO da coleta (claims/payments/shipments
+running; sem import candidate). Run #472: todas as fontes completas e 1 candidate (o caso do travamento
+pós-coleta). Runs #363, #399: já fechados por STALE_RUNNING, mesmo caso.
+  run 363 [failed]: base=complete, claims=complete(402/402), orders=complete(4144/4144), payments=complete(4418/4418), returns=complete(0/0), shipments=complete(4133/4133)
+  run 399 [failed]: base=complete, claims=complete(137/137), orders=complete(1729/1729), payments=complete(1852/1852), returns=complete(0/0), shipments=complete(1716/1716)
+  run 400 [failed]: base=complete, claims=running, orders=complete(4219/4219), payments=running, shipments=running
+  run 472 [running]: base=complete, claims=complete(422/422), orders=complete(4277/4277), payments=complete(4563/4563), returns=complete(0/0), shipments=complete(4265/4265)
+  run 487 [running]: base=complete, claims=running, orders=complete(117/117), payments=running, shipments=running
+  run 490 [running]: base=complete, claims=running, orders=complete(46/46), payments=running, shipments=running
+  run 491 [running]: base=complete, claims=running, orders=complete(39/39), payments=running, shipments=running
+  run 492 [running]: base=complete, claims=running, orders=complete(49/49), payments=running, shipments=running
+  run 493 [running]: base=complete, claims=running, orders=complete(20/20), payments=running, shipments=running
+  run 494 [running]: base=complete, orders=complete(19/19)
+  run 508 [running]: base=complete, claims=running, orders=complete(56/56), payments=running, shipments=running
+  run 513 [running]: base=complete, claims=running, orders=complete(15/15), payments=running, shipments=running
+  run 514 [running]: base=complete, claims=running, orders=complete(9/9), payments=running, shipments=running
+
+--------------------------------------------------------------------------------
+7. Q6 — PUBLICAÇÃO  [FATO SQL]
+--------------------------------------------------------------------------------
+(a) import published cujo run NÃO está completed: 0 linhas (esperado 0).
+(b) imports candidate de runs completed (nunca promovidos):
+  tipo | import_id | sync_run_id | run_status | cliente_conta_id | competencia | publication_status
+  -------------------------------------------------------------------------------------------------
+  b_candidate_de_run_completed | 243 | 223 | completed | 35 | 2026-08 | candidate
+  b_candidate_de_run_completed | 244 | 223 | completed | 35 | 2026-09 | candidate
+  b_candidate_de_run_completed | 320 | 278 | completed | 42 | 2026-08 | candidate
+  b_candidate_de_run_completed | 321 | 278 | completed | 42 | 2026-09 | candidate
+  b_candidate_de_run_completed | 614 | 507 | completed | 9 | 2026-09 | candidate
+  b_candidate_de_run_completed | 615 | 507 | completed | 9 | 2026-10 | candidate
+  Leitura: run #507 terminou às 00:27:53, no minuto do impasse, com 2 candidates e 0 published => suspeito
+  de vítima do impasse (a promoção por publicarRun não chegou a rodar) [HIPÓTESE]. Os runs #223 e #278
+  são anteriores à janela; pode ser comportamento correto (orders incompleto não publica) [NÃO VERIFICADO: R4].
+(c) imports por status do run e publication_status (runs criados desde 29/09):
+  run_status | publication_status | imports
+  -----------------------------------------
+  completed | candidate | 6
+  completed | published | 200
+  failed | candidate | 7
+  running | candidate | 1
+
+--------------------------------------------------------------------------------
+8. Q7 — DUPLICAÇÃO NOS DADOS PUBLICADOS  [FATO SQL]
+--------------------------------------------------------------------------------
+Desenho: vários imports published por conta x competência é NORMAL; a leitura escolhe um.
+(a) empates de published_at na mesma conta x competência: 0 linhas (esperado 0).
+(b) pedido repetido dentro do mesmo import: impossível (UNIQUE (import_id, pedido_id)); não consultado.
+(c) imports published SEM pedido nenhum (10):
+  import_id | sync_run_id | cliente_conta_id | competencia | published_at
+  -----------------------------------------------------------------------
+  236 | 221 | 50 | 2026-09 | 2026-09-29 11:18:18.090433-03
+  252 | 231 | 76 | 2026-09 | 2026-09-29 11:32:43.409467-03
+  259 | 235 | 94 | 2026-09 | 2026-09-29 11:35:12.692127-03
+  384 | 310 | 50 | 2026-09 | 2026-09-30 03:03:01.920641-03
+  400 | 319 | 76 | 2026-09 | 2026-09-30 03:15:51.995034-03
+  406 | 324 | 94 | 2026-09 | 2026-09-30 03:18:00.390274-03
+  494 | 410 | 50 | 2026-09 | 2026-10-01 03:05:09.294124-03
+  582 | 483 | 97 | 2026-10 | 2026-10-01 19:37:40.690561-03
+  595 | 498 | 97 | 2026-10 | 2026-10-02 00:26:41.89158-03
+  608 | 511 | 76 | 2026-10 | 2026-10-02 00:27:43.208587-03
+  Pode ser conta sem vendas no período (vazio legítimo) ou perda de dado. [NÃO VERIFICADO: R6]
+
+--------------------------------------------------------------------------------
+9. Q8 — PAGAMENTOS E REPASSES DO MERCADO PAGO  [FATO SQL]
+--------------------------------------------------------------------------------
+Pagamentos por status do run (UNIQUE (sync_run_id, payment_id) impede duplicata dentro do run):
+  run_status | runs | payments
+  ----------------------------
+  completed | 143 | 82322
+  failed | 13 | 29388
+  running | 8 | 4654
+34.042 pagamentos (13 runs failed + 8 running) estão em runs que não completaram: inertes, nunca
+publicados/lidos como oficiais; limpeza NÃO é recomendada agora (nada de DELETE).
+Repasses (central_vendas_mp_settlement_reports) na janela: 0 linhas => o recurso não foi usado.
+
+--------------------------------------------------------------------------------
+10. Q9 — DEFASAGEM DO RESUMO DO CLIENTE 360 / ADS  [FATO SQL; interpretação = HIPÓTESE]
+--------------------------------------------------------------------------------
+9 linhas onde o último import published é mais novo que cliente_360_resumos_mensais.sincronizado_em:
+  competencia | resumo_sincronizado_em | ultimo_published | defasagem
+  ------------------------------------------------------------------------------------------
+  2026-06 | 2026-07-14 11:02:39 | 2026-08-22 19:21:20 | 39 days 08:18:41
+  2026-08 | 2026-09-22 15:26:32 | 2026-09-29 12:17:35 | 6 days 20:51:02
+  2026-09 | 2026-09-25 16:40:05 | 2026-09-29 11:52:41 | 3 days 19:12:36
+  2026-09 | 2026-09-30 03:14:19 | 2026-10-02 00:27:44 | 1 day 21:13:25
+  2026-09 | 2026-09-30 03:17:59 | 2026-10-02 00:27:47 | 1 day 21:09:47
+  2026-09 | 2026-09-30 03:01:07 | 2026-10-01 19:10:50 | 1 day 16:09:43
+  2026-09 | 2026-09-30 03:18:12 | 2026-10-01 15:13:48 | 1 day 11:55:36
+  2026-09 | 2026-10-01 03:04:31 | 2026-10-02 00:26:48 | 21:22:16
+  2026-09 | 2026-10-01 03:04:48 | 2026-10-02 00:26:45 | 21:21:56
+  - 3 linhas antigas (competências 2026-06, 2026-08 e a de 25/09): anteriores ao incidente.
+  - 6 linhas de set/2026 com published de 01-02/10: possível FALSO POSITIVO se esses imports de setembro
+    foram gerados por runs de outubro com cobertura vazia (a leitura os ignora). [HIPÓTESE; R5 decide]
+Ads (ads_resumos_mensais): 0 linhas duplicadas na janela. UNIQUE (cliente_slug, mes_ref, loja_campanha).
+
+--------------------------------------------------------------------------------
+11. Q10 / Q11 — AGENDADOR NOTURNO  [FATO SQL]
+--------------------------------------------------------------------------------
+Q10: contas MELI ativas (81) x períodos de 02/10 [set/2026 completo; out/2026 01..01]: 162 combinações,
+  0 com run noturno criado desde 2026-10-02 03:00 BRT => a rodada de 02/10 NÃO rodou. A consulta é uma
+  aproximação (inclui contas que o scheduler considera inelegíveis).
+Q10b (runs noturnos dos últimos 7 dias por dia/status/código):
+  dia | status | error_code | runs
+  --------------------------------
+  2026-09-25 | completed |  | 3
+  2026-09-25 | failed | 40P01 | 28
+  2026-09-26 | completed |  | 3
+  2026-09-26 | failed | 40P01 | 38
+  2026-09-27 | completed |  | 3
+  2026-09-27 | failed | 40P01 | 17
+  2026-09-28 | completed |  | 3
+  2026-09-28 | failed | 40P01 | 29
+  2026-09-29 | completed |  | 56
+  2026-09-29 | failed | 40P01 | 20
+  2026-09-29 | failed | SYNC_RUN_PROCESS_RESTART | 5
+  2026-09-29 | failed | SYNC_RUN_STALE_QUEUED | 16
+  2026-09-29 | queued |  | 6
+  2026-09-30 | completed |  | 34
+  2026-09-30 | failed | SYNC_RUN_PROCESS_RESTART | 3
+  2026-09-30 | queued |  | 24
+  2026-10-01 | completed |  | 11
+  2026-10-01 | failed | SYNC_RUN_PROCESS_RESTART | 3
+  2026-10-01 | queued |  | 50
+Q11 (períodos que o próximo boot tentaria recuperar; mesma query de listarPeriodosNoturnosPendentes):
+  date_from | date_to
+  -------------------
+  2026-09-01 | 2026-09-28
+  2026-09-01 | 2026-09-29
+  2026-09-01 | 2026-09-30
+  3 períodos obsoletos => a recuperação seria tentada de novo a cada restart. Hoje ela falha pelo bug do
+  Date (02_DIAGNOSTICO, seção 3); corrigido o bug sem limpar os órfãos, ela executaria de verdade.
+
+--------------------------------------------------------------------------------
+12. Q12 — SESSÕES DO POSTGRES NO MOMENTO DA AUDITORIA  [FATO SQL]
+--------------------------------------------------------------------------------
+2 sessões: 1 idle (ClientRead) sem application_name (pool do app) e 1 active (o próprio psql).
+Nenhuma sessão "venforce-painel-atualizar-lock" e nenhuma sessão presa => pool saudável e nenhum job em
+execução. Conclusão: os 91 runs ativos são órfãos de fato.
+
+--------------------------------------------------------------------------------
+13. CLASSIFICAÇÃO DOS 91 ÓRFÃOS (decisão proposta, NÃO executada)
+--------------------------------------------------------------------------------
+Podem ser encerrados (90), após backup:
+  - 80 noturnos queued: nunca iniciaram; nada a perder.
+  - 9 manuais running (#487, #490-#494, #508, #513, #514): cortados no meio da coleta; sem candidate.
+  - 1 manual queued (#515): nunca iniciou.
+Preservar para investigação (1): run #472 (conta 81, set completo): todas as fontes completas + 1 candidate,
+  nunca completou. Encerrá-lo não perde dado (candidate de run não completed nunca publica), mas altera
+  finished_at/error_code e é a única evidência viva do travamento pós-coleta. Só entra na reconciliação
+  depois de R3 + logs + backup.
+Fora dos 91: run #507 (conta 9) está completed com candidates não promovidos — não é fechamento, é promoção.
+Código novo proposto: error_code = SYNC_RUN_ORPHAN_POST_INCIDENT_20261002 (nenhum código/front depende dos
+  valores de error_code [FATO: grep]). marcarRunCompleted/marcarRunFailed só atuam com status 'running';
+  um worker "zumbi" que tentasse fechar um run já encerrado recebe null, sem erro.
+Os runs órfãos de escopo manual se autocuram no próximo clique do mesmo escopo (reconciliarRunsStale).
+Os noturnos de tuplas obsoletas (09-01..09-28, 09-01..09-29) NUNCA seriam repetidos pelo agendador
+(o dia seguinte usa outra tupla), por isso ficam queued para sempre e alimentam o Q11.
+
+--------------------------------------------------------------------------------
+14. DADOS A RECONCILIAR / VERIFICAR  [pendências de dados]
+--------------------------------------------------------------------------------
+D-1  90 runs órfãos (item 13). Intervenção: UPDATE controlado, com autorização. NÃO executado.
+D-2  Run #472: preservar; fechar depois da investigação.
+D-3  Run #507: 2 candidates sem promoção. Caminho proposto: um "Atualizar dados" controlado do cliente
+     correspondente (cliente pequeno), que cria run novo e publica pela rota normal. NÃO executado.
+D-4  Setembro/2026 sem import published que cubra 09-01..09-30 por conta: tamanho NÃO medido (R1).
+D-5  Candidates de runs failed/running (8 imports) e 34.042 pagamentos inertes: sem ação.
+D-6  Defasagem do resumo do Cliente 360 (Q9): confirmar falso positivo (R5) e deixar a rodada das 03:00
+     de 03/10 refazer o snapshot.
+D-7  Imports published sem pedido (10): comparar com orders esperados (R6).
+D-8  Rodada noturna de 02/10: não rodou; a de 03/10 (set completo + out 01..02) deve cobrir. [HIPÓTESE]
+
+--------------------------------------------------------------------------------
+15. TABELAS E COLUNAS RELEVANTES (para quem for consultar)
+--------------------------------------------------------------------------------
+central_vendas_sync_runs  (id, cliente_id, cliente_conta_id, marketplace, date_from DATE, date_to DATE, status,
+  requested_by, created_at, started_at, finished_at, error_code, error_message, completeness_status);
+  índice único parcial uq_central_vendas_sync_runs_ativo_v2 sobre (cliente_id, COALESCE(cliente_conta_id,0),
+  marketplace, date_from, date_to) WHERE status IN ('queued','running').
+central_vendas_sync_sources (sync_run_id, source, status, complete, expected_count, received_count)
+central_vendas_imports (id, cliente_slug, competencia, cliente_conta_id, sync_run_id, publication_status
+  candidate|published|legacy, coverage_date_from, coverage_date_to, published_at)
+central_vendas_pedidos (import_id, pedido_id UNIQUE por import) | central_vendas_mp_payments |
+central_vendas_mp_settlement_reports | cliente_360_resumos_mensais | ads_resumos_mensais | cliente_contas
+Definição: server/sql/central_vendas_schema.sql, server/sql/cliente360_schema.sql.
+Limiares: QUEUED_STALE 15 min, RUNNING_STALE 60 min (centralVendasSyncRunService.js).
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo com os resultados da parte 1 (Q1-Q12). Partes 2/pré-voo pendentes.
+
+
+########## ARQUIVO: 04_HOTFIXES.txt ##########
+
+================================================================================
+INCIDENTE P0 2026-10-02 — 04_HOTFIXES
+PR #218, hotfix de datas, alterações, testes e status de publicação
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
+
+QUADRO DE STATUS
+  Hotfix                         Branch / commit                              Status
+  1. Pool/lock do Painel         hotfix/painel-contas-pool-deadlock           PUBLICADO: PR #218, commit
+                                 commit 387de56, merge 1249d98 em main        387de56, merge 1249d98;
+                                                                              deploy no Render [RELATO]
+  2. Datas (dateFrom/dateTo)     hotfix/central-vendas-date-parse             IMPLEMENTADO E TESTADO LOCALMENTE;
+                                 (sobre 1249d98)                              SEM commit, SEM push, SEM PR,
+                                                                              SEM deploy [TESTE LOCAL]
+
+--------------------------------------------------------------------------------
+1. HOTFIX 1 — PR #218 (PUBLICADO)
+--------------------------------------------------------------------------------
+Título: fix: impedir que "Atualizar dados" do Painel de Contas esgote o pool do PostgreSQL
+Base: origin/main 5b702e1 (merge do PR #216). Resultado em main: 1249d98 (merge do PR #218, 2026-10-02).
+Diff: exatamente 4 arquivos, +678/-64, um commit (387de56). Nada da unificação de clientes
+  (feat/unificacao-clientes-contas), nenhuma migration, nenhum frontend. [FATO git]
+Arquivos:
+  server/config/database.js                              (modificado)
+  server/config/databaseConexao.js                       (novo; configConexao(), lerMsPositivo())
+  server/services/painelContas/painelContasAtualizacao.js (modificado)
+  server/tests/painelContasPoolDeadlock.test.js          (novo, 472 linhas, 54 verificações)
+
+O que mudou:
+  a) Lock FORA do pool: pg.Client dedicado (application_name "venforce-painel-atualizar-lock"),
+     timeout de conexão 10 s e de query 10 s, keepAlive; encerrar a sessão solta lock e vaga de uma vez.
+     Liberação no fim do job, em qualquer erro, na queda da conexão (há listener de 'error') e no
+     restart do processo.
+  b) Limite de atualizações simultâneas: padrão 2 (env PAINEL_ATUALIZAR_MAX_SIMULTANEAS, máximo 10).
+     Contador local síncrono (checado antes de abrir conexão) + vagas globais entre instâncias
+     (N vagas = N advisory locks na mesma sessão dedicada). Acima do limite: HTTP 429 código
+     LIMITE_ATUALIZACOES_SIMULTANEAS, mensagem "Já há N atualizações em andamento. Aguarde uma terminar e
+     tente de novo." Mesmo cliente x competência continua recebendo 409. A chave do lock por escopo é a
+     mesma de antes, então a versão nova e a antiga convivem durante o deploy.
+  c) Prazo no pool: connectionTimeoutMillis 30 s (env PG_POOL_CONNECTION_TIMEOUT_MS). Limita só a
+     OBTENÇÃO da conexão; não há statement_timeout global (nenhuma query/transação em curso é interrompida).
+  d) Fórmulas financeiras, sincronização, publicação, grants e Ads NÃO foram alterados.
+Mudança de comportamento visível: a partir da 3ª atualização simultânea o admin recebe 429 com mensagem
+  clara (o frontend já exibe a mensagem do servidor).
+
+Testes do #218 [TESTE LOCAL, usa o pg-pool real com as opções reais; sem banco real]
+  - painelContasPoolDeadlock.test.js (novo): 54 verificações OK. Seções: (1) configuração; (2) 10 cliques
+    com o limite padrão => 2 executam e 8 recebem 429, nenhuma conexão do pool reservada, /me/context e
+    /me/portfolio respondem (app Express real, HTTP); (3) limite 10: as 10 executam, /me responde, todas
+    as gravações passam, locks e conexões liberados exatamente uma vez; (4) desfechos de
+    adquirirLockEscopo; (5) limite global entre instâncias => 429; (6) falha antes do job nascer libera
+    lock e vaga; (7) queda da conexão dedicada no meio do job; (8) restart no meio de atualizações: nenhum
+    409/429 indevido e run manual novo criado.
+  - Prova de mutação: com o lock de volta no pool, o teste falha.
+  - painelContasAtualizacao.test.js (existente, inalterado): 62 OK.
+  - pg.Client real contra endereços mortos (nunca produção): falha em 6 ms (porta fechada) e em 10 s
+    (host sem resposta), sem conexão vazada.
+  - Suíte completa: 303/306 com o hotfix; 302/305 na main sem ele (a diferença é o teste novo).
+  - 3 falhas PREEXISTENTES, idênticas na main: tests/designStudioWorkspace.test.js,
+    tests/meliAnunciosOrdenacaoGlobal.test.js, tests/mlTokenService.test.js.
+Status de publicação: merge em main (1249d98) e deploy no Render [RELATO do usuário; confirmou HTTP 200 em
+  /me/context e /me/portfolio, Carteira e Painel de Contas carregando]. NÃO foi feito, ainda, um clique
+  controlado de "Atualizar dados" em produção para validar o caminho novo. [NÃO VERIFICADO]
+Riscos residuais declarados no PR: ver 05_FALHAS_PENDENTES.txt (P-13 a P-18).
+Observação de processo: o PR foi aberto fora do gh (gh CLI não autenticado nesta máquina); a branch foi
+  enviada com refspec explícita. O upstream configurado da branch local apontava para origin/main, então um
+  "git push" sem refspec teria alvo a main. O remote "gpt" aponta para um repositório diferente (não usar).
+
+--------------------------------------------------------------------------------
+2. HOTFIX 2 — DATAS (dateFrom/dateTo) — IMPLEMENTADO LOCALMENTE, NÃO PUBLICADO
+--------------------------------------------------------------------------------
+Branch: hotfix/central-vendas-date-parse. Worktree local: .claude/worktrees/hotfix-central-date-parse
+  (dentro do clone do repositório). Base: origin/main 1249d98. Upstream da branch aponta para origin/main
+  (cuidado: nunca "git push" sem refspec). Estado: alterações no working tree, SEM commit.
+Causa: ver 02_DIAGNOSTICO, seção 3.
+Diff (2 arquivos, sem unificação/migration/.sql/frontend):
+  server/services/centralVendas/centralVendasSyncRunService.js   (+26/-8)
+  server/tests/centralVendasDatasDate.test.js                    (novo, 41 verificações)
+Mudanças no serviço:
+  1. formatarDiaIso(valor) (novo, exportado): Date válida => getters LOCAIS (getFullYear/getMonth/getDate);
+     string "YYYY-MM-DD" (ou com T/espaço depois) => os 10 primeiros caracteres; resto/inválido => null.
+  2. sanitizeRun: dateFrom/dateTo passam por formatarDiaIso (antes: String(...).slice(0,10)).
+  3. listarPeriodosNoturnosPendentes: a query devolve TO_CHAR(r.date_from,'YYYY-MM-DD') AS date_from e
+     TO_CHAR(r.date_to,'YYYY-MM-DD') AS date_to (o dia sai como texto do banco, independe do fuso do Node);
+     o mapeamento também usa formatarDiaIso (defesa em profundidade: aceita texto ou Date).
+Fora do escopo, de propósito (decisões do usuário em 2026-10-02):
+  - A função dia() (toISOString) fica como está, salvo se testes provarem que é necessária para a
+    recuperação (não é: a recuperação não a usa).
+  - Limitar a recuperação do boot a períodos recentes = correção SEPARADA.
+Testes [TESTE LOCAL] — server/tests/centralVendasDatasDate.test.js
+  - Toda Date de teste vem do parser REAL do pg (require('pg-types').getTypeParser(1082)(...)), nunca
+    construída à mão.
+  - Helper: Date real (2026-10-01, 12-31, 01-01, 03-01, 2028-02-29), ida e volta de 94 dias (set-nov/2026
+    + fev/mar bissexto), texto, texto ISO com hora, null/undefined/vazio, Date inválida => null (nunca
+    "NaN"), texto que não é data ("Thu Oct 01") => null, número => null.
+  - sanitizeRun com Date real / texto / nulo.
+  - listarPeriodosNoturnosPendentes com Date real e com texto; a SQL contém TO_CHAR para as duas colunas.
+  - Composição REAL (o buraco do teste antigo): recuperarRodadasPendentes -> listarPeriodosNoturnosPendentes
+    real -> criarSyncRun real; o banco falso lança uma sentinela na primeira query após a validação.
+    O teste afirma que nenhuma unidade falha por "dateFrom e dateTo" e que todas só param na sentinela.
+  - Os checks sensíveis a fuso rodam em subprocessos com TZ = UTC, America/Sao_Paulo, America/New_York,
+    Asia/Tokyo, Pacific/Kiritimati e Pacific/Pago_Pago (22 verificações cada). Total: 41 OK.
+  - Prova de mutação (4 regressões, todas detectadas; arquivo restaurado com hash idêntico):
+      M1 helper volta a String(Date).slice(0,10)        => "Thu Oct 01"
+      M2 helper usa toISOString (como o dia() atual)    => 2026-09-30 em Tóquio
+      M3 query volta a devolver a coluna crua (sem TO_CHAR)
+      M4 listar volta ao String(row.date_from).slice (código de produção original)
+  - Query final validada com a função REAL contra PGlite (schema real do repositório): períodos
+    distintos, ordenados, YYYY-MM-DD; run manual excluído. (PGlite NÃO é dependência do repositório, por
+    isso esse teste de SQL não é automatizado.)
+  - Suíte completa: 304/307 no hotfix 2 contra 303/306 na base (1249d98 ≡ 387de56 em árvore). As mesmas 3
+    falhas preexistentes; a única diferença é centralVendasDatasDate.test.js (OK).
+Status: SEM commit, SEM push, SEM PR, SEM deploy. Aguardando autorização do usuário.
+Restrição de ORDEM (importante): publicar este hotfix ANTES de fechar os runs órfãos faria o próximo boot
+  executar de verdade a recuperação para 3 períodos obsoletos. Ver 06_PLANO_RECUPERACAO.txt.
+
+--------------------------------------------------------------------------------
+3. TRABALHO FUTURO (CORREÇÕES SEPARADAS, NÃO IMPLEMENTADAS)
+--------------------------------------------------------------------------------
+  C-1  Limitar a recuperação de boot a períodos/rodadas recentes (evita acumular tuplas obsoletas).
+  C-2  Timeout por unidade no agendador noturno (3 unidades presas ocupam todas as vagas de concorrência).
+  C-3  Investigar e tratar o travamento depois da coleta (#363, #399, #472), conforme a evidência de logs.
+  C-4  /health consultar o banco (um pool preso hoje não dispara restart automático).
+  C-5  Trocar dia() por formatarDiaIso (opcional, higiene).
+  C-6  Riscos P-13 a P-17 de 05_FALHAS_PENDENTES.txt.
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo: #218 publicado; hotfix de datas implementado e testado, sem commit.
+
+
+########## ARQUIVO: 05_FALHAS_PENDENTES.txt ##########
+
+================================================================================
+INCIDENTE P0 2026-10-02 — 05_FALHAS_PENDENTES
+Todas as falhas identificadas, riscos residuais e respectivos impactos
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
+Status possíveis: RESOLVIDO (em produção) | CORRIGIDO LOCAL (não publicado) | ABERTO | EM INVESTIGAÇÃO |
+                  ACEITO (risco conhecido, sem ação planejada)
+Severidade: ALTA = pode afetar dados do cliente ou disponibilidade; MÉDIA = degrada operação; BAIXA = higiene.
+Para acrescentar uma falha nova, use o próximo número livre (P-NN) e registre no fim deste arquivo.
+
+--------------------------------------------------------------------------------
+A. FALHAS DO INCIDENTE E DERIVADAS
+--------------------------------------------------------------------------------
+P-01  Lock do "Atualizar dados" em conexão do pool esgota o pool compartilhado
+      Severidade ALTA | Status RESOLVIDO pelo PR #218 (deploy no Render) [RELATO]
+      Impacto: Portal inteiro fora (/me/context, /me/portfolio). Evidência: 01_RESUMO_GERAL, seção 4.
+      Pendência: validar em produção UMA atualização controlada (06, etapa 5). [NÃO VERIFICADO]
+
+P-02  Bug do Date na recuperação de boot do agendador noturno (201 falhas)
+      Severidade MÉDIA | Status CORRIGIDO LOCAL (hotfix 2, sem commit) [TESTE LOCAL]
+      Impacto: a retomada de runs noturnos após restart nunca funcionou desde 2026-09-25 (4600446);
+      cada conta x período falha antes de criar run; sem dano a dados. Ref.: centralVendasSyncRunService.js
+      (listarPeriodosNoturnosPendentes, linhas 354-386 em 1249d98).
+      ATENÇÃO: publicar a correção sem antes fechar os órfãos faz a recuperação rodar de verdade (06).
+
+P-03  sanitizeRun converte DATE com String(Date).slice(0,10)
+      Severidade MÉDIA (provável) | Status CORRIGIDO LOCAL (hotfix 2) [TESTE LOCAL]
+      Impacto: run.dateFrom/dateTo inválidos; consumidor conhecido: endpoint de repasse MP
+      (centralVendasController.js ~477, iniciarOuRetomarMercadoPagoSettlement). Efeito exato [NÃO VERIFICADO];
+      sem uso observado (0 relatórios de repasse na janela).
+
+P-04  Rodada noturna de 02/10 03:00 não rodou
+      Severidade MÉDIA | Status ABERTO (efeito) / provável causa resolvida pelo #218
+      Impacto: dados de set/2026 e de 01/10 não foram atualizados pelo agendador nessa madrugada.
+      Evidência: Q10 (0 de 162 combinações com run noturno). Causa: pool esgotado [HIPÓTESE].
+      Ação: observar a rodada de 03/10 (06, etapa 8).
+
+P-05  3 unidades noturnas travam por rodada e ocupam as 3 vagas de concorrência
+      Severidade ALTA | Status ABERTO (causa NÃO provada)
+      Impacto: rodada de 30/09: 34 de 61 unidades concluídas; rodada de 01/10 (fecha setembro): 11 de 64.
+      Unidades restantes ficam queued até um restart. Evidência: Q2/Q3. Não há timeout por unidade.
+      Hipótese em teste: ver P-06. O #218 NÃO garante resolver (D7: espera por lock de banco não é coberta).
+      Pode haver contas sem setembro completo publicado (item P-07).
+
+P-06  Runs que travam DEPOIS de coletar todas as fontes (#363, #399, #472; contas 81 e 83, 09-01..09-30)
+      Severidade ALTA | Status EM INVESTIGAÇÃO
+      Impacto: run nunca completa, candidate nunca publica; #472 continua running.
+      Falta: R2/R3 (SQL) e linhas de log do Render (marcos a-d, 06). Hipóteses: 02_DIAGNOSTICO D5-D7.
+
+P-07  Possível lacuna de setembro/2026 publicada por conta
+      Severidade ALTA (se confirmada) | Status NÃO VERIFICADO (consulta R1 pronta, não executada)
+      Impacto: a leitura exige published com cobertura que CONTENHA o trecho pedido; contas cujo melhor
+      import cobre só até 09-28/09-29 podem cair no legado/vazio na leitura de setembro (mês fechado).
+      Origem provável: P-05 na rodada de 01/10 (64 unidades, 11 concluídas) [HIPÓTESE].
+
+P-08  91 runs órfãos (80 noturnos queued + 11 manuais)
+      Severidade MÉDIA | Status ABERTO (reconciliação preparada, NÃO executada)
+      Impacto: poluem a visão de runs ativos e alimentam a recuperação de boot (Q11: 3 períodos obsoletos).
+      Os de escopo manual se autocuram no próximo clique do mesmo escopo; os noturnos de tuplas antigas
+      nunca seriam repetidos. Ver 03_BANCO_DADOS, itens 13-14; plano em 06.
+
+P-09  Run #507 com 2 imports candidate não promovidos
+      Severidade MÉDIA | Status ABERTO
+      Impacto: o cliente do run #507 continua exibindo o published anterior para as competências afetadas.
+      Provável vítima do impasse (terminou às 00:27:53) [HIPÓTESE]. Ação: clique controlado (06, etapa 5).
+
+P-10  Defasagem do resumo do Cliente 360 (9 linhas)
+      Severidade BAIXA a MÉDIA | Status NÃO VERIFICADO
+      3 linhas antigas (anteriores ao incidente); 6 podem ser falso positivo (R5). O snapshot é refeito pela
+      rodada noturna / pelo "Atualizar dados" quando todas as contas do cliente publicam.
+
+P-11  10 imports published sem pedido
+      Severidade BAIXA | Status NÃO VERIFICADO (R6): vazio legítimo x perda de dado.
+
+P-12  Origem do lote de 27 runs de 2026-09-29 11:11:31 não explicada
+      Severidade BAIXA | Status NÃO VERIFICADO (depende de log do Render).
+
+--------------------------------------------------------------------------------
+B. RISCOS RESIDUAIS DECLARADOS NO PR #218 (FORA DO ESCOPO DELE)
+--------------------------------------------------------------------------------
+P-13  server/services/mlTokenService.js:365 (refreshMlGrant) segura uma conexão do pool (db.connect()) durante
+      o fetch OAuth ao Mercado Livre, sem timeout.
+      Severidade MÉDIA | ABERTO. Impacto: um ML lento prende conexões do pool; vários refresh simultâneos
+      reproduzem a classe de problema do incidente em escala menor.
+
+P-14  Os schedulers noturno e de margem projetada seguram 1 conexão do pool cada durante a rodada.
+      Severidade BAIXA a MÉDIA | ABERTO. Reduz a folga do pool (max 10).
+
+P-15  ensureSquadsTables roda DDL dentro do request de /me.
+      Severidade MÉDIA | ABERTO. DDL em caminho quente pode bloquear/serializar requisições.
+
+P-16  /health não consulta o banco.
+      Severidade MÉDIA | ABERTO. Um pool preso não dispara restart automático (foi o que aconteceu).
+
+P-17  Fetches ao Mercado Livre da rodada sem prazo por job.
+      Severidade MÉDIA | ABERTO. Um job pendurado agora ocupa só 1 vaga do Painel, sem afetar o pool, mas
+      no agendador noturno ocupa uma das 3 vagas de concorrência (ver P-05).
+
+P-18  Com o pool cheio por mais de 30 s, uma operação passa a falhar com erro em vez de esperar para sempre.
+      Severidade BAIXA | ACEITO. O erro não entra no retry de 40P01/40001 da Central; a etapa falha de forma
+      visível e a regra "só publicar run completo" continua valendo. Não há statement_timeout global
+      (de propósito); portanto espera por LOCK de banco não é limitada.
+
+P-19  Lacuna de runs manuais órfãos em running por até 60 min (RUNNING_STALE_MINUTES).
+      Severidade BAIXA | ACEITO. Um clique nessa janela reaproveita o órfão, observa até 20 min
+      (OBSERVAR_TIMEOUT_MS) e a conta sai "ignorada". Fechar órfãos manuais no boot não é seguro (a Central
+      também cria runs manuais; pode haver múltiplas instâncias).
+
+P-20  A recuperação de boot retoma qualquer período antigo queued/running (acumula tuplas obsoletas).
+      Severidade MÉDIA | ABERTO (decisão do usuário: correção separada). Ver C-1 em 04_HOTFIXES.
+
+--------------------------------------------------------------------------------
+C. HIGIENE E PROCESSO
+--------------------------------------------------------------------------------
+P-21  dia() em buscarRunAtivoDaConta usa toISOString(): errado a leste de UTC. BAIXA | ACEITO (Render é UTC).
+P-22  3 testes falham desde antes dos hotfixes (iguais na main): designStudioWorkspace,
+      meliAnunciosOrdenacaoGlobal, mlTokenService. BAIXA | ABERTO, não relacionados.
+P-23  Teste da recuperação usava mock com strings (não exercitava o tipo real). Coberto pelo hotfix 2 [TESTE LOCAL].
+P-24  A branch hotfix/... local tem upstream = origin/main: "git push" sem refspec miraria a main. Processo:
+      sempre refspec explícito. O remote "gpt" aponta para outro repositório: não usar.
+P-25  gh CLI não autenticado nesta máquina: PRs precisam ser abertos pelo navegador ou após "gh auth login".
+P-26  server/.env local aponta para o banco de PRODUÇÃO: nunca subir o backend local sem sobrescrever
+      DATABASE_URL (migrations rodam no boot). ALTA como risco operacional | ACEITO com disciplina.
+P-27  Este repositório é PÚBLICO: documentos de incidente não devem conter nomes de clientes, ids de
+      usuários, credenciais ou URLs de conexão (esta documentação segue essa regra).
+
+--------------------------------------------------------------------------------
+D. MATRIZ RESUMIDA (o que bloqueia o quê)
+--------------------------------------------------------------------------------
+Bloqueia retomar a unificação de clientes (critério do usuário): P-08 (órfãos), P-05/P-06 (nenhuma unidade
+  presa na rodada de 03/10), P-02 publicado e validado, P-09 (promoção do #507) e uma atualização controlada
+  validada em produção. Ver 06_PLANO_RECUPERACAO.txt, seção 5.
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo (P-01 a P-27).
+
+
+########## ARQUIVO: 06_PLANO_RECUPERACAO.txt ##########
+
+================================================================================
+INCIDENTE P0 2026-10-02 — 06_PLANO_RECUPERACAO
+Etapas executadas, próximas ações, condições de segurança e decisões aguardando autorização
+Última atualização: 2026-10-02 ~16:00 (BRT)
+================================================================================
+Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
+
+REGRAS PERMANENTES (do usuário, valem para quem continuar o trabalho)
+  - Não executar migrations; não alterar dados de produção; não excluir registros; não fazer merge, push
+    ou deploy sem autorização EXPRESSA e específica daquela etapa; não encerrar sessões do banco; não
+    reiniciar servidor. Aprovação de uma etapa não vale para a seguinte.
+  - Não alterar fórmulas financeiras; não fazer refatorações gerais; não misturar a unificação de clientes
+    (branch feat/unificacao-clientes-contas) nem usar o remote "gpt".
+  - Todo push usa refspec explícito (refs/heads/X:refs/heads/X); as branches locais têm upstream = origin/main.
+  - Todo SQL de produção nesta fase é SOMENTE LEITURA, salvo a reconciliação autorizada.
+  - Não expor credenciais, tokens ou URLs de conexão; repositório PÚBLICO: sem nomes de clientes nos docs.
+
+--------------------------------------------------------------------------------
+1. ETAPAS JÁ EXECUTADAS
+--------------------------------------------------------------------------------
+E-1  Investigação somente leitura; causa raiz provada e reproduzida localmente.            [FATO / TESTE LOCAL]
+E-2  Restart manual do Web Service no Render: Portal volta.                                [RELATO]
+E-3  Hotfix 1 (PR #218): implementado, testado (54 + 62; suíte 303/306), commit 387de56, push só dessa
+     branch, PR aberto, merge 1249d98, deploy no Render.                                   [FATO git / RELATO]
+E-4  Verificação "retomada após restart sem duplicação" (código + teste, seção 8 do teste novo).  [TESTE LOCAL]
+E-5  Auditoria SQL parte 1 (Q1-Q12) executada pelo usuário em produção, somente leitura.     [FATO]
+E-6  Análise: 91 órfãos, rodada de 02/10 ausente, padrão de unidades travadas, bug do Date.  [FATO + HIPÓTESE]
+E-7  Hotfix 2 (datas) implementado e testado em branch local; sem commit.                    [TESTE LOCAL]
+E-8  Scripts preparados e testados em PGlite (nada executado em produção): parte 2 da auditoria, pré-voo,
+     simulação somente leitura, backup, dry-run com ROLLBACK, aplicação, reversão.            [TESTE LOCAL]
+E-9  Esta central de documentação (docs/incidentes/P0_2026-10-02/) em branch própria.
+
+--------------------------------------------------------------------------------
+2. PLANO — ORDEM SEGURA E CRITÉRIOS DE LIBERAÇÃO
+--------------------------------------------------------------------------------
+Etapa 0 — COLETA SOMENTE LEITURA (AUTORIZADA pelo usuário em 2026-10-02; AINDA NÃO EXECUTADA)
+  Quem: usuário roda; o agente analisa. Comando: passo0_coletar.sh (07_ANEXO_SQL_E_SCRIPTS, seção 1).
+  Conteúdo: parte 2 da auditoria (R1-R8), pré-voo (F1-F5) e simulação da reconciliação (S1-S4).
+  Segurança: sessão com default_transaction_read_only=on + BEGIN READ ONLY + timeouts + ROLLBACK.
+  Em paralelo, coletar do Render (itens 3 abaixo).
+  Liberar a etapa 1 quando: F1 mostrar os 91 no estado do relatório; F3/F4 sem sessão de lock nem lock nas
+  linhas; Render com 1 instância no deploy 1249d98; simulação S1 = 90 conformes / 0 recusados; R1-R8 lidos.
+  Limite de planejamento do F5 (usuário): até 15 sincronizações reais; sujeito à capacidade verificada;
+  NÃO autoriza execução automática.
+
+Etapa 1 — BACKUP EM CSV (depende da etapa 0; leitura no banco, escreve só arquivos na máquina do usuário)
+  Comando: passo1_backup.sh. Gera runs/sources/imports dos 91 runs (inclui #472) + SHA-256.
+  Critério: runs = 91 linhas; arquivos guardados até o fim da recuperação.
+
+Etapa 2a — SIMULAÇÃO SOMENTE LEITURA (já incluída no passo 0)
+  Mostra quais alvos seriam encerrados/recusados pelos MESMOS filtros e pela MESMA trava G1.
+Etapa 2b — DRY-RUN COMPLETO COM ROLLBACK (NÃO autorizado; exige OK expresso)
+  Executa o UPDATE de verdade dentro de uma transação e DESFAZ (ROLLBACK). Só depois de o usuário conferir
+  a simulação e autorizar. Critério: resumo exato noturno/queued=80, manual/running=9, manual/queued=1;
+  nenhum erro G1/G2.
+
+Etapa 3 — RECONCILIAÇÃO (APLICAR) — NÃO AUTORIZADA
+  Fecha 90 runs (80 noturnos queued + 9 manuais running + #515 queued) com error_code
+  SYNC_RUN_ORPHAN_POST_INCIDENT_20261002. PRESERVA o run #472.
+  Pré-condições: etapas 0, 1 e 2 conferidas; Q12/F3 limpos; janela fora de 02:00-04:00 BRT (rodada noturna).
+  Pós-condição: Q1 só com #472 e eventuais runs legítimos novos; Q11 reavaliado com o F5.
+  Rollback: reconciliacao_orfaos_REVERTER.sql a partir do CSV (aborta se já existir run ativo do mesmo escopo).
+
+Etapa 4 — #472 (após R3 + logs + backup): encerrar com script derivado ou deixar o autocuramento agir;
+  registrar a causa do travamento ou declará-la "não provada".
+
+Etapa 5 — ATUALIZAÇÃO CONTROLADA (valida o #218 e promove o #507)
+  Um único "Atualizar dados" de um cliente pequeno (o do run #507), sem outras atualizações simultâneas.
+  Esperado: durante a execução, 1 sessão "venforce-painel-atualizar-lock" no pg_stat_activity (0 ao fim);
+  run completed e imports published novos (os anteriores permanecem; a leitura passa a escolher o novo);
+  sem pedido repetido; resumo do Cliente 360 e Ads atualizados sem linha duplicada; /me/context e
+  /me/portfolio 200 o tempo todo; um 2º clique simultâneo recebe 429 (esperado, não é falha).
+  Parar se: 5xx em /me, sessão presa idle/ClientRead, run running sem avanço por mais de 20 min.
+
+Etapa 6 — HOTFIX 2 (datas): commit, PR e revisão (cada um com autorização expressa).
+  Critério: testes T1-T6 verdes (04_HOTFIXES), diff só no serviço e no teste, mesmas 3 falhas preexistentes.
+
+Etapa 7 — DEPLOY do hotfix 2 (fora de 02:00-04:00 BRT; usuário executa)
+  Antes: Q11 vazio (ou F5 dentro do limite de 15 sincronizações reais). Depois: boot sem a mensagem
+  "dateFrom e dateTo", Q1 sem novos órfãos, Q12 limpo.
+
+Etapa 8 — OBSERVAR A RODADA DAS 03:00 DE 03/10 (set completo + out 01..02)
+  Enviar Q2, Q10 e Q12 na manhã seguinte. Critério: unidades concluídas sem 3 travadas e sem sessão presa.
+  Se travar de novo: abre a frente do timeout por unidade (C-2).
+
+Etapa 9 — LACUNA DE SETEMBRO (R1): ressincronizar contas sem cobertura completa — DECISÃO DO USUÁRIO,
+  só depois da etapa 8 e escalonada, para não repetir o travamento.
+
+--------------------------------------------------------------------------------
+3. EVIDÊNCIAS DO RENDER AINDA NECESSÁRIAS (runs #363, #399 e #472)  [NÃO COLETADAS]
+--------------------------------------------------------------------------------
+Janelas: #363 = 30/09 09:28-17:27 | #399 = 30/09 17:27 em diante | #472 = 01/10 15:03 em diante.
+Marcos de log (em ordem) e o que a presença/ausência diz:
+  a) "[centralVendas] claims classificados: devolucoes=..."          fim da classificação, antes de gravar
+  b) "[centralVendas] sync <slug> <de>..<até>: orders=... pedidos=..." logo DEPOIS de gravar o candidate
+  c) "[centralVendas] sync-run #N completeness {...} overall=..."     logo depois de marcarRunCompleted
+  d) "[centralVendas] sync-run #N publicado" | "nao publicado: ..." | "erro ao tentar publicar"
+  Tem (b) e não tem (c): travou na finalização do worker (espera de banco).
+  Tem (a) e não tem (b): travou gravando pedidos. Não tem (a): travou antes.
+Outras evidências: qualquer "error"/"unhandledRejection"/"timeout"; histórico de Events do serviço (deploys,
+restarts, OOM/crash) com horários; gráficos de memória/CPU nessas janelas; nº de instâncias do serviço;
+deploy ativo (esperado 1249d98); valores (não segredos) de CENTRAL_VENDAS_NOTURNO_ENABLED,
+SYNC_CENTRAL_CONCURRENCY, PG_POOL_CONNECTION_TIMEOUT_MS, PAINEL_ATUALIZAR_MAX_SIMULTANEAS; retenção de logs
+do plano (se 30/09 já expirou, #472 e a rodada de hoje são a única evidência).
+Também: log das 201 falhas (horário e confirmação de que vieram do boot) e o histórico de deploys de 29/09
+11:08 em diante (para D8 e para o lote de 29/09 11:11:31).
+
+--------------------------------------------------------------------------------
+4. DECISÕES AGUARDANDO AUTORIZAÇÃO DO USUÁRIO
+--------------------------------------------------------------------------------
+  A-1  Rodar o passo 0 (já autorizado) e enviar a saída + logs do Render.
+  A-2  Rodar o backup (passo 1) após a análise do passo 0.
+  A-3  Dry-run completo com ROLLBACK (2b) ou considerar a simulação suficiente.
+  A-4  APLICAR a reconciliação (UPDATE de 90 runs) — NÃO autorizado.
+  A-5  Commit / PR / deploy do hotfix 2 — NÃO autorizados (hoje só implementação + testes locais).
+  A-6  Incorporar à main a pasta docs/incidentes/P0_2026-10-02/ (esta documentação) — NÃO autorizado.
+  A-7  Ressincronização de setembro (etapa 9) e eventual troca de dia() por formatarDiaIso (C-5).
+  A-8  Escopo da limitação da recuperação a períodos recentes (C-1): correção separada, ainda sem prazo.
+
+--------------------------------------------------------------------------------
+5. CRITÉRIOS PARA RETOMAR A UNIFICAÇÃO DE CLIENTES (pedido do usuário)
+--------------------------------------------------------------------------------
+  1. Q11 sem períodos obsoletos e Q1 sem órfãos (além do que estiver em investigação).
+  2. R1 mostra setembro completo nas contas, ou lacuna conhecida e aceita.
+  3. Rodada das 03:00 de 03/10 concluída sem unidades travadas e sem sessão presa (Q2, Q10, Q12).
+  4. Hotfix 2 publicado com suíte verde (mesmas 3 falhas preexistentes) e boot sem erro de datas.
+  5. Atualização controlada concluída, publicada e sem duplicação (etapa 5).
+  6. 24 h sem sessão de banco presa e sem "timeout exceeded when trying to connect" recorrente nos logs.
+
+--------------------------------------------------------------------------------
+REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
+--------------------------------------------------------------------------------
+2026-10-02 ~16:00  Criação do arquivo. Etapa 0 autorizada e ainda não executada; nada de escrita autorizado.
