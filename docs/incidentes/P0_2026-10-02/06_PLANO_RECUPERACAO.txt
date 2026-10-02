@@ -1,7 +1,7 @@
 ================================================================================
 INCIDENTE P0 2026-10-02 — 06_PLANO_RECUPERACAO
 Etapas executadas, próximas ações, condições de segurança e decisões aguardando autorização
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 
@@ -29,11 +29,17 @@ E-7  Hotfix 2 (datas) implementado e testado em branch local; sem commit.       
 E-8  Scripts preparados e testados em PGlite (nada executado em produção): parte 2 da auditoria, pré-voo,
      simulação somente leitura, backup, dry-run com ROLLBACK, aplicação, reversão.            [TESTE LOCAL]
 E-9  Esta central de documentação (docs/incidentes/P0_2026-10-02/) em branch própria.
+E-10 PASSO 0 EXECUTADO pelo usuário (~16:23, somente leitura, 3 arquivos com ROLLBACK, sem erro). Resultados em
+     03_BANCO_DADOS, seção 16. Conclusão: sem sessões/locks impeditivos; 85 dos 90 alvos aptos; 5 já fechados
+     pelo sistema; F5 "depois" = 0 sincronizações reais; lacuna de setembro em 67 de 81 contas.      [FATO]
+E-11 Reconciliação regenerada como v2 (85 alvos; #472 preservado; tolera alvo fechado pelo sistema; qualquer
+     outra divergência aborta) e scripts de backup/dry-run reescritos (URL por prompt oculto, backup que não
+     sobrescreve, confirmação de ROLLBACK em outra conexão); testados em PGlite e com psql falso. [TESTE LOCAL]
 
 --------------------------------------------------------------------------------
 2. PLANO — ORDEM SEGURA E CRITÉRIOS DE LIBERAÇÃO
 --------------------------------------------------------------------------------
-Etapa 0 — COLETA SOMENTE LEITURA (AUTORIZADA pelo usuário em 2026-10-02; AINDA NÃO EXECUTADA)
+Etapa 0 — COLETA SOMENTE LEITURA — EXECUTADA em ~2026-10-02 16:23 (resultados em 03_BANCO_DADOS, seção 16)
   Quem: usuário roda; o agente analisa. Comando: passo0_coletar.sh (07_ANEXO_SQL_E_SCRIPTS, seção 1).
   Conteúdo: parte 2 da auditoria (R1-R8), pré-voo (F1-F5) e simulação da reconciliação (S1-S4).
   Segurança: sessão com default_transaction_read_only=on + BEGIN READ ONLY + timeouts + ROLLBACK.
@@ -43,20 +49,26 @@ Etapa 0 — COLETA SOMENTE LEITURA (AUTORIZADA pelo usuário em 2026-10-02; AIND
   Limite de planejamento do F5 (usuário): até 15 sincronizações reais; sujeito à capacidade verificada;
   NÃO autoriza execução automática.
 
-Etapa 1 — BACKUP EM CSV (depende da etapa 0; leitura no banco, escreve só arquivos na máquina do usuário)
-  Comando: passo1_backup.sh. Gera runs/sources/imports dos 91 runs (inclui #472) + SHA-256.
-  Critério: runs = 91 linhas; arquivos guardados até o fim da recuperação.
+Etapa 1 — BACKUP EM CSV — PRONTA para executar (leitura no banco, escreve só arquivos na máquina do usuário)
+  Comando: bash ~/recuperacao_p0_20261002/passo1/passo1_backup.sh (URL por prompt oculto).
+  Gera runs/sources/imports dos 91 runs (inclui #472 e os 5 já fechados) + SHA-256, em ../backup/ (700/600).
+  NÃO sobrescreve backup existente (ele guarda o estado ANTERIOR à reconciliação).
+  Critério: runs = 91 linhas; o CSV também revelará o error_code dos 5 runs já fechados (confirma D15).
+  Urgência: o backup preserva o estado do #472 caso alguém clique em setembro na conta 81 (isso o fecharia).
 
 Etapa 2a — SIMULAÇÃO SOMENTE LEITURA (já incluída no passo 0)
   Mostra quais alvos seriam encerrados/recusados pelos MESMOS filtros e pela MESMA trava G1.
-Etapa 2b — DRY-RUN COMPLETO COM ROLLBACK (NÃO autorizado; exige OK expresso)
-  Executa o UPDATE de verdade dentro de uma transação e DESFAZ (ROLLBACK). Só depois de o usuário conferir
-  a simulação e autorizar. Critério: resumo exato noturno/queued=80, manual/running=9, manual/queued=1;
-  nenhum erro G1/G2.
+Etapa 2b — DRY-RUN COMPLETO COM ROLLBACK — PRONTO (v2; o usuário pediu a preparação)
+  Comando: bash ~/recuperacao_p0_20261002/passo1/passo2_dryrun_COM_ROLLBACK.sh.
+  Executa o UPDATE de verdade dentro de uma transação e a DESFAZ (ROLLBACK); o script recusa rodar sem backup,
+  com SHA divergente, sem ROLLBACK final ou com COMMIT, e depois confirma em OUTRA conexão somente-leitura que
+  0 runs receberam o código do incidente. Critério: resumo noturno/queued=79 e manual/running=6 (menos os que o
+  sistema fechar sozinho nesse intervalo, tolerados); G1/G2 sem erro; "ROLLBACK CONFIRMADO".
 
 Etapa 3 — RECONCILIAÇÃO (APLICAR) — NÃO AUTORIZADA
-  Fecha 90 runs (80 noturnos queued + 9 manuais running + #515 queued) com error_code
-  SYNC_RUN_ORPHAN_POST_INCIDENT_20261002. PRESERVA o run #472.
+  Fecha 85 runs (79 noturnos queued + 6 manuais running: #487, #490-#494) com error_code
+  SYNC_RUN_ORPHAN_POST_INCIDENT_20261002. PRESERVA o run #472. O arquivo de aplicação NÃO foi instalado na máquina
+  do usuário; será gerado a partir do DRYRUN (só a última linha muda) após autorização expressa.
   Pré-condições: etapas 0, 1 e 2 conferidas; Q12/F3 limpos; janela fora de 02:00-04:00 BRT (rodada noturna).
   Pós-condição: Q1 só com #472 e eventuais runs legítimos novos; Q11 reavaliado com o F5.
   Rollback: reconciliacao_orfaos_REVERTER.sql a partir do CSV (aborta se já existir run ativo do mesmo escopo).
@@ -83,8 +95,12 @@ Etapa 8 — OBSERVAR A RODADA DAS 03:00 DE 03/10 (set completo + out 01..02)
   Enviar Q2, Q10 e Q12 na manhã seguinte. Critério: unidades concluídas sem 3 travadas e sem sessão presa.
   Se travar de novo: abre a frente do timeout por unidade (C-2).
 
-Etapa 9 — LACUNA DE SETEMBRO (R1): ressincronizar contas sem cobertura completa — DECISÃO DO USUÁRIO,
-  só depois da etapa 8 e escalonada, para não repetir o travamento.
+Etapa 9 — LACUNA DE SETEMBRO (R1 CONFIRMADA: 67 de 81 contas sem setembro completo) — DECISÃO DO USUÁRIO.
+  A rodada das 03:00 de 03/10 tentará setembro completo para TODAS (dia 3), com concorrência 3 e sem timeout por
+  unidade: risco real de repetir o travamento (P-05/P-28). Opções (ver 4, A-10): (a) deixar a rodada fazer;
+  (b) ondas manuais de setembro pelo Painel, contas pequenas primeiro, até 15 por onda; (c) corrigir primeiro o
+  ponto sem prazo (hotfix 3) e só então sincronizar. Recomendação do agente: (b) agora + (c) em paralelo; (a) só
+  se o usuário aceitar o risco.
 
 --------------------------------------------------------------------------------
 3. EVIDÊNCIAS DO RENDER AINDA NECESSÁRIAS (runs #363, #399 e #472)  [NÃO COLETADAS]
@@ -109,13 +125,18 @@ Também: log das 201 falhas (horário e confirmação de que vieram do boot) e o
 4. DECISÕES AGUARDANDO AUTORIZAÇÃO DO USUÁRIO
 --------------------------------------------------------------------------------
   A-1  Rodar o passo 0 (já autorizado) e enviar a saída + logs do Render.
-  A-2  Rodar o backup (passo 1) após a análise do passo 0.
-  A-3  Dry-run completo com ROLLBACK (2b) ou considerar a simulação suficiente.
-  A-4  APLICAR a reconciliação (UPDATE de 90 runs) — NÃO autorizado.
+  A-2  Rodar o backup (passo 1): análise do passo 0 concluída; pronto para executar (somente leitura no banco).
+  A-3  Dry-run completo com ROLLBACK (2b): pronto; executa UPDATE dentro de transação desfeita. Pedido de
+       preparação do usuário; a execução é decisão dele.
+  A-4  APLICAR a reconciliação (UPDATE de 85 runs, v2) — NÃO autorizado.
   A-5  Commit / PR / deploy do hotfix 2 — NÃO autorizados (hoje só implementação + testes locais).
   A-6  Incorporar à main a pasta docs/incidentes/P0_2026-10-02/ (esta documentação) — NÃO autorizado.
   A-7  Ressincronização de setembro (etapa 9) e eventual troca de dia() por formatarDiaIso (C-5).
   A-8  Escopo da limitação da recuperação a períodos recentes (C-1): correção separada, ainda sem prazo.
+  A-9  Abrir o hotfix 3 (C-7): gravação do import em lote + timeout de query + keepalive do pool, e timeout por
+       unidade no agendador (C-2)? Ainda NADA implementado.
+  A-10 Estratégia para setembro (etapa 9: opções a, b ou c) ANTES das 03:00 de 03/10.
+  A-11 Pedir à equipe que não clique "Atualizar dados" de setembro na conta 81 até o backup, para preservar o #472.
 
 --------------------------------------------------------------------------------
 5. CRITÉRIOS PARA RETOMAR A UNIFICAÇÃO DE CLIENTES (pedido do usuário)
@@ -131,3 +152,4 @@ Também: log das 201 falhas (horário e confirmação de que vieram do boot) e o
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo. Etapa 0 autorizada e ainda não executada; nada de escrita autorizado.
+2026-10-02 ~16:40  Passo 0 executado e analisado; reconciliação v2 (85 alvos), backup e dry-run prontos; novas decisões A-9 a A-11.

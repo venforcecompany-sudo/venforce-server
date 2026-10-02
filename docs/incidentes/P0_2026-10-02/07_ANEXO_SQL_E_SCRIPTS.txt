@@ -2,7 +2,7 @@
 INCIDENTE P0 2026-10-02 — 07_ANEXO_SQL_E_SCRIPTS
 Cópia canônica dos SQLs e scripts usados/preparados (os arquivos originais ficam no scratchpad da
 sessão do agente, que é efêmero e NÃO é versionado)
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 
@@ -24,9 +24,11 @@ AVISOS
   5  simulacao_reconciliacao_SOMENTE_LEITURA.sql (S1-S4; NÃO executada)
   6  reconciliacao_orfaos_DRYRUN.sql / APLICAR / REVERTER (ESCREVEM; NÃO executar sem autorização)
   7  Como os testes locais (PGlite) foram feitos
+  8  VERSÃO v2 (2026-10-02 ~16:40): substitui as seções 1 e 6 — passo0 com URL por prompt oculto, backup,
+     dry-run com ROLLBACK, reconciliação de 85 alvos (v2) e reversão, depois do passo 0
 
 ================================================================================
-SEÇÃO 1 — SCRIPTS DE ORQUESTRAÇÃO (bash)
+SEÇÃO 1 — SCRIPTS DE ORQUESTRAÇÃO (bash) — [SUPERSEDIDA pela seção 8: usam DATABASE_URL exportada]
 ================================================================================
 Os caminhos $AQUI/... referem-se à pasta do agente; adapte. Idéia central: sessão read-only, ON_ERROR_STOP,
 saídas em ~/recuperacao_p0_20261002/. passo2b ABORTA se o SQL não terminar em ROLLBACK ou se o backup não existir.
@@ -690,7 +692,7 @@ SELECT r.id, r.cliente_slug, r.status, CASE WHEN r.requested_by IS NULL THEN 'no
 ROLLBACK;
 
 ================================================================================
-SEÇÃO 6 — RECONCILIAÇÃO — *** ESCREVE (UPDATE) — NÃO EXECUTAR SEM AUTORIZAÇÃO EXPRESSA ***
+SEÇÃO 6 — RECONCILIAÇÃO v1 (90 alvos) — [SUPERSEDIDA pela v2 da seção 8] — *** ESCREVE (UPDATE) — NÃO EXECUTAR ***
 ================================================================================
 DRYRUN (abaixo) termina em ROLLBACK. O arquivo APLICAR é IDÊNTICO a este, exceto a última linha (COMMIT no lugar de
 ROLLBACK, e o comentário); por segurança ele NÃO é reproduzido aqui. O REVERTER restaura o estado anterior a partir do CSV.
@@ -840,3 +842,337 @@ SEÇÃO 7 — COMO OS TESTES LOCAIS FORAM FEITOS (PGlite)
   é alterado; o APLICAR altera EXATAMENTE os 90 alvos (nenhum a mais, nenhum a menos; #472 e iscas intactos);
   reaplicar é recusado; o REVERTER restaura os 90 (status/finished_at/error_code originais).
 - Limites: PGlite não reproduz pg_stat_activity/pg_locks reais, tamanho de produção nem concorrência.
+
+================================================================================
+SEÇÃO 8 — VERSÃO v2 (2026-10-02 ~16:40), pós passo 0
+================================================================================
+O que mudou e por quê:
+  - Passo 0 executado: 5 dos 90 alvos já estavam failed (encerrados pelo sistema); a reconciliação v1 (que exigia
+    exatamente 90) abortaria. A v2 tem 85 alvos (79 noturnos queued + 6 manuais running #487, #490-#494), tolera
+    alvo já encerrado pelo sistema (SYNC_RUN_STALE_* / PROCESS_RESTART) e aborta em qualquer outra divergência.
+  - A DATABASE_URL agora é lida num prompt oculto e decomposta em variáveis PG*; nunca vai para a linha de comando.
+  - Instalação na máquina do usuário: ~/recuperacao_p0_20261002/{passo0,passo1,saidas,backup} (fora de repositório;
+    pastas 700, arquivos 600). Cada pasta tem SHA256SUMS conferido antes de rodar.
+  - O arquivo APLICAR da v2 NÃO é reproduzido aqui nem foi instalado: é idêntico ao DRYRUN exceto a última linha
+    (COMMIT no lugar de ROLLBACK) e só será gerado após autorização expressa.
+  - Testes (PGlite, 18 verificações; psql falso, 9 cenários): dry-run = ROLLBACK com estado idêntico; corrida benigna
+    tolerada; alvo completed ou failed com outro código aborta no G1; APLICAR altera exatamente os conformes e
+    preserva #472 e iscas; reaplicar é recusado; reverter restaura. Scripts recusam rodar sem backup, com SHA
+    divergente, sem ROLLBACK final ou com COMMIT; backup não sobrescreve; ROLLBACK é confirmado em outra conexão.
+
+--------------------------------------------------------------------------------
+8.1 _conexao.sh (biblioteca de conexão; carregada por source)
+--------------------------------------------------------------------------------
+Lê a URL em prompt oculto; modo ro exige e confirma default_transaction_read_only=on.
+
+# Biblioteca de conexão (carregada com `source`). Lê a DATABASE_URL num prompt oculto, decompõe em variáveis
+# PG* (só neste processo) e NUNCA a coloca em linha de comando, arquivo ou histórico.
+# uso: conectar ro|rw   — ro: sessão inteira somente-leitura (exigido e confirmado); rw: escrita habilitada.
+conectar() {
+  local modo="${1:-ro}"
+  command -v psql >/dev/null    || { echo "ERRO: psql nao encontrado"; exit 1; }
+  command -v python3 >/dev/null || { echo "ERRO: python3 nao encontrado"; exit 1; }
+  if [ -z "${DATABASE_URL:-}" ]; then
+    if [ -t 0 ]; then read -rsp "Cole a DATABASE_URL de producao (nao aparece na tela) e tecle Enter: " DATABASE_URL; echo
+    else read -r DATABASE_URL; fi
+  fi
+  case "${DATABASE_URL:-}" in postgres://*|postgresql://*) ;; *) echo "ERRO: a URL deve comecar com postgresql://"; exit 1;; esac
+  eval "$(DATABASE_URL="$DATABASE_URL" python3 - <<'PY'
+import os, shlex
+from urllib.parse import urlsplit, unquote, parse_qs
+u = urlsplit(os.environ["DATABASE_URL"]); q = parse_qs(u.query)
+v = {"PGHOST": u.hostname or "", "PGPORT": str(u.port or 5432), "PGUSER": unquote(u.username or ""),
+     "PGPASSWORD": unquote(u.password or ""), "PGDATABASE": unquote((u.path or "/").lstrip("/")),
+     "PGSSLMODE": q.get("sslmode", ["require"])[0]}
+print("\n".join("export %s=%s" % (k, shlex.quote(x)) for k, x in v.items()))
+PY
+)"
+  unset DATABASE_URL
+  [ -n "${PGHOST:-}" ] && [ -n "${PGUSER:-}" ] && [ -n "${PGDATABASE:-}" ] || { echo "ERRO: URL incompleta (host/usuario/banco)"; exit 1; }
+  export PGCONNECT_TIMEOUT=15
+  if [ "$modo" = "ro" ]; then export PGOPTIONS='-c default_transaction_read_only=on'; else unset PGOPTIONS; fi
+  local v; v="$(psql -X -At -v ON_ERROR_STOP=1 -c 'SHOW default_transaction_read_only' 2>&1)" || { echo "ERRO de conexao: $(printf '%s' "$v" | head -2)"; exit 1; }
+  if [ "$modo" = "ro" ]; then
+    [ "$v" = "on" ] || { echo "ABORTADO: a sessao NAO esta somente-leitura (valor: $v)"; exit 1; }
+    echo "Conexao OK (host $PGHOST) — sessao SOMENTE-LEITURA confirmada."
+  else
+    echo "Conexao OK (host $PGHOST) — modo ESCRITA habilitado: o dry-run desfaz tudo com ROLLBACK."
+  fi
+}
+
+--------------------------------------------------------------------------------
+8.2 passo0_coletar.sh (v2, instalado em ~/recuperacao_p0_20261002/passo0/)
+--------------------------------------------------------------------------------
+Roda parte 2, pré-voo e simulação (somente leitura). Os 3 SQLs são os das seções 3, 4 e 5 deste anexo, com os nomes parte2_auditoria_complementar.sql, preflight_reconciliacao.sql e simulacao_reconciliacao_SOMENTE_LEITURA.sql.
+
+#!/usr/bin/env bash
+# =============================================================================
+# PASSO 0 — COLETA SOMENTE LEITURA — incidente P0 2026-10-02
+# Gera 3 relatórios em ../saidas/:  parte2_saida.txt (auditoria complementar),
+# preflight_saida.txt (pré-voo) e simulacao_saida.txt (simulação dos 90 runs órfãos; #472 preservado).
+#
+# Garantias de segurança:
+#  - a sessão inteira nasce SOMENTE-LEITURA (default_transaction_read_only=on) e cada SQL ainda usa
+#    BEGIN READ ONLY ... ROLLBACK, com statement_timeout 30s e lock_timeout 3s;
+#  - o script ABORTA se a sessão não confirmar o modo somente-leitura;
+#  - os SQLs têm o hash conferido antes de rodar (SHA256SUMS);
+#  - a DATABASE_URL é lida num prompt oculto (não vai para o histórico), é decomposta em variáveis
+#    PG* só dentro deste processo e NUNCA aparece na linha de comando (nem em `ps`) nem em arquivo.
+# =============================================================================
+set -uo pipefail
+umask 077
+AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SAIDA="$AQUI/../saidas"; mkdir -p "$SAIDA"; chmod 700 "$SAIDA"
+command -v psql >/dev/null    || { echo "ERRO: psql nao encontrado"; exit 1; }
+command -v python3 >/dev/null || { echo "ERRO: python3 nao encontrado"; exit 1; }
+( cd "$AQUI" && sha256sum -c --quiet SHA256SUMS ) || { echo "ABORTADO: os arquivos SQL nao conferem com SHA256SUMS (foram alterados)"; exit 1; }
+
+# 1) URL sem histórico
+if [ -z "${DATABASE_URL:-}" ]; then
+  if [ -t 0 ]; then read -rsp "Cole a DATABASE_URL de producao (nao aparece na tela) e tecle Enter: " DATABASE_URL; echo
+  else read -r DATABASE_URL; fi
+fi
+case "${DATABASE_URL:-}" in postgres://*|postgresql://*) ;; *) echo "ERRO: a URL deve comecar com postgresql://"; exit 1;; esac
+
+# 2) decompõe em PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE/PGSSLMODE (só neste processo)
+eval "$(DATABASE_URL="$DATABASE_URL" python3 - <<'PY'
+import os, shlex
+from urllib.parse import urlsplit, unquote, parse_qs
+u = urlsplit(os.environ["DATABASE_URL"]); q = parse_qs(u.query)
+v = {"PGHOST": u.hostname or "", "PGPORT": str(u.port or 5432), "PGUSER": unquote(u.username or ""),
+     "PGPASSWORD": unquote(u.password or ""), "PGDATABASE": unquote((u.path or "/").lstrip("/")),
+     "PGSSLMODE": q.get("sslmode", ["require"])[0]}
+print("\n".join("export %s=%s" % (k, shlex.quote(x)) for k, x in v.items()))
+PY
+)"
+unset DATABASE_URL
+[ -n "${PGHOST:-}" ] && [ -n "${PGUSER:-}" ] && [ -n "${PGDATABASE:-}" ] || { echo "ERRO: URL incompleta (host/usuario/banco)"; exit 1; }
+
+# 3) sessão somente-leitura + identificável no pg_stat_activity
+export PGAPPNAME=recup-p0-passo0 PGOPTIONS='-c default_transaction_read_only=on' PGCONNECT_TIMEOUT=15
+modo="$(psql -X -At -v ON_ERROR_STOP=1 -c 'SHOW default_transaction_read_only' 2>&1)" \
+  || { echo "ERRO de conexao: $(printf '%s' "$modo" | head -2)"; exit 1; }
+[ "$modo" = "on" ] || { echo "ABORTADO: a sessao NAO esta somente-leitura (valor: $modo)"; exit 1; }
+echo "Conexao OK (host $PGHOST) — sessao em modo SOMENTE-LEITURA confirmado."
+
+# 4) executa os 3 arquivos; continua mesmo se um falhar, e valida cada saída
+falhas=0
+rodar() { # $1=sql  $2=nome da saida
+  local arq="$SAIDA/$2.txt" rc ult
+  echo ""; echo ">>> $2   ($(date '+%d/%m %H:%M:%S'))"
+  psql -X -v ON_ERROR_STOP=1 -P pager=off -f "$AQUI/$1" > "$arq" 2>&1; rc=$?
+  ult="$(grep -v '^[[:space:]]*$' "$arq" | tail -n 1)"
+  if [ $rc -eq 0 ] && [ "$ult" = "ROLLBACK" ] && ! grep -q -E '^(psql: |ERROR:|ERRO:)' "$arq"; then
+    echo "    OK   — $(wc -l < "$arq") linhas, terminou com ROLLBACK"
+  else
+    echo "    FALHOU (codigo $rc; ultima linha: '$ult'). Veja: $arq"; falhas=$((falhas+1))
+  fi
+}
+rodar parte2_auditoria_complementar.sql                    parte2_saida
+rodar preflight_reconciliacao.sql                          preflight_saida
+rodar simulacao_reconciliacao_SOMENTE_LEITURA.sql          simulacao_saida
+
+echo ""; echo "Arquivos (somente voce le; nao publicar):"; ls -l "$SAIDA"/*_saida.txt | awk '{print "  " $1 "  " $5 " bytes  " $9}'
+[ $falhas -eq 0 ] && echo "TUDO OK. Avise o agente: a analise le os 3 arquivos direto do disco." || echo "ATENCAO: $falhas arquivo(s) com falha; avise o agente."
+exit $falhas
+
+--------------------------------------------------------------------------------
+8.3 passo1_backup.sh
+--------------------------------------------------------------------------------
+SOMENTE LEITURA no banco; escreve CSVs na máquina do usuário.
+
+#!/usr/bin/env bash
+# PASSO 1 — BACKUP EM CSV dos 91 runs (+ fontes e imports deles). SOMENTE LEITURA no banco; escreve só
+# arquivos na SUA máquina, em ../backup/ (pasta 700, arquivos 600). Não publicar (contém slugs/dados).
+set -uo pipefail
+umask 077
+AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+( cd "$AQUI" && sha256sum -c --quiet SHA256SUMS ) || { echo "ABORTADO: arquivos do passo nao conferem com SHA256SUMS"; exit 1; }
+source "$AQUI/_conexao.sh"; export PGAPPNAME=recup-p0-backup
+BK="$AQUI/../backup"; mkdir -p "$BK"; chmod 700 "$BK"
+if [ -e "$BK/backup_orfaos_runs.csv" ]; then
+  echo "ABORTADO: ja existe $BK/backup_orfaos_runs.csv. Nao sobrescrevo um backup (ele guarda o estado ANTERIOR a reconciliacao)."
+  echo "Se tiver certeza, renomeie a pasta backup/ e rode de novo."; exit 1
+fi
+conectar ro
+IDS="ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,422,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,472,487,490,491,492,493,494,508,513,514,515]::bigint[]"
+cd "$BK" || exit 1
+copiar() { psql -X -v ON_ERROR_STOP=1 -c "\\copy ($2) TO '$1' CSV HEADER" >/dev/null || { echo "FALHOU: $1"; exit 1; }; }
+copiar backup_orfaos_runs.csv    "SELECT * FROM central_vendas_sync_runs WHERE id = ANY($IDS) ORDER BY id"
+copiar backup_orfaos_sources.csv "SELECT * FROM central_vendas_sync_sources WHERE sync_run_id = ANY($IDS) ORDER BY sync_run_id, source"
+copiar backup_orfaos_imports.csv "SELECT * FROM central_vendas_imports WHERE sync_run_id = ANY($IDS) ORDER BY id"
+n=$(( $(wc -l < backup_orfaos_runs.csv) - 1 ))
+echo ""; echo "Linhas (sem cabecalho): runs=$n (esperado 91) | sources=$(( $(wc -l < backup_orfaos_sources.csv) - 1 )) | imports=$(( $(wc -l < backup_orfaos_imports.csv) - 1 ))"
+[ "$n" -eq 91 ] || { echo "ATENCAO: esperado 91 runs; confira antes de seguir."; exit 1; }
+echo "Estado atual desses 91 runs:"; psql -X -At -F ' | ' -c "SELECT status, CASE WHEN requested_by IS NULL THEN 'noturno' ELSE 'manual' END, COUNT(*) FROM central_vendas_sync_runs WHERE id = ANY($IDS) GROUP BY 1,2 ORDER BY 1,2" | sed 's/^/  /'
+echo "Run 472: $(psql -X -At -c "SELECT status || ' | criado ' || created_at FROM central_vendas_sync_runs WHERE id = 472")"
+sha256sum backup_orfaos_*.csv | tee backup_orfaos_SHA256.txt
+echo "BACKUP OK em $BK. Guarde esta pasta ate o fim da recuperacao."
+
+--------------------------------------------------------------------------------
+8.4 passo2_dryrun_COM_ROLLBACK.sh
+--------------------------------------------------------------------------------
+EXECUTA UPDATE dentro de uma transação e a DESFAZ com ROLLBACK; confirma em outra conexão.
+
+#!/usr/bin/env bash
+# PASSO 2 — DRY-RUN COMPLETO. *** Executa o UPDATE de verdade dentro de uma transacao e a DESFAZ (ROLLBACK). ***
+# Nada persiste: o script confirma depois, em outra conexao, que nenhum run recebeu o codigo do incidente.
+set -uo pipefail
+umask 077
+AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SQL="$AQUI/reconciliacao_orfaos_DRYRUN.sql"; BK="$AQUI/../backup"; SAIDA="$AQUI/../saidas"; mkdir -p "$SAIDA"; chmod 700 "$SAIDA"
+CODE=SYNC_RUN_ORPHAN_POST_INCIDENT_20261002
+( cd "$AQUI" && sha256sum -c --quiet SHA256SUMS ) || { echo "ABORTADO: arquivos do passo nao conferem com SHA256SUMS"; exit 1; }
+# travas do proprio arquivo: ultimo comando = ROLLBACK e nenhum COMMIT de transacao
+sed -e 's/--.*$//' "$SQL" | tr '\n' ' ' | tr ';' '\n' | sed 's/^ *//' | grep -v '^$' | tail -n 1 | grep -qi '^ROLLBACK *$' || { echo "ABORTADO: o SQL nao termina em ROLLBACK"; exit 1; }
+sed -e 's/--.*$//' "$SQL" | grep -v -i 'ON COMMIT DROP' | grep -q -i -w 'COMMIT' && { echo "ABORTADO: o SQL contem COMMIT"; exit 1; }
+[ -f "$BK/backup_orfaos_runs.csv" ] && [ "$(wc -l < "$BK/backup_orfaos_runs.csv")" -ge 92 ] || { echo "ABORTADO: faca o passo 1 (backup) antes"; exit 1; }
+source "$AQUI/_conexao.sh"; export PGAPPNAME=recup-p0-dryrun
+conectar rw
+echo ""; echo ">>> DRY-RUN ($(date '+%d/%m %H:%M:%S'))"
+psql -X -v ON_ERROR_STOP=1 -P pager=off -f "$SQL" > "$SAIDA/dryrun_saida.txt" 2>&1; rc=$?
+ult="$(grep -v '^[[:space:]]*$' "$SAIDA/dryrun_saida.txt" | tail -n 1)"
+if [ $rc -eq 0 ] && [ "$ult" = "ROLLBACK" ] && grep -q 'G2 OK' "$SAIDA/dryrun_saida.txt"; then echo "    OK   — rodou, passou G1/G2 e terminou com ROLLBACK"; ok=0
+else echo "    FALHOU (codigo $rc; ultima linha: '$ult'). Veja: $SAIDA/dryrun_saida.txt"; ok=1; fi
+# confirma, numa conexao NOVA e somente-leitura, que nada persistiu
+n="$(PGOPTIONS='-c default_transaction_read_only=on' psql -X -At -c "SELECT count(*) FROM central_vendas_sync_runs WHERE error_code = '$CODE'" 2>&1)"
+echo "Runs com o codigo do incidente apos o dry-run: $n (esperado 0)"
+[ "$n" = "0" ] && echo "ROLLBACK CONFIRMADO: nada foi alterado." || { echo "ATENCAO: valor inesperado; NAO prossiga e avise o agente."; ok=1; }
+echo "Run 472: $(PGOPTIONS='-c default_transaction_read_only=on' psql -X -At -c "SELECT status FROM central_vendas_sync_runs WHERE id = 472")"
+echo "Saida do dry-run (somente voce le; nao publicar): $SAIDA/dryrun_saida.txt"
+exit $ok
+
+--------------------------------------------------------------------------------
+8.5 reconciliacao_orfaos_DRYRUN.sql (v2, 85 alvos) — ESCREVE dentro de transação desfeita
+--------------------------------------------------------------------------------
+Termina em ROLLBACK. O APLICAR equivalente (COMMIT) NÃO é reproduzido.
+
+-- ============================================================================
+-- RECONCILIAÇÃO DOS RUNS ÓRFÃOS — INCIDENTE P0 2026-10-02 — v2 (85 alvos)
+-- *** NÃO EXECUTAR O APLICAR SEM AUTORIZAÇÃO EXPRESSA. ***
+-- Altera APENAS central_vendas_sync_runs (status/finished_at/updated_at/error_*) dos runs listados por id.
+-- Não toca imports, pedidos, pagamentos, fontes, resumos, Ads nem outra tabela. Nada é deletado.
+-- O run #472 NÃO está na lista (preservado para investigação).
+-- v2: a lista foi refeita depois do Passo 0 (5 dos 90 alvos originais foram encerrados pelo próprio
+-- sistema por clientes que clicaram em "Atualizar dados": #422, #508, #513, #514, #515). Alvo que o
+-- sistema encerrar sozinho (SYNC_RUN_STALE_* / PROCESS_RESTART) entre o dry-run e o aplicar é aceito
+-- como "já encerrado" e não é tocado; QUALQUER outra divergência aborta tudo (G1).
+-- Rodar com:  psql -X -v ON_ERROR_STOP=1 -f <arquivo>   (conexão por variáveis PG*)
+-- ============================================================================
+BEGIN;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '3s';
+SET LOCAL idle_in_transaction_session_timeout = '300s';
+SET LOCAL TIME ZONE 'America/Sao_Paulo';
+
+CREATE TEMP TABLE alvo_orfaos (
+  id BIGINT PRIMARY KEY, origem TEXT NOT NULL, status_esperado TEXT NOT NULL
+) ON COMMIT DROP;
+INSERT INTO alvo_orfaos SELECT id, 'noturno', 'queued'  FROM unnest(ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464]::bigint[]) AS id;
+INSERT INTO alvo_orfaos SELECT id, 'manual',  'running' FROM unnest(ARRAY[487,490,491,492,493,494]::bigint[]) AS id;
+CREATE TEMP TABLE controle (n_conformes INT NOT NULL, n_ja_fechados INT NOT NULL) ON COMMIT DROP;
+
+-- G1 — conferência ANTES. conformes = no estado esperado (status/origem/idade/corte); já fechados =
+-- encerrados pelo próprio sistema (STALE/PROCESS_RESTART); qualquer outro caso aborta a transação inteira.
+DO $$
+DECLARE n_alvo INT; n_conf INT; n_ja INT; n_cod INT;
+BEGIN
+  SELECT COUNT(*) INTO n_alvo FROM alvo_orfaos;
+  IF n_alvo <> 85 THEN RAISE EXCEPTION 'G1: esperado 85 alvos declarados, achei %', n_alvo; END IF;
+  SELECT COUNT(*) INTO n_conf FROM alvo_orfaos a JOIN central_vendas_sync_runs r ON r.id = a.id WHERE r.status = a.status_esperado
+       AND (a.origem = 'noturno') = (r.requested_by IS NULL)
+       AND r.created_at < TIMESTAMPTZ '2026-10-02 01:00:00-03'
+       AND (   (r.status = 'queued'  AND r.started_at IS NULL AND r.created_at < NOW() - INTERVAL '15 minutes')
+            OR (r.status = 'running' AND r.started_at < NOW() - INTERVAL '60 minutes'));
+  SELECT COUNT(*) INTO n_ja FROM alvo_orfaos a JOIN central_vendas_sync_runs r ON r.id = a.id WHERE (r.status = 'failed' AND r.error_code IN ('SYNC_RUN_STALE_QUEUED','SYNC_RUN_STALE_RUNNING','SYNC_RUN_PROCESS_RESTART')
+        AND r.created_at < TIMESTAMPTZ '2026-10-02 01:00:00-03' AND (a.origem = 'noturno') = (r.requested_by IS NULL));
+  IF n_conf + n_ja <> n_alvo THEN
+    RAISE EXCEPTION 'G1: % conformes + % ja encerrados pelo sistema <> % alvos; ha divergencia (abortando)', n_conf, n_ja, n_alvo;
+  END IF;
+  IF n_conf = 0 THEN RAISE EXCEPTION 'G1: nenhum alvo conforme; nada a fazer (abortando)'; END IF;
+  SELECT COUNT(*) INTO n_cod FROM central_vendas_sync_runs WHERE error_code = 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002';
+  IF n_cod <> 0 THEN RAISE EXCEPTION 'G1: ja existem % runs com error_code SYNC_RUN_ORPHAN_POST_INCIDENT_20261002; reconciliacao ja aplicada?', n_cod; END IF;
+  IF EXISTS (SELECT 1 FROM central_vendas_sync_runs WHERE id = 472 AND status <> 'running') THEN
+    RAISE NOTICE 'AVISO: o run 472 nao esta mais running (fora do alvo, nao sera tocado)';
+  END IF;
+  INSERT INTO controle VALUES (n_conf, n_ja);
+END $$;
+
+-- UPDATE: só os conformes; NOWAIT: se um worker vivo segura a linha, aborta em vez de esperar; o predicado é
+-- repetido no próprio UPDATE (fecha a janela de corrida).
+WITH travados AS (
+  SELECT r.id FROM central_vendas_sync_runs r JOIN alvo_orfaos a ON a.id = r.id
+   WHERE r.status = a.status_esperado
+       AND (a.origem = 'noturno') = (r.requested_by IS NULL)
+       AND r.created_at < TIMESTAMPTZ '2026-10-02 01:00:00-03'
+       AND (   (r.status = 'queued'  AND r.started_at IS NULL AND r.created_at < NOW() - INTERVAL '15 minutes')
+            OR (r.status = 'running' AND r.started_at < NOW() - INTERVAL '60 minutes'))
+   ORDER BY r.id
+     FOR UPDATE OF r NOWAIT
+), alterados AS (
+  UPDATE central_vendas_sync_runs r
+     SET status = 'failed', finished_at = NOW(), updated_at = NOW(),
+         error_code = 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002',
+         error_message = 'Run orfao encerrado manualmente apos o incidente P0 de 2026-10-02: processo morto, sem worker ativo. Nenhum dado foi publicado por este run.'
+    FROM travados t
+   WHERE r.id = t.id
+  RETURNING r.id
+)
+SELECT a.origem, a.status_esperado AS status_anterior, COUNT(*) AS runs_encerrados, MIN(al.id) AS menor_id, MAX(al.id) AS maior_id
+  FROM alterados al JOIN alvo_orfaos a ON a.id = al.id
+ GROUP BY 1, 2 ORDER BY 1, 2;
+
+-- G2 — conferência DEPOIS (ainda dentro da transação).
+DO $$
+DECLARE n_alvo INT; n_falhos INT; n_cod INT; n_ativos INT; c RECORD;
+BEGIN
+  SELECT * INTO c FROM controle;
+  SELECT COUNT(*) INTO n_alvo FROM alvo_orfaos;
+  SELECT COUNT(*) INTO n_falhos FROM alvo_orfaos a JOIN central_vendas_sync_runs r ON r.id = a.id WHERE r.status = 'failed' AND r.finished_at IS NOT NULL;
+  SELECT COUNT(*) INTO n_cod FROM central_vendas_sync_runs WHERE error_code = 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002' AND status = 'failed';
+  SELECT COUNT(*) INTO n_ativos FROM alvo_orfaos a JOIN central_vendas_sync_runs r ON r.id = a.id WHERE r.status IN ('queued','running');
+  IF n_falhos <> n_alvo THEN RAISE EXCEPTION 'G2: % de % alvos encerrados', n_falhos, n_alvo; END IF;
+  IF n_cod <> c.n_conformes THEN RAISE EXCEPTION 'G2: % linhas com o codigo (esperado %): alguma linha fora do alvo foi tocada', n_cod, c.n_conformes; END IF;
+  IF n_ativos <> 0 THEN RAISE EXCEPTION 'G2: % alvos ainda ativos', n_ativos; END IF;
+  RAISE NOTICE 'G2 OK: % encerrados por este script, % ja encerrados pelo sistema, total de alvos %', c.n_conformes, c.n_ja_fechados, n_alvo;
+END $$;
+
+-- Panorama final dos runs ativos que SOBRARAM (esperado: #472 e eventuais runs legítimos novos).
+SELECT r.id, r.status, CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem,
+       r.created_at, NOW() - COALESCE(r.started_at, r.created_at) AS idade,
+       CASE WHEN r.id = 472 THEN 'PRESERVADO (investigacao)' ELSE 'fora do alvo' END AS situacao
+  FROM central_vendas_sync_runs r WHERE r.status IN ('queued','running') ORDER BY r.created_at;
+
+-- DRY-RUN: executa o UPDATE de verdade dentro da transação e DESFAZ no fim.
+ROLLBACK;
+
+--------------------------------------------------------------------------------
+8.6 reconciliacao_orfaos_REVERTER.sql (v2) — NÃO EXECUTAR SEM AUTORIZAÇÃO
+--------------------------------------------------------------------------------
+Restaura a partir do CSV de backup; termina em ROLLBACK por segurança.
+
+-- REVERSÃO (v2): restaura o estado anterior a partir do CSV de backup. *** NÃO EXECUTAR SEM AUTORIZAÇÃO. ***
+-- Rodar na pasta do backup. Só restaura linhas que AINDA têm o código desta reconciliação.
+-- Se entretanto foi criado um run ativo do mesmo escopo, o índice único parcial impede (23505) e tudo aborta.
+BEGIN;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '3s';
+CREATE TEMP TABLE bk (LIKE central_vendas_sync_runs) ON COMMIT DROP;
+\copy bk FROM 'backup_orfaos_runs.csv' CSV HEADER
+DO $$
+DECLARE n INT;
+BEGIN
+  SELECT COUNT(*) INTO n FROM bk;
+  IF n < 91 THEN RAISE EXCEPTION 'REVERTER: backup tem % linhas (esperado 91)', n; END IF;
+END $$;
+WITH rev AS (
+  UPDATE central_vendas_sync_runs r
+     SET status = b.status, finished_at = b.finished_at, updated_at = b.updated_at,
+         error_code = b.error_code, error_message = b.error_message
+    FROM bk b
+   WHERE r.id = b.id AND r.status = 'failed' AND r.error_code = 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002' AND b.status IN ('queued','running')
+  RETURNING r.id
+)
+SELECT COUNT(*) AS runs_restaurados FROM rev;
+-- Este arquivo termina em ROLLBACK por segurança; troque por COMMIT conscientemente.
+ROLLBACK;

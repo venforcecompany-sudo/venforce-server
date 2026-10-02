@@ -1,7 +1,7 @@
 ================================================================================
 INCIDENTE P0 2026-10-02 — 02_DIAGNOSTICO
 Investigações, hipóteses, evidências e conclusões
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 
@@ -85,16 +85,18 @@ D1  Lock do Painel esgota o pool => /me/* pendura                   COMPROVADA (
 D2  PRs #211-#216 causaram o incidente                              DESCARTADA (análise de código)
 D3  Bug do Date derruba a recuperação do scheduler no boot          COMPROVADA (local)
 D4  O mesmo bug quebra o endpoint de repasse MP (run.dateFrom)       PROVÁVEL; efeito não verificado
-D5  Pool esgotado explica os runs que travam DEPOIS de coletar      ENFRAQUECIDA: em 30/09 09:31-09:32
-    todas as fontes (#363, #399, #472)                              outros runs usaram o pool e
+D5  Pool esgotado explica os runs travados (#363, #399, #472)       ENFRAQUECIDA: em 30/09 09:31-09:32
+                                                                    outros runs usaram o pool e
                                                                     completaram; o processo seguiu vivo
-                                                                    até o restart das 12:02
+                                                                    até o restart das 12:02. R3 mostra
+                                                                    que a parada foi ao GRAVAR o import
+                                                                    grande, não na finalização (ver D13)
 D6  OOM/crash do processo em contas grandes mata o run              ENFRAQUECIDA: as reconciliações de
                                                                     boot só ocorreram em 29/09 12:51,
                                                                     30/09 12:02 e 01/10 15:03; um OOM às
                                                                     09:34 de 30/09 teria fechado antes os
                                                                     3 runs noturnos que estavam running
-D7  Espera por lock de banco (não de pool) trava a finalização      NÃO TESTADA (possível; o #218 não cobre,
+D7  Espera por lock de banco (não de pool) trava a gravação         NÃO TESTADA (possível; o #218 não cobre,
                                                                     pois só limita a OBTENÇÃO de conexão)
 D8  Deploys de #212-#216 (17:57 a 00:07) mataram os runs manuais    HIPÓTESE: explicaria #487,#490-#494
     da rajada das 19:37 (running para sempre)                       sem precisar de impasse. Requer o histórico
@@ -103,10 +105,22 @@ D9  3 unidades noturnas travam por rodada e ocupam as 3 vagas de   COMPROVADO o 
     concorrência (CONCORRENCIA_PADRAO = 3, centralVendasNoturno      causa do travamento NÃO provada
     Service.js:30) até o restart; o resto da fila fica queued
 D10 Origem do lote de 27 runs criados em ~1s em 29/09 11:11:31      NÃO EXPLICADA (ver abaixo)
-D11 Q9 (defasagem do Cliente 360) é falso positivo para 6 de 9      HIPÓTESE: imports de set/2026 produzidos
-    linhas                                                          por runs de 01-02/10 com cobertura vazia;
-                                                                    R5 da parte 2 decide (NÃO EXECUTADA)
-D12 10 imports published sem pedido são vazios legítimos            NÃO VERIFICADO (R6 da parte 2)
+D11 Q9 (defasagem do Cliente 360) é falso positivo para 6 de 9      CONFIRMADA em grande parte: R5 achou 69
+    linhas                                                          imports published com cobertura INVERTIDA
+                                                                    (imports "de borda", inertes); causa do
+                                                                    import de borda = HIPÓTESE
+D12 10 imports published sem pedido são vazios legítimos            CONFIRMADA (R6): orders complete com
+                                                                    expected_count 0 nos 10
+D13 Os runs travam ao gravar o import grande: transação única com   HIPÓTESE forte: R3 (import grande nunca
+    um INSERT por vez e sem timeout; conexão presa/perdida espera   existe; só o de borda, com 3-6 pedidos);
+    para sempre                                                     R2 mostra também paradas na COLETA
+                                                                    (orders/claims/payments/shipments), então
+                                                                    há dois pontos sem prazo
+D14 O tamanho da conta (nº de pedidos) explica o travamento         REFUTADA como causa única: o run #334 travou
+                                                                    com 673 pedidos
+D15 Os 5 alvos já failed (#422, #508, #513, #514, #515) foram       HIPÓTESE forte (cliques de "Atualizar dados"
+    encerrados pelo reconciliarRunsStale                            no mesmo escopo, R8 e R1); error_code
+                                                                    ainda não lido (backup CSV mostrará)
 Detalhe de D10: a recuperação de boot não explica esses runs (ela falharia com o bug do Date antes de criar
 qualquer run); então o lote veio de uma rodada normal (por exemplo o job CLI "npm run
 sync:central-vendas:noturno" ou um disparo manual/agendado). Sem log, não dá para afirmar.
@@ -128,19 +142,32 @@ setembro na leitura mensal. A leitura só aceita um published cuja cobertura CON
 server/services/centralVendas/centralVendasRepository.js, selecionarMelhorImportPorCompetencia (~linha 443).
 
 --------------------------------------------------------------------------------
-6. RUNS QUE TRAVARAM DEPOIS DE COLETAR TODAS AS FONTES
+6. RUNS QUE TRAVARAM (#363, #399, #472 E OS NOTURNOS) — ATUALIZADO PELO PASSO 0
 --------------------------------------------------------------------------------
-Runs #363 (30/09 09:28), #399 (30/09 17:27), #472 (01/10 15:03), contas 81 e 83, período 09-01..09-30:
-base/orders/shipments/claims/returns/payments todas "complete"; 1 import candidate criado; o run NÃO
-virou completed (#363/#399 fechados por STALE_RUNNING; #472 continua running). [FATO SQL]
-Sequência de código depois das fontes (server/services/centralVendas/centralVendasSyncService.js e
-centralVendasSyncWorker.js): grava imports candidate -> log "[centralVendas] sync <slug> ...: orders=..."
-(linha ~1316) -> worker: calcularCompletudeDoRun, atualizarCompletenessRun, marcarRunCompleted ->
-log "[centralVendas] sync-run #N completeness ..." (worker ~linha 107) -> publicarRun.
-Todo esse trecho é trabalho de banco (nenhuma chamada ao Mercado Livre). A autostart de relatório de
-repasse MP está inativa (0 linhas em central_vendas_mp_settlement_reports). [FATO SQL]
-Causa do travamento: NÃO PROVADA. As consultas R2/R3 (parte 2) e as linhas de log do Render (marcos a-d
-em 06_PLANO_RECUPERACAO) separam "travou gravando pedidos" de "travou na finalização do worker".
+Fato novo (R3, 03_BANCO_DADOS 16.5) [FATO SQL]: para #363, #399 e #472 (contas 81 e 83, período 09-01..09-30)
+as fontes estão todas "complete", MAS o único import existente é um candidate da competência VIZINHA (2026-08,
+cobertura invertida, 6/3/6 pedidos). O import da competência principal (2026-09), com milhares de pedidos
+(4144/1729/4277 esperados), NÃO EXISTE. Portanto o run parou DENTRO de persistCentralVendasImport, ao gravar o
+import grande. A versão anterior deste arquivo dizia "1 import candidate criado, travou depois"; estava errada.
+Sequência real no código (server/services/centralVendas/centralVendasSyncService.js, centralVendasRepository.js):
+  coleta das fontes -> agrupa pedidos por competência (Map; a competência de borda vem primeiro) -> para cada
+  grupo, persistCentralVendasImport -> [grupo de borda: grava e confirma] -> [grupo grande: trava] -> (não chega
+  ao log "[centralVendas] sync <slug> ...: orders=...", nem ao worker marcar completed).
+persistCentralVendasImport (centralVendasRepository.js ~linha 320): UMA transação (withTransaction) com um INSERT
+por vez para cada pedido, item e componente (dezenas de milhares de round-trips para uma conta grande), sem timeout
+de query; o import só fica visível no COMMIT. Isso combina com a ausência do import grande. [FATO: código]
+Mecanismo do travamento: NÃO PROVADO. Hipótese D13: uma conexão presa/perdida no meio da transação longa, sem
+query_timeout nem keepalive no pool, espera para sempre até o restart. Alternativa D7: espera por lock de banco.
+O pool esgotado (D5) e o OOM (D6) estão enfraquecidos.
+R2 (11 runs noturnos fechados por restart) mostra que o travamento NÃO é só gravação [FATO SQL]:
+  - 4 com todas as fontes completas (#249, #289, #334, #414): parada ao gravar (como D13)
+  - 5 com orders completo e claims/payments/shipments "running" (#252, #253, #337, #338, #402): parada na COLETA
+  - 2 com orders incompleto (#290, #411): parada na coleta de orders
+  Tamanho NÃO é a causa única: #334 tinha 673 pedidos (D14).
+Padrão comum: esperas sem prazo, tanto em chamadas HTTP ao Mercado Livre (coleta) quanto na transação do banco
+(gravação). Sem timeout por unidade no agendador, três unidades presas ocupam todas as vagas de concorrência.
+Evidência que ainda falta: linhas de log do Render dos marcos a-d (06, seção 3) para #363/#399/#472 e o log da
+coleta dos noturnos; o histórico de Events do serviço. Com R3 resolvido, o marco (a) deve existir e o (b) não.
 
 --------------------------------------------------------------------------------
 7. VERIFICAÇÃO "RETOMADA APÓS RESTART SEM DUPLICAÇÃO" (item 6 do pedido do hotfix)
@@ -172,7 +199,22 @@ Ver 05_FALHAS_PENDENTES.txt, itens P-13 a P-20.
 - O número real de cliques simultâneos no minuto do impasse não está comprovado.
 - Não há medição de memória/CPU do serviço nas janelas relevantes.
 
+
+--------------------------------------------------------------------------------
+10. CONCLUSÕES DO PASSO 0 (resumo; detalhes em 03_BANCO_DADOS, seção 16)
+--------------------------------------------------------------------------------
+- Pool e sessões saudáveis (F3/F4): 1 sessão idle do app, nenhum lock, nenhuma sessão de lock do Painel. [FATO SQL]
+- Após o #218 houve uso real sem impasse: 50 runs manuais em 14 minutos (02/10 15:01-15:14; o banco não distingue
+  Painel de Central) e pool/sessões saudáveis depois. É indício favorável, NÃO substitui a atualização
+  controlada de validação (06, etapa 5). [FATO SQL: R8, F3]
+- Setembro/2026: apenas 14 de 81 contas têm published com cobertura 09-01..09-30. [FATO SQL: R1]
+- Recuperação de boot: fechados os órfãos, 0 sincronizações reais previstas (F5 "depois" vazio). [FATO SQL]
+- Dois pontos sem prazo (coleta HTTP e transação de gravação) são a hipótese de trabalho para o travamento
+  das unidades noturnas; nenhuma correção foi implementada para isso.
+
 --------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo.
+2026-10-02 ~16:40  Passo 0 executado: seção 6 reescrita (R3: travou ao gravar o import grande; corrige a leitura anterior);
+                   hipóteses D11/D12 resolvidas, D13-D15 novas, D5 enfraquecida; seção 10 (conclusões).

@@ -1,7 +1,7 @@
 ================================================================================
 INCIDENTE P0 2026-10-02 — 01_RESUMO_GERAL
 Cronologia, causa comprovada e recuperação
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 
 RÓTULOS USADOS EM TODOS OS ARQUIVOS (ver 00_INDICE.txt)
@@ -28,7 +28,9 @@ RÓTULOS USADOS EM TODOS OS ARQUIVOS (ver 00_INDICE.txt)
   rodou, e um segundo defeito, independente: 201 falhas do agendador por "dateFrom e dateTo"
   (objeto Date do driver convertido errado). [FATO]
 - Um segundo hotfix (datas) está implementado e testado LOCALMENTE em branch própria, SEM commit
-  e SEM publicação. A reconciliação dos órfãos está PREPARADA e NÃO foi executada. [TESTE LOCAL]
+  e SEM publicação. A reconciliação dos órfãos está PREPARADA (v2, 85 alvos) e NÃO foi executada. [TESTE LOCAL]
+- O passo 0 (leitura) foi executado em ~16:23: pool saudável, 86 órfãos ativos (5 dos 91 já tinham sido
+  fechados pelo sistema), e achado grave: só 14 de 81 contas têm setembro/2026 completo publicado. [FATO]
 
 --------------------------------------------------------------------------------
 2. SINTOMA E IMPACTO
@@ -67,8 +69,10 @@ Data/hora            Evento                                                     
 2026-09-30 03:00     Rodada de 61 unidades: 34 completed, 3 running (presos até   [FATO SQL]
                      12:02:25), 24 queued que nunca executaram.
 2026-09-30 09:28     Run manual #363 (conta 81, set/2026 completo): TODAS as      [FATO SQL]
-                     fontes completas às 09:33:45, import candidate criado,
-                     e o run nunca virou completed (fechado como STALE às 17:27:17).
+                     fontes completas às 09:33:45; só existe o import candidate
+                     da competência VIZINHA (3-6 pedidos): o import grande nunca
+                     foi gravado (travou ao gravar). Nunca virou completed
+                     (fechado como STALE às 17:27:17). [corrigido no passo 0]
 2026-09-30 12:02:25  Reconciliação de boot (3 runs noturnos PROCESS_RESTART).     [FATO SQL]
 2026-10-01 03:00     Rodada do dia 1 (só o mês anterior completo, 09-01..09-30): [FATO SQL]
                      64 unidades: 11 completed, 3 running (até 15:03:02), 50 queued.
@@ -102,6 +106,11 @@ Data/hora            Evento                                                     
                      somente leitura, terminada com ROLLBACK (03_BANCO_DADOS).
 2026-10-02 ~15:45    Hotfix de datas implementado em branch local, testado,        [TESTE LOCAL]
                      SEM commit (04_HOTFIXES).
+2026-10-02 15:01..   Usuário B clica "Atualizar dados" em ~50 runs manuais em 14    [FATO SQL: R8]
+15:17                minutos, sem impasse; 5 órfãos são fechados pelo sistema nesses [HIPÓTESE forte]
+                     cliques (#422, #508, #513, #514, #515).
+2026-10-02 ~16:23    Passo 0 executado pelo usuário (somente leitura, ROLLBACK).    [FATO]
+                     Resultados em 03_BANCO_DADOS, seção 16.
 
 Observação sobre "manual": no banco, run MANUAL = requested_by preenchido. Isso inclui cliques do
 Painel de Contas E da Central de Vendas (controller). Não há campo que diferencie os dois.
@@ -141,12 +150,15 @@ Feito:
   - PR #218 / commit 387de56 / merge 1249d98: lock fora do pool, limite de cliques simultâneos,
     prazo de 30 s na obtenção de conexão do pool; publicado no Render. [RELATO: deploy; FATO: git]
   - Auditoria SQL (parte 1) executada e analisada. [FATO]
-  - Reconciliação dos 90 órfãos preparada (dry-run, simulação somente leitura, aplicação,
-    reversão, backup) e testada em PGlite local. [TESTE LOCAL] — NÃO executada.
+  - Passo 0 (parte 2, pré-voo, simulação) executado e analisado. [FATO]
+  - Reconciliação preparada na v2 (85 alvos: 79 noturnos queued + 6 manuais running; #472 preservado),
+    com backup, dry-run com ROLLBACK e reversão, testada em PGlite local. [TESTE LOCAL] — NÃO executada.
   - Hotfix de datas implementado em branch local, testado, sem commit. [TESTE LOCAL]
 Falta (detalhes e ordem em 06_PLANO_RECUPERACAO.txt):
-  - Rodar o passo 0 (parte 2 da auditoria + pré-voo + simulação) e coletar logs do Render.
-  - Backup dos runs; decidir dry-run completo; só então a reconciliação (precisa de autorização).
+  - Backup dos 91 runs e dry-run com ROLLBACK (scripts prontos); só então a reconciliação (autorização).
+  - Coletar logs do Render (ainda não coletados).
+  - Decidir a estratégia para a lacuna de setembro (67 de 81 contas) e para o travamento (sem prazo na coleta
+    e na gravação) antes da rodada das 03:00 de 03/10.
   - Commit/PR/deploy do hotfix de datas (precisa de autorização).
   - Investigar o travamento de unidades noturnas e a lacuna de setembro (03_BANCO_DADOS, item R1).
   - Validar em produção UMA atualização controlada pós-hotfix.
@@ -162,3 +174,4 @@ padrão de unidades noturnas que travam, cuja causa ainda não foi provada.
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo a partir do histórico da sessão e da auditoria SQL parte 1.
+2026-10-02 ~16:40  Passo 0: resultados incorporados (pool saudável, 85 alvos aptos, lacuna de setembro, R3 corrige o #363).

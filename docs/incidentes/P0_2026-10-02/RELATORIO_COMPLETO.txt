@@ -1,5 +1,5 @@
 RELATORIO COMPLETO — INCIDENTE P0 2026-10-02 (gerado de 00..06; NÃO editar à mão)
-Gerado em: 2026-10-02 15:52 -0300
+Gerado em: 2026-10-02 16:33 -0300
 
 
 ########## ARQUIVO: 00_INDICE.txt ##########
@@ -7,7 +7,7 @@ Gerado em: 2026-10-02 15:52 -0300
 ================================================================================
 INCIDENTE P0 2026-10-02 — 00_INDICE
 Índice, estado atual e referências dos demais arquivos
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 
 COMECE AQUI (para outro agente ou pessoa que recebeu só o link)
@@ -28,10 +28,14 @@ ESTADO ATUAL (2026-10-02 ~16:00 BRT)
   Hotfix 1 (PR #218, commit 387de56, merge 1249d98) PUBLICADO no Render [relato do usuário]
   Hotfix 2 (datas)                                  IMPLEMENTADO E TESTADO LOCAL; sem commit/PR/deploy
   Auditoria SQL parte 1 (Q1-Q12)                    EXECUTADA em produção (somente leitura)
-  Auditoria parte 2 + pré-voo + simulação           PREPARADAS; NÃO executadas (passo 0 autorizado)
-  Backup dos runs / dry-run / reconciliação         PREPARADOS e testados em PGlite; NÃO executados
+  Passo 0 (parte 2 + pré-voo + simulação)           EXECUTADO ~16:23 (somente leitura): pool saudável, sem locks
+  Runs órfãos                                       86 ativos; alvo da reconciliação v2 = 85 (5 já fechados pelo sistema)
+  Backup / dry-run com ROLLBACK                     PRONTOS (scripts v2 testados); NÃO executados
+  Reconciliação (UPDATE)                            NÃO autorizada; NÃO executada
+  Setembro/2026 completo publicado                  só 14 de 81 contas (R1); estratégia pendente
+  Travamento de unidades (coleta e gravação)        EM INVESTIGAÇÃO (D13); hotfix 3 só candidato
   Run #472 (investigação)                           PRESERVADO (fora da reconciliação)
-  Logs do Render (#363/#399/#472, 201 falhas)       NÃO coletados
+  Logs do Render (#363/#399/#472, 201 falhas)       NÃO coletados (R3 já localizou onde o #363/#399/#472 pararam)
   Unificação de clientes                            NÃO retomar até cumprir 06, seção 5
 
 ARQUIVOS DESTA PASTA
@@ -108,6 +112,7 @@ LINKS (valem enquanto a pasta estiver na branch; após o merge, trocar o ramo po
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação da central de documentação (arquivos 00 a 07 e RELATORIO_COMPLETO).
+2026-10-02 ~16:40  Passo 0 executado e analisado; estado atualizado; scripts v2 (anexo 07, seção 8); RELATORIO_COMPLETO regenerado.
 
 
 ########## ARQUIVO: 01_RESUMO_GERAL.txt ##########
@@ -115,7 +120,7 @@ REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 ================================================================================
 INCIDENTE P0 2026-10-02 — 01_RESUMO_GERAL
 Cronologia, causa comprovada e recuperação
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 
 RÓTULOS USADOS EM TODOS OS ARQUIVOS (ver 00_INDICE.txt)
@@ -142,7 +147,9 @@ RÓTULOS USADOS EM TODOS OS ARQUIVOS (ver 00_INDICE.txt)
   rodou, e um segundo defeito, independente: 201 falhas do agendador por "dateFrom e dateTo"
   (objeto Date do driver convertido errado). [FATO]
 - Um segundo hotfix (datas) está implementado e testado LOCALMENTE em branch própria, SEM commit
-  e SEM publicação. A reconciliação dos órfãos está PREPARADA e NÃO foi executada. [TESTE LOCAL]
+  e SEM publicação. A reconciliação dos órfãos está PREPARADA (v2, 85 alvos) e NÃO foi executada. [TESTE LOCAL]
+- O passo 0 (leitura) foi executado em ~16:23: pool saudável, 86 órfãos ativos (5 dos 91 já tinham sido
+  fechados pelo sistema), e achado grave: só 14 de 81 contas têm setembro/2026 completo publicado. [FATO]
 
 --------------------------------------------------------------------------------
 2. SINTOMA E IMPACTO
@@ -181,8 +188,10 @@ Data/hora            Evento                                                     
 2026-09-30 03:00     Rodada de 61 unidades: 34 completed, 3 running (presos até   [FATO SQL]
                      12:02:25), 24 queued que nunca executaram.
 2026-09-30 09:28     Run manual #363 (conta 81, set/2026 completo): TODAS as      [FATO SQL]
-                     fontes completas às 09:33:45, import candidate criado,
-                     e o run nunca virou completed (fechado como STALE às 17:27:17).
+                     fontes completas às 09:33:45; só existe o import candidate
+                     da competência VIZINHA (3-6 pedidos): o import grande nunca
+                     foi gravado (travou ao gravar). Nunca virou completed
+                     (fechado como STALE às 17:27:17). [corrigido no passo 0]
 2026-09-30 12:02:25  Reconciliação de boot (3 runs noturnos PROCESS_RESTART).     [FATO SQL]
 2026-10-01 03:00     Rodada do dia 1 (só o mês anterior completo, 09-01..09-30): [FATO SQL]
                      64 unidades: 11 completed, 3 running (até 15:03:02), 50 queued.
@@ -216,6 +225,11 @@ Data/hora            Evento                                                     
                      somente leitura, terminada com ROLLBACK (03_BANCO_DADOS).
 2026-10-02 ~15:45    Hotfix de datas implementado em branch local, testado,        [TESTE LOCAL]
                      SEM commit (04_HOTFIXES).
+2026-10-02 15:01..   Usuário B clica "Atualizar dados" em ~50 runs manuais em 14    [FATO SQL: R8]
+15:17                minutos, sem impasse; 5 órfãos são fechados pelo sistema nesses [HIPÓTESE forte]
+                     cliques (#422, #508, #513, #514, #515).
+2026-10-02 ~16:23    Passo 0 executado pelo usuário (somente leitura, ROLLBACK).    [FATO]
+                     Resultados em 03_BANCO_DADOS, seção 16.
 
 Observação sobre "manual": no banco, run MANUAL = requested_by preenchido. Isso inclui cliques do
 Painel de Contas E da Central de Vendas (controller). Não há campo que diferencie os dois.
@@ -255,12 +269,15 @@ Feito:
   - PR #218 / commit 387de56 / merge 1249d98: lock fora do pool, limite de cliques simultâneos,
     prazo de 30 s na obtenção de conexão do pool; publicado no Render. [RELATO: deploy; FATO: git]
   - Auditoria SQL (parte 1) executada e analisada. [FATO]
-  - Reconciliação dos 90 órfãos preparada (dry-run, simulação somente leitura, aplicação,
-    reversão, backup) e testada em PGlite local. [TESTE LOCAL] — NÃO executada.
+  - Passo 0 (parte 2, pré-voo, simulação) executado e analisado. [FATO]
+  - Reconciliação preparada na v2 (85 alvos: 79 noturnos queued + 6 manuais running; #472 preservado),
+    com backup, dry-run com ROLLBACK e reversão, testada em PGlite local. [TESTE LOCAL] — NÃO executada.
   - Hotfix de datas implementado em branch local, testado, sem commit. [TESTE LOCAL]
 Falta (detalhes e ordem em 06_PLANO_RECUPERACAO.txt):
-  - Rodar o passo 0 (parte 2 da auditoria + pré-voo + simulação) e coletar logs do Render.
-  - Backup dos runs; decidir dry-run completo; só então a reconciliação (precisa de autorização).
+  - Backup dos 91 runs e dry-run com ROLLBACK (scripts prontos); só então a reconciliação (autorização).
+  - Coletar logs do Render (ainda não coletados).
+  - Decidir a estratégia para a lacuna de setembro (67 de 81 contas) e para o travamento (sem prazo na coleta
+    e na gravação) antes da rodada das 03:00 de 03/10.
   - Commit/PR/deploy do hotfix de datas (precisa de autorização).
   - Investigar o travamento de unidades noturnas e a lacuna de setembro (03_BANCO_DADOS, item R1).
   - Validar em produção UMA atualização controlada pós-hotfix.
@@ -276,6 +293,7 @@ padrão de unidades noturnas que travam, cuja causa ainda não foi provada.
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo a partir do histórico da sessão e da auditoria SQL parte 1.
+2026-10-02 ~16:40  Passo 0: resultados incorporados (pool saudável, 85 alvos aptos, lacuna de setembro, R3 corrige o #363).
 
 
 ########## ARQUIVO: 02_DIAGNOSTICO.txt ##########
@@ -283,7 +301,7 @@ REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 ================================================================================
 INCIDENTE P0 2026-10-02 — 02_DIAGNOSTICO
 Investigações, hipóteses, evidências e conclusões
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 
@@ -367,16 +385,18 @@ D1  Lock do Painel esgota o pool => /me/* pendura                   COMPROVADA (
 D2  PRs #211-#216 causaram o incidente                              DESCARTADA (análise de código)
 D3  Bug do Date derruba a recuperação do scheduler no boot          COMPROVADA (local)
 D4  O mesmo bug quebra o endpoint de repasse MP (run.dateFrom)       PROVÁVEL; efeito não verificado
-D5  Pool esgotado explica os runs que travam DEPOIS de coletar      ENFRAQUECIDA: em 30/09 09:31-09:32
-    todas as fontes (#363, #399, #472)                              outros runs usaram o pool e
+D5  Pool esgotado explica os runs travados (#363, #399, #472)       ENFRAQUECIDA: em 30/09 09:31-09:32
+                                                                    outros runs usaram o pool e
                                                                     completaram; o processo seguiu vivo
-                                                                    até o restart das 12:02
+                                                                    até o restart das 12:02. R3 mostra
+                                                                    que a parada foi ao GRAVAR o import
+                                                                    grande, não na finalização (ver D13)
 D6  OOM/crash do processo em contas grandes mata o run              ENFRAQUECIDA: as reconciliações de
                                                                     boot só ocorreram em 29/09 12:51,
                                                                     30/09 12:02 e 01/10 15:03; um OOM às
                                                                     09:34 de 30/09 teria fechado antes os
                                                                     3 runs noturnos que estavam running
-D7  Espera por lock de banco (não de pool) trava a finalização      NÃO TESTADA (possível; o #218 não cobre,
+D7  Espera por lock de banco (não de pool) trava a gravação         NÃO TESTADA (possível; o #218 não cobre,
                                                                     pois só limita a OBTENÇÃO de conexão)
 D8  Deploys de #212-#216 (17:57 a 00:07) mataram os runs manuais    HIPÓTESE: explicaria #487,#490-#494
     da rajada das 19:37 (running para sempre)                       sem precisar de impasse. Requer o histórico
@@ -385,10 +405,22 @@ D9  3 unidades noturnas travam por rodada e ocupam as 3 vagas de   COMPROVADO o 
     concorrência (CONCORRENCIA_PADRAO = 3, centralVendasNoturno      causa do travamento NÃO provada
     Service.js:30) até o restart; o resto da fila fica queued
 D10 Origem do lote de 27 runs criados em ~1s em 29/09 11:11:31      NÃO EXPLICADA (ver abaixo)
-D11 Q9 (defasagem do Cliente 360) é falso positivo para 6 de 9      HIPÓTESE: imports de set/2026 produzidos
-    linhas                                                          por runs de 01-02/10 com cobertura vazia;
-                                                                    R5 da parte 2 decide (NÃO EXECUTADA)
-D12 10 imports published sem pedido são vazios legítimos            NÃO VERIFICADO (R6 da parte 2)
+D11 Q9 (defasagem do Cliente 360) é falso positivo para 6 de 9      CONFIRMADA em grande parte: R5 achou 69
+    linhas                                                          imports published com cobertura INVERTIDA
+                                                                    (imports "de borda", inertes); causa do
+                                                                    import de borda = HIPÓTESE
+D12 10 imports published sem pedido são vazios legítimos            CONFIRMADA (R6): orders complete com
+                                                                    expected_count 0 nos 10
+D13 Os runs travam ao gravar o import grande: transação única com   HIPÓTESE forte: R3 (import grande nunca
+    um INSERT por vez e sem timeout; conexão presa/perdida espera   existe; só o de borda, com 3-6 pedidos);
+    para sempre                                                     R2 mostra também paradas na COLETA
+                                                                    (orders/claims/payments/shipments), então
+                                                                    há dois pontos sem prazo
+D14 O tamanho da conta (nº de pedidos) explica o travamento         REFUTADA como causa única: o run #334 travou
+                                                                    com 673 pedidos
+D15 Os 5 alvos já failed (#422, #508, #513, #514, #515) foram       HIPÓTESE forte (cliques de "Atualizar dados"
+    encerrados pelo reconciliarRunsStale                            no mesmo escopo, R8 e R1); error_code
+                                                                    ainda não lido (backup CSV mostrará)
 Detalhe de D10: a recuperação de boot não explica esses runs (ela falharia com o bug do Date antes de criar
 qualquer run); então o lote veio de uma rodada normal (por exemplo o job CLI "npm run
 sync:central-vendas:noturno" ou um disparo manual/agendado). Sem log, não dá para afirmar.
@@ -410,19 +442,32 @@ setembro na leitura mensal. A leitura só aceita um published cuja cobertura CON
 server/services/centralVendas/centralVendasRepository.js, selecionarMelhorImportPorCompetencia (~linha 443).
 
 --------------------------------------------------------------------------------
-6. RUNS QUE TRAVARAM DEPOIS DE COLETAR TODAS AS FONTES
+6. RUNS QUE TRAVARAM (#363, #399, #472 E OS NOTURNOS) — ATUALIZADO PELO PASSO 0
 --------------------------------------------------------------------------------
-Runs #363 (30/09 09:28), #399 (30/09 17:27), #472 (01/10 15:03), contas 81 e 83, período 09-01..09-30:
-base/orders/shipments/claims/returns/payments todas "complete"; 1 import candidate criado; o run NÃO
-virou completed (#363/#399 fechados por STALE_RUNNING; #472 continua running). [FATO SQL]
-Sequência de código depois das fontes (server/services/centralVendas/centralVendasSyncService.js e
-centralVendasSyncWorker.js): grava imports candidate -> log "[centralVendas] sync <slug> ...: orders=..."
-(linha ~1316) -> worker: calcularCompletudeDoRun, atualizarCompletenessRun, marcarRunCompleted ->
-log "[centralVendas] sync-run #N completeness ..." (worker ~linha 107) -> publicarRun.
-Todo esse trecho é trabalho de banco (nenhuma chamada ao Mercado Livre). A autostart de relatório de
-repasse MP está inativa (0 linhas em central_vendas_mp_settlement_reports). [FATO SQL]
-Causa do travamento: NÃO PROVADA. As consultas R2/R3 (parte 2) e as linhas de log do Render (marcos a-d
-em 06_PLANO_RECUPERACAO) separam "travou gravando pedidos" de "travou na finalização do worker".
+Fato novo (R3, 03_BANCO_DADOS 16.5) [FATO SQL]: para #363, #399 e #472 (contas 81 e 83, período 09-01..09-30)
+as fontes estão todas "complete", MAS o único import existente é um candidate da competência VIZINHA (2026-08,
+cobertura invertida, 6/3/6 pedidos). O import da competência principal (2026-09), com milhares de pedidos
+(4144/1729/4277 esperados), NÃO EXISTE. Portanto o run parou DENTRO de persistCentralVendasImport, ao gravar o
+import grande. A versão anterior deste arquivo dizia "1 import candidate criado, travou depois"; estava errada.
+Sequência real no código (server/services/centralVendas/centralVendasSyncService.js, centralVendasRepository.js):
+  coleta das fontes -> agrupa pedidos por competência (Map; a competência de borda vem primeiro) -> para cada
+  grupo, persistCentralVendasImport -> [grupo de borda: grava e confirma] -> [grupo grande: trava] -> (não chega
+  ao log "[centralVendas] sync <slug> ...: orders=...", nem ao worker marcar completed).
+persistCentralVendasImport (centralVendasRepository.js ~linha 320): UMA transação (withTransaction) com um INSERT
+por vez para cada pedido, item e componente (dezenas de milhares de round-trips para uma conta grande), sem timeout
+de query; o import só fica visível no COMMIT. Isso combina com a ausência do import grande. [FATO: código]
+Mecanismo do travamento: NÃO PROVADO. Hipótese D13: uma conexão presa/perdida no meio da transação longa, sem
+query_timeout nem keepalive no pool, espera para sempre até o restart. Alternativa D7: espera por lock de banco.
+O pool esgotado (D5) e o OOM (D6) estão enfraquecidos.
+R2 (11 runs noturnos fechados por restart) mostra que o travamento NÃO é só gravação [FATO SQL]:
+  - 4 com todas as fontes completas (#249, #289, #334, #414): parada ao gravar (como D13)
+  - 5 com orders completo e claims/payments/shipments "running" (#252, #253, #337, #338, #402): parada na COLETA
+  - 2 com orders incompleto (#290, #411): parada na coleta de orders
+  Tamanho NÃO é a causa única: #334 tinha 673 pedidos (D14).
+Padrão comum: esperas sem prazo, tanto em chamadas HTTP ao Mercado Livre (coleta) quanto na transação do banco
+(gravação). Sem timeout por unidade no agendador, três unidades presas ocupam todas as vagas de concorrência.
+Evidência que ainda falta: linhas de log do Render dos marcos a-d (06, seção 3) para #363/#399/#472 e o log da
+coleta dos noturnos; o histórico de Events do serviço. Com R3 resolvido, o marco (a) deve existir e o (b) não.
 
 --------------------------------------------------------------------------------
 7. VERIFICAÇÃO "RETOMADA APÓS RESTART SEM DUPLICAÇÃO" (item 6 do pedido do hotfix)
@@ -454,18 +499,32 @@ Ver 05_FALHAS_PENDENTES.txt, itens P-13 a P-20.
 - O número real de cliques simultâneos no minuto do impasse não está comprovado.
 - Não há medição de memória/CPU do serviço nas janelas relevantes.
 
+
+--------------------------------------------------------------------------------
+10. CONCLUSÕES DO PASSO 0 (resumo; detalhes em 03_BANCO_DADOS, seção 16)
+--------------------------------------------------------------------------------
+- Pool e sessões saudáveis (F3/F4): 1 sessão idle do app, nenhum lock, nenhuma sessão de lock do Painel. [FATO SQL]
+- Após o #218 houve uso real sem impasse: 50 runs manuais em 14 minutos (02/10 15:01-15:14; o banco não distingue
+  Painel de Central) e pool/sessões saudáveis depois. É indício favorável, NÃO substitui a atualização
+  controlada de validação (06, etapa 5). [FATO SQL: R8, F3]
+- Setembro/2026: apenas 14 de 81 contas têm published com cobertura 09-01..09-30. [FATO SQL: R1]
+- Recuperação de boot: fechados os órfãos, 0 sincronizações reais previstas (F5 "depois" vazio). [FATO SQL]
+- Dois pontos sem prazo (coleta HTTP e transação de gravação) são a hipótese de trabalho para o travamento
+  das unidades noturnas; nenhuma correção foi implementada para isso.
+
 --------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo.
-
+2026-10-02 ~16:40  Passo 0 executado: seção 6 reescrita (R3: travou ao gravar o import grande; corrige a leitura anterior);
+                   hipóteses D11/D12 resolvidas, D13-D15 novas, D5 enfraquecida; seção 10 (conclusões).
 
 ########## ARQUIVO: 03_BANCO_DADOS.txt ##########
 
 ================================================================================
 INCIDENTE P0 2026-10-02 — 03_BANCO_DADOS
 Resultados das auditorias SQL, runs órfãos, integridade e dados pendentes
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 
@@ -480,8 +539,8 @@ Parte 1 (Q1-Q12): EXECUTADA pelo usuário em produção, SOMENTE LEITURA, em ~20
   Transação BEGIN READ ONLY, statement_timeout 30s, lock_timeout 3s,
   idle_in_transaction_session_timeout 120s, ROLLBACK no fim. Saída bruta guardada pelo usuário
   (arquivo local ~/verificacao_pos_incidente_saida.txt, 563 linhas, NÃO versionado por conter slugs).
-Parte 2 (R1-R8):  PREPARADA e validada em PGlite; NÃO EXECUTADA em produção. [NÃO VERIFICADO]
-Pré-voo + simulação (F1-F5, S1-S4): PREPARADOS e validados em PGlite; NÃO EXECUTADOS. [NÃO VERIFICADO]
+Parte 2 (R1-R8), pré-voo (F1-F5) e simulação (S1-S4): EXECUTADOS pelo usuário (passo 0) em ~2026-10-02 16:23 BRT,
+  sessão somente-leitura confirmada, os 3 arquivos terminaram em ROLLBACK sem erro. Resultados: seção 16.
 Os SQLs estão em 07_ANEXO_SQL_E_SCRIPTS.txt. O relógio da auditoria é ~14:47:15 BRT (idade dos runs).
 Limite: o PGlite valida sintaxe/colunas contra o schema do repositório; não reproduz o tamanho nem o
 pg_stat_activity reais.
@@ -745,6 +804,7 @@ Podem ser encerrados (90), após backup:
   - 80 noturnos queued: nunca iniciaram; nada a perder.
   - 9 manuais running (#487, #490-#494, #508, #513, #514): cortados no meio da coleta; sem candidate.
   - 1 manual queued (#515): nunca iniciou.
+[ATUALIZADO pelo passo 0: a lista de alvos agora é de 85 runs; ver seção 16.2 e 16.9.]
 Preservar para investigação (1): run #472 (conta 81, set completo): todas as fontes completas + 1 candidate,
   nunca completou. Encerrá-lo não perde dado (candidate de run não completed nunca publica), mas altera
   finished_at/error_code e é a única evidência viva do travamento pós-coleta. Só entra na reconciliação
@@ -786,10 +846,121 @@ central_vendas_mp_settlement_reports | cliente_360_resumos_mensais | ads_resumos
 Definição: server/sql/central_vendas_schema.sql, server/sql/cliente360_schema.sql.
 Limiares: QUEUED_STALE 15 min, RUNNING_STALE 60 min (centralVendasSyncRunService.js).
 
+
+--------------------------------------------------------------------------------
+16. RESULTADOS DO PASSO 0 — PARTE 2, PRÉ-VOO E SIMULAÇÃO  (executado ~2026-10-02 16:23 BRT)
+--------------------------------------------------------------------------------
+Somente leitura; saídas brutas ficam só na máquina do usuário (contêm slugs de clientes) e NÃO são publicadas.
+Aqui: conclusões anonimizadas (ids de run/import/conta).
+
+16.1 Pré-voo F1-F4 — estado e sessões  [FATO SQL]
+  F1 dos 91 runs do relatório da parte 1: 86 continuam no estado do relatório (79 noturnos queued; 7 manuais
+     running, incluindo o #472) e 5 JÁ ESTÃO failed: #422 (noturno queued), #508, #513, #514 (manuais running)
+     e #515 (manual queued). Mudaram DEPOIS da auditoria parte 1 (~14:47).
+     Interpretação [HIPÓTESE forte]: encerrados pelo próprio sistema (reconciliarRunsStale, dentro de
+     criarSyncRun) quando alguém clicou em "Atualizar dados" no mesmo escopo; coerente com R8 (50 runs
+     manuais do usuário B entre 15:01 e 15:14) e com published novos nas contas 14, 40 e 49. O error_code
+     desses 5 ainda NÃO foi lido (o backup em CSV, passo 1, mostrará). [NÃO VERIFICADO]
+  F2 runs ativos fora dos 91: 0 linhas (nenhum run ativo novo; os cliques pós-auditoria já terminaram).
+  F3 sessões: 1 sessão idle (ClientRead) do app e a própria sessão de coleta. Nenhuma sessão
+     "venforce-painel-atualizar-lock"; nenhuma sessão presa. Pool saudável, nenhum job em execução.
+  F4 locks de outras sessões em central_vendas_sync_runs: 0 linhas.
+
+16.2 Simulação S1-S4 (alvos originais = 90)  [FATO SQL]
+  Total 90 alvos: 85 seriam encerrados, 5 seriam RECUSADOS pela trava G1 (exatamente os 5 de F1).
+  noturno/queued: 80 alvos, 79 conformes, 1 recusado (#422) | manual/running: 9 alvos, 6 conformes, 3 recusados
+  (#508, #513, #514) | manual/queued: 1 alvo, 0 conformes, 1 recusado (#515).
+  S3: 0 runs com o código do incidente (reconciliação ainda não aplicada).
+  S4: o único run ativo fora dos alvos é o #472, marcado PRESERVADO.
+  Consequência: o script de reconciliação original (que exigia exatamente 90) abortaria por segurança. Foi
+  regenerado como v2 (85 alvos; tolera alvo já encerrado pelo próprio sistema; qualquer outra divergência
+  aborta). Ver 06 e 07, seção 8.
+
+16.3 F5 — carga prevista da recuperação de boot (teto de sincronizações reais)  [FATO SQL; é um TETO]
+  cenário  período              contas ativas  reaproveitáveis  sincronizações reais (máx.)
+  antes    2026-09-01..09-28    81             54               27
+  antes    2026-09-01..09-29    81             39               42
+  antes    2026-09-01..09-30    81             14               67
+  depois   (nenhuma linha)      —              —                0
+  "antes" = o Q11 de hoje; "depois" = se os alvos fossem encerrados. Fechados os órfãos, não sobra nenhum
+  período pendente e a recuperação de boot NÃO executaria nenhuma sincronização (0, abaixo do limite de
+  planejamento de 15 definido pelo usuário). Sem fechar, o teto é 136 (27+42+67; inclui contas
+  inelegíveis). Os 67 do período 09-01..09-30 coincidem com R1 (contas sem setembro completo): ver 16.4.
+
+16.4 R1 — SETEMBRO/2026 COMPLETO PUBLICADO POR CONTA  [FATO SQL]
+  Das 81 contas MELI ativas, apenas 14 têm um import published cuja cobertura contém 09-01..09-30. 67 NÃO têm.
+  Situação medida às ~16:23 (já com os cliques manuais do usuário B de 15:01-15:17):
+  completo                              14 contas: 1, 2, 6, 10, 15, 33, 36, 50, 82, 83, 86, 87, 97, 110
+  ate_09-29                             25 contas: 3, 4, 9, 11, 12, 14, 16, 17, 21, 22, 24, 27, 32, 35, 37, 39, 40, 41, 47, 49, 58, 76, 81, 94, 95
+  ate_09-28                             16 contas: 8, 18, 19, 28, 29, 34, 38, 43, 45, 46, 48, 67, 90, 92, 98, 103
+  published_sem_cobertura_valida         4 contas: 20, 25, 42, 71
+  sem_nenhum_import_de_setembro         22 contas: 5, 7, 23, 30, 31, 51, 60, 62, 65, 66, 72, 99, 100, 102, 106, 107, 108, 109, 111, 148, 149, 150
+  Contas com published de setembro criado em 02/10 entre 15:00 e 15:17 (cliques pós-auditoria): 19
+  (ids 8, 9, 10, 14, 20, 25, 27, 33, 34, 35, 40, 42, 45, 49, 71, 81, 82, 86, 98); só 4 delas têm setembro completo. Ou seja, os cliques manuais de hoje atualizaram
+  principalmente OUTUBRO (período 10-01..10-02); o buraco de setembro quase não mudou.
+  Consequência [HIPÓTESE forte, a leitura de setembro é a verificar]: a leitura exige published cuja cobertura
+  contenha o trecho pedido (selecionarMelhorImportPorCompetencia); sem ele, a leitura mensal de setembro (mês
+  fechado) cai no legado/vazio. Das 22 contas sem nenhum import de setembro, algumas podem ser inelegíveis ou
+  nunca sincronizadas [NÃO VERIFICADO].
+
+16.5 R2/R3 — ONDE OS RUNS TRAVADOS PARARAM  [FATO SQL]
+  R3 (runs #363, #399, #472): cada um tem UM único import, candidate, da competência vizinha (2026-08) com
+  cobertura INVERTIDA (09-01..08-31) e 6, 3 e 6 pedidos, contra 4144, 1729 e 4277 pedidos esperados. O import
+  da competência principal (2026-09), o grande, NÃO EXISTE para esses runs. Logo: o run travou DENTRO de
+  persistCentralVendasImport, ao gravar o import grande — e não depois dele, nem na finalização do worker.
+  (Isto CORRIGE a leitura anterior deste arquivo, que dizia "1 import candidate criado e run travado depois".)
+  Código: persistCentralVendasImport (server/services/centralVendas/centralVendasRepository.js ~linha 320) grava
+  tudo numa ÚNICA transação (withTransaction), com um INSERT por vez (pedido por pedido, item por item,
+  componente por componente), sem timeout de query; a transação grande não deixa import visível até o COMMIT,
+  o que combina com a ausência do import de 2026-09. Hipótese de mecanismo [HIPÓTESE, não provada]: conexão
+  presa/perdida no meio da transação longa, sem query_timeout nem keepalive, esperando para sempre até o restart.
+  R2 (11 runs noturnos fechados por PROCESS_RESTART): pontos de parada DIFERENTES:
+    - fontes todas completas, parou ao gravar (4): #249 (3369 pedidos), #289 (3524), #334 (673), #414 (1790)
+    - orders completo, parou na coleta de claims/payments/shipments (5): #252, #253, #337, #338, #402
+    - parou na coleta de orders (2): #290 (4998 esperados), #411 (2504; orders e returns incompletos)
+  O #334, com só 673 pedidos, também travou depois de coletar tudo: o problema NÃO é só tamanho. Padrão comum:
+  esperas sem prazo (chamadas HTTP ao Mercado Livre e transação de banco) sem timeout em nenhum dos dois pontos.
+
+16.6 R4 — CANDIDATES DE RUNS COMPLETED  [FATO SQL]
+  #223 (conta 35) e #278 (conta 42): completeness partial, orders INCOMPLETO (2347 e 1583 recebidos): NÃO publicar
+  é o comportamento correto (published anterior permanece). Não é defeito.
+  #507 (conta 9): orders complete (48), 2 candidates (competências 2026-09 e 2026-10, imports #614 e #615) não
+  promovidos. A conta 9 recebeu um published novo em 02/10 15:04 (R1) — provavelmente o re-clique do usuário B;
+  os candidates do #507 ficam inertes. Promoção separada deixa de ser necessária para a conta 9 (a conta 9
+  continua SEM setembro completo: cobertura até 09-29).
+
+16.7 R5 / R6 — COBERTURA E PUBLISHED VAZIOS  [FATO SQL]
+  R5 (published criados desde 29/09): cobertura invertida (de > até) em 69 imports (40 da competência 2026-08 e
+  29 da 2026-09); cobertura ok em 205 (114 da 2026-09 e 91 da 2026-10). Padrão: imports "de borda" do mês
+  vizinho produzidos por runs cujo intervalo começa no dia 1 (ex.: competência 2026-08 com cobertura 09-01..08-31).
+  A leitura nunca os escolhe (a cobertura não contém o trecho): inertes. Isto confirma o falso positivo
+  parcial do Q9 (6 das 9 linhas). Causa provável do import de borda: pedidos perto da meia-noite agrupados no
+  mês vizinho [HIPÓTESE; não verificado em código].
+  R6: os 10 imports published sem pedido têm orders_status complete e expected_count = 0: VAZIOS LEGÍTIMOS
+  (contas sem vendas no período). Descartada a hipótese de perda de dado.
+
+16.8 R7 / R8 — ÓRFÃOS COBERTOS E CLIQUES  [FATO SQL]
+  R7 (86 órfãos ativos): 7 estão cobertos por run completed posterior (o noturno #261 e os 6 manuais #487,
+  #490-#494, de 10-01..10-01) e 79 não (78 noturnos de tuplas 09-28/09-29/09-30 e o #472). Fechar não perde
+  dado; os 49 noturnos restantes da tupla 09-01..09-30 correspondem todos a contas SEM setembro completo (16.4).
+  R8 (cliques manuais, >=3 por minuto): 2026-10-01 19:37 = 16 runs; 2026-10-02 00:26-00:27 = 21 runs (7+14);
+  2026-10-02 15:01-15:14 = 50 runs (todos do usuário B). Antes do #218 a rajada de 21 em 2 minutos coincide com
+  o impasse; depois dele, 50 runs em 14 minutos passaram sem impasse e sem sessão presa (F3/F4) [FATO]. O banco
+  não distingue Painel de Central, então isso é indício, não prova, de que o caminho novo do Painel funciona.
+
+16.9 CONCLUSÕES OPERACIONAIS
+  - Aptos à reconciliação: 85 runs (79 noturnos queued + 6 manuais running #487, #490-#494). Os 5 que já estavam
+    fechados (#422, #508, #513, #514, #515) saem da lista. #472 PRESERVADO.
+  - Nada impede o avanço para backup e dry-run. Uma ressalva: qualquer "Atualizar dados" do cliente da conta 81
+    para setembro fecha o #472 automaticamente (stale); o backup em CSV preserva o estado antes disso.
+  - Pendência real não relacionada ao fechamento: lacuna de setembro em 67 de 81 contas (16.4).
+
 --------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo com os resultados da parte 1 (Q1-Q12). Partes 2/pré-voo pendentes.
+2026-10-02 ~16:40  Seção 16: resultados do passo 0 (R1-R8, F1-F5, S1-S4). 5 dos 90 alvos já encerrados pelo sistema; alvo
+                   passa a 85 (v2). R3 corrige a leitura dos runs #363/#399/#472 (travaram ao gravar o import grande).
 
 
 ########## ARQUIVO: 04_HOTFIXES.txt ##########
@@ -797,7 +968,7 @@ REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 ================================================================================
 INCIDENTE P0 2026-10-02 — 04_HOTFIXES
 PR #218, hotfix de datas, alterações, testes e status de publicação
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 
@@ -919,12 +1090,16 @@ Restrição de ORDEM (importante): publicar este hotfix ANTES de fechar os runs 
   C-3  Investigar e tratar o travamento depois da coleta (#363, #399, #472), conforme a evidência de logs.
   C-4  /health consultar o banco (um pool preso hoje não dispara restart automático).
   C-5  Trocar dia() por formatarDiaIso (opcional, higiene).
+  C-7  HOTFIX 3 (candidato, NADA implementado): persistCentralVendasImport com inserts em lote, timeout de query
+       (query_timeout/statement_timeout só nessa transação) e keepalive do pool; achado P-28 (03_BANCO_DADOS 16.5).
+       Deve ser tratado junto de C-2 (timeout por unidade) e do prazo das chamadas HTTP de coleta (P-17).
   C-6  Riscos P-13 a P-17 de 05_FALHAS_PENDENTES.txt.
 
 --------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo: #218 publicado; hotfix de datas implementado e testado, sem commit.
+2026-10-02 ~16:40  Sem mudança de status dos hotfixes 1 e 2; registrado o candidato a hotfix 3 (C-7) após o passo 0.
 
 
 ########## ARQUIVO: 05_FALHAS_PENDENTES.txt ##########
@@ -932,7 +1107,7 @@ REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 ================================================================================
 INCIDENTE P0 2026-10-02 — 05_FALHAS_PENDENTES
 Todas as falhas identificadas, riscos residuais e respectivos impactos
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 Status possíveis: RESOLVIDO (em produção) | CORRIGIDO LOCAL (não publicado) | ABERTO | EM INVESTIGAÇÃO |
@@ -968,41 +1143,47 @@ P-04  Rodada noturna de 02/10 03:00 não rodou
       Ação: observar a rodada de 03/10 (06, etapa 8).
 
 P-05  3 unidades noturnas travam por rodada e ocupam as 3 vagas de concorrência
-      Severidade ALTA | Status ABERTO (causa NÃO provada)
+      Severidade ALTA | Status EM INVESTIGAÇÃO (causa NÃO provada; D13: esperas sem prazo na coleta e na gravação)
       Impacto: rodada de 30/09: 34 de 61 unidades concluídas; rodada de 01/10 (fecha setembro): 11 de 64.
       Unidades restantes ficam queued até um restart. Evidência: Q2/Q3. Não há timeout por unidade.
       Hipótese em teste: ver P-06. O #218 NÃO garante resolver (D7: espera por lock de banco não é coberta).
       Pode haver contas sem setembro completo publicado (item P-07).
 
-P-06  Runs que travam DEPOIS de coletar todas as fontes (#363, #399, #472; contas 81 e 83, 09-01..09-30)
-      Severidade ALTA | Status EM INVESTIGAÇÃO
-      Impacto: run nunca completa, candidate nunca publica; #472 continua running.
-      Falta: R2/R3 (SQL) e linhas de log do Render (marcos a-d, 06). Hipóteses: 02_DIAGNOSTICO D5-D7.
+P-06  Runs que travam ao GRAVAR o import grande (#363, #399, #472; contas 81 e 83, 09-01..09-30) e noturnos
+      que travam na coleta (R2)
+      Severidade ALTA | Status EM INVESTIGAÇÃO (R3 e R2 feitos; falta o log do Render)
+      Impacto: run nunca completa e o import grande nunca existe; #472 continua running (PRESERVADO).
+      Achado do passo 0: o import da competência principal NÃO existe; só o de borda. Ver 02, seção 6 e D13-D14.
 
-P-07  Possível lacuna de setembro/2026 publicada por conta
-      Severidade ALTA (se confirmada) | Status NÃO VERIFICADO (consulta R1 pronta, não executada)
+P-07  Lacuna de setembro/2026 publicado por conta
+      Severidade ALTA | Status CONFIRMADA em dados (R1): 67 de 81 contas SEM import published cobrindo 09-01..09-30
+      (16 até 09-28, 25 até 09-29, 4 sem cobertura válida, 22 sem nenhum import de setembro). Impacto na leitura
+      mensal de setembro (mês fechado): HIPÓTESE forte, não verificada na tela. A rodada de 03/10 tentará setembro
+      para todas (risco de novo travamento, P-05).
       Impacto: a leitura exige published com cobertura que CONTENHA o trecho pedido; contas cujo melhor
       import cobre só até 09-28/09-29 podem cair no legado/vazio na leitura de setembro (mês fechado).
       Origem provável: P-05 na rodada de 01/10 (64 unidades, 11 concluídas) [HIPÓTESE].
 
-P-08  91 runs órfãos (80 noturnos queued + 11 manuais)
-      Severidade MÉDIA | Status ABERTO (reconciliação preparada, NÃO executada)
+P-08  Runs órfãos: 86 ativos (79 noturnos queued + 7 manuais; eram 91, 5 foram fechados pelo sistema)
+      Severidade MÉDIA | Status ABERTO (reconciliação v2 de 85 alvos preparada, NÃO executada; #472 preservado)
       Impacto: poluem a visão de runs ativos e alimentam a recuperação de boot (Q11: 3 períodos obsoletos).
       Os de escopo manual se autocuram no próximo clique do mesmo escopo; os noturnos de tuplas antigas
       nunca seriam repetidos. Ver 03_BANCO_DADOS, itens 13-14; plano em 06.
 
 P-09  Run #507 com 2 imports candidate não promovidos
-      Severidade MÉDIA | Status ABERTO
+      Severidade BAIXA | Status SUPERADO: a conta 9 recebeu published novo em 02/10 15:04 (re-clique); os candidates
+      ficam inertes. A conta 9 continua sem setembro completo (P-07).
       Impacto: o cliente do run #507 continua exibindo o published anterior para as competências afetadas.
       Provável vítima do impasse (terminou às 00:27:53) [HIPÓTESE]. Ação: clique controlado (06, etapa 5).
 
 P-10  Defasagem do resumo do Cliente 360 (9 linhas)
-      Severidade BAIXA a MÉDIA | Status NÃO VERIFICADO
+      Severidade BAIXA | Status EM GRANDE PARTE FALSO POSITIVO: R5 achou 69 imports published de borda com cobertura
+      invertida (inertes). Reavaliar depois da rodada de 03/10.
       3 linhas antigas (anteriores ao incidente); 6 podem ser falso positivo (R5). O snapshot é refeito pela
       rodada noturna / pelo "Atualizar dados" quando todas as contas do cliente publicam.
 
 P-11  10 imports published sem pedido
-      Severidade BAIXA | Status NÃO VERIFICADO (R6): vazio legítimo x perda de dado.
+      Severidade BAIXA | Status RESOLVIDO (R6): todos com orders complete e expected_count 0 = vazios legítimos.
 
 P-12  Origem do lote de 27 runs de 2026-09-29 11:11:31 não explicada
       Severidade BAIXA | Status NÃO VERIFICADO (depende de log do Render).
@@ -1064,9 +1245,23 @@ Bloqueia retomar a unificação de clientes (critério do usuário): P-08 (órf�
   validada em produção. Ver 06_PLANO_RECUPERACAO.txt, seção 5.
 
 --------------------------------------------------------------------------------
+E. NOVAS FALHAS DO PASSO 0
+--------------------------------------------------------------------------------
+P-28  persistCentralVendasImport grava tudo em UMA transação, um INSERT por vez, sem timeout de query
+      (server/services/centralVendas/centralVendasRepository.js ~linha 320). Contas grandes fazem dezenas de
+      milhares de round-trips numa transação longa; sem query_timeout/keepalive, uma conexão presa espera para
+      sempre. ALTA | ABERTO (candidato a hotfix 3: inserts em lote + timeout de query + keepalive do pool).
+P-29  Imports "de borda" published com cobertura invertida (69 desde 29/09; competência vizinha). Inertes para a
+      leitura, mas poluem consultas e o Q9. BAIXA | ABERTO (causa provável: agrupamento por mês perto da
+      meia-noite; não verificada).
+P-30  Os cliques de "Atualizar dados" fecham órfãos de forma silenciosa (reconciliarRunsStale) e fecharão o #472
+      se alguém clicar em setembro na conta 81. BAIXA | ACEITO; mitigado pelo backup em CSV antes de qualquer clique.
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo (P-01 a P-27).
+2026-10-02 ~16:40  Passo 0: P-05..P-11 atualizadas (P-07 confirmada, P-09/P-11 resolvidas); P-28 a P-30 novas.
 
 
 ########## ARQUIVO: 06_PLANO_RECUPERACAO.txt ##########
@@ -1074,7 +1269,7 @@ REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 ================================================================================
 INCIDENTE P0 2026-10-02 — 06_PLANO_RECUPERACAO
 Etapas executadas, próximas ações, condições de segurança e decisões aguardando autorização
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 
@@ -1102,11 +1297,17 @@ E-7  Hotfix 2 (datas) implementado e testado em branch local; sem commit.       
 E-8  Scripts preparados e testados em PGlite (nada executado em produção): parte 2 da auditoria, pré-voo,
      simulação somente leitura, backup, dry-run com ROLLBACK, aplicação, reversão.            [TESTE LOCAL]
 E-9  Esta central de documentação (docs/incidentes/P0_2026-10-02/) em branch própria.
+E-10 PASSO 0 EXECUTADO pelo usuário (~16:23, somente leitura, 3 arquivos com ROLLBACK, sem erro). Resultados em
+     03_BANCO_DADOS, seção 16. Conclusão: sem sessões/locks impeditivos; 85 dos 90 alvos aptos; 5 já fechados
+     pelo sistema; F5 "depois" = 0 sincronizações reais; lacuna de setembro em 67 de 81 contas.      [FATO]
+E-11 Reconciliação regenerada como v2 (85 alvos; #472 preservado; tolera alvo fechado pelo sistema; qualquer
+     outra divergência aborta) e scripts de backup/dry-run reescritos (URL por prompt oculto, backup que não
+     sobrescreve, confirmação de ROLLBACK em outra conexão); testados em PGlite e com psql falso. [TESTE LOCAL]
 
 --------------------------------------------------------------------------------
 2. PLANO — ORDEM SEGURA E CRITÉRIOS DE LIBERAÇÃO
 --------------------------------------------------------------------------------
-Etapa 0 — COLETA SOMENTE LEITURA (AUTORIZADA pelo usuário em 2026-10-02; AINDA NÃO EXECUTADA)
+Etapa 0 — COLETA SOMENTE LEITURA — EXECUTADA em ~2026-10-02 16:23 (resultados em 03_BANCO_DADOS, seção 16)
   Quem: usuário roda; o agente analisa. Comando: passo0_coletar.sh (07_ANEXO_SQL_E_SCRIPTS, seção 1).
   Conteúdo: parte 2 da auditoria (R1-R8), pré-voo (F1-F5) e simulação da reconciliação (S1-S4).
   Segurança: sessão com default_transaction_read_only=on + BEGIN READ ONLY + timeouts + ROLLBACK.
@@ -1116,20 +1317,26 @@ Etapa 0 — COLETA SOMENTE LEITURA (AUTORIZADA pelo usuário em 2026-10-02; AIND
   Limite de planejamento do F5 (usuário): até 15 sincronizações reais; sujeito à capacidade verificada;
   NÃO autoriza execução automática.
 
-Etapa 1 — BACKUP EM CSV (depende da etapa 0; leitura no banco, escreve só arquivos na máquina do usuário)
-  Comando: passo1_backup.sh. Gera runs/sources/imports dos 91 runs (inclui #472) + SHA-256.
-  Critério: runs = 91 linhas; arquivos guardados até o fim da recuperação.
+Etapa 1 — BACKUP EM CSV — PRONTA para executar (leitura no banco, escreve só arquivos na máquina do usuário)
+  Comando: bash ~/recuperacao_p0_20261002/passo1/passo1_backup.sh (URL por prompt oculto).
+  Gera runs/sources/imports dos 91 runs (inclui #472 e os 5 já fechados) + SHA-256, em ../backup/ (700/600).
+  NÃO sobrescreve backup existente (ele guarda o estado ANTERIOR à reconciliação).
+  Critério: runs = 91 linhas; o CSV também revelará o error_code dos 5 runs já fechados (confirma D15).
+  Urgência: o backup preserva o estado do #472 caso alguém clique em setembro na conta 81 (isso o fecharia).
 
 Etapa 2a — SIMULAÇÃO SOMENTE LEITURA (já incluída no passo 0)
   Mostra quais alvos seriam encerrados/recusados pelos MESMOS filtros e pela MESMA trava G1.
-Etapa 2b — DRY-RUN COMPLETO COM ROLLBACK (NÃO autorizado; exige OK expresso)
-  Executa o UPDATE de verdade dentro de uma transação e DESFAZ (ROLLBACK). Só depois de o usuário conferir
-  a simulação e autorizar. Critério: resumo exato noturno/queued=80, manual/running=9, manual/queued=1;
-  nenhum erro G1/G2.
+Etapa 2b — DRY-RUN COMPLETO COM ROLLBACK — PRONTO (v2; o usuário pediu a preparação)
+  Comando: bash ~/recuperacao_p0_20261002/passo1/passo2_dryrun_COM_ROLLBACK.sh.
+  Executa o UPDATE de verdade dentro de uma transação e a DESFAZ (ROLLBACK); o script recusa rodar sem backup,
+  com SHA divergente, sem ROLLBACK final ou com COMMIT, e depois confirma em OUTRA conexão somente-leitura que
+  0 runs receberam o código do incidente. Critério: resumo noturno/queued=79 e manual/running=6 (menos os que o
+  sistema fechar sozinho nesse intervalo, tolerados); G1/G2 sem erro; "ROLLBACK CONFIRMADO".
 
 Etapa 3 — RECONCILIAÇÃO (APLICAR) — NÃO AUTORIZADA
-  Fecha 90 runs (80 noturnos queued + 9 manuais running + #515 queued) com error_code
-  SYNC_RUN_ORPHAN_POST_INCIDENT_20261002. PRESERVA o run #472.
+  Fecha 85 runs (79 noturnos queued + 6 manuais running: #487, #490-#494) com error_code
+  SYNC_RUN_ORPHAN_POST_INCIDENT_20261002. PRESERVA o run #472. O arquivo de aplicação NÃO foi instalado na máquina
+  do usuário; será gerado a partir do DRYRUN (só a última linha muda) após autorização expressa.
   Pré-condições: etapas 0, 1 e 2 conferidas; Q12/F3 limpos; janela fora de 02:00-04:00 BRT (rodada noturna).
   Pós-condição: Q1 só com #472 e eventuais runs legítimos novos; Q11 reavaliado com o F5.
   Rollback: reconciliacao_orfaos_REVERTER.sql a partir do CSV (aborta se já existir run ativo do mesmo escopo).
@@ -1156,8 +1363,12 @@ Etapa 8 — OBSERVAR A RODADA DAS 03:00 DE 03/10 (set completo + out 01..02)
   Enviar Q2, Q10 e Q12 na manhã seguinte. Critério: unidades concluídas sem 3 travadas e sem sessão presa.
   Se travar de novo: abre a frente do timeout por unidade (C-2).
 
-Etapa 9 — LACUNA DE SETEMBRO (R1): ressincronizar contas sem cobertura completa — DECISÃO DO USUÁRIO,
-  só depois da etapa 8 e escalonada, para não repetir o travamento.
+Etapa 9 — LACUNA DE SETEMBRO (R1 CONFIRMADA: 67 de 81 contas sem setembro completo) — DECISÃO DO USUÁRIO.
+  A rodada das 03:00 de 03/10 tentará setembro completo para TODAS (dia 3), com concorrência 3 e sem timeout por
+  unidade: risco real de repetir o travamento (P-05/P-28). Opções (ver 4, A-10): (a) deixar a rodada fazer;
+  (b) ondas manuais de setembro pelo Painel, contas pequenas primeiro, até 15 por onda; (c) corrigir primeiro o
+  ponto sem prazo (hotfix 3) e só então sincronizar. Recomendação do agente: (b) agora + (c) em paralelo; (a) só
+  se o usuário aceitar o risco.
 
 --------------------------------------------------------------------------------
 3. EVIDÊNCIAS DO RENDER AINDA NECESSÁRIAS (runs #363, #399 e #472)  [NÃO COLETADAS]
@@ -1182,13 +1393,18 @@ Também: log das 201 falhas (horário e confirmação de que vieram do boot) e o
 4. DECISÕES AGUARDANDO AUTORIZAÇÃO DO USUÁRIO
 --------------------------------------------------------------------------------
   A-1  Rodar o passo 0 (já autorizado) e enviar a saída + logs do Render.
-  A-2  Rodar o backup (passo 1) após a análise do passo 0.
-  A-3  Dry-run completo com ROLLBACK (2b) ou considerar a simulação suficiente.
-  A-4  APLICAR a reconciliação (UPDATE de 90 runs) — NÃO autorizado.
+  A-2  Rodar o backup (passo 1): análise do passo 0 concluída; pronto para executar (somente leitura no banco).
+  A-3  Dry-run completo com ROLLBACK (2b): pronto; executa UPDATE dentro de transação desfeita. Pedido de
+       preparação do usuário; a execução é decisão dele.
+  A-4  APLICAR a reconciliação (UPDATE de 85 runs, v2) — NÃO autorizado.
   A-5  Commit / PR / deploy do hotfix 2 — NÃO autorizados (hoje só implementação + testes locais).
   A-6  Incorporar à main a pasta docs/incidentes/P0_2026-10-02/ (esta documentação) — NÃO autorizado.
   A-7  Ressincronização de setembro (etapa 9) e eventual troca de dia() por formatarDiaIso (C-5).
   A-8  Escopo da limitação da recuperação a períodos recentes (C-1): correção separada, ainda sem prazo.
+  A-9  Abrir o hotfix 3 (C-7): gravação do import em lote + timeout de query + keepalive do pool, e timeout por
+       unidade no agendador (C-2)? Ainda NADA implementado.
+  A-10 Estratégia para setembro (etapa 9: opções a, b ou c) ANTES das 03:00 de 03/10.
+  A-11 Pedir à equipe que não clique "Atualizar dados" de setembro na conta 81 até o backup, para preservar o #472.
 
 --------------------------------------------------------------------------------
 5. CRITÉRIOS PARA RETOMAR A UNIFICAÇÃO DE CLIENTES (pedido do usuário)
@@ -1204,3 +1420,4 @@ Também: log das 201 falhas (horário e confirmação de que vieram do boot) e o
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo. Etapa 0 autorizada e ainda não executada; nada de escrita autorizado.
+2026-10-02 ~16:40  Passo 0 executado e analisado; reconciliação v2 (85 alvos), backup e dry-run prontos; novas decisões A-9 a A-11.

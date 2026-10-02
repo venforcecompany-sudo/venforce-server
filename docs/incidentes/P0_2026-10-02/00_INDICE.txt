@@ -1,7 +1,7 @@
 ================================================================================
 INCIDENTE P0 2026-10-02 — 00_INDICE
 Índice, estado atual e referências dos demais arquivos
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 
 COMECE AQUI (para outro agente ou pessoa que recebeu só o link)
@@ -22,10 +22,14 @@ ESTADO ATUAL (2026-10-02 ~16:00 BRT)
   Hotfix 1 (PR #218, commit 387de56, merge 1249d98) PUBLICADO no Render [relato do usuário]
   Hotfix 2 (datas)                                  IMPLEMENTADO E TESTADO LOCAL; sem commit/PR/deploy
   Auditoria SQL parte 1 (Q1-Q12)                    EXECUTADA em produção (somente leitura)
-  Auditoria parte 2 + pré-voo + simulação           PREPARADAS; NÃO executadas (passo 0 autorizado)
-  Backup dos runs / dry-run / reconciliação         PREPARADOS e testados em PGlite; NÃO executados
+  Passo 0 (parte 2 + pré-voo + simulação)           EXECUTADO ~16:23 (somente leitura): pool saudável, sem locks
+  Runs órfãos                                       86 ativos; alvo da reconciliação v2 = 85 (5 já fechados pelo sistema)
+  Backup / dry-run com ROLLBACK                     PRONTOS (scripts v2 testados); NÃO executados
+  Reconciliação (UPDATE)                            NÃO autorizada; NÃO executada
+  Setembro/2026 completo publicado                  só 14 de 81 contas (R1); estratégia pendente
+  Travamento de unidades (coleta e gravação)        EM INVESTIGAÇÃO (D13); hotfix 3 só candidato
   Run #472 (investigação)                           PRESERVADO (fora da reconciliação)
-  Logs do Render (#363/#399/#472, 201 falhas)       NÃO coletados
+  Logs do Render (#363/#399/#472, 201 falhas)       NÃO coletados (R3 já localizou onde o #363/#399/#472 pararam)
   Unificação de clientes                            NÃO retomar até cumprir 06, seção 5
 
 ARQUIVOS DESTA PASTA
@@ -102,3 +106,4 @@ LINKS (valem enquanto a pasta estiver na branch; após o merge, trocar o ramo po
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação da central de documentação (arquivos 00 a 07 e RELATORIO_COMPLETO).
+2026-10-02 ~16:40  Passo 0 executado e analisado; estado atualizado; scripts v2 (anexo 07, seção 8); RELATORIO_COMPLETO regenerado.

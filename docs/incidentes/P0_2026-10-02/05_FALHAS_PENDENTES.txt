@@ -1,7 +1,7 @@
 ================================================================================
 INCIDENTE P0 2026-10-02 — 05_FALHAS_PENDENTES
 Todas as falhas identificadas, riscos residuais e respectivos impactos
-Última atualização: 2026-10-02 ~16:00 (BRT)
+Última atualização: 2026-10-02 ~16:40 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 Status possíveis: RESOLVIDO (em produção) | CORRIGIDO LOCAL (não publicado) | ABERTO | EM INVESTIGAÇÃO |
@@ -37,41 +37,47 @@ P-04  Rodada noturna de 02/10 03:00 não rodou
       Ação: observar a rodada de 03/10 (06, etapa 8).
 
 P-05  3 unidades noturnas travam por rodada e ocupam as 3 vagas de concorrência
-      Severidade ALTA | Status ABERTO (causa NÃO provada)
+      Severidade ALTA | Status EM INVESTIGAÇÃO (causa NÃO provada; D13: esperas sem prazo na coleta e na gravação)
       Impacto: rodada de 30/09: 34 de 61 unidades concluídas; rodada de 01/10 (fecha setembro): 11 de 64.
       Unidades restantes ficam queued até um restart. Evidência: Q2/Q3. Não há timeout por unidade.
       Hipótese em teste: ver P-06. O #218 NÃO garante resolver (D7: espera por lock de banco não é coberta).
       Pode haver contas sem setembro completo publicado (item P-07).
 
-P-06  Runs que travam DEPOIS de coletar todas as fontes (#363, #399, #472; contas 81 e 83, 09-01..09-30)
-      Severidade ALTA | Status EM INVESTIGAÇÃO
-      Impacto: run nunca completa, candidate nunca publica; #472 continua running.
-      Falta: R2/R3 (SQL) e linhas de log do Render (marcos a-d, 06). Hipóteses: 02_DIAGNOSTICO D5-D7.
+P-06  Runs que travam ao GRAVAR o import grande (#363, #399, #472; contas 81 e 83, 09-01..09-30) e noturnos
+      que travam na coleta (R2)
+      Severidade ALTA | Status EM INVESTIGAÇÃO (R3 e R2 feitos; falta o log do Render)
+      Impacto: run nunca completa e o import grande nunca existe; #472 continua running (PRESERVADO).
+      Achado do passo 0: o import da competência principal NÃO existe; só o de borda. Ver 02, seção 6 e D13-D14.
 
-P-07  Possível lacuna de setembro/2026 publicada por conta
-      Severidade ALTA (se confirmada) | Status NÃO VERIFICADO (consulta R1 pronta, não executada)
+P-07  Lacuna de setembro/2026 publicado por conta
+      Severidade ALTA | Status CONFIRMADA em dados (R1): 67 de 81 contas SEM import published cobrindo 09-01..09-30
+      (16 até 09-28, 25 até 09-29, 4 sem cobertura válida, 22 sem nenhum import de setembro). Impacto na leitura
+      mensal de setembro (mês fechado): HIPÓTESE forte, não verificada na tela. A rodada de 03/10 tentará setembro
+      para todas (risco de novo travamento, P-05).
       Impacto: a leitura exige published com cobertura que CONTENHA o trecho pedido; contas cujo melhor
       import cobre só até 09-28/09-29 podem cair no legado/vazio na leitura de setembro (mês fechado).
       Origem provável: P-05 na rodada de 01/10 (64 unidades, 11 concluídas) [HIPÓTESE].
 
-P-08  91 runs órfãos (80 noturnos queued + 11 manuais)
-      Severidade MÉDIA | Status ABERTO (reconciliação preparada, NÃO executada)
+P-08  Runs órfãos: 86 ativos (79 noturnos queued + 7 manuais; eram 91, 5 foram fechados pelo sistema)
+      Severidade MÉDIA | Status ABERTO (reconciliação v2 de 85 alvos preparada, NÃO executada; #472 preservado)
       Impacto: poluem a visão de runs ativos e alimentam a recuperação de boot (Q11: 3 períodos obsoletos).
       Os de escopo manual se autocuram no próximo clique do mesmo escopo; os noturnos de tuplas antigas
       nunca seriam repetidos. Ver 03_BANCO_DADOS, itens 13-14; plano em 06.
 
 P-09  Run #507 com 2 imports candidate não promovidos
-      Severidade MÉDIA | Status ABERTO
+      Severidade BAIXA | Status SUPERADO: a conta 9 recebeu published novo em 02/10 15:04 (re-clique); os candidates
+      ficam inertes. A conta 9 continua sem setembro completo (P-07).
       Impacto: o cliente do run #507 continua exibindo o published anterior para as competências afetadas.
       Provável vítima do impasse (terminou às 00:27:53) [HIPÓTESE]. Ação: clique controlado (06, etapa 5).
 
 P-10  Defasagem do resumo do Cliente 360 (9 linhas)
-      Severidade BAIXA a MÉDIA | Status NÃO VERIFICADO
+      Severidade BAIXA | Status EM GRANDE PARTE FALSO POSITIVO: R5 achou 69 imports published de borda com cobertura
+      invertida (inertes). Reavaliar depois da rodada de 03/10.
       3 linhas antigas (anteriores ao incidente); 6 podem ser falso positivo (R5). O snapshot é refeito pela
       rodada noturna / pelo "Atualizar dados" quando todas as contas do cliente publicam.
 
 P-11  10 imports published sem pedido
-      Severidade BAIXA | Status NÃO VERIFICADO (R6): vazio legítimo x perda de dado.
+      Severidade BAIXA | Status RESOLVIDO (R6): todos com orders complete e expected_count 0 = vazios legítimos.
 
 P-12  Origem do lote de 27 runs de 2026-09-29 11:11:31 não explicada
       Severidade BAIXA | Status NÃO VERIFICADO (depende de log do Render).
@@ -133,6 +139,20 @@ Bloqueia retomar a unificação de clientes (critério do usuário): P-08 (órf�
   validada em produção. Ver 06_PLANO_RECUPERACAO.txt, seção 5.
 
 --------------------------------------------------------------------------------
+E. NOVAS FALHAS DO PASSO 0
+--------------------------------------------------------------------------------
+P-28  persistCentralVendasImport grava tudo em UMA transação, um INSERT por vez, sem timeout de query
+      (server/services/centralVendas/centralVendasRepository.js ~linha 320). Contas grandes fazem dezenas de
+      milhares de round-trips numa transação longa; sem query_timeout/keepalive, uma conexão presa espera para
+      sempre. ALTA | ABERTO (candidato a hotfix 3: inserts em lote + timeout de query + keepalive do pool).
+P-29  Imports "de borda" published com cobertura invertida (69 desde 29/09; competência vizinha). Inertes para a
+      leitura, mas poluem consultas e o Q9. BAIXA | ABERTO (causa provável: agrupamento por mês perto da
+      meia-noite; não verificada).
+P-30  Os cliques de "Atualizar dados" fecham órfãos de forma silenciosa (reconciliarRunsStale) e fecharão o #472
+      se alguém clicar em setembro na conta 81. BAIXA | ACEITO; mitigado pelo backup em CSV antes de qualquer clique.
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo (P-01 a P-27).
+2026-10-02 ~16:40  Passo 0: P-05..P-11 atualizadas (P-07 confirmada, P-09/P-11 resolvidas); P-28 a P-30 novas.
