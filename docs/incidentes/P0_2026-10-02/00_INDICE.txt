@@ -77,6 +77,7 @@ REFERÊNCIAS
                  #192 (fix/sync-noturno-deadlock-preparacao, merge 7f27330, 2026-09-29 11:08)
                  4600446 (2026-09-25, recuperação do agendador) | e62d6a9 e a469bcc (2026-09-24, sync/scheduler)
                  #211-#216 (2026-10-01/02): descartados como causa
+  Main atual:    a9b7fe4 (2026-10-02 16:16, PR #219 SEO ML, sem relação com o incidente); a docs foi criada sobre 1249d98
   Branches:      hotfix/painel-contas-pool-deadlock (publicada/mergeada)
                  hotfix/central-vendas-date-parse (LOCAL, sem commit; worktree .claude/worktrees/hotfix-central-date-parse)
                  docs/incidente-p0-2026-10-02 (esta documentação; NÃO mergeada na main)
@@ -107,3 +108,4 @@ REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação da central de documentação (arquivos 00 a 07 e RELATORIO_COMPLETO).
 2026-10-02 ~16:40  Passo 0 executado e analisado; estado atualizado; scripts v2 (anexo 07, seção 8); RELATORIO_COMPLETO regenerado.
+2026-10-02 ~16:50  Registrado que a main avançou para a9b7fe4 (PR #219, SEO); a branch docs segue baseada em 1249d98.
