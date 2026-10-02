@@ -1,7 +1,7 @@
 ================================================================================
 INCIDENTE P0 2026-10-02 — 01_RESUMO_GERAL
 Cronologia, causa comprovada e recuperação
-Última atualização: 2026-10-02 ~16:40 (BRT)
+Última atualização: 2026-10-02 ~17:45 (BRT)
 ================================================================================
 
 RÓTULOS USADOS EM TODOS OS ARQUIVOS (ver 00_INDICE.txt)
@@ -112,6 +112,11 @@ Data/hora            Evento                                                     
 2026-10-02 15:32/    PR #219 (fix/seo-descricao-bloqueios-proporcionais, SEO do ML;   [FATO git]
 16:16                sem relação com o incidente) mergeado em main (a9b7fe4).        [HIPÓTESE: deploy e
                      Deploy provável => restart do processo por volta de 16:16.       restart]
+2026-10-02 ~17:00    Backup (91 runs) e dry-run com ROLLBACK executados pelo       [FATO]
+                     usuário: G1/G2 OK, 85 alvos aptos; #472 preservado. Passo 3
+                     (aplicação) preparado e NÃO executado.
+2026-10-02 ~17:30    Hotfix 3 (esperas sem prazo) implementado e testado em        [TESTE LOCAL]
+                     branch local sobre a main a9b7fe4; sem commit.
 2026-10-02 ~16:23    Passo 0 executado pelo usuário (somente leitura, ROLLBACK).    [FATO]
                      Resultados em 03_BANCO_DADOS, seção 16.
 
@@ -179,3 +184,4 @@ REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 2026-10-02 ~16:00  Criação do arquivo a partir do histórico da sessão e da auditoria SQL parte 1.
 2026-10-02 ~16:40  Passo 0: resultados incorporados (pool saudável, 85 alvos aptos, lacuna de setembro, R3 corrige o #363).
 2026-10-02 ~16:50  Cronologia: PR #219 (SEO, mergeado às 16:16; main em a9b7fe4) registrado como possível restart antes do passo 0.
+2026-10-02 ~17:45  Backup/dry-run executados, passo 3 preparado, hotfix 3 local e risco da rodada de 03/10 registrados.

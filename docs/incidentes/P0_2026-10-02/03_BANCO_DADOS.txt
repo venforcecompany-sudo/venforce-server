@@ -1,7 +1,7 @@
 ================================================================================
 INCIDENTE P0 2026-10-02 — 03_BANCO_DADOS
 Resultados das auditorias SQL, runs órfãos, integridade e dados pendentes
-Última atualização: 2026-10-02 ~16:40 (BRT)
+Última atualização: 2026-10-02 ~17:45 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 
@@ -432,9 +432,36 @@ Aqui: conclusões anonimizadas (ids de run/import/conta).
     para setembro fecha o #472 automaticamente (stale); o backup em CSV preserva o estado antes disso.
   - Pendência real não relacionada ao fechamento: lacuna de setembro em 67 de 81 contas (16.4).
 
+
+--------------------------------------------------------------------------------
+17. BACKUP, DRY-RUN E APLICAÇÃO PREPARADA  (executados/preparados em 2026-10-02 ~17:00)
+--------------------------------------------------------------------------------
+17.1 Backup (passo 1, executado pelo usuário; somente leitura no banco)  [FATO]
+  91 runs, 48 linhas de fontes e 1 import (o candidate do #472), com SHA-256 (arquivos 600 em pasta 700 na máquina
+  do usuário; NÃO publicados). Estado dos 91: 79 noturnos queued, 1 noturno failed, 7 manuais running (incl. #472),
+  4 manuais failed. Os CSVs trazem datas em UTC.
+17.2 D15 CONFIRMADA pelo backup [FATO]: os 5 runs que já estavam failed foram encerrados pelo próprio sistema:
+  #422 e #515 com SYNC_RUN_STALE_QUEUED; #508, #513 e #514 com SYNC_RUN_STALE_RUNNING; todos entre 15:04 e 15:16 BRT
+  de 02/10 (reconciliarRunsStale, dentro do criarSyncRun dos cliques de "Atualizar dados").
+17.3 Dry-run com ROLLBACK (passo 2, executado pelo usuário)  [FATO]
+  Código 0; G1 e G2 aprovados; resumo: noturno/queued = 79 (ids 254-464), manual/running = 6 (ids 487-494);
+  "G2 OK: 85 encerrados por este script, 0 já encerrados pelo sistema, total de alvos 85"; o #472 aparece como
+  PRESERVADO (running, ~1 dia e 2 h). ROLLBACK confirmado em outra conexão: 0 runs com o código do incidente.
+  Conclusão: os 85 alvos CONTINUAM aptos à reconciliação.
+17.4 Aplicação definitiva (passo 3) — PREPARADA, NÃO EXECUTADA  [TESTE LOCAL]
+  Script passo3_aplicar_COMMIT.sh + SQL idêntico ao DRYRUN exceto o rodapé (COMMIT no lugar de ROLLBACK).
+  Travas: exige terminal interativo e a FRASE "APLICAR 85 RUNS" digitada pelo usuário; confere SHA dos passos 1 e 3,
+  que o APLICAR seja idêntico ao DRYRUN, SHA do backup (91 linhas), dry-run bem-sucedido e com no máximo 4 h, e
+  recusa a janela 02:00-04:00 BRT. Depois do COMMIT confere em OUTRA conexão somente-leitura: nº de runs com o código
+  = encerrados reportados pelo G2, #472 ainda running, e lista os ativos restantes.
+  Testado com psql falso e pseudo-terminal (9 cenários). O teste achou e corrigiu um bug do próprio script (leitura
+  do "2" de "G2" no lugar de 85) antes de qualquer uso real.
+  Reversão: reconciliacao_orfaos_REVERTER.sql a partir do CSV (só toca linhas com o código do incidente).
+
 --------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo com os resultados da parte 1 (Q1-Q12). Partes 2/pré-voo pendentes.
 2026-10-02 ~16:40  Seção 16: resultados do passo 0 (R1-R8, F1-F5, S1-S4). 5 dos 90 alvos já encerrados pelo sistema; alvo
                    passa a 85 (v2). R3 corrige a leitura dos runs #363/#399/#472 (travaram ao gravar o import grande).
+2026-10-02 ~17:45  Seção 17: backup (91 runs), D15 confirmada, dry-run G1/G2 OK (85 alvos), passo 3 (aplicação) preparado e não executado.

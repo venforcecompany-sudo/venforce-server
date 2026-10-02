@@ -1,7 +1,7 @@
 ================================================================================
 INCIDENTE P0 2026-10-02 — 04_HOTFIXES
 PR #218, hotfix de datas, alterações, testes e status de publicação
-Última atualização: 2026-10-02 ~16:40 (BRT)
+Última atualização: 2026-10-02 ~17:45 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 
@@ -12,6 +12,9 @@ QUADRO DE STATUS
                                                                               deploy no Render [RELATO]
   2. Datas (dateFrom/dateTo)     hotfix/central-vendas-date-parse             IMPLEMENTADO E TESTADO LOCALMENTE;
                                  (sobre 1249d98)                              SEM commit, SEM push, SEM PR,
+                                                                              SEM deploy [TESTE LOCAL]
+  3. Esperas sem prazo           hotfix/central-vendas-esperas-sem-prazo      IMPLEMENTADO E TESTADO LOCALMENTE;
+     (coleta, gravação, agendador) (sobre main a9b7fe4)                         SEM commit, SEM push, SEM PR,
                                                                               SEM deploy [TESTE LOCAL]
 
 --------------------------------------------------------------------------------
@@ -115,17 +118,75 @@ Status: SEM commit, SEM push, SEM PR, SEM deploy. Aguardando autorização do us
 Restrição de ORDEM (importante): publicar este hotfix ANTES de fechar os runs órfãos faria o próximo boot
   executar de verdade a recuperação para 3 períodos obsoletos. Ver 06_PLANO_RECUPERACAO.txt.
 
+
+--------------------------------------------------------------------------------
+4. HOTFIX 3 — ESPERAS SEM PRAZO (IMPLEMENTADO LOCALMENTE, NÃO PUBLICADO)
+--------------------------------------------------------------------------------
+Branch: hotfix/central-vendas-esperas-sem-prazo. Worktree local: .claude/worktrees/hotfix-central-prazos. Base: origin/main
+a9b7fe4 (PR #219 incluído; sem upstream configurado). Estado: alterações no working tree, SEM commit. Independente do
+hotfix 2 (datas): arquivos diferentes. Sem relação com o Fechamento Financeiro nem com a unificação de clientes.
+Motivação: 02_DIAGNOSTICO, seção 11 (rodada de 03/10 e esperas sem prazo).
+Arquivos:
+  server/utils/comPrazo.js                                       (novo) comPrazo(promessa, ms, {code, message, onTimeout})
+  server/services/centralVendas/centralVendasPrazos.js           (novo) prazos por env; comPrazoPadrao(fetch, chave)
+  server/services/centralVendas/centralVendasRepository.js       withTransaction: prazo POR QUERY opt-in; persist o usa
+  server/services/centralVendas/centralVendasNoturnoService.js   prazo por unidade, fechamento do run, prazo no Ads/snapshot
+  server/services/centralVendas/centralVendasSyncService.js      coleta de orders com prazo; ML_TIMEOUT é transitório
+  server/services/centralVendas/centralVendasClaimsService.js    claims/returns com prazo (default do fetch)
+  server/services/centralVendas/centralVendasFreteService.js     frete com prazo (default do fetch)
+  server/services/centralVendas/centralVendasMpPaymentsService.js pagamentos MP com prazo (default do fetch)
+  server/utils/mercadoPagoClient.js                              timeoutMs opt-in (aborta o fetch; MP_TIMEOUT)
+  server/tests/centralVendasPrazos.test.js                       (novo) 60 verificações
+Prazos (env opcionais; valor inválido/zero/negativo cai no padrão — não dá para desligar por engano):
+  CENTRAL_VENDAS_ML_TIMEOUT_MS 30000 | CENTRAL_VENDAS_MP_TIMEOUT_MS 30000 | CENTRAL_VENDAS_DB_QUERY_TIMEOUT_MS 60000
+  CENTRAL_VENDAS_NOTURNO_UNIDADE_TIMEOUT_MS 1800000 (30 min) | CENTRAL_VENDAS_NOTURNO_FECHAMENTO_TIMEOUT_MS 300000 (5 min)
+Comportamento:
+  - O prazo de query é POR QUERY, não total: uma gravação grande e saudável não é cortada por demorar. Na expiração
+    a conexão é descartada (release(err)); o servidor desfaz a transação; nenhum ROLLBACK é enviado a conexão presa; o
+    import nunca é confirmado pela metade.
+  - Timeout de uma página de orders (ML_TIMEOUT) é repetido pelo retry existente; ML_DEADLINE_EXCEEDED/ML_ABORTED não.
+    Em frete/claims/pagamentos a falha de uma chamada já era tratada por chamada e conta como fonte incompleta.
+  - Unidade que estoura o prazo: vira falha UNIDADE_TIMEOUT, a vaga de concorrência volta e o run é fechado como failed
+    (SYNC_RUN_UNIT_TIMEOUT). O trabalho abandonado não é cancelável; se um dia terminar, marcarRunCompleted (só atua em
+    'running') não o reabre e publicarRun exige completed: nunca publica.
+  - Nada muda em fórmulas financeiras, publicação, leitura, grants ou no #218.
+  - Lição registrada: a 1ª versão carregava mlFetch/mpFetch de forma preguiçosa dentro de centralVendasPrazos.js e QUEBROU 7
+    testes existentes da Central (eles substituem o cliente HTTP interceptando o require no carregamento de cada serviço).
+    Corrigido: cada serviço mantém o require do cliente no topo e monta `const mlFetchCentral = comPrazoPadrao(mlFetch, "mlMs")`
+    (ou mpFetch/"mpMs"); o teste de contrato exige essa forma. Suíte: de 297/307 para 304/307.
+Testes [TESTE LOCAL] (tudo que "trava" é uma promessa que nunca resolve; prazos de dezenas de ms; sem banco/API reais):
+  - comPrazo (resolve, rejeita no prazo, onTimeout, sem unhandledRejection, ms inválido = mesma promessa); prazos(env);
+  - withTransaction: normal, query presa no meio, query posterior na conexão descartada, COMMIT preso, sem a opção =
+    comportamento anterior, erro comum continua em ROLLBACK;
+  - persistCentralVendasImport ponta a ponta contra um cliente que trava no 4º comando (rejeita no prazo, conexão
+    descartada, nenhum COMMIT);
+  - classificação ML_TIMEOUT x ML_DEADLINE_EXCEEDED e fetchAllOrders com 1 timeout + retry;
+  - contrato: os 4 serviços de coleta usam o fetch COM prazo por padrão e persist passa o prazo;
+  - mpFetch: aborta o fetch pendurado (AbortSignal abortado) e não muda nada sem timeoutMs;
+  - agendador: unidade presa devolve a vaga e fecha o run; REPRODUÇÃO DO INCIDENTE: sem o prazo, 3 unidades presas de 5
+    travam a rodada e as unidades 4 e 5 nunca executam; com o prazo a rodada termina (3 falhas + 2 sucessos); Ads
+    pendurado não segura a rodada; rodada saudável inalterada (5 sucessos, 0 runs fechados).
+  - Prova de mutação (6 regressões, todas detectadas; arquivos restaurados com hash idêntico): withTransaction sem proxy;
+    persist sem prazo; sem prazo por unidade; ML_TIMEOUT não transitório; frete sem prazo; mpFetch sem timeout.
+  - Suíte completa: 304/307 no hotfix 3 contra 303/306 na main a9b7fe4 (mesmas falhas preexistentes; a diferença é o teste novo).
+Status: SEM commit, SEM push, SEM PR, SEM deploy. Aguardando autorização.
+Pontos a observar em produção após o deploy (cada um com autorização): logs "UNIDADE_TIMEOUT", "PG_QUERY_TIMEOUT",
+  "ML_TIMEOUT"/"MP_TIMEOUT"; runs com error_code SYNC_RUN_UNIT_TIMEOUT; se o prazo de 30 min disparar com frequência,
+  investigar em vez de aumentá-lo.
+
 --------------------------------------------------------------------------------
 3. TRABALHO FUTURO (CORREÇÕES SEPARADAS, NÃO IMPLEMENTADAS)
 --------------------------------------------------------------------------------
   C-1  Limitar a recuperação de boot a períodos/rodadas recentes (evita acumular tuplas obsoletas).
-  C-2  Timeout por unidade no agendador noturno (3 unidades presas ocupam todas as vagas de concorrência).
+  C-2  Timeout por unidade no agendador noturno — IMPLEMENTADO LOCALMENTE no hotfix 3 (seção 4).
   C-3  Investigar e tratar o travamento depois da coleta (#363, #399, #472), conforme a evidência de logs.
   C-4  /health consultar o banco (um pool preso hoje não dispara restart automático).
   C-5  Trocar dia() por formatarDiaIso (opcional, higiene).
-  C-7  HOTFIX 3 (candidato, NADA implementado): persistCentralVendasImport com inserts em lote, timeout de query
-       (query_timeout/statement_timeout só nessa transação) e keepalive do pool; achado P-28 (03_BANCO_DADOS 16.5).
-       Deve ser tratado junto de C-2 (timeout por unidade) e do prazo das chamadas HTTP de coleta (P-17).
+  C-7  Hotfix 3: prazo por query na gravação do import + prazo HTTP + prazo por unidade — IMPLEMENTADO LOCALMENTE (seção 4).
+       Ainda NÃO feitos: inserts em lote (reduz a duração da gravação), keepalive do pool e timeout do OAuth em
+       refreshMlGrant (P-13).
+  C-8  (opcional) Disjuntor: parar de iniciar unidades depois de N UNIDADE_TIMEOUT na mesma rodada, para não acumular
+       trabalho abandonado.
   C-6  Riscos P-13 a P-17 de 05_FALHAS_PENDENTES.txt.
 
 --------------------------------------------------------------------------------
@@ -133,3 +194,4 @@ REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo: #218 publicado; hotfix de datas implementado e testado, sem commit.
 2026-10-02 ~16:40  Sem mudança de status dos hotfixes 1 e 2; registrado o candidato a hotfix 3 (C-7) após o passo 0.
+2026-10-02 ~17:45  Hotfix 3 (esperas sem prazo) implementado e testado localmente; sem commit.

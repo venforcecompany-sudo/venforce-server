@@ -1,7 +1,7 @@
 ================================================================================
 INCIDENTE P0 2026-10-02 — 02_DIAGNOSTICO
 Investigações, hipóteses, evidências e conclusões
-Última atualização: 2026-10-02 ~16:40 (BRT)
+Última atualização: 2026-10-02 ~17:45 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 
@@ -212,9 +212,45 @@ Ver 05_FALHAS_PENDENTES.txt, itens P-13 a P-20.
 - Dois pontos sem prazo (coleta HTTP e transação de gravação) são a hipótese de trabalho para o travamento
   das unidades noturnas; nenhuma correção foi implementada para isso.
 
+
+--------------------------------------------------------------------------------
+11. RISCO DA RODADA NOTURNA DAS 03:00 DE 03/10 E CORREÇÃO DAS ESPERAS SEM PRAZO
+--------------------------------------------------------------------------------
+11.1 O que a rodada fará (dia 3 do mês: calcularPeriodosNoturnos, centralVendasNoturnoService.js)  [FATO: código]
+  Períodos = [setembro completo 09-01..09-30] + [mês corrente até ontem 10-01..10-02], para TODAS as contas
+  elegíveis, com concorrência 3 (CONCORRENCIA_PADRAO) e reaproveitamento de run completed+published da mesma tupla.
+  Setembro: 14 contas já têm cobertura completa (reaproveitadas); 67 precisam de sincronização REAL (R1/F5).
+  Outubro (10-01..10-02): parte já foi sincronizada hoje pelos cliques manuais; o resto é novo (quantidade não medida).
+  Ordem de grandeza: ~100 sincronizações reais, 2 a 4 horas com concorrência 3 [ESTIMATIVA, premissas: 3-6 min por
+  unidade; não medido para esta rodada].
+11.2 Por que o risco é alto  [HIPÓTESE quantitativa, sobre fatos medidos]
+  Nas rodadas de 30/09 e 01/10, 3 unidades travaram e pararam a rodada (34/61 e 11/64 unidades concluídas); em 29/09,
+  5 runs foram fechados por restart. Taxa mínima observada: >= 3 travadas em ~37 unidades iniciadas (8%) em 30/09 e
+  >= 3 em ~14 (21%) em 01/10 (a rodada para ao travar a 3ª, então a taxa real pode ser maior). Com ~100 unidades reais,
+  a chance de >= 3 travadas é praticamente 100% se nada mudou: a rodada de 03/10 provavelmente TRAVA DE NOVO.
+  O #218 NÃO cobre isso: trata o pool, não a espera da coleta HTTP nem a transação de gravação.
+11.3 Onde as esperas sem prazo estavam  [FATO: código, medido no passo 0]
+  a) coleta ao Mercado Livre: mlFetch aceita timeoutMs (opt-in), mas a Central de Vendas nunca o passava (orders,
+     shipments/frete, claims/returns); coleta do Mercado Pago (mpFetch) não tinha timeout nenhum;
+  b) gravação do import: persistCentralVendasImport, transação única, um INSERT por vez, sem prazo por query;
+  c) agendador: sem prazo por unidade; 3 unidades presas = 3 vagas ocupadas até o restart;
+  d) fechamento do grupo (Ads e snapshot do Cliente 360): sem prazo.
+11.4 Correção (hotfix 3, branch hotfix/central-vendas-esperas-sem-prazo, LOCAL; ver 04_HOTFIXES, seção 4)  [TESTE LOCAL]
+  Prazos opt-in/por env, sem mudar fórmulas, publicação nem leitura: HTTP (ML e MP) 30 s por chamada; 60 s POR QUERY
+  na transação de gravação (conexão presa é descartada, sem ROLLBACK pendurado); 30 min por unidade (a vaga volta e o
+  run vira failed com SYNC_RUN_UNIT_TIMEOUT); 5 min no fechamento do grupo. O teste reproduz o incidente: SEM o prazo,
+  3 unidades presas de 5 travam a rodada; COM o prazo ela termina, 3 falhas por prazo + 2 concluídas.
+11.5 O que a correção NÃO resolve (riscos residuais)  [FATO: código]
+  - refreshMlGrant (mlTokenService.js ~365) segura uma conexão do pool durante o OAuth sem timeout (P-13): uma unidade
+    presa AÍ perde a vaga (o prazo por unidade a libera) mas a conexão do pool só volta ao reiniciar;
+  - queries soltas (pool.query) fora da transação de gravação continuam sem prazo próprio: só o prazo por unidade as
+    limita (o trabalho abandonado segue pendente, sem cancelamento);
+  - o prazo por unidade (30 min) é um backstop; se ele disparar muitas vezes, investigar a causa pelos logs.
+
 --------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo.
 2026-10-02 ~16:40  Passo 0 executado: seção 6 reescrita (R3: travou ao gravar o import grande; corrige a leitura anterior);
                    hipóteses D11/D12 resolvidas, D13-D15 novas, D5 enfraquecida; seção 10 (conclusões).
+2026-10-02 ~17:45  Seção 11: risco da rodada de 03/10 (estimativa) e correção das esperas sem prazo (hotfix 3, local).

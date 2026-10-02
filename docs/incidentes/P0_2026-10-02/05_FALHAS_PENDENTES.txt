@@ -1,7 +1,7 @@
 ================================================================================
 INCIDENTE P0 2026-10-02 — 05_FALHAS_PENDENTES
 Todas as falhas identificadas, riscos residuais e respectivos impactos
-Última atualização: 2026-10-02 ~16:40 (BRT)
+Última atualização: 2026-10-02 ~17:45 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 Status possíveis: RESOLVIDO (em produção) | CORRIGIDO LOCAL (não publicado) | ABERTO | EM INVESTIGAÇÃO |
@@ -37,7 +37,8 @@ P-04  Rodada noturna de 02/10 03:00 não rodou
       Ação: observar a rodada de 03/10 (06, etapa 8).
 
 P-05  3 unidades noturnas travam por rodada e ocupam as 3 vagas de concorrência
-      Severidade ALTA | Status EM INVESTIGAÇÃO (causa NÃO provada; D13: esperas sem prazo na coleta e na gravação)
+      Severidade ALTA | Status CORRIGIDO LOCAL (hotfix 3: prazo por unidade, HTTP e query; sem commit). A rodada de 03/10
+      tende a travar de novo se nada for feito antes (02_DIAGNOSTICO, seção 11).
       Impacto: rodada de 30/09: 34 de 61 unidades concluídas; rodada de 01/10 (fecha setembro): 11 de 64.
       Unidades restantes ficam queued até um restart. Evidência: Q2/Q3. Não há timeout por unidade.
       Hipótese em teste: ver P-06. O #218 NÃO garante resolver (D7: espera por lock de banco não é coberta).
@@ -45,7 +46,8 @@ P-05  3 unidades noturnas travam por rodada e ocupam as 3 vagas de concorrência
 
 P-06  Runs que travam ao GRAVAR o import grande (#363, #399, #472; contas 81 e 83, 09-01..09-30) e noturnos
       que travam na coleta (R2)
-      Severidade ALTA | Status EM INVESTIGAÇÃO (R3 e R2 feitos; falta o log do Render)
+      Severidade ALTA | Status MITIGADO LOCAL (hotfix 3: prazo por query na gravação e na coleta); causa exata NÃO provada;
+      falta o log do Render
       Impacto: run nunca completa e o import grande nunca existe; #472 continua running (PRESERVADO).
       Achado do passo 0: o import da competência principal NÃO existe; só o de borda. Ver 02, seção 6 e D13-D14.
 
@@ -99,8 +101,8 @@ P-15  ensureSquadsTables roda DDL dentro do request de /me.
 P-16  /health não consulta o banco.
       Severidade MÉDIA | ABERTO. Um pool preso não dispara restart automático (foi o que aconteceu).
 
-P-17  Fetches ao Mercado Livre da rodada sem prazo por job.
-      Severidade MÉDIA | ABERTO. Um job pendurado agora ocupa só 1 vaga do Painel, sem afetar o pool, mas
+P-17  Fetches ao Mercado Livre/Mercado Pago da coleta sem prazo.
+      Severidade MÉDIA | CORRIGIDO LOCAL (hotfix 3: 30 s por chamada). Um job pendurado agora ocupa só 1 vaga do Painel, sem afetar o pool, mas
       no agendador noturno ocupa uma das 3 vagas de concorrência (ver P-05).
 
 P-18  Com o pool cheio por mais de 30 s, uma operação passa a falhar com erro em vez de esperar para sempre.
@@ -144,15 +146,25 @@ E. NOVAS FALHAS DO PASSO 0
 P-28  persistCentralVendasImport grava tudo em UMA transação, um INSERT por vez, sem timeout de query
       (server/services/centralVendas/centralVendasRepository.js ~linha 320). Contas grandes fazem dezenas de
       milhares de round-trips numa transação longa; sem query_timeout/keepalive, uma conexão presa espera para
-      sempre. ALTA | ABERTO (candidato a hotfix 3: inserts em lote + timeout de query + keepalive do pool).
+      sempre. ALTA | MITIGADO LOCAL (hotfix 3: prazo por query com descarte da conexão). Ainda sem inserts em lote nem
+      keepalive.
 P-29  Imports "de borda" published com cobertura invertida (69 desde 29/09; competência vizinha). Inertes para a
       leitura, mas poluem consultas e o Q9. BAIXA | ABERTO (causa provável: agrupamento por mês perto da
       meia-noite; não verificada).
 P-30  Os cliques de "Atualizar dados" fecham órfãos de forma silenciosa (reconciliarRunsStale) e fecharão o #472
       se alguém clicar em setembro na conta 81. BAIXA | ACEITO; mitigado pelo backup em CSV antes de qualquer clique.
 
+P-31  Riscos residuais do hotfix 3: (a) refreshMlGrant segura conexão do pool no OAuth sem timeout (P-13): uma unidade
+      presa aí perde a vaga mas a conexão só volta ao reiniciar; (b) queries soltas fora da transação de gravação só
+      são limitadas pelo prazo por unidade (trabalho abandonado não é cancelável); (c) o prazo de 30 min por unidade é
+      backstop, não diagnóstico. MÉDIA | ABERTO (monitorar logs UNIDADE_TIMEOUT/PG_QUERY_TIMEOUT).
+P-32  Rodada de 03/10 03:00: setembro completo para 67 contas + outubro, concorrência 3. Sem o hotfix 3 publicado, a
+      rodada provavelmente trava de novo; contenção possível: desligar o agendador (env) até o hotfix. ALTA | ABERTO
+      (decisão do usuário; 06, A-10).
+
 --------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo (P-01 a P-27).
 2026-10-02 ~16:40  Passo 0: P-05..P-11 atualizadas (P-07 confirmada, P-09/P-11 resolvidas); P-28 a P-30 novas.
+2026-10-02 ~17:45  Hotfix 3 local: P-05/P-06/P-17/P-28 atualizadas; P-31 e P-32 novas.

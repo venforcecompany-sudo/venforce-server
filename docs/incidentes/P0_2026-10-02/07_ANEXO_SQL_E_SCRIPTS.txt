@@ -2,7 +2,7 @@
 INCIDENTE P0 2026-10-02 — 07_ANEXO_SQL_E_SCRIPTS
 Cópia canônica dos SQLs e scripts usados/preparados (os arquivos originais ficam no scratchpad da
 sessão do agente, que é efêmero e NÃO é versionado)
-Última atualização: 2026-10-02 ~16:40 (BRT)
+Última atualização: 2026-10-02 ~17:45 (BRT)
 ================================================================================
 Rótulos: [FATO] [TESTE LOCAL] [HIPÓTESE] [NÃO VERIFICADO] [RELATO]  (definição em 01_RESUMO_GERAL)
 
@@ -24,6 +24,7 @@ AVISOS
   5  simulacao_reconciliacao_SOMENTE_LEITURA.sql (S1-S4; NÃO executada)
   6  reconciliacao_orfaos_DRYRUN.sql / APLICAR / REVERTER (ESCREVEM; NÃO executar sem autorização)
   7  Como os testes locais (PGlite) foram feitos
+  9  Passo 3 — aplicação definitiva (COMMIT) preparada, NÃO executada (seção 9)
   8  VERSÃO v2 (2026-10-02 ~16:40): substitui as seções 1 e 6 — passo0 com URL por prompt oculto, backup,
      dry-run com ROLLBACK, reconciliação de 85 alvos (v2) e reversão, depois do passo 0
 
@@ -1176,3 +1177,64 @@ WITH rev AS (
 SELECT COUNT(*) AS runs_restaurados FROM rev;
 -- Este arquivo termina em ROLLBACK por segurança; troque por COMMIT conscientemente.
 ROLLBACK;
+
+================================================================================
+SEÇÃO 9 — PASSO 3: APLICAÇÃO DEFINITIVA (COMMIT) — PREPARADA, NÃO EXECUTADA (2026-10-02 ~17:45)
+================================================================================
+O arquivo SQL de aplicação é IDÊNTICO ao DRYRUN da seção 8.5, exceto as 2 últimas linhas ("-- APLICAR: ..." e COMMIT; no
+lugar de "-- DRY-RUN: ..." e ROLLBACK;). Não é reproduzido aqui. O script abaixo é o que o usuário executaria SOMENTE com
+autorização expressa; ele mesmo exige terminal interativo e a frase digitada.
+
+#!/usr/bin/env bash
+# =============================================================================
+# PASSO 3 — APLICAÇÃO DEFINITIVA DA RECONCILIAÇÃO (COMMIT) — incidente P0 2026-10-02
+# *** ESCREVE EM PRODUÇÃO: encerra (status=failed) até 85 runs órfãos em central_vendas_sync_runs. ***
+# Só roda com a sua autorização: exige terminal interativo e que VOCE digite a frase de confirmacao.
+# O run #472 NAO esta na lista (preservado). Nada e deletado; so central_vendas_sync_runs e alterada.
+# Reversao: ../passo1/reconciliacao_orfaos_REVERTER.sql a partir de ../backup/backup_orfaos_runs.csv.
+# =============================================================================
+set -uo pipefail
+umask 077
+AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RAIZ="$AQUI/.."; BK="$RAIZ/backup"; SAIDA="$RAIZ/saidas"; DRY="$SAIDA/dryrun_saida.txt"
+CODE=SYNC_RUN_ORPHAN_POST_INCIDENT_20261002
+FRASE="APLICAR 85 RUNS"
+mkdir -p "$SAIDA"; chmod 700 "$SAIDA"
+falha() { echo "ABORTADO: $*"; exit 1; }
+[ -t 0 ] && [ -t 1 ] || falha "este passo exige terminal interativo (nao pode ser automatizado)."
+( cd "$AQUI" && sha256sum -c --quiet SHA256SUMS ) || falha "arquivos do passo 3 nao conferem com SHA256SUMS."
+( cd "$RAIZ/passo1" && sha256sum -c --quiet SHA256SUMS ) || falha "arquivos do passo 1 nao conferem com SHA256SUMS."
+# o APLICAR tem de ser IDENTICO ao DRYRUN ja testado, exceto o rodape (COMMIT no lugar de ROLLBACK)
+diff <(head -n -2 "$RAIZ/passo1/reconciliacao_orfaos_DRYRUN.sql") <(head -n -2 "$AQUI/reconciliacao_orfaos_APLICAR.sql") >/dev/null || falha "APLICAR difere do DRYRUN alem do rodape."
+[ "$(tail -n 1 "$AQUI/reconciliacao_orfaos_APLICAR.sql")" = "COMMIT;" ] || falha "o APLICAR nao termina em COMMIT; (arquivo inesperado)."
+# pre-condicoes: backup, dry-run bem-sucedido e recente
+[ -f "$BK/backup_orfaos_runs.csv" ] && [ "$(wc -l < "$BK/backup_orfaos_runs.csv")" -ge 92 ] || falha "backup ausente ou incompleto (passo 1)."
+( cd "$BK" && sha256sum -c --quiet backup_orfaos_SHA256.txt ) || falha "o backup nao confere com o SHA-256 registrado."
+[ -f "$DRY" ] && grep -q 'G2 OK' "$DRY" && [ "$(grep -v '^[[:space:]]*$' "$DRY" | tail -n 1)" = "ROLLBACK" ] || falha "nao ha dry-run bem-sucedido em $DRY."
+idade=$(( ( $(date +%s) - $(stat -c %Y "$DRY") ) / 60 ))
+[ "$idade" -le 240 ] || falha "o dry-run tem $idade min (limite 240). Rode o passo 2 de novo."
+h=$(TZ=America/Sao_Paulo date +%H); [ "$((10#$h))" -ge 2 ] && [ "$((10#$h))" -lt 4 ] && falha "janela 02:00-04:00 BRT e a rodada noturna; rode fora dela."
+echo "Pre-condicoes OK: SHAs, backup (91 runs), dry-run G2 OK ha ${idade} min, fora da janela da rodada noturna."
+echo "Resumo do ultimo dry-run:"; grep -E "runs_encerrados|manual|noturno|G2 OK" "$DRY" | sed 's/^/   /' | cut -c1-170
+echo ""
+echo "Voce vai ENCERRAR (status=failed) os runs-alvo em PRODUCAO. O run 472 nao sera tocado."
+read -rp "Para autorizar, digite exatamente \"$FRASE\" e tecle Enter: " resp
+[ "$resp" = "$FRASE" ] || falha "frase de confirmacao incorreta; nada foi feito."
+source "$AQUI/_conexao.sh"; export PGAPPNAME=recup-p0-aplicar
+conectar rw
+echo ""; echo ">>> APLICANDO ($(date '+%d/%m %H:%M:%S'))"
+psql -X -v ON_ERROR_STOP=1 -P pager=off -f "$AQUI/reconciliacao_orfaos_APLICAR.sql" > "$SAIDA/aplicar_saida.txt" 2>&1; rc=$?
+ult="$(grep -v '^[[:space:]]*$' "$SAIDA/aplicar_saida.txt" | tail -n 1)"
+if [ $rc -eq 0 ] && [ "$ult" = "COMMIT" ] && grep -q 'G2 OK' "$SAIDA/aplicar_saida.txt"; then ok=0; echo "    OK   — G1/G2 aprovados e COMMIT efetuado."
+else ok=1; echo "    FALHOU (codigo $rc; ultima linha: '$ult'). A transacao foi desfeita pelo banco. Veja: $SAIDA/aplicar_saida.txt"; fi
+# verificacao independente, em conexao nova e somente-leitura
+export PGOPTIONS='-c default_transaction_read_only=on'
+n="$(psql -X -At -c "SELECT count(*) FROM central_vendas_sync_runs WHERE error_code = '$CODE' AND status = 'failed'")"
+esperado="$(sed -n 's/.*G2 OK: \([0-9][0-9]*\) encerrados.*/\1/p' "$SAIDA/aplicar_saida.txt" | head -n 1)"
+echo "Runs com o codigo do incidente (conexao nova): $n | encerrados reportados pelo G2: ${esperado:-?}"
+[ -n "${esperado:-}" ] && [ "$n" = "$esperado" ] || { echo "ATENCAO: contagem inesperada; NAO prossiga e avise o agente."; ok=1; }
+echo "Run 472: $(psql -X -At -c "SELECT status FROM central_vendas_sync_runs WHERE id = 472")   (esperado: running)"
+echo "Runs ainda ativos:"; psql -X -At -F ' | ' -c "SELECT status, CASE WHEN requested_by IS NULL THEN 'noturno' ELSE 'manual' END, count(*) FROM central_vendas_sync_runs WHERE status IN ('queued','running') GROUP BY 1,2 ORDER BY 1,2" | sed 's/^/   /'
+echo "Saida (somente voce le; nao publicar): $SAIDA/aplicar_saida.txt"
+echo "Reversao (so com autorizacao): psql -f $RAIZ/passo1/reconciliacao_orfaos_REVERTER.sql na pasta $BK"
+exit $ok
