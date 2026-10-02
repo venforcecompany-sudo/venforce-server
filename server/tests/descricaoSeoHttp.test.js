@@ -434,6 +434,59 @@ async function run() {
       ok("autorreparo: flag ausente/off = rejeição de hoje (1 chamada); ON = remoção localizada ou 1 reparo restrito ao trecho, rejeição idêntica quando não resolve");
     }
     {
+      const anterior = process.env.SEO_DESCRICAO_AUTORREPARO;
+      const a = () => anuncio({ attributes_json: [...anuncio().attributes_json, { id: "COLOR", name: "Cor", value: "Azul marinho" }] });
+      const base = "DESCRIÇÃO PRINCIPAL\nTênis infantil Molekinho para meninos.";
+      try {
+        for (const flag of ["off", "on"]) {
+          process.env.SEO_DESCRICAO_AUTORREPARO = flag;
+          reset({ anuncios: [a()], descricao: "sem" });
+          iaResposta = () => ({ ok: true, data: { descricao: base + "\n\nESPECIFICAÇÕES\n* Cor: Azul marinho acetinado.", fatosUsados: [] } });
+          const corrigida = await chamar("MLB-A", CORPO);
+          assert.strictEqual(corrigida.status, 200);
+          assert.ok(corrigida.corpo.ok && corrigida.corpo.descricao.includes("Cor: Azul marinho"), JSON.stringify(corrigida.corpo));
+          assert.ok(!corrigida.corpo.descricao.includes("acetinado"));
+          assert.ok(corrigida.corpo.avisos.some((p) => p.codigo === "TERMO_NAO_COMPROVADO"));
+          assert.strictEqual(iaChamadas.length, 1);
+          guardar();
+
+          reset({ anuncios: [a()], descricao: "sem" });
+          iaResposta = () => iaChamadas.length === 1
+            ? { ok: true, data: { descricao: base + "\n\nDESTAQUES DO PRODUTO\nA cor azul marinho tem acabamento acetinado.", fatosUsados: [] } }
+            : { ok: true, data: { trocas: [{ id: "S1", texto: "" }] } };
+          const perdida = await chamar("MLB-A", CORPO);
+          assert.strictEqual(perdida.status, 200);
+          assert.ok(!perdida.corpo.ok && perdida.corpo.problemas.some((p) => p.codigo === "FATO_PERDIDO"));
+          assert.ok(!("descricao" in perdida.corpo));
+          assert.strictEqual(iaChamadas.length, flag === "on" ? 2 : 1);
+          guardar();
+          if (flag === "off") {
+            for (const [secao, claim] of [["BENEFÍCIOS", "Baixo\nconsumo."], ["BENEFÍCIOS", "Revestimento\neletrostático."],
+              ["COMO USAR", "* Posicione o produto de forma firme\nsob carga."]]) {
+              reset({ anuncios: [a()], descricao: "sem" });
+              iaResposta = () => ({ ok: true, data: { descricao: base + "\n\n" + secao + "\n" + claim, fatosUsados: [] } });
+              const insegura = await chamar("MLB-A", CORPO);
+              assert.ok(!insegura.corpo.ok && insegura.corpo.problemas.some((p) => p.codigo === "CLAIM_OBJETIVO_SEM_FONTE"), JSON.stringify(insegura.corpo));
+              assert.ok(!("descricao" in insegura.corpo));
+              assert.strictEqual(iaChamadas.length, 1);
+              guardar();
+            }
+            reset({ anuncios: [a()], descricao: "sem" });
+            const isolada = base + "\n\nCOMO USAR\n* Posicione o produto de forma firme";
+            iaResposta = () => ({ ok: true, data: { descricao: isolada, fatosUsados: [] } });
+            const segura = await chamar("MLB-A", CORPO);
+            assert.ok(segura.corpo.ok && segura.corpo.descricao === isolada, JSON.stringify(segura.corpo));
+            assert.strictEqual(iaChamadas.length, 1);
+            guardar();
+          }
+        }
+      } finally {
+        if (anterior === undefined) delete process.env.SEO_DESCRICAO_AUTORREPARO;
+        else process.env.SEO_DESCRICAO_AUTORREPARO = anterior;
+      }
+      ok("preservação SOFT na rota: cor conservada na primeira geração, perda rejeitada com flag OFF/ON, sem escrita");
+    }
+    {
       assert.ok(todasChamadasMl.length > 0);
       assert.ok(todasChamadasMl.every((c) => c.metodo === "GET" &&
         (/^\/categories\/[^/]+$/.test(c.path) || /^\/items\/[^/]+\/description$/.test(c.path))),

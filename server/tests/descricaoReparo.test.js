@@ -311,6 +311,25 @@ function provider(...respostas) {
     assert.strictEqual(r3.ok, false);
   });
 
+  await check("guarda SOFT: reparo não pode tratar FATO_PERDIDO como autorização de apagar o fato", async () => {
+    const f = eng.montarFicha({ titulo: "Lixeira plástica", attributes_json: [
+      { id: "BRAND", name: "Marca", value: "JSN" }, { id: "COLOR", name: "Cor", value: "Azul" },
+      { id: "MATERIAL", name: "Material", value: "Plástico" }] },
+    { categoriaNome: "Lixeiras", descricaoEstado: "sem_descricao" });
+    const t = "DESCRIÇÃO PRINCIPAL\nLixeira JSN em plástico.\n\nDESTAQUES DO PRODUTO\nA cor azul tem acabamento acetinado.";
+    const p = provider(resposta(t), troca(""));
+    const r = await rep.gerarDescricaoSeo({ ficha: f, aiProvider: p, env: ON });
+    assert.strictEqual(r.ok, false, JSON.stringify(r));
+    assert.ok(!("descricao" in r));
+    assert.strictEqual(p.chamadas.length, 2);
+    assert.ok(p.chamadas[1].prompt.includes("DEVEM continuar nele: Cor: Azul"), p.chamadas[1].prompt);
+    const seguro = provider(resposta(t), troca("A cor é azul."));
+    const aprovado = await rep.gerarDescricaoSeo({ ficha: f, aiProvider: seguro, env: ON });
+    assert.ok(aprovado.ok && aprovado.descricao.includes("azul"), JSON.stringify(aprovado));
+    const off = await rep.gerarDescricaoSeo({ ficha: f, aiProvider: provider(resposta(t)), env: OFF });
+    assert.ok(!off.ok && off.problemas.some((q) => q.codigo === "FATO_PERDIDO"));
+  });
+
   if (falhas) { console.error(`\n${falhas}/${total} falha(s)`); process.exit(1); }
   console.log(`\n✓ descricaoReparo ok (${total} verificações)`);
 })();

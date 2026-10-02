@@ -993,7 +993,11 @@ function claimsComerciaisSemFonte(texto, ficha) {
   const out = [];
   const s = semAcento(texto);
   for (const re of [RE_PRECO, RE_FACILIDADE]) {
-    for (const m of s.matchAll(re)) if (!fontes.includes(m[2]) && !out.includes(m[2])) out.push(m[2]);
+    for (const m of s.matchAll(re)) {
+      // Só a complicação do ATO de comprar é experiência, nunca instalação/uso.
+      if (/^sem complicac/.test(m[2]) && modificaACompra(fraseAte(s, m.index))) continue;
+      if (!fontes.includes(m[2]) && !out.includes(m[2])) out.push(m[2]);
+    }
   }
   return out;
 }
@@ -2184,7 +2188,19 @@ function validarDescricao(descricaoBruta, fatosUsados, ficha) {
     add("CLAIM_COMERCIAL_SEM_FONTE", "Preço/custo ou facilidade técnica afirmados sem fonte (fatos, título ou descrição atual).", comerciais);
   }
   // F8.1 — desempenho/propriedade objetiva sem fato estruturado ou título
-  const objetivos = claimsObjetivosSemFonte(semTitulos, ficha);
+  // Isola só "firme" na instrução completa autorizada, sem quebrar claims
+  // entre linhas nem alterar o texto retornado ou os demais caracteres.
+  const textoObjetivos = porSecao.filter((x) => !(x.titulo && ehSecaoConhecida(x.linha.trim())))
+    .map((x) => {
+      if (x.secao !== "como usar" ||
+        !/^\s*[-•*–]?\s*posicione (?:o produto|a peca|o item) de forma firme[.!?]?\s*$/.test(semAcento(x.linha))) return x.linha;
+      // Sem pontuação, blank line não encerra uma instrução continuada.
+      const proxima = porSecao.slice(x.i + 1).find((p) => p.linha.trim());
+      const completa = /[.!?]\s*$/.test(x.linha) || !proxima ||
+        ehSecaoConhecida(proxima.linha.trim()) || /^\s*[-•*–]\s+\S/.test(proxima.linha);
+      return completa ? x.linha.replace(/\bfirme\b/i, "     ") : x.linha;
+    }).join("\n");
+  const objetivos = claimsObjetivosSemFonte(textoObjetivos, ficha);
   if (objetivos.length) {
     add("CLAIM_OBJETIVO_SEM_FONTE", "Afirmação objetiva de desempenho ou propriedade (consumo, resistência, estabilidade, " +
       "duração…) sem fato estruturado ou título que a sustente.", objetivos);
@@ -2307,6 +2323,7 @@ const CODIGOS_HARD = new Set([
   "CLAIM_NAO_SUSTENTADO", "FATO_INVENTADO", // F7C — fato/claim objetivo na copy
   "CLAIM_COMERCIAL_SEM_FONTE", // F7C.1 — preço/custo ou facilidade técnica sem fonte
   "CLAIM_OBJETIVO_SEM_FONTE", "KIT_OMITIDO", // F8.1 — desempenho sem fonte; kit descrito como unidade
+  "FATO_PERDIDO", // correção não pode apagar a única ocorrência de um fato útil
 ]);
 // SOFT por remoção da frase/item onde o termo aparece.
 // F7C — benefício deduzido virou SOFT: é linguagem, não fato novo (sai do bloco de FATO).
@@ -2401,6 +2418,34 @@ function removerFragmento(texto, p) {
   return marcador + prefixo + corpo + fim;
 }
 
+// Item factual inequívoco cujo valor ORIGINAL começa pelo valor comprovado.
+// Só corta um sufixo léxico sem fonte; não reconstrói frase, negação ou alternativa.
+function conservarValorRotulado(seg, p, ficha) {
+  if (seg.tipo !== "item" || p.codigo !== "TERMO_NAO_COMPROVADO") return null;
+  const m = /^(\s*[-•*–]\s*)([^:]{2,40}):\s*(.+?)([.!?]?)$/.exec(seg.texto);
+  if (!m) return null;
+  const kr = seo.contentKeys(m[2]);
+  const candidatos = ficha.fatos.filter((f) => {
+    const kl = seo.contentKeys(f.label);
+    return !f.oculto && f.listavel !== false && kr.length && kr.length === kl.length &&
+      kr.every((k, i) => k === kl[i]);
+  });
+  if (candidatos.length !== 1) return null;
+  const f = candidatos[0];
+  if (valorBooleano(f.value) !== null) return null;
+  const valor = String(f.value).trim();
+  const original = m[3].trim();
+  const vn = semAcento(valor);
+  const on = semAcento(original);
+  if (!vn || !on.startsWith(vn) || !/^\s+/.test(on.slice(vn.length))) return null;
+  const sufixo = original.slice(valor.length).trim();
+  // Uma oração, número ou conectivo pode mudar o significado do valor: não cortar.
+  if (!/^[\p{L}\s]+$/u.test(sufixo)) return null;
+  const tokens = seo.extractTokens(sufixo);
+  if (!tokens.length || tokens.some((t) => t.stopword || !(p.termos || []).includes(t.key))) return null;
+  return m[1] + m[2] + ": " + original.slice(0, valor.length) + m[4];
+}
+
 // Aplica UMA rodada de correções SOFT. Devolve null se algum problema não
 // tem correção segura (vira HARD CORRECAO_EXCESSIVA).
 function corrigirUmaVez(descricao, usados, problemas, ficha, registro) {
@@ -2425,7 +2470,7 @@ function corrigirUmaVez(descricao, usados, problemas, ficha, registro) {
       for (const seg of alvos) {
         const l = linhas[seg.i];
         // F14 — só a oração com o termo sai quando o resto se sustenta
-        const resto = removerFragmento(seg.texto, p);
+        const resto = removerFragmento(seg.texto, p) || conservarValorRotulado(seg, p, ficha);
         if (resto) {
           linhas[seg.i] = l.replace(seg.texto, resto);
           registro.removidos.push({ codigo: p.codigo, termos: p.termos, trecho: seg.texto, ficou: resto });
@@ -2496,6 +2541,47 @@ function corrigirUmaVez(descricao, usados, problemas, ficha, registro) {
   return { descricao: normalizarTexto(linhas.join("\n")), usados: novosUsados, avisos };
 }
 
+// Presença lexical factual compartilhada com o autorreparo. Não é prova semântica.
+const chavesDePreservacao = (t) => seo.extractTokens(String(t || ""))
+  .filter((x) => !x.stopword && x.key.length >= 3 && !CHAVES_FUNCIONAIS.has(x.key)).map((x) => x.key);
+const numerosDePreservacao = (t) => new Set(extrairNumeros(String(t || "")).map((n) => n.numero));
+const fonteDoFato = (f) => /^sim$/i.test(String(f.value).trim()) ? f.label : String(f.value == null ? "" : f.value);
+
+function fatosPresentes(textoDesc, ficha) {
+  const chaves = new Set(chavesDePreservacao(textoDesc));
+  const nums = numerosDePreservacao(textoDesc);
+  return (ficha.fatos || []).filter((f) => {
+    if (f.oculto || f.id === "model" || /^(nao|não)$/i.test(String(f.value).trim())) return false;
+    const fonte = fonteDoFato(f);
+    const ks = chavesDePreservacao(fonte);
+    const ns = Array.from(numerosDePreservacao(fonte));
+    return (ks.length || ns.length) && ks.every((k) => chaves.has(k)) && ns.every((n) => nums.has(n));
+  });
+}
+
+function fatoDoErro(f, problemas) {
+  // FATO_PERDIDO localiza o que deve permanecer, não o que pode ser retirado.
+  const termos = problemas.filter((p) => p.codigo !== "FATO_PERDIDO").flatMap((p) => p.termos || []).join(" ");
+  const kt = new Set(chavesDePreservacao(termos));
+  const nt = numerosDePreservacao(termos);
+  return chavesDePreservacao(fonteDoFato(f)).some((k) => kt.has(k)) ||
+    Array.from(numerosDePreservacao(fonteDoFato(f))).some((n) => nt.has(n));
+}
+
+function fatosPerdidos(antes, depois, ficha, problemas = []) {
+  const ficam = new Set(fatosPresentes(depois, ficha).map((f) => f.id));
+  return fatosPresentes(antes, ficha).filter((f) => !ficam.has(f.id) &&
+    !fatoDoErro(f, problemas))
+    .map((f) => ({ id: f.id, label: f.label, value: f.value }));
+}
+
+// Descartes editoriais intencionais/metadados não viram obrigação de conteúdo.
+function fatoUtil(f) {
+  const v = semAcento(f.value).trim();
+  return !f.oculto && f.listavel !== false && !VALORES_SEM_INFORMACAO.has(v) && v !== "sem validade" &&
+    v !== "sem " + semAcento(f.label).trim();
+}
+
 // Valida; se só houver SOFT, corrige e valida de novo (até 4 rodadas).
 //   { valida, descricao, fatosUsados?, problemas?, hard?, avisos: [...] }
 function validarComCorrecoes(descricaoBruta, fatosUsados, ficha) {
@@ -2511,6 +2597,15 @@ function validarComCorrecoes(descricaoBruta, fatosUsados, ficha) {
     const hard = v.problemas.filter((p) => severidade(p, ficha) === "hard");
     if (hard.length) return { ...v, hard, avisos: avisosFinais() };
     const r = corrigirUmaVez(descricao, usados, v.problemas, ficha, registro);
+    if (r.descricao != null) {
+      const uteis = new Set(ficha.fatos.filter(fatoUtil).map((f) => f.id));
+      const perdidos = fatosPerdidos(descricao, r.descricao, ficha, v.problemas).filter((f) => uteis.has(f.id));
+      if (perdidos.length) {
+        const p = { codigo: "FATO_PERDIDO", detalhe: "A correção removeria informação comprovada do produto: " +
+          perdidos.map((f) => f.label + ": " + f.value).join("; ") + ".", termos: perdidos.map((f) => String(f.value)) };
+        return { ...v, hard: [p], problemas: v.problemas.concat(p), avisos: registro.avisos };
+      }
+    }
     const removidosDeConteudo = registro.removidos.filter((x) => CODIGOS_QUE_CONTAM.has(x.codigo)).length;
     const semAbertura = r.descricao != null && !partesDaDescricao(r.descricao).introducao;
     if (r.erro || removidosDeConteudo > MAX_TRECHOS_REMOVIDOS || semAbertura) {
@@ -2787,6 +2882,8 @@ function polirDescricao(descricaoValida, fatosUsados, ficha) {
     if (novo === atual) continue;
     const rv = validarDescricao(novo, fatosUsados, ficha);
     if (!rv.valida) continue;
+    const uteis = new Set(ficha.fatos.filter(fatoUtil).map((f) => f.id));
+    if (fatosPerdidos(atual, novo, ficha).some((f) => uteis.has(f.id))) continue;
     ajustes.push(codigo);
     atual = novo;
     v = rv;
@@ -3061,6 +3158,9 @@ module.exports = {
   montarPrompt,
   validarDescricao,
   validarComCorrecoes,
+  fatosPresentes,
+  fatosPerdidos,
+  fatoDoErro,
   polirDescricao,
   severidade,
   podarItens,

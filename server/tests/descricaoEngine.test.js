@@ -1683,6 +1683,188 @@ async function run() {
     ok("52. F14: correção SOFT tira só a oração com o termo (\"Plástico, com acabamento cromado\" → \"Plástico\"); cabeça da frase nunca sai; sobra curta → segmento sai como antes");
   }
 
+  // Compra sem complicação é experiência; a âncora não libera claims do produto.
+  {
+    const f = ficha();
+    const t = (exp) => "DESCRIÇÃO PRINCIPAL\nTênis infantil Molekinho para meninos.\n\nEXPERIÊNCIA DE COMPRA\n" + exp;
+    for (const exp of ["Compra simples, segura e sem complicação.", "Compra simples e sem complicações.",
+      "Finalize sua compra sem complicação."]) {
+      const v = engine.validarComCorrecoes(t(exp), [], f);
+      assert.ok(v.valida && v.descricao.includes(exp), exp + " → " + JSON.stringify(v));
+    }
+    for (const exp of ["Compre um produto de instalação sem complicação.",
+      "Finalize a compra e tenha montagem sem complicação.", "Compra sem complicação e instalação fácil.", "Sem complicação."]) {
+      const v = engine.validarComCorrecoes(t(exp), [], f);
+      assert.ok(!v.valida && v.hard.some((p) => p.codigo === "CLAIM_COMERCIAL_SEM_FONTE"), exp);
+    }
+    ok("53. compra sem complicação passa sem remoção; facilidade técnica continua HARD");
+  }
+
+  // Modo de uma instrução simples não promete estabilidade/desempenho.
+  {
+    const f = ficha();
+    const t = (secao, frase) => "DESCRIÇÃO PRINCIPAL\nTênis infantil Molekinho para meninos.\n\n" + secao + "\n* " + frase;
+    const frase = "Posicione o produto de forma firme.";
+    const v = engine.validarComCorrecoes(t("COMO USAR", frase), [], f);
+    assert.ok(v.valida && v.descricao.includes(frase), JSON.stringify(v));
+    for (const [secao, claim] of [["BENEFÍCIOS", frase], ["COMO USAR", "Mais estabilidade e firmeza durante o treino."],
+      ["COMO USAR", "Posicione o produto e obtenha fixação firme sob carga."],
+      ["COMO USAR", "Posicione o produto de forma firme para proteção contra impacto."],
+      ["COMO USAR", "Fixação firme garantida."],
+      ["COMO USAR", "Posicione o produto de forma firme, com uso prolongado."]]) {
+      const r = engine.validarComCorrecoes(t(secao, claim), [], f);
+      assert.ok(!r.valida && r.hard.length, secao + ": " + claim);
+    }
+    ok("54. instrução simples de posicionamento só em COMO USAR; desempenho/proteção seguem HARD");
+  }
+
+  // Claims objetivos continuam globais, inclusive com a instrução segura ao lado.
+  {
+    const f = engine.montarFicha({ titulo: "Lixeira plástica", attributes_json: [
+      { id: "BRAND", name: "Marca", value: "JSN" }, { id: "MATERIAL", name: "Material", value: "Plástico" }] },
+    { categoriaNome: "Lixeiras", descricaoEstado: "sem_descricao" });
+    const base = "DESCRIÇÃO PRINCIPAL\nLixeira JSN em plástico.";
+    const segura = "\n\nCOMO USAR\n* Posicione o produto de forma firme.";
+    const falhas = [];
+    for (const [claim, termo] of [["Baixo\nconsumo.", "baixo consumo"],
+      ["Revestimento\neletrostático.", "revestimento\neletrostatico"]]) {
+      for (const instrucao of ["", segura]) {
+        const t = base + "\n\nBENEFÍCIOS\n" + claim + instrucao;
+        const v = engine.validarDescricao(t, [], f);
+        const objetivo = (v.problemas || []).find((p) => p.codigo === "CLAIM_OBJETIVO_SEM_FONTE");
+        if (v.valida || !objetivo || !objetivo.termos.includes(termo)) falhas.push(t);
+        const r = engine.validarComCorrecoes(t, [], f);
+        if (r.valida || !r.hard.some((p) => p.codigo === "CLAIM_OBJETIVO_SEM_FONTE")) falhas.push("correções: " + t);
+      }
+    }
+    assert.deepStrictEqual(falhas, [], "claims entre linhas devem continuar HARD, com ou sem instrução segura");
+    const limpa = engine.validarComCorrecoes(base + segura, [], f);
+    assert.ok(limpa.valida, JSON.stringify(limpa));
+    assert.strictEqual(limpa.descricao, base + segura, "mascaramento não altera a descrição retornada");
+    for (const insegura of ["\n* Fixação firme.", "\n\nBENEFÍCIOS\n* Posicione o produto de forma firme."]) {
+      const v = engine.validarDescricao(base + segura + insegura, [], f);
+      assert.ok(!v.valida && v.problemas.some((p) => p.codigo === "CLAIM_OBJETIVO_SEM_FONTE" && p.termos.includes("firme")), JSON.stringify(v));
+    }
+    ok("54b. claims separados por newline continuam HARD; só o firme da instrução exata em COMO USAR é isolado");
+  }
+
+  // A exceção exige instrução completa, não prefixo de frase continuada.
+  {
+    const f = engine.montarFicha({ titulo: "Lixeira plástica", attributes_json: [
+      { id: "BRAND", name: "Marca", value: "JSN" }, { id: "MATERIAL", name: "Material", value: "Plástico" }] },
+    { categoriaNome: "Lixeiras", descricaoEstado: "sem_descricao" });
+    const base = "DESCRIÇÃO PRINCIPAL\nLixeira JSN em plástico.\n\n";
+    const instrucao = "* Posicione o produto de forma firme";
+    const falhas = [];
+    for (const complemento of ["sob carga.", "durante uso prolongado."]) {
+      for (const separador of ["\n", "\n\n"]) {
+        const texto = base + "COMO USAR\n" + instrucao + separador + complemento;
+        const v = engine.validarDescricao(texto, [], f);
+        if (v.valida || !v.problemas.some((p) => p.codigo === "CLAIM_OBJETIVO_SEM_FONTE" && p.termos.includes("firme"))) {
+          falhas.push("validarDescricao: " + JSON.stringify(separador + complemento));
+        }
+        const corrigida = engine.validarComCorrecoes(texto, [], f);
+        if (corrigida.valida || !corrigida.hard.some((p) => p.codigo === "CLAIM_OBJETIVO_SEM_FONTE" && p.termos.includes("firme"))) {
+          falhas.push("validarComCorrecoes: " + JSON.stringify(separador + complemento));
+        }
+        const gerada = await engine.gerarDescricao({ ficha: f,
+          aiProvider: provider({ ok: true, data: { descricao: texto, fatosUsados: [] } }) });
+        if (gerada.ok || !gerada.problemas.some((p) => p.codigo === "CLAIM_OBJETIVO_SEM_FONTE" && p.termos.includes("firme"))) {
+          falhas.push("gerarDescricao: " + JSON.stringify(separador + complemento));
+        }
+      }
+    }
+    assert.deepStrictEqual(falhas, [], "continuação da instrução sem ponto deve manter firme sob detector global");
+    for (const ponto of ["", "."]) {
+      for (const fronteira of ["", "\n\n", "\n* Posicione o item.", "\n\nESPECIFICAÇÕES\n* Material: Plástico."]) {
+        const texto = base + "COMO USAR\n" + instrucao + ponto + fronteira;
+        assert.ok(engine.validarDescricao(texto, [], f).valida, texto);
+        const corrigida = engine.validarComCorrecoes(texto, [], f);
+        assert.ok(corrigida.valida && corrigida.descricao.includes(instrucao + ponto), JSON.stringify(corrigida));
+        const gerada = await engine.gerarDescricao({ ficha: f,
+          aiProvider: provider({ ok: true, data: { descricao: texto, fatosUsados: [] } }) });
+        assert.ok(gerada.ok && gerada.descricao.includes(instrucao + ponto), JSON.stringify(gerada));
+      }
+      const fora = engine.validarComCorrecoes(base + "BENEFÍCIOS\n" + instrucao + ponto, [], f);
+      assert.ok(!fora.valida && fora.hard.some((p) => p.termos.includes("firme")), JSON.stringify(fora));
+    }
+    const terminada = base + "COMO USAR\n" + instrucao + ".\n\nPosicione o item.";
+    assert.ok(engine.validarDescricao(terminada, [], f).valida, terminada);
+    const adicional = engine.validarComCorrecoes(base + "COMO USAR\n" + instrucao + ".\n\ndurante uso prolongado.", [], f);
+    assert.ok(!adicional.valida && adicional.hard.some((p) => p.codigo === "CLAIM_OBJETIVO_SEM_FONTE" &&
+      p.termos.includes("uso prolongado") && !p.termos.includes("firme")), JSON.stringify(adicional));
+    ok("54c. fronteira completa de instrução: continuação mesmo após blank line é HARD; isolada preservada também em gerarDescricao");
+  }
+
+  // Valor factual inequívoco + adjetivo sem fonte: só o adjetivo sai.
+  {
+    const base = "DESCRIÇÃO PRINCIPAL\nLixeira JSN em plástico.\n\nESPECIFICAÇÕES\n";
+    for (const [id, label, value] of [["COLOR", "Cor", "Azul"], ["COLOR", "Cor", "Azul marinho"],
+      ["COMPOSITION", "Composição", "100% algodão"], ["VOLUME_CAPACITY", "Capacidade em volume", "60 L"]]) {
+      const f = engine.montarFicha({ titulo: "Lixeira plástica", attributes_json: [
+        { id: "BRAND", name: "Marca", value: "JSN" }, { id: "MATERIAL", name: "Material", value: "Plástico" },
+        { id, name: label, value }] }, { categoriaNome: "Lixeiras", descricaoEstado: "sem_descricao" });
+      const item = "* " + label + ": " + value;
+      const v = engine.validarComCorrecoes(base + item + " acetinado.", [], f);
+      assert.ok(v.valida && v.descricao.includes(item) && !v.descricao.includes("acetinado"), JSON.stringify(v));
+      assert.ok(v.avisos.some((a) => a.codigo === "TERMO_NAO_COMPROVADO" && a.trecho.includes("acetinado")));
+    }
+    const f = engine.montarFicha({ titulo: "Lixeira plástica", attributes_json: [
+      { id: "BRAND", name: "Marca", value: "JSN" }, { id: "COLOR", name: "Cor", value: "Azul acetinado" }] },
+    { categoriaNome: "Lixeiras", descricaoEstado: "sem_descricao" });
+    assert.ok(engine.validarComCorrecoes(base + "* Cor: Azul acetinado.", [], f).descricao.includes("Azul acetinado"), "adjetivo comprovado fica");
+    ok("55. correção de item rotulado conserva valor composto, número e unidade; adjetivo comprovado fica");
+  }
+
+  // Uma frase SOFT não pode levar a única ocorrência de um fato útil.
+  {
+    const f = engine.montarFicha({ titulo: "Lixeira plástica", attributes_json: [
+      { id: "BRAND", name: "Marca", value: "JSN" }, { id: "COLOR", name: "Cor", value: "Azul" },
+      { id: "MATERIAL", name: "Material", value: "Plástico" }] },
+    { categoriaNome: "Lixeiras", descricaoEstado: "sem_descricao" });
+    const base = "DESCRIÇÃO PRINCIPAL\nLixeira JSN em plástico.";
+    const ruim = base + "\n\nDESTAQUES DO PRODUTO\nA cor azul tem acabamento acetinado.";
+    const v = engine.validarComCorrecoes(ruim, [], f);
+    assert.ok(!v.valida && v.hard.some((p) => p.codigo === "FATO_PERDIDO"), JSON.stringify(v));
+    assert.strictEqual(v.descricao, ruim, "não retorna texto mutilado como aprovado");
+    const p = provider({ ok: true, data: { descricao: ruim, fatosUsados: [] } });
+    const gerada = await engine.gerarDescricao({ ficha: f, aiProvider: p });
+    assert.ok(!gerada.ok && gerada.problemas.some((q) => q.codigo === "FATO_PERDIDO"));
+    assert.ok(!("descricao" in gerada));
+    // Presença em outro trecho preserva o fato; omissão desde o início não é perda.
+    assert.ok(engine.validarComCorrecoes(ruim.replace("em plástico.", "em plástico azul."), [], f).valida);
+    assert.ok(engine.validarComCorrecoes(base, [], f).valida);
+    // Cor verdadeira junto de alternativa/negação não vira item factual reconstituído.
+    for (const item of ["* Cor: Azul ou acetinado.", "* Cor: Quase azul acetinado."]) {
+      const r = engine.validarComCorrecoes(base + "\n\nESPECIFICAÇÕES\n" + item, [], f);
+      assert.ok(!r.valida, item + " → " + JSON.stringify(r));
+    }
+    ok("56. SOFT não aprova perda de fato útil; presença alternativa e omissão original não são perda");
+  }
+
+  {
+    const f = engine.montarFicha({ titulo: "Lixeira plástica", attributes_json: [
+      { id: "BRAND", name: "Marca", value: "JSN" }, { id: "COLOR", name: "Cor", value: "Azul" }] },
+    { categoriaNome: "Lixeiras", descricaoEstado: "sem_descricao" });
+    const t = "DESCRIÇÃO PRINCIPAL\nLixeira JSN. Confira as características na cor azul.";
+    assert.ok(engine.validarDescricao(t, [], f).valida);
+    const p = engine.polirDescricao(t, [], f);
+    assert.ok(p.descricao.includes("azul"), JSON.stringify(p));
+    assert.ok(!p.ajustes.includes("METATEXTO"), "regra editorial que apagaria fato útil é descartada");
+    ok("57. polimento não apaga fato útil único; descarte de valor sem informação mantém política anterior");
+  }
+
+  {
+    const f = engine.montarFicha({ titulo: "Lixeira JSN", attributes_json: [
+      { id: "BRAND", name: "Marca", value: "JSN" },
+      { id: "LID_MATERIAL", name: "Material da tampa", value: "Plástico" }] },
+    { categoriaNome: "Lixeiras", descricaoEstado: "sem_descricao" });
+    const t = "DESCRIÇÃO PRINCIPAL\nLixeira JSN.\n\nESPECIFICAÇÕES\n* Material: Plástico acetinado.";
+    const v = engine.validarComCorrecoes(t, [], f);
+    assert.ok(!v.valida, "rótulo genérico não reconstrói o material de uma parte como material do produto: " + JSON.stringify(v));
+    ok("58. reconstrução exige rótulo completo: material de uma parte não vira material genérico");
+  }
+
   console.log(`\n✓ ${checks} verificações do Description Engine`);
 }
 

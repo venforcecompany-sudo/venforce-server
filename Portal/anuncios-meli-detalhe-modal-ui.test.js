@@ -3852,6 +3852,120 @@ async function run() {
       assert.strictEqual(await cdp.evaluate("document.querySelectorAll('.am-det-modal [data-acao*=\"termo\"]').length"), 0);
     });
 
+    await check("46n — cenário de teste: aprovação explica avisos, ajustes e autorreparo sem códigos técnicos", async () => {
+      descricaoSeoHandler = () => ({ status: 200, corpo: { ok: true, descricao: SUG_DESC_A2,
+        avisos: [{ codigo: "LINGUAGEM_PROIBIDA", acao: "trecho removido", trecho: "Promessa de teste", termos: ["receba"] }],
+        ajustesEditoriais: ["ITEM_CONTIDO"], autorreparo: { etapa: "remocao", chamadasIa: 1,
+          removidas: [{ codigo: "CLAIM_OBJETIVO_SEM_FONTE", trecho: "Afirmação de teste" }] } } });
+      await clicar(cdp, '#am-det-sug-descricao [data-acao="gerar-descricao"]');
+      await waitFor(cdp, "document.querySelectorAll('#am-det-sug-descricao [data-acao=\"usar-descricao\"]').length === 1", "aprovação não apareceu");
+      const col = await colunaDescricao();
+      assert.ok(col.includes("trecho removido"), "aviso aprovado precisa aparecer: " + col);
+      assert.ok(col.includes("Promessa de teste") && col.includes("receba"), col);
+      assert.ok(/itens redundantes removidos/i.test(col), col);
+      assert.ok(/trechos sem suporte foram removidos/i.test(col), col);
+      assert.ok(!/LINGUAGEM_PROIBIDA|ITEM_CONTIDO|CLAIM_OBJETIVO_SEM_FONTE/.test(col), col);
+      // Avisos sem autorreparo também são informação útil no sucesso.
+      descricaoSeoHandler = () => ({ status: 200, corpo: { ok: true, descricao: SUG_DESC_A2,
+        avisos: [{ codigo: "TESTE_AVISO", acao: "Aviso isolado de teste" }] } });
+      await clicar(cdp, '#am-det-sug-descricao [data-acao="gerar-descricao"]');
+      await waitFor(cdp, "document.querySelectorAll('#am-det-sug-descricao [data-acao=\"usar-descricao\"]').length === 1", "aprovação com aviso não apareceu");
+      assert.ok((await colunaDescricao()).includes("Aviso isolado de teste"));
+      descricaoSeoHandler = null;
+    });
+
+    await check("46o — cenário de teste: falha do autorreparo preserva motivo, sem texto inválido nem Usar", async () => {
+      descricaoSeoHandler = () => ({ status: 200, corpo: { ok: false, codigo: "DESCRICAO_INVALIDA",
+        motivo: "Motivo de teste: afirmação sem fonte.", descricao: "TEXTO INVALIDO DE TESTE",
+        problemas: [{ detalhe: "Afirmação sem fonte de teste." }],
+        autorreparo: { etapa: "falha", chamadasIa: 2, codigo: "REPARO_AINDA_INVALIDO" } } });
+      await clicar(cdp, '#am-det-sug-descricao [data-acao="gerar-descricao"]');
+      await waitFor(cdp, "document.getElementById('am-det-sug-descricao').innerText.includes('Afirmação sem fonte de teste')", "rejeição não apareceu");
+      const col = await colunaDescricao();
+      assert.ok(/reparo automático foi tentado, mas não resolveu/i.test(col), col);
+      assert.ok(col.includes("Motivo de teste: afirmação sem fonte."), col);
+      assert.ok(!/TEXTO INVALIDO DE TESTE|REPARO_AINDA_INVALIDO|antes da aprovação/.test(col), col);
+      assert.strictEqual(await nUsarDescricao(), 0);
+      descricaoSeoHandler = null;
+    });
+
+    await check("46p — cenário de teste: nova geração e novo modal limpam avisos e autorreparo", async () => {
+      // Exercita a função real com resposta pendente para observar a limpeza
+      // de estado antes da rede, não apenas a ocultação do HTML durante loading.
+      const fonte = fs.readFileSync(path.join(PORTAL_DIR, "anuncios-meli.js"), "utf8");
+      const gerarReal = fonte.slice(fonte.indexOf("  function gerarDescricao() {"), fonte.indexOf("  function usarDescricao() {"));
+      const estadoTeste = { estado: "ok", seq: 0, texto: "Texto anterior de teste", avisos: [{ acao: "Teste" }],
+        ajustesEditoriais: ["ITEM_CONTIDO"], autorreparo: { etapa: "remocao" } };
+      const detTeste = { anuncio: { item_id: "TESTE-LOCAL" }, descricaoSeo: estadoTeste, descricaoEstado: "ok", token: "teste" };
+      new Function("DET", "AM", "api", "repintarDescricao", gerarReal + "; gerarDescricao();")(
+        detTeste, { clienteAtual: { slug: "teste-local" } }, () => new Promise(() => {}), () => {});
+      assert.deepStrictEqual(estadoTeste.avisos, [], "avisos limpos antes da resposta");
+      assert.deepStrictEqual(estadoTeste.ajustesEditoriais, [], "ajustes limpos antes da resposta");
+      assert.strictEqual(estadoTeste.autorreparo, null, "autorreparo limpo antes da resposta");
+      descricaoSeoHandler = () => ({ status: 200, corpo: { ok: true, descricao: SUG_DESC_A2,
+        avisos: [{ acao: "Aviso anterior de teste" }], autorreparo: { etapa: "remocao", removidas: [{ trecho: "Teste" }] } } });
+      await clicar(cdp, '#am-det-sug-descricao [data-acao="gerar-descricao"]');
+      await waitFor(cdp, "document.getElementById('am-det-sug-descricao').innerText.includes('Aviso anterior de teste')", "aviso inicial não apareceu");
+      descricaoSeoAtrasoMs = 600;
+      descricaoSeoHandler = null;
+      await clicar(cdp, '#am-det-sug-descricao [data-acao="gerar-descricao"]');
+      assert.ok(!/Aviso anterior de teste|antes da aprovação/.test(await colunaDescricao()), "loading sem metadados antigos");
+      await waitFor(cdp, "document.querySelectorAll('#am-det-sug-descricao [data-acao=\"usar-descricao\"]').length === 1", "nova geração não concluiu");
+      descricaoSeoAtrasoMs = 0;
+      assert.ok(!/Aviso anterior de teste|antes da aprovação/.test(await colunaDescricao()), "resposta limpa sem metadados antigos");
+      await fecharModal(cdp);
+      await abrirPrimeiroAnuncio(cdp);
+      assert.ok(/Nenhuma sugestão gerada ainda/.test(await colunaDescricao()));
+      assert.ok(!/Aviso anterior de teste|antes da aprovação/.test(await colunaDescricao()));
+    });
+
+    await check("46q — cenário de teste: reparo por IA explica substituições reais sem mostrar o texto rejeitado", async () => {
+      descricaoSeoHandler = () => ({ status: 200, corpo: { ok: true, descricao: SUG_DESC_A2,
+        autorreparo: { etapa: "reparo_ia", chamadasIa: 2,
+          trocas: [{ id: "S1", antes: "INVALIDO DE TESTE", depois: "Frase corrigida de teste" }] } } });
+      await clicar(cdp, '#am-det-sug-descricao [data-acao="gerar-descricao"]');
+      await waitFor(cdp, "document.querySelectorAll('#am-det-sug-descricao [data-acao=\"usar-descricao\"]').length === 1", "reparo não apareceu");
+      const col = await colunaDescricao();
+      assert.ok(/trechos foram corrigidos pela IA e a descrição foi validada novamente/i.test(col), col);
+      assert.ok(!col.includes("INVALIDO DE TESTE"), col);
+      descricaoSeoHandler = null;
+    });
+
+    await check("46r — cenário de teste: avisos e motivo do reparo são escapados, nunca HTML ativo", async () => {
+      const ataqueTeste = '<img data-teste-seo="xss" src=x onerror="window.__xssSeoTeste=1">';
+      descricaoSeoHandler = () => ({ status: 200, corpo: { ok: true, descricao: SUG_DESC_A2,
+        avisos: [{ codigo: ataqueTeste, acao: ataqueTeste, trecho: ataqueTeste, termos: [ataqueTeste] }],
+        ajustesEditoriais: [ataqueTeste], autorreparo: { etapa: "remocao", removidas: [{ trecho: ataqueTeste }] } } });
+      await clicar(cdp, '#am-det-sug-descricao [data-acao="gerar-descricao"]');
+      await waitFor(cdp, "document.querySelectorAll('#am-det-sug-descricao [data-acao=\"usar-descricao\"]').length === 1", "sucesso não apareceu");
+      assert.ok((await colunaDescricao()).includes(ataqueTeste), "aviso mantém texto literal");
+      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#am-det-sug-descricao [data-teste-seo]').length"), 0);
+      assert.strictEqual(await cdp.evaluate("window.__xssSeoTeste || 0"), 0);
+      descricaoSeoHandler = () => ({ status: 200, corpo: { ok: false, codigo: "DESCRICAO_INVALIDA", motivo: ataqueTeste,
+        problemas: [{ detalhe: ataqueTeste, termos: [ataqueTeste] }], autorreparo: { etapa: "falha", chamadasIa: 2 } } });
+      await clicar(cdp, '#am-det-sug-descricao [data-acao="gerar-descricao"]');
+      await waitFor(cdp, "document.getElementById('am-det-sug-descricao').innerText.includes('reparo automático foi tentado')", "falha não apareceu");
+      assert.ok((await colunaDescricao()).includes(ataqueTeste));
+      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#am-det-sug-descricao [data-teste-seo]').length"), 0);
+      assert.strictEqual(await cdp.evaluate("window.__xssSeoTeste || 0"), 0);
+      descricaoSeoHandler = null;
+    });
+
+    await check("46s — cenário de teste: autorreparo aprovado não aplica nem escreve automaticamente", async () => {
+      const antes = pedidos.length;
+      const rascunhoAntes = await cdp.evaluate("document.getElementById('am-det-descricao').value");
+      descricaoSeoHandler = () => ({ status: 200, corpo: { ok: true, descricao: SUG_DESC_A2,
+        avisos: [{ acao: "Aviso de teste sem aplicação" }], autorreparo: { etapa: "reparo_ia", chamadasIa: 2,
+          trocas: [{ antes: "Teste anterior", depois: "Teste corrigido" }] } } });
+      await clicar(cdp, '#am-det-sug-descricao [data-acao="gerar-descricao"]');
+      await waitFor(cdp, "document.querySelectorAll('#am-det-sug-descricao [data-acao=\"usar-descricao\"]').length === 1", "sugestão não apareceu");
+      assert.strictEqual(await cdp.evaluate("document.getElementById('am-det-descricao').value"), rascunhoAntes);
+      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#am-det-savebar').length"), 0);
+      assert.ok(!(await colunaDescricao()).includes("Usada nesta edição"));
+      assert.deepStrictEqual(pedidos.slice(antes).filter((u) => /\/conteudo|\/preco|\/fotos|\/imagens|\/aprovar|\/otimizar/.test(u)), []);
+      descricaoSeoHandler = null;
+    });
+
     await check("46m — em todo o percurso, nenhum PATCH /conteudo levou descrição que não veio de 'Usar'/digitação", async () => {
       const descricoesEnviadas = corpos.filter((c) => /\/conteudo/.test(c.url) && c.body && c.body.descricao !== undefined)
         .map((c) => c.body.descricao);

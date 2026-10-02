@@ -145,41 +145,8 @@ function repararLocalmente(rejeitada, hard, ficha, fatosUsados) {
 // números dele aparecem no texto. Base da preservação factual: um fato que
 // estava na descrição rejeitada e não tem relação com o erro tem de continuar.
 // -----------------------------------------------------------------------------
-const numerosDe = (t) => new Set(eng.extrairNumeros(String(t || "")).map((n) => n.numero));
-
-function fatosPresentes(texto, ficha) {
-  const chaves = new Set(chavesConteudo(texto));
-  const nums = numerosDe(texto);
-  const out = [];
-  for (const f of ficha.fatos || []) {
-    if (f.oculto || f.id === "model") continue;
-    const v = String(f.value == null ? "" : f.value).trim();
-    if (/^(nao|não)$/i.test(v)) continue;
-    const fonte = /^sim$/i.test(v) ? f.label : v;
-    const ks = chavesConteudo(fonte);
-    const ns = Array.from(numerosDe(fonte));
-    if (!ks.length && !ns.length) continue;
-    if (ks.every((k) => chaves.has(k)) && ns.every((n) => nums.has(n))) out.push(f);
-  }
-  return out;
-}
-
-// Fato relacionado ao erro: alguma palavra/número dele está nos termos que a
-// validação apontou (é exatamente o que o reparo pode tirar).
-function fatoDoErro(f, problemas) {
-  const termos = problemas.flatMap((p) => p.termos || []).join(" ");
-  const kt = new Set(chavesConteudo(termos));
-  const nt = numerosDe(termos);
-  const v = String(f.value == null ? "" : f.value);
-  const fonte = /^sim$/i.test(v.trim()) ? f.label : v;
-  return chavesConteudo(fonte).some((k) => kt.has(k)) || Array.from(numerosDe(fonte)).some((n) => nt.has(n));
-}
-
-function fatosPerdidos(antes, depois, ficha, problemas) {
-  const ficam = new Set(fatosPresentes(depois, ficha).map((f) => f.id));
-  return fatosPresentes(antes, ficha).filter((f) => !ficam.has(f.id) && !fatoDoErro(f, problemas))
-    .map((f) => ({ id: f.id, label: f.label, value: f.value }));
-}
+// O mesmo critério lexical da primeira geração, sem duplicação/circularidade.
+const { fatosPresentes, fatosPerdidos, fatoDoErro } = eng;
 
 // -----------------------------------------------------------------------------
 // B) Reparo RESTRITO A SEGMENTOS. A IA não reescreve a descrição: recebe os

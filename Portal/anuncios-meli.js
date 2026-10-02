@@ -5186,12 +5186,34 @@
   // quem escreve no Mercado Livre continua sendo "Salvar alterações". O
   // histórico/aprovação do otimizador legado não alimenta mais esta coluna.
   function novoEstadoDescricao() {
-    return { estado: null, texto: "", chars: 0, limite: 0, fatosUsados: [], erro: null, codigo: null, problemas: [], seq: 0 };
+    return { estado: null, texto: "", chars: 0, limite: 0, fatosUsados: [], avisos: [], ajustesEditoriais: [], autorreparo: null, erro: null, codigo: null, problemas: [], seq: 0 };
   }
 
   function descricaoSugeridaUsada() {
     var S = DET && DET.descricaoSeo;
     return !!(S && S.estado === "ok" && S.texto && DET.rascunho.descricao === S.texto);
+  }
+
+  function avisosDescricaoHtml(S) {
+    var ajustes = { ACENTUACAO: "Acentuação corrigida", VALOR_SEM_INFORMACAO: "Valores sem informação removidos",
+      MATERIAL_MINUSCULO: "Grafia dos materiais padronizada", ITEM_CONTIDO: "Itens redundantes removidos",
+      SECAO_POBRE: "Seções redundantes removidas" };
+    var linhas = (S.avisos || []).map(function (a) {
+      if (!a || !a.acao) return "";
+      return String(a.acao) + (a.trecho ? ": " + a.trecho : "") +
+        (Array.isArray(a.termos) && a.termos.length ? " (" + a.termos.join(", ") + ")" : "");
+    }).filter(Boolean);
+    (S.ajustesEditoriais || []).forEach(function (codigo) {
+      linhas.push(ajustes[codigo] || "Ajuste editorial realizado");
+    });
+    if (S.autorreparo && S.autorreparo.etapa === "remocao" && S.autorreparo.removidas && S.autorreparo.removidas.length) {
+      linhas.push("Trechos sem suporte foram removidos antes da aprovação da descrição.");
+    }
+    if (S.autorreparo && S.autorreparo.etapa === "reparo_ia" && Array.isArray(S.autorreparo.trocas) &&
+        S.autorreparo.trocas.some(function (t) { return t && t.depois != null && t.depois !== t.antes; })) {
+      linhas.push("Trechos foram corrigidos pela IA e a descrição foi validada novamente.");
+    }
+    return linhas.length ? listaIaHtml([], linhas) : "";
   }
 
   function sugestaoDescricaoHtml() {
@@ -5221,7 +5243,7 @@
         '<p class="am-det-readtext am-det-readtext--sug am-det-readtext--bloco">' + escapeHtml(S.texto) + "</p>" +
         '<p class="am-det-compare__hint">' + S.chars + (S.limite ? "/" + S.limite : "") + " caracteres" +
           (base.length ? " · com base em: " + escapeHtml(base.join(", ")) : "") + "</p>" +
-        acoesIaHtml([
+        avisosDescricaoHtml(S) + acoesIaHtml([
           btnGhost("usar-descricao", "Usar descrição", ""),
           btnGhost("copiar", "Copiar", ' data-fonte="descricao-sugerida"'),
           botaoGerar("Gerar novamente"),
@@ -5233,6 +5255,9 @@
       // aplicado e lista cada motivo do backend, um por linha, em vez do
       // parágrafo corrido. Outros erros (IA fora, resposta cortada) seguem
       // com o motivo como veio.
+      var falhaReparo = S.autorreparo && S.autorreparo.etapa === "falha"
+        ? '<p class="am-det-vazio">O reparo automático foi tentado, mas não resolveu a rejeição. ' + escapeHtml(S.erro || "") + "</p>"
+        : "";
       if (S.codigo === "DESCRICAO_INVALIDA") {
         var vistos = {};
         var motivos = (S.problemas || []).map(function (p) {
@@ -5242,13 +5267,13 @@
         }).filter(function (t) { return t && !vistos[t] && (vistos[t] = true); });
         return cabeca +
           '<p class="am-det-vazio"><b>A descrição gerada foi rejeitada pela checagem de fatos.</b> ' +
-            "Nada foi aplicado ao rascunho nem ao anúncio.</p>" +
+            "Nada foi aplicado ao rascunho nem ao anúncio.</p>" + falhaReparo +
           (motivos.length
             ? listaIaHtml([], motivos)
             : '<p class="am-det-vazio">' + escapeHtml(S.erro || "") + "</p>") +
           acoesIaHtml([botaoGerar("Tentar novamente")]);
       }
-      return cabeca + '<p class="am-det-vazio">' + escapeHtml(S.erro || "Não foi possível gerar a descrição.") + "</p>" +
+      return cabeca + falhaReparo + '<p class="am-det-vazio">' + escapeHtml(S.erro || "Não foi possível gerar a descrição.") + "</p>" +
         acoesIaHtml([botaoGerar("Tentar novamente")]);
     }
 
@@ -5271,6 +5296,9 @@
     S.erro = null;
     S.codigo = null;
     S.problemas = [];
+    S.avisos = [];
+    S.ajustesEditoriais = [];
+    S.autorreparo = null;
     repintarDescricao();
 
     var corpo = { clienteSlug: AM.clienteAtual.slug };
@@ -5287,6 +5315,9 @@
         return;
       }
       var d = r.data || {};
+      S.avisos = Array.isArray(d.avisos) ? d.avisos : [];
+      S.ajustesEditoriais = Array.isArray(d.ajustesEditoriais) ? d.ajustesEditoriais : [];
+      S.autorreparo = d.autorreparo || null;
       if (!d.ok || typeof d.descricao !== "string" || !d.descricao) {
         S.estado = "erro";
         S.erro = d.motivo || "Não foi possível gerar a descrição.";
