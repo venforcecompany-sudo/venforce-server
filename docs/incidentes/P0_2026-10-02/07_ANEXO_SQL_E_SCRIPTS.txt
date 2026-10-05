@@ -1238,3 +1238,402 @@ echo "Runs ainda ativos:"; psql -X -At -F ' | ' -c "SELECT status, CASE WHEN req
 echo "Saida (somente voce le; nao publicar): $SAIDA/aplicar_saida.txt"
 echo "Reversao (so com autorizacao): psql -f $RAIZ/passo1/reconciliacao_orfaos_REVERTER.sql na pasta $BK"
 exit $ok
+
+================================================================================
+9. ARTEFATOS DE 2026-10-05 (checkpoint, pré-voo, 60 queued, setembro) — NADA AQUI FOI EXECUTADO ALÉM DO CHECKPOINT/PRÉ-VOO
+================================================================================
+
+--- 9.1 checkpoint_0510.sql (SOMENTE LEITURA; EXECUTADO em 05/10 14:27) ---
+-- ============================================================================
+-- CHECKPOINT P0 de 2026-10-05 — SOMENTE LEITURA (SELECT apenas; termina em ROLLBACK)
+-- Travas: BEGIN READ ONLY, statement_timeout 30s, lock_timeout 3s,
+-- idle_in_transaction 120s. Nenhum UPDATE/DELETE/INSERT/DDL.
+-- Alvos = os 85 ids da reconciliacao de 02/10 (extraidos do APLICAR.sql instalado).
+-- ============================================================================
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '3s';
+SET LOCAL idle_in_transaction_session_timeout = '120s';
+SET LOCAL TIME ZONE 'America/Sao_Paulo';
+
+\echo '=== K0 agora ==='
+SELECT now() AS agora_brt;
+
+\echo '=== K1 runs que receberam o codigo da reconciliacao (prova de que foi gravada) ==='
+SELECT status, COUNT(*) AS runs, MIN(finished_at) AS primeiro_finished, MAX(finished_at) AS ultimo_finished
+  FROM central_vendas_sync_runs
+ WHERE error_code = 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002'
+ GROUP BY status;
+
+\echo '=== K2 85 alvos por status x error_code ==='
+SELECT r.status, COALESCE(r.error_code, '(nulo)') AS error_code, COUNT(*) AS runs,
+       MIN(r.finished_at) AS min_finished, MAX(r.finished_at) AS max_finished
+  FROM central_vendas_sync_runs r
+ WHERE r.id = ANY (ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,487,490,491,492,493,494]::bigint[])
+ GROUP BY 1, 2 ORDER BY 1, 2;
+
+\echo '=== K2a alvos que nao existem mais ==='
+SELECT COUNT(*) AS alvos_ausentes
+  FROM unnest(ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,487,490,491,492,493,494]::bigint[]) a(id)
+ WHERE NOT EXISTS (SELECT 1 FROM central_vendas_sync_runs r WHERE r.id = a.id);
+
+\echo '=== K2b divergencias: alvo ainda ativo OU com codigo diferente do esperado ==='
+SELECT r.id, r.status, r.error_code, r.finished_at
+  FROM central_vendas_sync_runs r
+ WHERE r.id = ANY (ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,487,490,491,492,493,494]::bigint[])
+   AND (r.status IN ('queued','running')
+        OR r.error_code IS DISTINCT FROM 'SYNC_RUN_ORPHAN_POST_INCIDENT_20261002')
+ ORDER BY r.id;
+
+\echo '=== K3 run 472 ==='
+SELECT id, status, started_at, finished_at, error_code, LEFT(error_message, 160) AS error_message_160,
+       updated_at, cliente_conta_id, date_from, date_to, requested_by IS NOT NULL AS manual
+  FROM central_vendas_sync_runs WHERE id = 472;
+
+\echo '=== K3b runs posteriores na mesma conta que tocam o periodo do 472 ==='
+SELECT r2.id, r2.status, r2.error_code, r2.date_from, r2.date_to, r2.created_at, r2.finished_at,
+       r2.requested_by IS NOT NULL AS manual
+  FROM central_vendas_sync_runs r1
+  JOIN central_vendas_sync_runs r2
+    ON r2.cliente_conta_id = r1.cliente_conta_id AND r2.id > r1.id
+   AND r2.date_from <= r1.date_to AND r2.date_to >= r1.date_from
+ WHERE r1.id = 472
+ ORDER BY r2.id;
+
+\echo '=== K3c imports do run 472 ==='
+SELECT i.id, i.competencia, i.publication_status, i.coverage_date_from, i.coverage_date_to,
+       (SELECT COUNT(*) FROM central_vendas_pedidos p WHERE p.import_id = i.id) AS pedidos
+  FROM central_vendas_imports i WHERE i.sync_run_id = 472 ORDER BY i.id;
+
+\echo '=== K4 rodadas noturnas (requested_by IS NULL) por dia de criacao, desde 2026-10-02 ==='
+SELECT r.created_at::date AS dia,
+       COUNT(*) AS criados,
+       COUNT(*) FILTER (WHERE r.status = 'completed') AS completed,
+       COUNT(*) FILTER (WHERE r.status = 'failed') AS failed,
+       COUNT(*) FILTER (WHERE r.status = 'queued') AS queued,
+       COUNT(*) FILTER (WHERE r.status = 'running') AS running,
+       COUNT(*) FILTER (WHERE (r.status = 'queued'  AND r.created_at < now() - interval '15 minutes')
+                           OR (r.status = 'running' AND COALESCE(r.started_at, r.created_at) < now() - interval '60 minutes')) AS stale,
+       MIN(r.created_at) AS primeiro_criado, MAX(r.created_at) AS ultimo_criado
+  FROM central_vendas_sync_runs r
+ WHERE r.requested_by IS NULL AND r.created_at >= TIMESTAMPTZ '2026-10-02 00:00:00-03'
+ GROUP BY 1 ORDER BY 1;
+
+\echo '=== K4b dia x periodo x status x codigo (noturnos desde 2026-10-03) ==='
+SELECT r.created_at::date AS dia, r.date_from, r.date_to, r.status,
+       COALESCE(r.error_code, '(nulo)') AS error_code, COUNT(*) AS runs
+  FROM central_vendas_sync_runs r
+ WHERE r.requested_by IS NULL AND r.created_at >= TIMESTAMPTZ '2026-10-03 00:00:00-03'
+ GROUP BY 1, 2, 3, 4, 5 ORDER BY 1, 2, 3, 4, 5;
+
+\echo '=== K4c setembro completo (09-01..09-30) processado desde 2026-10-03, todas as origens ==='
+SELECT r.created_at::date AS dia,
+       CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem,
+       r.status, COUNT(*) AS runs, COUNT(DISTINCT r.cliente_conta_id) AS contas_distintas
+  FROM central_vendas_sync_runs r
+ WHERE r.date_from <= DATE '2026-09-01' AND r.date_to >= DATE '2026-09-30'
+   AND r.created_at >= TIMESTAMPTZ '2026-10-03 00:00:00-03'
+ GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+
+\echo '=== K4d runs manuais criados desde 2026-10-02 18:10 ==='
+SELECT r.created_at::date AS dia, r.status, COALESCE(r.error_code, '(nulo)') AS error_code, COUNT(*) AS runs
+  FROM central_vendas_sync_runs r
+ WHERE r.requested_by IS NOT NULL AND r.created_at >= TIMESTAMPTZ '2026-10-02 18:10:00-03'
+ GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+
+\echo '=== K4e sinais de restart/timeout/deadlock em runs desde 2026-10-02 18:10 ==='
+SELECT COALESCE(r.error_code, '(nulo)') AS error_code, r.status, COUNT(*) AS runs,
+       MIN(r.finished_at) AS primeiro, MAX(r.finished_at) AS ultimo
+  FROM central_vendas_sync_runs r
+ WHERE r.created_at >= TIMESTAMPTZ '2026-10-02 18:10:00-03'
+   AND (r.error_code IN ('PROCESS_RESTART','SYNC_RUN_UNIT_TIMEOUT')
+        OR r.error_code LIKE 'STALE%' OR r.error_code LIKE '%DEADLOCK%' OR r.error_message LIKE '%40P01%')
+ GROUP BY 1, 2 ORDER BY 1, 2;
+
+\echo '=== K4f todos os error_codes de runs failed desde 2026-10-02 18:10 ==='
+SELECT COALESCE(r.error_code, '(nulo)') AS error_code,
+       CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem, COUNT(*) AS runs
+  FROM central_vendas_sync_runs r
+ WHERE r.status = 'failed' AND r.created_at >= TIMESTAMPTZ '2026-10-02 18:10:00-03'
+ GROUP BY 1, 2 ORDER BY 3 DESC, 1;
+
+\echo '=== K5 cobertura de setembro por conta MELI ativa (categorias) ==='
+WITH base AS (
+  SELECT c.id AS conta_id,
+         BOOL_OR(i.publication_status = 'published'
+                 AND i.coverage_date_from <= DATE '2026-09-01' AND i.coverage_date_to >= DATE '2026-09-30') AS completo,
+         MAX(i.coverage_date_to) FILTER (WHERE i.publication_status = 'published'
+                 AND i.coverage_date_from <= DATE '2026-09-01') AS ate,
+         COUNT(i.id) AS imports_total,
+         COUNT(i.id) FILTER (WHERE i.publication_status = 'published') AS imports_published
+    FROM cliente_contas c
+    JOIN clientes cl ON cl.id = c.cliente_id AND cl.ativo = true
+    LEFT JOIN central_vendas_imports i ON i.cliente_conta_id = c.id AND i.competencia = '2026-09'
+   WHERE c.marketplace = 'meli' AND c.ativo = true
+   GROUP BY c.id)
+SELECT CASE WHEN COALESCE(completo, false) THEN '1_completo_ate_09-30'
+            WHEN ate = DATE '2026-09-29' THEN '2_publicado_ate_09-29'
+            WHEN ate = DATE '2026-09-28' THEN '3_publicado_ate_09-28'
+            WHEN ate IS NOT NULL THEN '4_publicado_parcial_anterior'
+            WHEN imports_total > 0 THEN '5_so_imports_sem_cobertura_valida'
+            ELSE '6_nenhum_import' END AS categoria,
+       COUNT(*) AS contas
+  FROM base GROUP BY 1 ORDER BY 1;
+
+\echo '=== K5b ids das contas que NAO tem setembro completo ==='
+SELECT string_agg(conta_id::text, ',' ORDER BY conta_id) AS ids FROM (
+  SELECT c.id AS conta_id
+    FROM cliente_contas c
+    JOIN clientes cl ON cl.id = c.cliente_id AND cl.ativo = true
+   WHERE c.marketplace = 'meli' AND c.ativo = true
+     AND NOT EXISTS (SELECT 1 FROM central_vendas_imports i
+                      WHERE i.cliente_conta_id = c.id AND i.competencia = '2026-09'
+                        AND i.publication_status = 'published'
+                        AND i.coverage_date_from <= DATE '2026-09-01' AND i.coverage_date_to >= DATE '2026-09-30')) x;
+
+\echo '=== K5c imports published de 2026-09 criados desde 2026-10-02 18:10 ==='
+SELECT i.created_at::date AS dia, COUNT(*) AS imports, COUNT(DISTINCT i.cliente_conta_id) AS contas,
+       COUNT(*) FILTER (WHERE i.coverage_date_to >= DATE '2026-09-30' AND i.coverage_date_from <= DATE '2026-09-01') AS completos
+  FROM central_vendas_imports i
+ WHERE i.competencia = '2026-09' AND i.publication_status = 'published'
+   AND i.created_at >= TIMESTAMPTZ '2026-10-02 18:10:00-03'
+ GROUP BY 1 ORDER BY 1;
+
+\echo '=== K6a conexoes: max e uso ==='
+SELECT current_setting('max_connections')::int AS max_connections,
+       (SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database()) AS sessoes_no_banco,
+       (SELECT COUNT(*) FROM pg_stat_activity) AS sessoes_total;
+
+\echo '=== K6b sessoes por estado/wait (sem texto de query) ==='
+SELECT COALESCE(application_name, '') AS app, state, wait_event_type, wait_event, COUNT(*) AS sessoes,
+       MAX(now() - state_change) AS mais_antiga_no_estado,
+       MAX(now() - xact_start) AS maior_xact
+  FROM pg_stat_activity
+ WHERE datname = current_database() AND pid <> pg_backend_pid()
+ GROUP BY 1, 2, 3, 4 ORDER BY sessoes DESC, 1, 2;
+
+\echo '=== K6c locks advisory e nao concedidos ==='
+SELECT l.locktype, l.mode, l.granted, COUNT(*) AS locks
+  FROM pg_locks l
+ WHERE l.locktype = 'advisory' OR NOT l.granted
+ GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+
+\echo '=== K6d transacoes abertas ha mais de 5 min ==='
+SELECT pid, state, wait_event_type, wait_event, now() - xact_start AS idade_xact, now() - state_change AS idade_estado
+  FROM pg_stat_activity
+ WHERE datname = current_database() AND xact_start IS NOT NULL AND pid <> pg_backend_pid()
+   AND now() - xact_start > interval '5 minutes'
+ ORDER BY xact_start;
+
+\echo '=== K6e runs ativos agora por origem/status/idade ==='
+SELECT CASE WHEN r.requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem, r.status, COUNT(*) AS runs,
+       MIN(r.created_at) AS mais_antigo_criado, MAX(r.created_at) AS mais_novo_criado,
+       MAX(now() - COALESCE(r.started_at, r.created_at)) AS maior_idade,
+       COUNT(*) FILTER (WHERE r.id = ANY (ARRAY[254,260,261,265,268,269,339,340,341,342,343,344,345,346,347,348,349,350,351,352,353,354,355,356,357,358,359,360,361,362,415,416,417,418,419,420,421,423,424,425,426,427,428,429,430,431,432,433,434,435,436,437,438,439,440,441,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,457,458,459,460,461,462,463,464,487,490,491,492,493,494]::bigint[])) AS que_sao_alvos_antigos
+  FROM central_vendas_sync_runs r
+ WHERE r.status IN ('queued', 'running')
+ GROUP BY 1, 2 ORDER BY 1, 2;
+
+\echo '=== K6f ultimo run criado/finalizado (atividade recente) ==='
+SELECT MAX(created_at) AS ultimo_criado, MAX(started_at) AS ultimo_started, MAX(finished_at) AS ultimo_finished
+  FROM central_vendas_sync_runs;
+
+ROLLBACK;
+
+--- 9.2 preflight_desligar_agendador.sql (SOMENTE LEITURA; EXECUTADO em 05/10 14:38) ---
+-- PRE-VOO antes de alterar a env no Render (restart). SOMENTE LEITURA: SELECT apenas, termina em ROLLBACK.
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '3s';
+SET LOCAL idle_in_transaction_session_timeout = '120s';
+SET LOCAL TIME ZONE 'America/Sao_Paulo';
+
+\echo '=== P0 agora ==='
+SELECT now() AS agora_brt;
+
+\echo '=== P1 runs RUNNING (qualquer origem). Esperado: 0 linhas ==='
+SELECT id, cliente_conta_id, CASE WHEN requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem,
+       started_at, now() - started_at AS ha, date_from, date_to
+  FROM central_vendas_sync_runs WHERE status = 'running' ORDER BY started_at;
+
+\echo '=== P2 runs ativos MANUAIS (queued ou running). Esperado: 0 linhas ==='
+SELECT id, cliente_conta_id, status, created_at, started_at, date_from, date_to
+  FROM central_vendas_sync_runs WHERE requested_by IS NOT NULL AND status IN ('queued','running') ORDER BY id;
+
+\echo '=== P3 resumo dos ativos por origem/status (esperado: so noturno/queued = 60) ==='
+SELECT CASE WHEN requested_by IS NULL THEN 'noturno' ELSE 'manual' END AS origem, status, COUNT(*) AS runs,
+       MIN(created_at) AS mais_antigo, MAX(created_at) AS mais_novo
+  FROM central_vendas_sync_runs WHERE status IN ('queued','running') GROUP BY 1, 2 ORDER BY 1, 2;
+
+\echo '=== P4 atividade recente (ultimos 30 min) em sync_runs. Esperado: tudo 0 ==='
+SELECT COUNT(*) FILTER (WHERE created_at  > now() - interval '30 minutes') AS criados_30min,
+       COUNT(*) FILTER (WHERE started_at  > now() - interval '30 minutes') AS iniciados_30min,
+       COUNT(*) FILTER (WHERE finished_at > now() - interval '30 minutes') AS finalizados_30min,
+       COUNT(*) FILTER (WHERE updated_at  > now() - interval '30 minutes') AS atualizados_30min
+  FROM central_vendas_sync_runs;
+
+\echo '=== P5 sessoes do banco que NAO estao idle (sem texto de query). Esperado: 0 linhas ==='
+SELECT pid, COALESCE(application_name,'') AS app, state, wait_event_type, wait_event,
+       now() - xact_start AS idade_xact, now() - state_change AS idade_estado
+  FROM pg_stat_activity
+ WHERE datname = current_database() AND pid <> pg_backend_pid() AND state <> 'idle'
+ ORDER BY xact_start NULLS LAST;
+
+\echo '=== P6 total de sessoes do banco por estado (sem a minha) ==='
+SELECT state, COUNT(*) AS sessoes FROM pg_stat_activity
+ WHERE datname = current_database() AND pid <> pg_backend_pid() GROUP BY 1 ORDER BY 1;
+
+\echo '=== P7 locks advisory (Central/token/squad) e nao concedidos. Esperado: 0 linhas ==='
+SELECT l.locktype, l.classid, l.objid, l.mode, l.granted, COUNT(*) AS locks
+  FROM pg_locks l WHERE l.locktype = 'advisory' OR NOT l.granted
+ GROUP BY 1, 2, 3, 4, 5 ORDER BY 1, 2, 3;
+
+ROLLBACK;
+
+--- 9.3 q60_DRYRUN.sql (termina em ROLLBACK; NÃO executado) — o q60_APLICAR.sql é idêntico exceto o rodapé COMMIT; ---
+-- ============================================================================
+-- ENCERRAMENTO DOS 60 RUNS NOTURNOS QUEUED DE 03/10 — INCIDENTE P0 2026-10-02 (nao executado)
+-- Altera APENAS central_vendas_sync_runs (status/finished_at/updated_at/error_*) dos runs queued criados pela
+-- rodada de 2026-10-03 03:00 (requested_by NULL, started_at NULL). Nada e deletado; nenhuma outra tabela.
+-- Alvo por PREDICADO (os ids ficam no backup), com portoes: exatamente 60, nenhum running, nenhum manual ativo,
+-- nenhum advisory lock do agendador, nenhum alvo com menos de 15 min. Qualquer divergencia aborta tudo.
+-- Rodar com:  psql -X -v ON_ERROR_STOP=1 -f <arquivo>   (conexao por variaveis PG*)
+-- ============================================================================
+BEGIN;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '3s';
+SET LOCAL idle_in_transaction_session_timeout = '300s';
+SET LOCAL TIME ZONE 'America/Sao_Paulo';
+
+CREATE TEMP TABLE alvo_q60 ON COMMIT DROP AS
+SELECT id FROM central_vendas_sync_runs
+ WHERE status = 'queued' AND requested_by IS NULL AND started_at IS NULL
+   AND created_at >= TIMESTAMPTZ '2026-10-03 03:00:00-03' AND created_at < TIMESTAMPTZ '2026-10-03 03:01:00-03';
+
+-- G1 — conferencia ANTES.
+DO $$
+DECLARE n_alvo INT; n_run INT; n_man INT; n_lock INT; n_novos INT; n_cod INT; n_fora INT;
+BEGIN
+  SELECT COUNT(*) INTO n_alvo FROM alvo_q60;
+  IF n_alvo <> 60 THEN RAISE EXCEPTION 'G1: esperado 60 alvos, achei % (abortando)', n_alvo; END IF;
+  SELECT COUNT(*) INTO n_run FROM central_vendas_sync_runs WHERE status = 'running';
+  IF n_run <> 0 THEN RAISE EXCEPTION 'G1: ha % runs running agora (abortando)', n_run; END IF;
+  SELECT COUNT(*) INTO n_man FROM central_vendas_sync_runs WHERE requested_by IS NOT NULL AND status IN ('queued','running');
+  IF n_man <> 0 THEN RAISE EXCEPTION 'G1: ha % runs manuais ativos (abortando)', n_man; END IF;
+  SELECT COUNT(*) INTO n_lock FROM pg_locks WHERE locktype = 'advisory' AND classid = 1296845920;
+  IF n_lock <> 0 THEN RAISE EXCEPTION 'G1: o lock global do agendador esta em uso (rodada em andamento?) (abortando)'; END IF;
+  SELECT COUNT(*) INTO n_novos FROM alvo_q60 a JOIN central_vendas_sync_runs r ON r.id = a.id WHERE r.created_at > NOW() - INTERVAL '15 minutes';
+  IF n_novos <> 0 THEN RAISE EXCEPTION 'G1: % alvos tem menos de 15 min (abortando)', n_novos; END IF;
+  SELECT COUNT(*) INTO n_fora FROM central_vendas_sync_runs r WHERE r.status = 'queued' AND NOT EXISTS (SELECT 1 FROM alvo_q60 a WHERE a.id = r.id);
+  IF n_fora <> 0 THEN RAISE EXCEPTION 'G1: ha % runs queued FORA do alvo (aparecem runs novos; reavaliar) (abortando)', n_fora; END IF;
+  SELECT COUNT(*) INTO n_cod FROM central_vendas_sync_runs WHERE error_code = 'SYNC_RUN_ORPHAN_NOTURNO_20261003';
+  IF n_cod <> 0 THEN RAISE EXCEPTION 'G1: ja existem % runs com o codigo SYNC_RUN_ORPHAN_NOTURNO_20261003 (ja aplicado?) (abortando)', n_cod; END IF;
+END $$;
+
+-- UPDATE: NOWAIT (se algum worker vivo segura a linha, aborta em vez de esperar); predicado repetido.
+WITH travados AS (
+  SELECT r.id FROM central_vendas_sync_runs r JOIN alvo_q60 a ON a.id = r.id
+   WHERE r.status = 'queued' AND r.started_at IS NULL AND r.requested_by IS NULL
+   ORDER BY r.id FOR UPDATE OF r NOWAIT
+), alterados AS (
+  UPDATE central_vendas_sync_runs r
+     SET status = 'failed', finished_at = NOW(), updated_at = NOW(),
+         error_code = 'SYNC_RUN_ORPHAN_NOTURNO_20261003',
+         error_message = 'Run noturno queued abandonado: a rodada de 2026-10-03 ficou presa e foi interrompida por restart; encerrado manualmente para impedir uma retomada em massa. Nenhum dado foi publicado por este run.'
+    FROM travados t WHERE r.id = t.id
+  RETURNING r.id
+)
+SELECT COUNT(*) AS runs_encerrados, MIN(id) AS menor_id, MAX(id) AS maior_id FROM alterados;
+
+-- G2 — conferencia DEPOIS (ainda dentro da transacao).
+DO $$
+DECLARE n_cod INT; n_ativos INT; n_alvo_nao_failed INT;
+BEGIN
+  SELECT COUNT(*) INTO n_cod FROM central_vendas_sync_runs WHERE error_code = 'SYNC_RUN_ORPHAN_NOTURNO_20261003' AND status = 'failed' AND finished_at IS NOT NULL;
+  IF n_cod <> 60 THEN RAISE EXCEPTION 'G2: % linhas com o codigo (esperado 60)', n_cod; END IF;
+  SELECT COUNT(*) INTO n_alvo_nao_failed FROM alvo_q60 a JOIN central_vendas_sync_runs r ON r.id = a.id WHERE r.status <> 'failed';
+  IF n_alvo_nao_failed <> 0 THEN RAISE EXCEPTION 'G2: % alvos nao estao failed', n_alvo_nao_failed; END IF;
+  SELECT COUNT(*) INTO n_ativos FROM central_vendas_sync_runs WHERE status IN ('queued','running');
+  IF n_ativos <> 0 THEN RAISE EXCEPTION 'G2: sobraram % runs ativos', n_ativos; END IF;
+  RAISE NOTICE 'G2 OK: 60 encerrados, 0 runs ativos restantes';
+END $$;
+
+ROLLBACK;
+
+--- 9.4 q60_REVERTER.sql (só com autorização; NÃO executado) ---
+-- REVERSAO (so com autorizacao): restaura o estado anterior dos 60 a partir de backup/q60_estado_anterior.csv
+-- Rodar DENTRO da pasta backup/:  psql -X -v ON_ERROR_STOP=1 -f ../q60_REVERTER.sql
+BEGIN;
+SET LOCAL statement_timeout = '30s'; SET LOCAL lock_timeout = '3s';
+CREATE TEMP TABLE ant (id BIGINT, status TEXT, started_at TIMESTAMPTZ, finished_at TIMESTAMPTZ, error_code TEXT, error_message TEXT, updated_at TIMESTAMPTZ) ON COMMIT DROP;
+\copy ant FROM 'q60_estado_anterior.csv' CSV HEADER
+DO $$ DECLARE n INT; BEGIN SELECT COUNT(*) INTO n FROM ant; IF n <> 60 THEN RAISE EXCEPTION 'esperado 60 linhas no backup, achei %', n; END IF; END $$;
+UPDATE central_vendas_sync_runs r SET status = a.status, started_at = a.started_at, finished_at = a.finished_at,
+       error_code = a.error_code, error_message = a.error_message, updated_at = a.updated_at
+  FROM ant a WHERE r.id = a.id AND r.error_code = 'SYNC_RUN_ORPHAN_NOTURNO_20261003' AND r.status = 'failed';
+DO $$ DECLARE n INT; BEGIN SELECT COUNT(*) INTO n FROM central_vendas_sync_runs WHERE error_code = 'SYNC_RUN_ORPHAN_NOTURNO_20261003'; IF n <> 0 THEN RAISE EXCEPTION 'ainda ha % runs com o codigo', n; END IF; END $$;
+COMMIT;
+
+--- 9.5 setembro_plano.sql (SOMENTE LEITURA; NÃO executado) ---
+-- PLANO DE SETEMBRO/2026 — SOMENTE LEITURA (SELECT; termina em ROLLBACK). Gera a lista por CLIENTE (o --clientes do
+-- backfill filtra por cliente), com volume de referencia e as contas incompletas. Saida contem slugs: NAO publicar.
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '3s';
+SET LOCAL TIME ZONE 'America/Sao_Paulo';
+\pset format unaligned
+\pset fieldsep '|'
+\pset footer off
+WITH contas AS (
+  SELECT cc.id AS conta_id, cc.cliente_id, c.slug,
+         EXISTS (SELECT 1 FROM central_vendas_imports i
+                  WHERE i.cliente_conta_id = cc.id AND i.competencia = '2026-09' AND i.publication_status = 'published'
+                    AND i.coverage_date_from <= DATE '2026-09-01' AND i.coverage_date_to >= DATE '2026-09-30') AS completo,
+         COALESCE((SELECT MAX((SELECT COUNT(*) FROM central_vendas_pedidos p WHERE p.import_id = i.id))
+                     FROM central_vendas_imports i
+                    WHERE i.cliente_conta_id = cc.id AND i.competencia = '2026-09'), 0) AS pedidos_ref
+    FROM cliente_contas cc
+    JOIN clientes c ON c.id = cc.cliente_id AND c.ativo = true
+   WHERE cc.marketplace = 'meli' AND cc.ativo = true AND COALESCE(TRIM(cc.external_account_id), '') <> ''
+)
+SELECT slug AS cliente_slug,
+       COUNT(*) AS contas_elegiveis,
+       COUNT(*) FILTER (WHERE NOT completo) AS contas_incompletas,
+       SUM(pedidos_ref)::bigint AS pedidos_ref,
+       BOOL_OR(conta_id = 81) AS tem_conta_81,
+       string_agg(conta_id::text, ',' ORDER BY conta_id) FILTER (WHERE NOT completo) AS ids_incompletas
+  FROM contas
+ GROUP BY slug
+HAVING COUNT(*) FILTER (WHERE NOT completo) > 0
+ ORDER BY BOOL_OR(conta_id = 81), SUM(pedidos_ref), slug;
+ROLLBACK;
+
+--- 9.6 setembro_monitor.sql (SOMENTE LEITURA; NÃO executado) ---
+-- MONITOR DE LOTE (SOMENTE LEITURA) — rodar a cada 2-3 min durante um lote:
+--   psql -X -f setembro_monitor.sql   (com PGOPTIONS='-c default_transaction_read_only=on')
+-- Ajuste :desde para o instante em que o lote comecou, ex.: psql -v desde="'2026-10-06 14:00:00-03'" ...
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '15s'; SET LOCAL lock_timeout = '3s'; SET LOCAL TIME ZONE 'America/Sao_Paulo';
+\echo '--- runs desde o inicio do lote, por status/codigo (sem slugs) ---'
+SELECT status, COALESCE(error_code,'-') AS codigo, COUNT(*) AS runs, MAX(now() - COALESCE(started_at, created_at)) AS maior_idade
+  FROM central_vendas_sync_runs WHERE created_at >= :desde GROUP BY 1, 2 ORDER BY 1, 2;
+\echo '--- PARAR se: running > 35 min, qualquer SYNC_RUN_UNIT_TIMEOUT/PG_QUERY_TIMEOUT/40P01, ou falhas > 25% ---'
+SELECT COUNT(*) FILTER (WHERE status = 'running' AND now() - started_at > interval '35 minutes') AS running_acima_35min,
+       COUNT(*) FILTER (WHERE error_code IN ('SYNC_RUN_UNIT_TIMEOUT','PG_QUERY_TIMEOUT') OR error_message LIKE '%40P01%') AS timeouts_ou_deadlock,
+       COUNT(*) FILTER (WHERE status = 'failed') AS falhas, COUNT(*) AS total,
+       ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'failed') / NULLIF(COUNT(*) FILTER (WHERE status IN ('completed','failed')), 0), 1) AS pct_falha_sobre_terminados
+  FROM central_vendas_sync_runs WHERE created_at >= :desde;
+\echo '--- pool/sessoes do banco (esperado: poucas, nenhuma idle in transaction antiga) ---'
+SELECT state, COUNT(*) AS sessoes, MAX(now() - state_change) AS mais_antiga
+  FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() GROUP BY 1 ORDER BY 1;
+SELECT COUNT(*) AS locks_nao_concedidos FROM pg_locks WHERE NOT granted;
+\echo '--- cobertura de setembro agora (contas MELI ativas com published completo) ---'
+SELECT COUNT(*) FILTER (WHERE completo) AS completas, COUNT(*) FILTER (WHERE NOT completo) AS incompletas FROM (
+  SELECT cc.id, EXISTS (SELECT 1 FROM central_vendas_imports i WHERE i.cliente_conta_id = cc.id AND i.competencia = '2026-09'
+           AND i.publication_status = 'published' AND i.coverage_date_from <= DATE '2026-09-01' AND i.coverage_date_to >= DATE '2026-09-30') AS completo
+    FROM cliente_contas cc JOIN clientes c ON c.id = cc.cliente_id AND c.ativo = true
+   WHERE cc.marketplace = 'meli' AND cc.ativo = true) x;
+ROLLBACK;
+
+Obs.: os scripts de shell (q60_passo_A/B/C, setembro_plano.sh, preflight/checkpoint .sh) seguem o padrão do passo 3 (URL por prompt oculto em
+variáveis PG*, sessão somente-leitura confirmada, SHA256SUMS, saídas 600 em pastas 700, fora de repositório) e não são reproduzidos aqui.

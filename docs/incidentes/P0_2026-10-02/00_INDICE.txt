@@ -1,7 +1,7 @@
 ================================================================================
 INCIDENTE P0 2026-10-02 — 00_INDICE
 Índice, estado atual e referências dos demais arquivos
-Última atualização: 2026-10-02 ~17:45 (BRT)
+Última atualização: 2026-10-05 ~15:05 (BRT)
 ================================================================================
 
 COMECE AQUI (para outro agente ou pessoa que recebeu só o link)
@@ -12,25 +12,34 @@ COMECE AQUI (para outro agente ou pessoa que recebeu só o link)
 
 RESUMO DE UMA LINHA
   Em 2026-10-02 o Portal da Venforce caiu porque o "Atualizar dados" do Painel de Contas esgotava o pool do
-  PostgreSQL; o PR #218 corrigiu e está em produção. Resta: runs órfãos e dados a reconciliar, um bug
-  independente de datas no agendador (corrigido só em branch local) e unidades noturnas que travam (causa
-  não provada).
+  PostgreSQL; o PR #218 corrigiu e está em produção. Os 85 runs órfãos foram encerrados em 02/10 18:10 (passo 3).
+  A rodada noturna de 03/10 ficou presa ~58 h (unidades sem prazo), as de 04 e 05/10 não ocorreram, e o agendador
+  está DESLIGADO por env desde 05/10. Os hotfixes 2 (datas) e 3 (prazos) estão em branches PUSHED, sem PR/merge/deploy.
 
-ESTADO ATUAL (2026-10-02 ~16:00 BRT)
+ESTADO ATUAL (2026-10-05 ~15:05 BRT)
   Item                                              Estado
-  Causa raiz do incidente                           COMPROVADA (local) + coerente com produção
+  Causa raiz do incidente original                  COMPROVADA (local) + coerente com produção
   Hotfix 1 (PR #218, commit 387de56, merge 1249d98) PUBLICADO no Render [relato do usuário]
-  Hotfix 2 (datas)                                  IMPLEMENTADO E TESTADO LOCAL; sem commit/PR/deploy
-  Auditoria SQL parte 1 (Q1-Q12)                    EXECUTADA em produção (somente leitura)
-  Passo 0 (parte 2 + pré-voo + simulação)           EXECUTADO ~16:23 (somente leitura): pool saudável, sem locks
-  Runs órfãos                                       86 ativos; alvo da reconciliação v2 = 85 (5 já fechados pelo sistema)
-  Backup (91 runs) e dry-run com ROLLBACK          EXECUTADOS ~17:00: G1/G2 OK, 85 alvos aptos, #472 preservado
-  Reconciliação (UPDATE/COMMIT, passo 3)            PREPARADA (frase de confirmação); NÃO autorizada; NÃO executada
-  Setembro/2026 completo publicado                  só 14 de 81 contas (R1); estratégia pendente
-  Travamento de unidades (coleta e gravação)        Hotfix 3 (prazos) IMPLEMENTADO E TESTADO LOCAL; sem commit
-  Rodada das 03:00 de 03/10                         RISCO ALTO de travar de novo; contenção A/B/C no 06; decisão pendente
-  Run #472 (investigação)                           PRESERVADO (fora da reconciliação)
-  Logs do Render (#363/#399/#472, 201 falhas)       NÃO coletados (R3 já localizou onde o #363/#399/#472 pararam)
+  Passo 3 (reconciliação dos 85 runs)               EXECUTADO e COMMITADO em 2026-10-02 18:10:09 [FATO banco]; 85 failed
+                                                    com o código do incidente; 0 divergências (checkpoint 05/10)
+  Run #472                                          Encerrado pelo SISTEMA em 03/10 03:00 (SYNC_RUN_STALE_RUNNING); escopo
+                                                    substituído pelo #572 (noturno), preso ~58 h, fechado por PROCESS_RESTART
+                                                    em 05/10 13:29 [FATO banco]
+  Rodada noturna de 03/10                           PRESA: 66 runs (3 completed, 3 failed, 60 queued) [FATO]
+  Rodadas de 04/10 e 05/10                          NÃO ocorreram (0 runs criados) [FATO]; causa = agendador só reagenda depois
+                                                    que a rodada termina [INFERÊNCIA a partir do código]
+  60 runs noturnos queued (idade > 2 dias)          NADA alterado; kit de encerramento preparado e NÃO executado (06, seção 7)
+  Agendador noturno                                 CONTIDO: CENTRAL_VENDAS_NOTURNO_ENABLED=false no Render; log
+                                                    "desabilitado" visto em 05/10 [RELATO do usuário]; pré-voo verde 14:38
+  Hotfix 2 (datas)                                  branch PUSHED (5b59c38 sobre 3d012fa); suíte 305/308; PR NÃO aberto
+                                                    (gh sem login); sem merge/deploy
+  Hotfix 3 (prazos + cancelamento)                  branch PUSHED (cdd5856 sobre 3d012fa); suíte 305/308; PR NÃO aberto
+                                                    (gh sem login); sem merge/deploy
+  Setembro/2026 (81 contas MELI ativas)             17 completas; 64 incompletas (22 até 09-29, 16 até 09-28, 5 só imports
+                                                    sem cobertura válida, 21 sem nenhum import) [FATO]
+  Banco / pool (05/10 14:27 e 14:38)                Saudável: 2 sessões, sem locks, sem running, sem transação > 5 min [FATO]
+  Main                                              3d012fa (PR #220 Shopee e #221 SEO; sem arquivos em comum com os hotfixes)
+  Logs do Render (#363/#399/#472/#572)              NÃO coletados
   Unificação de clientes                            NÃO retomar até cumprir 06, seção 5
 
 ARQUIVOS DESTA PASTA
@@ -78,9 +87,11 @@ REFERÊNCIAS
                  #192 (fix/sync-noturno-deadlock-preparacao, merge 7f27330, 2026-09-29 11:08)
                  4600446 (2026-09-25, recuperação do agendador) | e62d6a9 e a469bcc (2026-09-24, sync/scheduler)
                  #211-#216 (2026-10-01/02): descartados como causa
-  Main atual:    a9b7fe4 (2026-10-02 16:16, PR #219 SEO ML, sem relação com o incidente); a docs foi criada sobre 1249d98
+  Main atual:    3d012fa (2026-10-05 13:28; #220 Shopee e #221 SEO ML, sem relação com o incidente); a9b7fe4 era a main de 02/10;
+                 a docs foi criada sobre 1249d98
   Branches:      hotfix/painel-contas-pool-deadlock (publicada/mergeada)
-                 hotfix/central-vendas-date-parse (LOCAL, sem commit; worktree .claude/worktrees/hotfix-central-date-parse)
+                 hotfix/central-vendas-date-parse (PUSHED, commit 5b59c38 sobre 3d012fa; sem PR; worktree .claude/worktrees/hotfix-central-date-parse)
+                 hotfix/central-vendas-esperas-sem-prazo (PUSHED, commit cdd5856 sobre 3d012fa; sem PR; worktree .claude/worktrees/hotfix-central-prazos)
                  docs/incidente-p0-2026-10-02 (esta documentação; NÃO mergeada na main)
   Código-chave:  server/services/painelContas/painelContasAtualizacao.js
                  server/config/database.js, server/config/databaseConexao.js
@@ -111,3 +122,4 @@ REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 2026-10-02 ~16:40  Passo 0 executado e analisado; estado atualizado; scripts v2 (anexo 07, seção 8); RELATORIO_COMPLETO regenerado.
 2026-10-02 ~16:50  Registrado que a main avançou para a9b7fe4 (PR #219, SEO); a branch docs segue baseada em 1249d98.
 2026-10-02 ~17:45  Estado atualizado: backup/dry-run executados, passo 3 preparado, hotfix 3 local, contenção da rodada de 03/10.
+2026-10-05 ~15:05  Checkpoint de 05/10: passo 3 confirmado COMMITADO, rodada de 03/10 presa, agendador contido, hotfixes 2/3 pushed (sem PR), plano dos 60 queued/setembro/botão (06, seções 6-9).

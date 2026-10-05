@@ -163,8 +163,26 @@ P-32  Rodada de 03/10 03:00: setembro completo para 67 contas + outubro, concorr
       (decisão do usuário; 06, A-10).
 
 --------------------------------------------------------------------------------
+F. NOVAS FALHAS E ATUALIZAÇÕES DE 2026-10-05
+--------------------------------------------------------------------------------
+P-32 (ATUALIZADA)  A rodada de 03/10 TRAVOU como previsto: 3 unidades presas ~58 h, 60 queued, rodadas de 04 e 05/10 não ocorreram. ALTA |
+      CONTIDA por env (agendador desligado em 05/10); correção = hotfix 3 (branch pushed, PR pendente).
+P-33  O agendador só rearma o timer depois que a rodada em curso termina (aoDisparar: dispararRodada().then(agendar)): uma rodada pendurada
+      cancela TODAS as seguintes até um restart. ALTA | MITIGADO pelo hotfix 3 (prazos); o desenho em si não foi alterado [INFERÊNCIA do código].
+P-34  60 runs noturnos queued há > 2 dias. criarSyncRun fecha queued > 15 min do MESMO escopo exato como SYNC_RUN_STALE_QUEUED e cria um novo
+      (nunca os reaproveita). Com a flag ligada, a recuperação de boot retomaria como rodada em massa (todas as contas elegíveis x
+      períodos pendentes). ALTA | ABERTO; kit de encerramento preparado (06, seção 7); NÃO executado.
+P-35  A recuperação de boot de 05/10 13:29 fechou os 3 running mas não retomou os 60 queued. [HIPÓTESE] bug de datas (hotfix 2); NÃO verificado
+      nos logs do Render. MÉDIA | ABERTO.
+P-36  A conta do #472 travou 2 vezes no mesmo escopo (#472 manual em 10/01 e #572 noturno em 03/10). Pista de causa específica da conta
+      [HIPÓTESE]; causa raiz ainda não provada. MÉDIA | ABERTO (coletar logs do Render; isolar essa conta em lote próprio).
+P-37  gh sem login: PRs dos hotfixes precisam ser abertos pelo navegador (ver P-25). BAIXA | ABERTO.
+P-38  Import candidate do #472 com competência 2026-08 e cobertura invertida (6 pedidos). Inerte. BAIXA | ABERTO (ver P-29).
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo (P-01 a P-27).
 2026-10-02 ~16:40  Passo 0: P-05..P-11 atualizadas (P-07 confirmada, P-09/P-11 resolvidas); P-28 a P-30 novas.
 2026-10-02 ~17:45  Hotfix 3 local: P-05/P-06/P-17/P-28 atualizadas; P-31 e P-32 novas.
+2026-10-05 ~15:05  Seção F: P-32 atualizada; P-33 a P-38 novas (rodada presa, timer, 60 queued, recuperação, conta repetida, gh).

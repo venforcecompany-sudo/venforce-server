@@ -71,7 +71,7 @@ Observação de processo: o PR foi aberto fora do gh (gh CLI não autenticado ne
   "git push" sem refspec teria alvo a main. O remote "gpt" aponta para um repositório diferente (não usar).
 
 --------------------------------------------------------------------------------
-2. HOTFIX 2 — DATAS (dateFrom/dateTo) — IMPLEMENTADO LOCALMENTE, NÃO PUBLICADO
+2. HOTFIX 2 — DATAS (dateFrom/dateTo) — BRANCH PUSHED (05/10), SEM PR/MERGE/DEPLOY
 --------------------------------------------------------------------------------
 Branch: hotfix/central-vendas-date-parse. Worktree local: .claude/worktrees/hotfix-central-date-parse
   (dentro do clone do repositório). Base: origin/main 1249d98. Upstream da branch aponta para origin/main
@@ -120,7 +120,7 @@ Restrição de ORDEM (importante): publicar este hotfix ANTES de fechar os runs 
 
 
 --------------------------------------------------------------------------------
-4. HOTFIX 3 — ESPERAS SEM PRAZO (IMPLEMENTADO LOCALMENTE, NÃO PUBLICADO)
+4. HOTFIX 3 — ESPERAS SEM PRAZO (BRANCH PUSHED EM 05/10, SEM PR/MERGE/DEPLOY)
 --------------------------------------------------------------------------------
 Branch: hotfix/central-vendas-esperas-sem-prazo. Worktree local: .claude/worktrees/hotfix-central-prazos. Base: origin/main
 a9b7fe4 (PR #219 incluído; sem upstream configurado). Estado: alterações no working tree, SEM commit. Independente do
@@ -190,8 +190,41 @@ Pontos a observar em produção após o deploy (cada um com autorização): logs
   C-6  Riscos P-13 a P-17 de 05_FALHAS_PENDENTES.txt.
 
 --------------------------------------------------------------------------------
+5. ATUALIZAÇÃO DE 2026-10-05 — HOTFIXES 2 E 3 REBASEADOS, TESTADOS E ENVIADOS
+--------------------------------------------------------------------------------
+Base: origin/main 3d012fa (inclui #220 Shopee/fechamento e #221 SEO). Os dois hotfixes foram rebaseados sem conflito; nenhum arquivo de
+Fechamento Financeiro, unificação ou dos PRs #220/#221 foi incorporado (conferido por nome de arquivo). Suíte: cada *.test.js rodado
+isolado; main 304/307, hotfix 2 305/308, hotfix 3 305/308; as MESMAS 3 falhas preexistentes (designStudioWorkspace,
+meliAnunciosOrdenacaoGlobal, mlTokenService).
+
+HOTFIX 2 — branch hotfix/central-vendas-date-parse, commit 5b59c38, push só dessa branch (refspec explícito).
+  Arquivos: server/services/centralVendas/centralVendasSyncRunService.js (formatarDiaIso com getters locais; sanitizeRun;
+  listarPeriodosNoturnosPendentes com TO_CHAR) e server/tests/centralVendasDatasDate.test.js (41 verificações, Date do parser real do
+  pg-types, 6 fusos). Query validada em PGlite [TESTE LOCAL]. Efeito: a recuperação de boot do agendador volta a formar períodos
+  válidos. Sem a flag ligada ele não é exercitado em produção.
+  PR: NÃO aberto (gh sem login nesta máquina); abrir pelo navegador.
+
+HOTFIX 3 — branch hotfix/central-vendas-esperas-sem-prazo, commit cdd5856, push só dessa branch.
+  Mantém os prazos já desenhados (ML/MP 30 s, query 60 s, unidade 30 min, fechamento 5 min; todos por env, inválido cai no padrão) e
+  FECHA 3 LACUNAS encontradas na revisão de 05/10:
+   a) O prazo por unidade apenas devolvia a vaga: o trabalho abandonado continuava. AGORA a unidade recebe um AbortSignal; ao estourar
+      o prazo o HTTP em voo é abortado e o trabalho para antes de cada etapa e de TODA gravação (assertNaoCancelado em utils/comPrazo.js:
+      página de pedidos, antes de frete/pós-venda/pagamentos, antes de gravar o import e de cada competência, e antes de fechar o run no worker).
+      Depois do prazo a unidade NÃO completa o run, NÃO publica (publicarRun já exigia run.status = completed) e NÃO enfileira margem.
+   b) A query que estoura o prazo só era abandonada no cliente (conexão descartada). AGORA a transação de gravação emite SET LOCAL
+      statement_timeout = prazo+5 s e idle_in_transaction_session_timeout = 2x: o SERVIDOR também cancela, inclusive espera de lock.
+   c) Testes: 77 verificações (eram 60): HTTP ML/MP, transação, descarte de conexão, prazo por unidade, rodada saudável, cancelamento
+      cooperativo (worker real com db falso), SET LOCAL, contrato das checagens; 5 mutações detectadas.
+  Riscos residuais (P-31): OAuth refreshMlGrant segura conexão sem prazo; queries soltas fora da transação só limitadas pelo prazo da
+  unidade; frete/claims/pagamentos checam o cancelamento entre etapas, não no meio de uma chamada (cada chamada tem prazo próprio).
+  PR: NÃO aberto (gh sem login); abrir pelo navegador. É o PRIORITÁRIO: foi a falha que se repetiu em 03/10.
+
+Ordem de merge/deploy recomendada: 06, seção 8.
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo: #218 publicado; hotfix de datas implementado e testado, sem commit.
 2026-10-02 ~16:40  Sem mudança de status dos hotfixes 1 e 2; registrado o candidato a hotfix 3 (C-7) após o passo 0.
 2026-10-02 ~17:45  Hotfix 3 (esperas sem prazo) implementado e testado localmente; sem commit.
+2026-10-05 ~15:05  Seção 5: hotfixes 2 e 3 rebaseados sobre 3d012fa, testados (305/308), commitados e pushed; cancelamento cooperativo e SET LOCAL no hotfix 3.

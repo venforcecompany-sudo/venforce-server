@@ -34,8 +34,9 @@ E-10 PASSO 0 EXECUTADO pelo usuário (~16:23, somente leitura, 3 arquivos com RO
      pelo sistema; F5 "depois" = 0 sincronizações reais; lacuna de setembro em 67 de 81 contas.      [FATO]
 E-12 BACKUP (91 runs) e DRY-RUN com ROLLBACK EXECUTADOS pelo usuário (~17:00): G1/G2 OK, 85 alvos aptos, ROLLBACK
      confirmado, #472 preservado; D15 confirmada (os 5 fechados foram STALE_* do sistema).            [FATO]
-E-13 Passo 3 (aplicação definitiva, COMMIT) PREPARADO e NÃO executado: exige terminal interativo e a frase
-     "APLICAR 85 RUNS"; confere SHAs, backup e dry-run recente; valida o resultado em outra conexão.   [TESTE LOCAL]
+E-13 Passo 3 (aplicação definitiva, COMMIT) EXECUTADO pelo usuário em 2026-10-02 18:10:09: 85 runs failed com
+     SYNC_RUN_ORPHAN_POST_INCIDENT_20261002, 0 divergências (confirmado pelo banco em 05/10).         [FATO banco]
+     (Texto anterior "preparado e não executado" estava desatualizado e foi corrigido em 05/10.)
 E-14 Hotfix 3 (esperas sem prazo) implementado e testado em branch local (04, seção 4); sem commit.    [TESTE LOCAL]
 E-11 Reconciliação regenerada como v2 (85 alvos; #472 preservado; tolera alvo fechado pelo sistema; qualquer
      outra divergência aborta) e scripts de backup/dry-run reescritos (URL por prompt oculto, backup que não
@@ -144,14 +145,13 @@ Também: log das 201 falhas (horário e confirmação de que vieram do boot) e o
   A-2  Rodar o backup (passo 1): análise do passo 0 concluída; pronto para executar (somente leitura no banco).
   A-3  Dry-run completo com ROLLBACK (2b): pronto; executa UPDATE dentro de transação desfeita. Pedido de
        preparação do usuário; a execução é decisão dele.
-  A-4  APLICAR a reconciliação (UPDATE de 85 runs, v2) — NÃO autorizado.
-  A-5  Commit / PR / deploy do hotfix 2 — NÃO autorizados (hoje só implementação + testes locais).
+  A-4  APLICAR a reconciliação (UPDATE de 85 runs, v2) — EXECUTADO em 02/10 18:10 (COMMIT); o passo 3 antigo está DESCARTADO.
+  A-5  Hotfix 2: commit e push FEITOS (05/10, autorizados); PR (navegador), merge e deploy — pendentes de autorização separada.
   A-6  Incorporar à main a pasta docs/incidentes/P0_2026-10-02/ (esta documentação) — NÃO autorizado.
   A-7  Ressincronização de setembro (etapa 9) e eventual troca de dia() por formatarDiaIso (C-5).
   A-8  Escopo da limitação da recuperação a períodos recentes (C-1): correção separada, ainda sem prazo.
-  A-9  Hotfix 3 (prazo HTTP, por query e por unidade): IMPLEMENTADO e testado localmente, sem commit. Autorizar commit,
-       push da branch e abertura do PR? (merge e deploy são decisões separadas.)
-  A-10 Contenção da rodada de 03/10 (opções A, B ou C acima) E estratégia para setembro (etapa 9) ANTES das 03:00.
+  A-9  Hotfix 3: commit e push FEITOS (05/10, autorizados); PR (navegador), merge e deploy — pendentes de autorização separada.
+  A-10 Contenção: FEITA em 05/10 (CENTRAL_VENDAS_NOTURNO_ENABLED=false; log "desabilitado" visto). Estratégia de setembro: seção 9.
   A-11 Pedir à equipe que não clique "Atualizar dados" de setembro na conta 81 até o backup, para preservar o #472.
 
 --------------------------------------------------------------------------------
@@ -165,8 +165,86 @@ Também: log das 201 falhas (horário e confirmação de que vieram do boot) e o
   6. 24 h sem sessão de banco presa e sem "timeout exceeded when trying to connect" recorrente nos logs.
 
 --------------------------------------------------------------------------------
+6. CONTENÇÃO DO AGENDADOR E ESTADO DE 2026-10-05
+--------------------------------------------------------------------------------
+Feito: pré-voo somente leitura verde às 14:38 (0 running, 0 manuais ativos, sem locks, só os 60 queued); usuário definiu
+CENTRAL_VENDAS_NOTURNO_ENABLED=false no Web Service do Render e viu o log "[sync-scheduler] desabilitado" após o deploy [RELATO].
+Efeito do restart (código em 3d012fa): o shutdown só drena rodada ativa (não havia); no boot, com a flag desligada, iniciar() devolve false e a
+recuperação NÃO roda; o saneamento do schema só fecha runs ATIVOS DUPLICADOS do mesmo escopo (o índice único impede; os 60 têm escopos
+distintos). Logo os 60 queued ficam como estão. A flag só controla o agendador do Web Service; um Cron Job do Render (se existir) tem
+semântica inversa (roda a menos que seja false/0/off) e env própria [NÃO VERIFICADO se existe].
+Reversão: restaurar o valor anotado da flag — NÃO fazer antes das condições da seção 9.
+
+--------------------------------------------------------------------------------
+7. OS 60 RUNS NOTURNOS QUEUED DE 03/10 — O QUE O CÓDIGO FAZ E ESTRATÉGIA (nada foi alterado)
+--------------------------------------------------------------------------------
+Fatos do código (3d012fa):
+  F-1  criarSyncRun executa reconciliarRunsStale ANTES de buscar run ativo/reuso/insert: queued > 15 min do MESMO escopo exato
+       (cliente, conta, marketplace, período) viram failed SYNC_RUN_STALE_QUEUED e um run NOVO nasce. Queued antigo nunca é "reivindicado".
+       => "reutilizar" os 60 NÃO existe no código atual.
+  F-2  Reuso só vale para run COMPLETED + published do período exato (reutilizarCompletedPublicado, só no caminho noturno).
+  F-3  Com a flag ligada, a recuperação de boot lista os períodos pendentes (queued/running noturnos, mais completed publicados sem snapshot)
+       e chama executarRodada para TODAS as contas elegíveis x esses períodos (aqui: setembro completo e 10/01..10/02, ~2 x contas), com
+       concorrência 3 — uma rodada em massa, exatamente a carga que se quer evitar. Os queued só somem do "pendente" quando fechados.
+  F-4  A rodada normal de um dia comum só cria o mês corrente até ontem (setembro completo só nos dias 1-3 do mês).
+Alternativas avaliadas:
+  (a) Reutilizar: impossível (F-1).
+  (b) Deixar a recuperação processar tudo ao religar a flag: carga em massa não controlada. DESCARTADA.
+  (c) Deixar como estão: reaparecem como pendentes a cada boot com a flag ligada. DESCARTADA.
+  (d) ENCERRAR os 60 (failed, SYNC_RUN_ORPHAN_NOTURNO_20261003) com backup, dry-run com ROLLBACK e portões, ANTES de religar a flag, e
+      refazer setembro em lotes pequenos e observados (seção 9). RECOMENDADA.
+Kit (máquina do usuário, fora do repo; NÃO executado; SQL em 07, seção 9): q60_passo_A_backup.sh (leitura; CSV; exige 60), q60_passo_B_dryrun.sh
+(UPDATE dentro de transação desfeita), q60_passo_C_aplicar_COMMIT.sh (terminal interativo + frase "ENCERRAR 60 RUNS"; recusa 02:00-04:00 BRT),
+q60_REVERTER.sql. Portões G1 (antes): exatamente 60 alvos; 0 running; 0 manuais ativos; lock global do agendador livre; alvos com > 15 min;
+nenhum queued fora do alvo; código ainda não aplicado. G2 (depois): 60 failed com o código; 0 ativos. UPDATE com NOWAIT. Validado em PGlite
+(11 cenários, inclusive abortos por 59 alvos, running, manual, queued novo) [TESTE LOCAL]. Só altera central_vendas_sync_runs; nada é deletado.
+Condição: executar com a flag em false e preferencialmente depois do deploy do hotfix 3.
+
+--------------------------------------------------------------------------------
+8. ORDEM DE MERGE E DEPLOY (propostas; cada passo exige autorização do usuário)
+--------------------------------------------------------------------------------
+  1. PR do hotfix 3 (prioritário) -> revisão -> merge -> deploy (flag continua false). Verificar: boot sem erro, log "desabilitado".
+  2. PR do hotfix 2 (independente; arquivos disjuntos) -> merge -> deploy separado. Sem a flag ligada ele não é exercitado; é pré-requisito
+     para religar o agendador.
+  3. Encerrar os 60 queued (seção 7), com flag false.
+  4. Canário do "Atualizar dados" individual (seção 9) e recuperação de setembro em lotes (seção 9).
+  5. Religar o agendador (flag=true) só com as condições da seção 9.
+  Os PRs são abertos pelo navegador (gh sem login). Nada disso mexe no Fechamento Financeiro nem na unificação de clientes.
+
+--------------------------------------------------------------------------------
+9. SETEMBRO, "ATUALIZAR DADOS" E RELIGAR O AGENDADOR
+--------------------------------------------------------------------------------
+9.1 Recuperação de setembro (64 contas incompletas; NADA executado)
+  Ferramenta: backfillCentralVendas.js (já existente, "manual, observado, por lote de clientes"): npm run sync:central-vendas:backfill --
+  --meses=1 --concorrencia=1 --clientes=<lote> [--dry-run]. Faz o mês anterior completo (setembro até 10/31), concorrência padrão 1, máx. 3;
+  NÃO depende da flag do agendador; reutiliza run completed+published do período exato. Rodar DEPOIS do deploy do hotfix 3, a partir do shell
+  do Web Service no Render (mesmo código/env), nunca da máquina local (o .env local aponta para produção).
+  Plano de lotes: setembro_plano.sh (somente leitura) gera lotes por cliente ordenados por volume crescente: lote 1 CANÁRIO (<= 2 contas),
+  demais <= 4 contas, e o cliente da conta que travou duas vezes SOZINHO no fim. Cada lote: primeiro --dry-run, depois a execução.
+  Observabilidade: setembro_monitor.sql (somente leitura) a cada 2-3 min: runs por status/código, running > 35 min, timeouts/deadlock,
+  % de falha, sessões do banco, locks, cobertura de setembro; mais logs "[cron-central]" no Render.
+  Critérios de PARADA (qualquer um): run running > 35 min; qualquer SYNC_RUN_UNIT_TIMEOUT, PG_QUERY_TIMEOUT ou 40P01 (no canário e no lote
+  isolado, 1 basta; nos demais, 2); falhas > 25% dos terminados; sessão idle in transaction > 2 min ou sessões do app > 8; qualquer lock não
+  concedido persistente; lote > 60 min. Entre lotes: 0 runs ativos + 5 min. Janela: fora de 02:00-04:00 BRT e fora do horário de pico.
+  Aceite de cada lote: contas do lote com published completo (09/01..09/30) e nenhum run ativo.
+9.2 Botão "Atualizar dados" (POST /painel-contas/:clienteId/atualizar/:competencia; admin + carteira)
+  Mecanismo: UM cliente x competência por clique, mesmo executarRodada do noturno, requested_by preenchido (fora da recuperação de restart),
+  teto de 2 simultâneas (PAINEL_ATUALIZAR_MAX_SIMULTANEAS, 429), lock por escopo em conexão dedicada fora do pool (#218).
+  INDIVIDUAL pode voltar quando: (1) hotfix 3 em produção (o botão usa o mesmo worker; sem prazo um clique pode prender a conta);
+  (2) #218 em produção (já); (3) pré-voo verde imediatamente antes (0 running, 0 locks, sessões baixas); (4) um canário de 1 cliente pequeno
+  observado com o monitor: termina < 10 min, 0 timeout/deadlock, sem pico de sessões. O hotfix 2 NÃO é pré-requisito do botão.
+  EM MASSA (vários clientes em sequência ou vários operadores) só depois de: (a) individual estável por >= 1 dia útil sem timeout; (b) setembro:
+  canário + >= 2 lotes limpos; (c) 60 queued encerrados, hotfix 2 em produção e o agendador religado com 2 noites seguidas sem unidade acima do
+  prazo; (d) teto de 2 simultâneas confirmado no Render; (e) nada entre 02:00 e 04:00 BRT.
+  Proteções que precisam estar em produção antes: #218 (já), hotfix 3, hotfix 2 (para o agendador), 60 queued encerrados, monitoramento.
+9.3 Religar o agendador (CENTRAL_VENDAS_NOTURNO_ENABLED=true) só quando: hotfix 2 e 3 em produção; 60 queued encerrados (a recuperação de
+  boot resulta em "sem pendências"); pré-voo verde; setembro tratado ou aceito; um Cron Job do Render, se existir, conferido. Primeira noite:
+  acompanhar a rodada (o prazo de 30 min por unidade limita o pior caso) e conferir de manhã (checkpoint_0510.sql adaptado).
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo. Etapa 0 autorizada e ainda não executada; nada de escrita autorizado.
 2026-10-02 ~16:40  Passo 0 executado e analisado; reconciliação v2 (85 alvos), backup e dry-run prontos; novas decisões A-9 a A-11.
 2026-10-02 ~17:45  Backup e dry-run executados; passo 3 preparado; hotfix 3 local; contenção da rodada de 03/10 (A/B/C) e decisões A-9/A-10 atualizadas.
+2026-10-05 ~15:20  Seções 6-9: contenção feita, 60 queued (análise de código e kit), ordem de merge, setembro em lotes, critérios do botão; passo 3 corrigido para EXECUTADO.

@@ -1,5 +1,5 @@
 RELATORIO COMPLETO — INCIDENTE P0 2026-10-02 (gerado de 00..06; NÃO editar à mão)
-Gerado em: 2026-10-02 17:16 -0300
+Gerado em: 2026-10-05 15:04 
 
 
 ########## ARQUIVO: 00_INDICE.txt ##########
@@ -7,7 +7,7 @@ Gerado em: 2026-10-02 17:16 -0300
 ================================================================================
 INCIDENTE P0 2026-10-02 — 00_INDICE
 Índice, estado atual e referências dos demais arquivos
-Última atualização: 2026-10-02 ~17:45 (BRT)
+Última atualização: 2026-10-05 ~15:05 (BRT)
 ================================================================================
 
 COMECE AQUI (para outro agente ou pessoa que recebeu só o link)
@@ -18,25 +18,34 @@ COMECE AQUI (para outro agente ou pessoa que recebeu só o link)
 
 RESUMO DE UMA LINHA
   Em 2026-10-02 o Portal da Venforce caiu porque o "Atualizar dados" do Painel de Contas esgotava o pool do
-  PostgreSQL; o PR #218 corrigiu e está em produção. Resta: runs órfãos e dados a reconciliar, um bug
-  independente de datas no agendador (corrigido só em branch local) e unidades noturnas que travam (causa
-  não provada).
+  PostgreSQL; o PR #218 corrigiu e está em produção. Os 85 runs órfãos foram encerrados em 02/10 18:10 (passo 3).
+  A rodada noturna de 03/10 ficou presa ~58 h (unidades sem prazo), as de 04 e 05/10 não ocorreram, e o agendador
+  está DESLIGADO por env desde 05/10. Os hotfixes 2 (datas) e 3 (prazos) estão em branches PUSHED, sem PR/merge/deploy.
 
-ESTADO ATUAL (2026-10-02 ~16:00 BRT)
+ESTADO ATUAL (2026-10-05 ~15:05 BRT)
   Item                                              Estado
-  Causa raiz do incidente                           COMPROVADA (local) + coerente com produção
+  Causa raiz do incidente original                  COMPROVADA (local) + coerente com produção
   Hotfix 1 (PR #218, commit 387de56, merge 1249d98) PUBLICADO no Render [relato do usuário]
-  Hotfix 2 (datas)                                  IMPLEMENTADO E TESTADO LOCAL; sem commit/PR/deploy
-  Auditoria SQL parte 1 (Q1-Q12)                    EXECUTADA em produção (somente leitura)
-  Passo 0 (parte 2 + pré-voo + simulação)           EXECUTADO ~16:23 (somente leitura): pool saudável, sem locks
-  Runs órfãos                                       86 ativos; alvo da reconciliação v2 = 85 (5 já fechados pelo sistema)
-  Backup (91 runs) e dry-run com ROLLBACK          EXECUTADOS ~17:00: G1/G2 OK, 85 alvos aptos, #472 preservado
-  Reconciliação (UPDATE/COMMIT, passo 3)            PREPARADA (frase de confirmação); NÃO autorizada; NÃO executada
-  Setembro/2026 completo publicado                  só 14 de 81 contas (R1); estratégia pendente
-  Travamento de unidades (coleta e gravação)        Hotfix 3 (prazos) IMPLEMENTADO E TESTADO LOCAL; sem commit
-  Rodada das 03:00 de 03/10                         RISCO ALTO de travar de novo; contenção A/B/C no 06; decisão pendente
-  Run #472 (investigação)                           PRESERVADO (fora da reconciliação)
-  Logs do Render (#363/#399/#472, 201 falhas)       NÃO coletados (R3 já localizou onde o #363/#399/#472 pararam)
+  Passo 3 (reconciliação dos 85 runs)               EXECUTADO e COMMITADO em 2026-10-02 18:10:09 [FATO banco]; 85 failed
+                                                    com o código do incidente; 0 divergências (checkpoint 05/10)
+  Run #472                                          Encerrado pelo SISTEMA em 03/10 03:00 (SYNC_RUN_STALE_RUNNING); escopo
+                                                    substituído pelo #572 (noturno), preso ~58 h, fechado por PROCESS_RESTART
+                                                    em 05/10 13:29 [FATO banco]
+  Rodada noturna de 03/10                           PRESA: 66 runs (3 completed, 3 failed, 60 queued) [FATO]
+  Rodadas de 04/10 e 05/10                          NÃO ocorreram (0 runs criados) [FATO]; causa = agendador só reagenda depois
+                                                    que a rodada termina [INFERÊNCIA a partir do código]
+  60 runs noturnos queued (idade > 2 dias)          NADA alterado; kit de encerramento preparado e NÃO executado (06, seção 7)
+  Agendador noturno                                 CONTIDO: CENTRAL_VENDAS_NOTURNO_ENABLED=false no Render; log
+                                                    "desabilitado" visto em 05/10 [RELATO do usuário]; pré-voo verde 14:38
+  Hotfix 2 (datas)                                  branch PUSHED (5b59c38 sobre 3d012fa); suíte 305/308; PR NÃO aberto
+                                                    (gh sem login); sem merge/deploy
+  Hotfix 3 (prazos + cancelamento)                  branch PUSHED (cdd5856 sobre 3d012fa); suíte 305/308; PR NÃO aberto
+                                                    (gh sem login); sem merge/deploy
+  Setembro/2026 (81 contas MELI ativas)             17 completas; 64 incompletas (22 até 09-29, 16 até 09-28, 5 só imports
+                                                    sem cobertura válida, 21 sem nenhum import) [FATO]
+  Banco / pool (05/10 14:27 e 14:38)                Saudável: 2 sessões, sem locks, sem running, sem transação > 5 min [FATO]
+  Main                                              3d012fa (PR #220 Shopee e #221 SEO; sem arquivos em comum com os hotfixes)
+  Logs do Render (#363/#399/#472/#572)              NÃO coletados
   Unificação de clientes                            NÃO retomar até cumprir 06, seção 5
 
 ARQUIVOS DESTA PASTA
@@ -84,9 +93,11 @@ REFERÊNCIAS
                  #192 (fix/sync-noturno-deadlock-preparacao, merge 7f27330, 2026-09-29 11:08)
                  4600446 (2026-09-25, recuperação do agendador) | e62d6a9 e a469bcc (2026-09-24, sync/scheduler)
                  #211-#216 (2026-10-01/02): descartados como causa
-  Main atual:    a9b7fe4 (2026-10-02 16:16, PR #219 SEO ML, sem relação com o incidente); a docs foi criada sobre 1249d98
+  Main atual:    3d012fa (2026-10-05 13:28; #220 Shopee e #221 SEO ML, sem relação com o incidente); a9b7fe4 era a main de 02/10;
+                 a docs foi criada sobre 1249d98
   Branches:      hotfix/painel-contas-pool-deadlock (publicada/mergeada)
-                 hotfix/central-vendas-date-parse (LOCAL, sem commit; worktree .claude/worktrees/hotfix-central-date-parse)
+                 hotfix/central-vendas-date-parse (PUSHED, commit 5b59c38 sobre 3d012fa; sem PR; worktree .claude/worktrees/hotfix-central-date-parse)
+                 hotfix/central-vendas-esperas-sem-prazo (PUSHED, commit cdd5856 sobre 3d012fa; sem PR; worktree .claude/worktrees/hotfix-central-prazos)
                  docs/incidente-p0-2026-10-02 (esta documentação; NÃO mergeada na main)
   Código-chave:  server/services/painelContas/painelContasAtualizacao.js
                  server/config/database.js, server/config/databaseConexao.js
@@ -117,6 +128,7 @@ REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 2026-10-02 ~16:40  Passo 0 executado e analisado; estado atualizado; scripts v2 (anexo 07, seção 8); RELATORIO_COMPLETO regenerado.
 2026-10-02 ~16:50  Registrado que a main avançou para a9b7fe4 (PR #219, SEO); a branch docs segue baseada em 1249d98.
 2026-10-02 ~17:45  Estado atualizado: backup/dry-run executados, passo 3 preparado, hotfix 3 local, contenção da rodada de 03/10.
+2026-10-05 ~15:05  Checkpoint de 05/10: passo 3 confirmado COMMITADO, rodada de 03/10 presa, agendador contido, hotfixes 2/3 pushed (sem PR), plano dos 60 queued/setembro/botão (06, seções 6-9).
 
 
 ########## ARQUIVO: 01_RESUMO_GERAL.txt ##########
@@ -302,12 +314,32 @@ dados órfãos, um bug independente na recuperação do agendador (corrigido só
 padrão de unidades noturnas que travam, cuja causa ainda não foi provada.
 
 --------------------------------------------------------------------------------
+CRONOLOGIA APÓS A RECONCILIAÇÃO (2026-10-02 18:10 → 2026-10-05)
+--------------------------------------------------------------------------------
+2026-10-02 18:10  [FATO banco] Passo 3 COMMITADO: 85 runs failed com SYNC_RUN_ORPHAN_POST_INCIDENT_20261002 (uma transação).
+2026-10-03 03:00  [FATO banco] A rodada noturna começa (66 runs criados em ~5 s). O criarSyncRun do #572 (mesma conta e período do #472)
+                  fecha o #472 como SYNC_RUN_STALE_RUNNING (5 ms antes). Setembro completo + 10/01..10/02.
+2026-10-03 ~03:10 [FATO banco] 3 unidades completam (publicam setembro completo); 3 unidades travam (uma delas o #572); as 60 restantes
+                  ficam queued porque a concorrência (3) está ocupada pelas presas.
+2026-10-04/05     [FATO banco] Nenhum run noturno criado. [INFERÊNCIA a partir do código] O timer do agendador só é rearmado depois que a
+                  rodada em curso termina (dispararRodada().then(agendar)); com a de 03/10 pendurada, as de 04 e 05 não disparam.
+2026-10-05 13:28  Merge dos PRs #220/#221 na main (3d012fa); deploy/restart do Web Service.
+2026-10-05 13:29  [FATO banco] A recuperação de boot fecha os 3 runs presos (~58 h) como SYNC_RUN_PROCESS_RESTART. Esse código só é gravado pela
+                  recuperação do agendador, que só roda com a flag ligada: indício forte de que a flag estava ligada até aqui.
+                  Os 60 queued NÃO foram retomados (hipótese: bug de datas do hotfix 2 na recuperação; NÃO verificado nos logs).
+2026-10-05 14:27  Checkpoint somente leitura: banco/pool saudáveis; 60 queued noturnos antigos; setembro 17/81 completas.
+2026-10-05 14:38  Pré-voo verde (0 running, 0 manuais ativos, sem locks, só os 60 queued). Usuário define
+                  CENTRAL_VENDAS_NOTURNO_ENABLED=false no Render; deploy concluído; log "desabilitado" visto [RELATO].
+2026-10-05 ~15:00 Hotfixes 2 e 3 rebaseados sobre 3d012fa, testados, commitados e enviados (branches próprias); PRs ainda não abertos.
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo a partir do histórico da sessão e da auditoria SQL parte 1.
 2026-10-02 ~16:40  Passo 0: resultados incorporados (pool saudável, 85 alvos aptos, lacuna de setembro, R3 corrige o #363).
 2026-10-02 ~16:50  Cronologia: PR #219 (SEO, mergeado às 16:16; main em a9b7fe4) registrado como possível restart antes do passo 0.
 2026-10-02 ~17:45  Backup/dry-run executados, passo 3 preparado, hotfix 3 local e risco da rodada de 03/10 registrados.
+2026-10-05 ~15:05  Cronologia de 02/10 18:10 a 05/10 (passo 3 commitado, rodada de 03/10 presa, agendador contido).
 
 
 ########## ARQUIVO: 02_DIAGNOSTICO.txt ##########
@@ -1033,12 +1065,35 @@ Aqui: conclusões anonimizadas (ids de run/import/conta).
   Reversão: reconciliacao_orfaos_REVERTER.sql a partir do CSV (só toca linhas com o código do incidente).
 
 --------------------------------------------------------------------------------
+18. CHECKPOINT SOMENTE LEITURA DE 2026-10-05 (14:27 e 14:38 BRT) — resultados agregados
+--------------------------------------------------------------------------------
+Origem: checkpoint_0510.sql (K0-K6) e preflight_desligar_agendador.sql (P0-P7), executados pelo usuário, BEGIN READ ONLY + ROLLBACK
+(07, seção 9). Saída bruta fica só na máquina do usuário.
+K1/K2/K2a/K2b  Reconciliação dos 85: COMMITADA em 02/10 18:10:09. 85/85 failed com SYNC_RUN_ORPHAN_POST_INCIDENT_20261002; 0 ausentes;
+               0 divergências (nenhum alvo ativo ou com outro código).                                                       [FATO]
+K3             Run #472: failed, SYNC_RUN_STALE_RUNNING, finished_at 03/10 03:00:00.398 (encerrado pelo sistema). Aberto desde 10/01 15:03.
+K3b            Substituído pelo #572 (noturno, mesma conta e período 09/01..09/30), criado 03/10 03:00:00.403; failed com
+               SYNC_RUN_PROCESS_RESTART em 05/10 13:29:49 (~58 h presa).                                                       [FATO]
+K3c            O #472 deixou um import candidate de competência 2026-08 com cobertura invertida (09/01..08/31), 6 pedidos. Inerte
+               (nunca é lido: não está published).                                                                           [FATO]
+K4/K4b/K4c     Noturnos desde 02/10: só 03/10 tem runs: 66 criados = 3 completed + 3 failed (PROCESS_RESTART) + 60 queued. Por período:
+               setembro completo 53 (3 completed, 3 failed, 47 queued); 10/01..10/02: 13 queued. Nenhum run em 04/10 nem 05/10.
+K4d/K4e/K4f    Nenhum run manual desde 02/10 18:10. Único código de falha novo: PROCESS_RESTART (3). Sem STALE_*, sem UNIT_TIMEOUT, sem 40P01.
+K5/K5b/K5c     Setembro (81 contas MELI ativas): 17 completas (eram 14; as 3 novas são da rodada de 03/10), 22 até 09/29, 16 até 09/28,
+               5 só com imports sem cobertura válida, 21 sem nenhum import. 64 incompletas.
+K6a-K6f        max_connections 103; 2 sessões no banco (a do checkpoint e 1 idle); 0 locks advisory/não concedidos; 0 transações > 5 min;
+               60 runs ativos, todos noturno/queued, criados 03/10 03:00:01..03:00:05, idade > 2 dias, nenhum dos 85 antigos.
+Pré-voo P0-P7  (14:38) 0 running; 0 manuais ativos; só noturno/queued=60; 0 atividade em 30 min; 0 sessões não-idle; 0 locks.      [FATO]
+Leitura:       o pool está saudável; o dano atual é de dados/agenda (setembro incompleto, 60 runs queued, agendador parado), não de conexões.
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo com os resultados da parte 1 (Q1-Q12). Partes 2/pré-voo pendentes.
 2026-10-02 ~16:40  Seção 16: resultados do passo 0 (R1-R8, F1-F5, S1-S4). 5 dos 90 alvos já encerrados pelo sistema; alvo
                    passa a 85 (v2). R3 corrige a leitura dos runs #363/#399/#472 (travaram ao gravar o import grande).
 2026-10-02 ~17:45  Seção 17: backup (91 runs), D15 confirmada, dry-run G1/G2 OK (85 alvos), passo 3 (aplicação) preparado e não executado.
+2026-10-05 ~15:05  Seção 18: checkpoint 05/10 e pré-voo (passo 3 commitado, #472/#572, rodada de 03/10 presa, setembro 17/81).
 
 
 ########## ARQUIVO: 04_HOTFIXES.txt ##########
@@ -1116,7 +1171,7 @@ Observação de processo: o PR foi aberto fora do gh (gh CLI não autenticado ne
   "git push" sem refspec teria alvo a main. O remote "gpt" aponta para um repositório diferente (não usar).
 
 --------------------------------------------------------------------------------
-2. HOTFIX 2 — DATAS (dateFrom/dateTo) — IMPLEMENTADO LOCALMENTE, NÃO PUBLICADO
+2. HOTFIX 2 — DATAS (dateFrom/dateTo) — BRANCH PUSHED (05/10), SEM PR/MERGE/DEPLOY
 --------------------------------------------------------------------------------
 Branch: hotfix/central-vendas-date-parse. Worktree local: .claude/worktrees/hotfix-central-date-parse
   (dentro do clone do repositório). Base: origin/main 1249d98. Upstream da branch aponta para origin/main
@@ -1165,7 +1220,7 @@ Restrição de ORDEM (importante): publicar este hotfix ANTES de fechar os runs 
 
 
 --------------------------------------------------------------------------------
-4. HOTFIX 3 — ESPERAS SEM PRAZO (IMPLEMENTADO LOCALMENTE, NÃO PUBLICADO)
+4. HOTFIX 3 — ESPERAS SEM PRAZO (BRANCH PUSHED EM 05/10, SEM PR/MERGE/DEPLOY)
 --------------------------------------------------------------------------------
 Branch: hotfix/central-vendas-esperas-sem-prazo. Worktree local: .claude/worktrees/hotfix-central-prazos. Base: origin/main
 a9b7fe4 (PR #219 incluído; sem upstream configurado). Estado: alterações no working tree, SEM commit. Independente do
@@ -1235,11 +1290,44 @@ Pontos a observar em produção após o deploy (cada um com autorização): logs
   C-6  Riscos P-13 a P-17 de 05_FALHAS_PENDENTES.txt.
 
 --------------------------------------------------------------------------------
+5. ATUALIZAÇÃO DE 2026-10-05 — HOTFIXES 2 E 3 REBASEADOS, TESTADOS E ENVIADOS
+--------------------------------------------------------------------------------
+Base: origin/main 3d012fa (inclui #220 Shopee/fechamento e #221 SEO). Os dois hotfixes foram rebaseados sem conflito; nenhum arquivo de
+Fechamento Financeiro, unificação ou dos PRs #220/#221 foi incorporado (conferido por nome de arquivo). Suíte: cada *.test.js rodado
+isolado; main 304/307, hotfix 2 305/308, hotfix 3 305/308; as MESMAS 3 falhas preexistentes (designStudioWorkspace,
+meliAnunciosOrdenacaoGlobal, mlTokenService).
+
+HOTFIX 2 — branch hotfix/central-vendas-date-parse, commit 5b59c38, push só dessa branch (refspec explícito).
+  Arquivos: server/services/centralVendas/centralVendasSyncRunService.js (formatarDiaIso com getters locais; sanitizeRun;
+  listarPeriodosNoturnosPendentes com TO_CHAR) e server/tests/centralVendasDatasDate.test.js (41 verificações, Date do parser real do
+  pg-types, 6 fusos). Query validada em PGlite [TESTE LOCAL]. Efeito: a recuperação de boot do agendador volta a formar períodos
+  válidos. Sem a flag ligada ele não é exercitado em produção.
+  PR: NÃO aberto (gh sem login nesta máquina); abrir pelo navegador.
+
+HOTFIX 3 — branch hotfix/central-vendas-esperas-sem-prazo, commit cdd5856, push só dessa branch.
+  Mantém os prazos já desenhados (ML/MP 30 s, query 60 s, unidade 30 min, fechamento 5 min; todos por env, inválido cai no padrão) e
+  FECHA 3 LACUNAS encontradas na revisão de 05/10:
+   a) O prazo por unidade apenas devolvia a vaga: o trabalho abandonado continuava. AGORA a unidade recebe um AbortSignal; ao estourar
+      o prazo o HTTP em voo é abortado e o trabalho para antes de cada etapa e de TODA gravação (assertNaoCancelado em utils/comPrazo.js:
+      página de pedidos, antes de frete/pós-venda/pagamentos, antes de gravar o import e de cada competência, e antes de fechar o run no worker).
+      Depois do prazo a unidade NÃO completa o run, NÃO publica (publicarRun já exigia run.status = completed) e NÃO enfileira margem.
+   b) A query que estoura o prazo só era abandonada no cliente (conexão descartada). AGORA a transação de gravação emite SET LOCAL
+      statement_timeout = prazo+5 s e idle_in_transaction_session_timeout = 2x: o SERVIDOR também cancela, inclusive espera de lock.
+   c) Testes: 77 verificações (eram 60): HTTP ML/MP, transação, descarte de conexão, prazo por unidade, rodada saudável, cancelamento
+      cooperativo (worker real com db falso), SET LOCAL, contrato das checagens; 5 mutações detectadas.
+  Riscos residuais (P-31): OAuth refreshMlGrant segura conexão sem prazo; queries soltas fora da transação só limitadas pelo prazo da
+  unidade; frete/claims/pagamentos checam o cancelamento entre etapas, não no meio de uma chamada (cada chamada tem prazo próprio).
+  PR: NÃO aberto (gh sem login); abrir pelo navegador. É o PRIORITÁRIO: foi a falha que se repetiu em 03/10.
+
+Ordem de merge/deploy recomendada: 06, seção 8.
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo: #218 publicado; hotfix de datas implementado e testado, sem commit.
 2026-10-02 ~16:40  Sem mudança de status dos hotfixes 1 e 2; registrado o candidato a hotfix 3 (C-7) após o passo 0.
 2026-10-02 ~17:45  Hotfix 3 (esperas sem prazo) implementado e testado localmente; sem commit.
+2026-10-05 ~15:05  Seção 5: hotfixes 2 e 3 rebaseados sobre 3d012fa, testados (305/308), commitados e pushed; cancelamento cooperativo e SET LOCAL no hotfix 3.
 
 
 ########## ARQUIVO: 05_FALHAS_PENDENTES.txt ##########
@@ -1409,11 +1497,29 @@ P-32  Rodada de 03/10 03:00: setembro completo para 67 contas + outubro, concorr
       (decisão do usuário; 06, A-10).
 
 --------------------------------------------------------------------------------
+F. NOVAS FALHAS E ATUALIZAÇÕES DE 2026-10-05
+--------------------------------------------------------------------------------
+P-32 (ATUALIZADA)  A rodada de 03/10 TRAVOU como previsto: 3 unidades presas ~58 h, 60 queued, rodadas de 04 e 05/10 não ocorreram. ALTA |
+      CONTIDA por env (agendador desligado em 05/10); correção = hotfix 3 (branch pushed, PR pendente).
+P-33  O agendador só rearma o timer depois que a rodada em curso termina (aoDisparar: dispararRodada().then(agendar)): uma rodada pendurada
+      cancela TODAS as seguintes até um restart. ALTA | MITIGADO pelo hotfix 3 (prazos); o desenho em si não foi alterado [INFERÊNCIA do código].
+P-34  60 runs noturnos queued há > 2 dias. criarSyncRun fecha queued > 15 min do MESMO escopo exato como SYNC_RUN_STALE_QUEUED e cria um novo
+      (nunca os reaproveita). Com a flag ligada, a recuperação de boot retomaria como rodada em massa (todas as contas elegíveis x
+      períodos pendentes). ALTA | ABERTO; kit de encerramento preparado (06, seção 7); NÃO executado.
+P-35  A recuperação de boot de 05/10 13:29 fechou os 3 running mas não retomou os 60 queued. [HIPÓTESE] bug de datas (hotfix 2); NÃO verificado
+      nos logs do Render. MÉDIA | ABERTO.
+P-36  A conta do #472 travou 2 vezes no mesmo escopo (#472 manual em 10/01 e #572 noturno em 03/10). Pista de causa específica da conta
+      [HIPÓTESE]; causa raiz ainda não provada. MÉDIA | ABERTO (coletar logs do Render; isolar essa conta em lote próprio).
+P-37  gh sem login: PRs dos hotfixes precisam ser abertos pelo navegador (ver P-25). BAIXA | ABERTO.
+P-38  Import candidate do #472 com competência 2026-08 e cobertura invertida (6 pedidos). Inerte. BAIXA | ABERTO (ver P-29).
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo (P-01 a P-27).
 2026-10-02 ~16:40  Passo 0: P-05..P-11 atualizadas (P-07 confirmada, P-09/P-11 resolvidas); P-28 a P-30 novas.
 2026-10-02 ~17:45  Hotfix 3 local: P-05/P-06/P-17/P-28 atualizadas; P-31 e P-32 novas.
+2026-10-05 ~15:05  Seção F: P-32 atualizada; P-33 a P-38 novas (rodada presa, timer, 60 queued, recuperação, conta repetida, gh).
 
 
 ########## ARQUIVO: 06_PLANO_RECUPERACAO.txt ##########
@@ -1454,8 +1560,9 @@ E-10 PASSO 0 EXECUTADO pelo usuário (~16:23, somente leitura, 3 arquivos com RO
      pelo sistema; F5 "depois" = 0 sincronizações reais; lacuna de setembro em 67 de 81 contas.      [FATO]
 E-12 BACKUP (91 runs) e DRY-RUN com ROLLBACK EXECUTADOS pelo usuário (~17:00): G1/G2 OK, 85 alvos aptos, ROLLBACK
      confirmado, #472 preservado; D15 confirmada (os 5 fechados foram STALE_* do sistema).            [FATO]
-E-13 Passo 3 (aplicação definitiva, COMMIT) PREPARADO e NÃO executado: exige terminal interativo e a frase
-     "APLICAR 85 RUNS"; confere SHAs, backup e dry-run recente; valida o resultado em outra conexão.   [TESTE LOCAL]
+E-13 Passo 3 (aplicação definitiva, COMMIT) EXECUTADO pelo usuário em 2026-10-02 18:10:09: 85 runs failed com
+     SYNC_RUN_ORPHAN_POST_INCIDENT_20261002, 0 divergências (confirmado pelo banco em 05/10).         [FATO banco]
+     (Texto anterior "preparado e não executado" estava desatualizado e foi corrigido em 05/10.)
 E-14 Hotfix 3 (esperas sem prazo) implementado e testado em branch local (04, seção 4); sem commit.    [TESTE LOCAL]
 E-11 Reconciliação regenerada como v2 (85 alvos; #472 preservado; tolera alvo fechado pelo sistema; qualquer
      outra divergência aborta) e scripts de backup/dry-run reescritos (URL por prompt oculto, backup que não
@@ -1564,14 +1671,13 @@ Também: log das 201 falhas (horário e confirmação de que vieram do boot) e o
   A-2  Rodar o backup (passo 1): análise do passo 0 concluída; pronto para executar (somente leitura no banco).
   A-3  Dry-run completo com ROLLBACK (2b): pronto; executa UPDATE dentro de transação desfeita. Pedido de
        preparação do usuário; a execução é decisão dele.
-  A-4  APLICAR a reconciliação (UPDATE de 85 runs, v2) — NÃO autorizado.
-  A-5  Commit / PR / deploy do hotfix 2 — NÃO autorizados (hoje só implementação + testes locais).
+  A-4  APLICAR a reconciliação (UPDATE de 85 runs, v2) — EXECUTADO em 02/10 18:10 (COMMIT); o passo 3 antigo está DESCARTADO.
+  A-5  Hotfix 2: commit e push FEITOS (05/10, autorizados); PR (navegador), merge e deploy — pendentes de autorização separada.
   A-6  Incorporar à main a pasta docs/incidentes/P0_2026-10-02/ (esta documentação) — NÃO autorizado.
   A-7  Ressincronização de setembro (etapa 9) e eventual troca de dia() por formatarDiaIso (C-5).
   A-8  Escopo da limitação da recuperação a períodos recentes (C-1): correção separada, ainda sem prazo.
-  A-9  Hotfix 3 (prazo HTTP, por query e por unidade): IMPLEMENTADO e testado localmente, sem commit. Autorizar commit,
-       push da branch e abertura do PR? (merge e deploy são decisões separadas.)
-  A-10 Contenção da rodada de 03/10 (opções A, B ou C acima) E estratégia para setembro (etapa 9) ANTES das 03:00.
+  A-9  Hotfix 3: commit e push FEITOS (05/10, autorizados); PR (navegador), merge e deploy — pendentes de autorização separada.
+  A-10 Contenção: FEITA em 05/10 (CENTRAL_VENDAS_NOTURNO_ENABLED=false; log "desabilitado" visto). Estratégia de setembro: seção 9.
   A-11 Pedir à equipe que não clique "Atualizar dados" de setembro na conta 81 até o backup, para preservar o #472.
 
 --------------------------------------------------------------------------------
@@ -1585,8 +1691,86 @@ Também: log das 201 falhas (horário e confirmação de que vieram do boot) e o
   6. 24 h sem sessão de banco presa e sem "timeout exceeded when trying to connect" recorrente nos logs.
 
 --------------------------------------------------------------------------------
+6. CONTENÇÃO DO AGENDADOR E ESTADO DE 2026-10-05
+--------------------------------------------------------------------------------
+Feito: pré-voo somente leitura verde às 14:38 (0 running, 0 manuais ativos, sem locks, só os 60 queued); usuário definiu
+CENTRAL_VENDAS_NOTURNO_ENABLED=false no Web Service do Render e viu o log "[sync-scheduler] desabilitado" após o deploy [RELATO].
+Efeito do restart (código em 3d012fa): o shutdown só drena rodada ativa (não havia); no boot, com a flag desligada, iniciar() devolve false e a
+recuperação NÃO roda; o saneamento do schema só fecha runs ATIVOS DUPLICADOS do mesmo escopo (o índice único impede; os 60 têm escopos
+distintos). Logo os 60 queued ficam como estão. A flag só controla o agendador do Web Service; um Cron Job do Render (se existir) tem
+semântica inversa (roda a menos que seja false/0/off) e env própria [NÃO VERIFICADO se existe].
+Reversão: restaurar o valor anotado da flag — NÃO fazer antes das condições da seção 9.
+
+--------------------------------------------------------------------------------
+7. OS 60 RUNS NOTURNOS QUEUED DE 03/10 — O QUE O CÓDIGO FAZ E ESTRATÉGIA (nada foi alterado)
+--------------------------------------------------------------------------------
+Fatos do código (3d012fa):
+  F-1  criarSyncRun executa reconciliarRunsStale ANTES de buscar run ativo/reuso/insert: queued > 15 min do MESMO escopo exato
+       (cliente, conta, marketplace, período) viram failed SYNC_RUN_STALE_QUEUED e um run NOVO nasce. Queued antigo nunca é "reivindicado".
+       => "reutilizar" os 60 NÃO existe no código atual.
+  F-2  Reuso só vale para run COMPLETED + published do período exato (reutilizarCompletedPublicado, só no caminho noturno).
+  F-3  Com a flag ligada, a recuperação de boot lista os períodos pendentes (queued/running noturnos, mais completed publicados sem snapshot)
+       e chama executarRodada para TODAS as contas elegíveis x esses períodos (aqui: setembro completo e 10/01..10/02, ~2 x contas), com
+       concorrência 3 — uma rodada em massa, exatamente a carga que se quer evitar. Os queued só somem do "pendente" quando fechados.
+  F-4  A rodada normal de um dia comum só cria o mês corrente até ontem (setembro completo só nos dias 1-3 do mês).
+Alternativas avaliadas:
+  (a) Reutilizar: impossível (F-1).
+  (b) Deixar a recuperação processar tudo ao religar a flag: carga em massa não controlada. DESCARTADA.
+  (c) Deixar como estão: reaparecem como pendentes a cada boot com a flag ligada. DESCARTADA.
+  (d) ENCERRAR os 60 (failed, SYNC_RUN_ORPHAN_NOTURNO_20261003) com backup, dry-run com ROLLBACK e portões, ANTES de religar a flag, e
+      refazer setembro em lotes pequenos e observados (seção 9). RECOMENDADA.
+Kit (máquina do usuário, fora do repo; NÃO executado; SQL em 07, seção 9): q60_passo_A_backup.sh (leitura; CSV; exige 60), q60_passo_B_dryrun.sh
+(UPDATE dentro de transação desfeita), q60_passo_C_aplicar_COMMIT.sh (terminal interativo + frase "ENCERRAR 60 RUNS"; recusa 02:00-04:00 BRT),
+q60_REVERTER.sql. Portões G1 (antes): exatamente 60 alvos; 0 running; 0 manuais ativos; lock global do agendador livre; alvos com > 15 min;
+nenhum queued fora do alvo; código ainda não aplicado. G2 (depois): 60 failed com o código; 0 ativos. UPDATE com NOWAIT. Validado em PGlite
+(11 cenários, inclusive abortos por 59 alvos, running, manual, queued novo) [TESTE LOCAL]. Só altera central_vendas_sync_runs; nada é deletado.
+Condição: executar com a flag em false e preferencialmente depois do deploy do hotfix 3.
+
+--------------------------------------------------------------------------------
+8. ORDEM DE MERGE E DEPLOY (propostas; cada passo exige autorização do usuário)
+--------------------------------------------------------------------------------
+  1. PR do hotfix 3 (prioritário) -> revisão -> merge -> deploy (flag continua false). Verificar: boot sem erro, log "desabilitado".
+  2. PR do hotfix 2 (independente; arquivos disjuntos) -> merge -> deploy separado. Sem a flag ligada ele não é exercitado; é pré-requisito
+     para religar o agendador.
+  3. Encerrar os 60 queued (seção 7), com flag false.
+  4. Canário do "Atualizar dados" individual (seção 9) e recuperação de setembro em lotes (seção 9).
+  5. Religar o agendador (flag=true) só com as condições da seção 9.
+  Os PRs são abertos pelo navegador (gh sem login). Nada disso mexe no Fechamento Financeiro nem na unificação de clientes.
+
+--------------------------------------------------------------------------------
+9. SETEMBRO, "ATUALIZAR DADOS" E RELIGAR O AGENDADOR
+--------------------------------------------------------------------------------
+9.1 Recuperação de setembro (64 contas incompletas; NADA executado)
+  Ferramenta: backfillCentralVendas.js (já existente, "manual, observado, por lote de clientes"): npm run sync:central-vendas:backfill --
+  --meses=1 --concorrencia=1 --clientes=<lote> [--dry-run]. Faz o mês anterior completo (setembro até 10/31), concorrência padrão 1, máx. 3;
+  NÃO depende da flag do agendador; reutiliza run completed+published do período exato. Rodar DEPOIS do deploy do hotfix 3, a partir do shell
+  do Web Service no Render (mesmo código/env), nunca da máquina local (o .env local aponta para produção).
+  Plano de lotes: setembro_plano.sh (somente leitura) gera lotes por cliente ordenados por volume crescente: lote 1 CANÁRIO (<= 2 contas),
+  demais <= 4 contas, e o cliente da conta que travou duas vezes SOZINHO no fim. Cada lote: primeiro --dry-run, depois a execução.
+  Observabilidade: setembro_monitor.sql (somente leitura) a cada 2-3 min: runs por status/código, running > 35 min, timeouts/deadlock,
+  % de falha, sessões do banco, locks, cobertura de setembro; mais logs "[cron-central]" no Render.
+  Critérios de PARADA (qualquer um): run running > 35 min; qualquer SYNC_RUN_UNIT_TIMEOUT, PG_QUERY_TIMEOUT ou 40P01 (no canário e no lote
+  isolado, 1 basta; nos demais, 2); falhas > 25% dos terminados; sessão idle in transaction > 2 min ou sessões do app > 8; qualquer lock não
+  concedido persistente; lote > 60 min. Entre lotes: 0 runs ativos + 5 min. Janela: fora de 02:00-04:00 BRT e fora do horário de pico.
+  Aceite de cada lote: contas do lote com published completo (09/01..09/30) e nenhum run ativo.
+9.2 Botão "Atualizar dados" (POST /painel-contas/:clienteId/atualizar/:competencia; admin + carteira)
+  Mecanismo: UM cliente x competência por clique, mesmo executarRodada do noturno, requested_by preenchido (fora da recuperação de restart),
+  teto de 2 simultâneas (PAINEL_ATUALIZAR_MAX_SIMULTANEAS, 429), lock por escopo em conexão dedicada fora do pool (#218).
+  INDIVIDUAL pode voltar quando: (1) hotfix 3 em produção (o botão usa o mesmo worker; sem prazo um clique pode prender a conta);
+  (2) #218 em produção (já); (3) pré-voo verde imediatamente antes (0 running, 0 locks, sessões baixas); (4) um canário de 1 cliente pequeno
+  observado com o monitor: termina < 10 min, 0 timeout/deadlock, sem pico de sessões. O hotfix 2 NÃO é pré-requisito do botão.
+  EM MASSA (vários clientes em sequência ou vários operadores) só depois de: (a) individual estável por >= 1 dia útil sem timeout; (b) setembro:
+  canário + >= 2 lotes limpos; (c) 60 queued encerrados, hotfix 2 em produção e o agendador religado com 2 noites seguidas sem unidade acima do
+  prazo; (d) teto de 2 simultâneas confirmado no Render; (e) nada entre 02:00 e 04:00 BRT.
+  Proteções que precisam estar em produção antes: #218 (já), hotfix 3, hotfix 2 (para o agendador), 60 queued encerrados, monitoramento.
+9.3 Religar o agendador (CENTRAL_VENDAS_NOTURNO_ENABLED=true) só quando: hotfix 2 e 3 em produção; 60 queued encerrados (a recuperação de
+  boot resulta em "sem pendências"); pré-voo verde; setembro tratado ou aceito; um Cron Job do Render, se existir, conferido. Primeira noite:
+  acompanhar a rodada (o prazo de 30 min por unidade limita o pior caso) e conferir de manhã (checkpoint_0510.sql adaptado).
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo. Etapa 0 autorizada e ainda não executada; nada de escrita autorizado.
 2026-10-02 ~16:40  Passo 0 executado e analisado; reconciliação v2 (85 alvos), backup e dry-run prontos; novas decisões A-9 a A-11.
 2026-10-02 ~17:45  Backup e dry-run executados; passo 3 preparado; hotfix 3 local; contenção da rodada de 03/10 (A/B/C) e decisões A-9/A-10 atualizadas.
+2026-10-05 ~15:20  Seções 6-9: contenção feita, 60 queued (análise de código e kit), ordem de merge, setembro em lotes, critérios do botão; passo 3 corrigido para EXECUTADO.

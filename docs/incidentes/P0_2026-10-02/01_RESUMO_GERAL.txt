@@ -179,9 +179,29 @@ dados órfãos, um bug independente na recuperação do agendador (corrigido só
 padrão de unidades noturnas que travam, cuja causa ainda não foi provada.
 
 --------------------------------------------------------------------------------
+CRONOLOGIA APÓS A RECONCILIAÇÃO (2026-10-02 18:10 → 2026-10-05)
+--------------------------------------------------------------------------------
+2026-10-02 18:10  [FATO banco] Passo 3 COMMITADO: 85 runs failed com SYNC_RUN_ORPHAN_POST_INCIDENT_20261002 (uma transação).
+2026-10-03 03:00  [FATO banco] A rodada noturna começa (66 runs criados em ~5 s). O criarSyncRun do #572 (mesma conta e período do #472)
+                  fecha o #472 como SYNC_RUN_STALE_RUNNING (5 ms antes). Setembro completo + 10/01..10/02.
+2026-10-03 ~03:10 [FATO banco] 3 unidades completam (publicam setembro completo); 3 unidades travam (uma delas o #572); as 60 restantes
+                  ficam queued porque a concorrência (3) está ocupada pelas presas.
+2026-10-04/05     [FATO banco] Nenhum run noturno criado. [INFERÊNCIA a partir do código] O timer do agendador só é rearmado depois que a
+                  rodada em curso termina (dispararRodada().then(agendar)); com a de 03/10 pendurada, as de 04 e 05 não disparam.
+2026-10-05 13:28  Merge dos PRs #220/#221 na main (3d012fa); deploy/restart do Web Service.
+2026-10-05 13:29  [FATO banco] A recuperação de boot fecha os 3 runs presos (~58 h) como SYNC_RUN_PROCESS_RESTART. Esse código só é gravado pela
+                  recuperação do agendador, que só roda com a flag ligada: indício forte de que a flag estava ligada até aqui.
+                  Os 60 queued NÃO foram retomados (hipótese: bug de datas do hotfix 2 na recuperação; NÃO verificado nos logs).
+2026-10-05 14:27  Checkpoint somente leitura: banco/pool saudáveis; 60 queued noturnos antigos; setembro 17/81 completas.
+2026-10-05 14:38  Pré-voo verde (0 running, 0 manuais ativos, sem locks, só os 60 queued). Usuário define
+                  CENTRAL_VENDAS_NOTURNO_ENABLED=false no Render; deploy concluído; log "desabilitado" visto [RELATO].
+2026-10-05 ~15:00 Hotfixes 2 e 3 rebaseados sobre 3d012fa, testados, commitados e enviados (branches próprias); PRs ainda não abertos.
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo a partir do histórico da sessão e da auditoria SQL parte 1.
 2026-10-02 ~16:40  Passo 0: resultados incorporados (pool saudável, 85 alvos aptos, lacuna de setembro, R3 corrige o #363).
 2026-10-02 ~16:50  Cronologia: PR #219 (SEO, mergeado às 16:16; main em a9b7fe4) registrado como possível restart antes do passo 0.
 2026-10-02 ~17:45  Backup/dry-run executados, passo 3 preparado, hotfix 3 local e risco da rodada de 03/10 registrados.
+2026-10-05 ~15:05  Cronologia de 02/10 18:10 a 05/10 (passo 3 commitado, rodada de 03/10 presa, agendador contido).

@@ -459,9 +459,32 @@ Aqui: conclusões anonimizadas (ids de run/import/conta).
   Reversão: reconciliacao_orfaos_REVERTER.sql a partir do CSV (só toca linhas com o código do incidente).
 
 --------------------------------------------------------------------------------
+18. CHECKPOINT SOMENTE LEITURA DE 2026-10-05 (14:27 e 14:38 BRT) — resultados agregados
+--------------------------------------------------------------------------------
+Origem: checkpoint_0510.sql (K0-K6) e preflight_desligar_agendador.sql (P0-P7), executados pelo usuário, BEGIN READ ONLY + ROLLBACK
+(07, seção 9). Saída bruta fica só na máquina do usuário.
+K1/K2/K2a/K2b  Reconciliação dos 85: COMMITADA em 02/10 18:10:09. 85/85 failed com SYNC_RUN_ORPHAN_POST_INCIDENT_20261002; 0 ausentes;
+               0 divergências (nenhum alvo ativo ou com outro código).                                                       [FATO]
+K3             Run #472: failed, SYNC_RUN_STALE_RUNNING, finished_at 03/10 03:00:00.398 (encerrado pelo sistema). Aberto desde 10/01 15:03.
+K3b            Substituído pelo #572 (noturno, mesma conta e período 09/01..09/30), criado 03/10 03:00:00.403; failed com
+               SYNC_RUN_PROCESS_RESTART em 05/10 13:29:49 (~58 h presa).                                                       [FATO]
+K3c            O #472 deixou um import candidate de competência 2026-08 com cobertura invertida (09/01..08/31), 6 pedidos. Inerte
+               (nunca é lido: não está published).                                                                           [FATO]
+K4/K4b/K4c     Noturnos desde 02/10: só 03/10 tem runs: 66 criados = 3 completed + 3 failed (PROCESS_RESTART) + 60 queued. Por período:
+               setembro completo 53 (3 completed, 3 failed, 47 queued); 10/01..10/02: 13 queued. Nenhum run em 04/10 nem 05/10.
+K4d/K4e/K4f    Nenhum run manual desde 02/10 18:10. Único código de falha novo: PROCESS_RESTART (3). Sem STALE_*, sem UNIT_TIMEOUT, sem 40P01.
+K5/K5b/K5c     Setembro (81 contas MELI ativas): 17 completas (eram 14; as 3 novas são da rodada de 03/10), 22 até 09/29, 16 até 09/28,
+               5 só com imports sem cobertura válida, 21 sem nenhum import. 64 incompletas.
+K6a-K6f        max_connections 103; 2 sessões no banco (a do checkpoint e 1 idle); 0 locks advisory/não concedidos; 0 transações > 5 min;
+               60 runs ativos, todos noturno/queued, criados 03/10 03:00:01..03:00:05, idade > 2 dias, nenhum dos 85 antigos.
+Pré-voo P0-P7  (14:38) 0 running; 0 manuais ativos; só noturno/queued=60; 0 atividade em 30 min; 0 sessões não-idle; 0 locks.      [FATO]
+Leitura:       o pool está saudável; o dano atual é de dados/agenda (setembro incompleto, 60 runs queued, agendador parado), não de conexões.
+
+--------------------------------------------------------------------------------
 REGISTRO DE ATUALIZAÇÕES (acrescente no fim; não apague entradas antigas)
 --------------------------------------------------------------------------------
 2026-10-02 ~16:00  Criação do arquivo com os resultados da parte 1 (Q1-Q12). Partes 2/pré-voo pendentes.
 2026-10-02 ~16:40  Seção 16: resultados do passo 0 (R1-R8, F1-F5, S1-S4). 5 dos 90 alvos já encerrados pelo sistema; alvo
                    passa a 85 (v2). R3 corrige a leitura dos runs #363/#399/#472 (travaram ao gravar o import grande).
 2026-10-02 ~17:45  Seção 17: backup (91 runs), D15 confirmada, dry-run G1/G2 OK (85 alvos), passo 3 (aplicação) preparado e não executado.
+2026-10-05 ~15:05  Seção 18: checkpoint 05/10 e pré-voo (passo 3 commitado, #472/#572, rodada de 03/10 presa, setembro 17/81).
