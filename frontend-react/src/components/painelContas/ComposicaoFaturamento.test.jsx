@@ -46,15 +46,30 @@ const soma = {
   sobreposicao: { pedidos: 0, valor: 0 },
 };
 
-describe("demonstrativo: uma coluna por conta, soma ao lado", () => {
-  it("cada conta tem bruto, exclusões, FAT e conferência próprios", () => {
+// Um demonstrativo por vez: abre na soma; o seletor troca para cada conta.
+const opcao = (nome) => screen.getByRole("button", { name: nome });
+
+describe("demonstrativo: um por vez, soma por padrão e seletor por conta", () => {
+  it("abre na soma das contas, com o seletor [Soma] [conta 1] [conta 2]", () => {
     render(<DemonstrativoComposicao contas={[conta1, conta2]} somaDasContas={soma} competencia="2026-09" />);
+    const seletor = screen.getByRole("group", { name: "Demonstrativo exibido" });
+    expect(within(seletor).getAllByRole("button").map((b) => b.textContent))
+      .toEqual(["Soma das contas", "Mercado Livre 1 · AMR", "Mercado Livre 2 · AMR"]);
+    expect(opcao("Soma das contas")).toHaveAttribute("aria-pressed", "true");
     const cab = screen.getAllByRole("columnheader").map((th) => th.textContent);
-    expect(cab).toEqual(expect.arrayContaining([
-      expect.stringContaining("Mercado Livre 1 · AMR"),
-      expect.stringContaining("Mercado Livre 2 · AMR"),
-      expect.stringContaining("Soma das contas"),
-    ]));
+    expect(cab).toHaveLength(2); // rótulo + UMA coluna de valores
+    expect(cab[1]).toContain("Soma das contas");
+    const bruto = screen.getByRole("rowheader", { name: /Faturamento bruto/ }).closest("tr");
+    expect(within(bruto).getByText("R$ 552.242,78")).toBeInTheDocument();
+    expect(within(bruto).getByText("957 pedidos")).toBeInTheDocument();
+  });
+
+  it("cada conta tem bruto, exclusões, FAT e conferência próprios", async () => {
+    render(<DemonstrativoComposicao contas={[conta1, conta2]} somaDasContas={soma} competencia="2026-09" />);
+    await userEvent.click(opcao("Mercado Livre 2 · AMR"));
+    expect(opcao("Mercado Livre 2 · AMR")).toHaveAttribute("aria-pressed", "true");
+    expect(opcao("Soma das contas")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getAllByRole("columnheader")[1]).toHaveTextContent("Mercado Livre 2 · AMR");
     const bruto = screen.getByRole("rowheader", { name: /Faturamento bruto/ }).closest("tr");
     expect(within(bruto).getByText("R$ 552.142,78")).toBeInTheDocument();
     expect(within(bruto).getByText("947 pedidos")).toBeInTheDocument();
@@ -64,19 +79,32 @@ describe("demonstrativo: uma coluna por conta, soma ao lado", () => {
     const fat = screen.getByRole("rowheader", { name: /= FAT/ }).closest("tr");
     expect(within(fat).getByText("R$ 527.989,27")).toBeInTheDocument();
     const conf = screen.getByRole("rowheader", { name: "Conferência" }).closest("tr");
-    expect(within(conf).getAllByText("fecha")).toHaveLength(3);
+    expect(within(conf).getAllByText("fecha")).toHaveLength(1);
   });
 
-  it("período de cada conta no cabeçalho e aviso quando a soma mistura períodos", () => {
+  it("10 contas: continua UMA coluna de valores; o seletor só ganha opções", async () => {
+    const dez = Array.from({ length: 10 }, (_, i) => ({ ...conta2, contaId: 200 + i, rotulo: `Mercado Livre ${i + 1} · AMR` }));
+    render(<DemonstrativoComposicao contas={dez} somaDasContas={{ ...soma, contas: 10 }} competencia="2026-09" />);
+    expect(within(screen.getByRole("group", { name: "Demonstrativo exibido" })).getAllByRole("button")).toHaveLength(11);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(2);
+    await userEvent.click(opcao("Mercado Livre 7 · AMR"));
+    expect(screen.getAllByRole("columnheader")).toHaveLength(2);
+    expect(screen.getAllByRole("columnheader")[1]).toHaveTextContent("Mercado Livre 7 · AMR");
+  });
+
+  it("período de cada conta no cabeçalho e aviso quando a soma mistura períodos", async () => {
     render(<DemonstrativoComposicao contas={[conta1, conta2]} somaDasContas={soma} competencia="2026-09" />);
-    expect(screen.getByText("01/09–29/09")).toBeInTheDocument();
     expect(screen.getByText(/01\/09–30\/09 · períodos diferentes/)).toBeInTheDocument();
     expect(screen.getByText(/As contas cobrem períodos diferentes/)).toBeInTheDocument();
+    await userEvent.click(opcao("Mercado Livre 1 · AMR"));
+    expect(screen.getByText("01/09–29/09")).toBeInTheDocument();
+    expect(screen.queryByText(/períodos diferentes$/)).not.toBeInTheDocument();
   });
 
   it("conta sem pedidos (manual) fica fora, com o motivo escrito", () => {
     render(<DemonstrativoComposicao contas={[conta2, shopee]} somaDasContas={{ ...soma, contas: 1 }} competencia="2026-09" />);
     expect(screen.queryByText("Soma das contas")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Demonstrativo exibido" })).not.toBeInTheDocument();
     expect(screen.getByText(/Shopee 1 · AMR: Sem pedidos importados nesta competência — fora do demonstrativo/)).toBeInTheDocument();
   });
 
@@ -89,6 +117,7 @@ describe("demonstrativo: uma coluna por conta, soma ao lado", () => {
 
   it("'Outros pedidos com problema' só aparece se existir", () => {
     const { rerender } = render(<DemonstrativoComposicao contas={[conta2]} competencia="2026-09" />);
+    expect(screen.queryByRole("group", { name: "Demonstrativo exibido" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Outros pedidos com problema/)).not.toBeInTheDocument();
     const comOutros = { ...conta2, composicao: composicao({ exclusoes: { ...composicao().exclusoes, outrosProblemas: g(1, 5) } }) };
     rerender(<DemonstrativoComposicao contas={[comOutros]} competencia="2026-09" />);
@@ -100,15 +129,14 @@ describe("demonstrativo: uma coluna por conta, soma ao lado", () => {
     expect(screen.getByText(/1 pedido aparece em mais de uma conta \(R\$ 70,00 a mais na soma\)/)).toBeInTheDocument();
   });
 
-  it("seção de detalhe: título com o escopo e, ao lado, pedidos por conta (contagens do servidor)", () => {
+  it("seção de detalhe: título com o escopo e, ao lado, os pedidos do demonstrativo exibido (contagens do servidor)", async () => {
     render(<DemonstrativoComposicao contas={[conta1, conta2]} somaDasContas={soma} competencia="2026-09" />);
     const secao = screen.getByRole("region", { name: /Composição do faturamento em set\/2026/ });
     expect(within(secao).getByText(/· 2 contas · set\/2026/)).toBeInTheDocument();
-    const fluxos = within(screen.getByRole("list", { name: "Pedidos por conta" })).getAllByRole("listitem");
-    expect(fluxos).toHaveLength(3);
-    expect(fluxos[1]).toHaveTextContent("Mercado Livre 2 · AMR");
-    expect(fluxos[1]).toHaveTextContent("947 pedidos → 884 válidos · 63 fora do FAT");
-    expect(fluxos[2]).toHaveTextContent(/^Soma/);
+    expect(screen.getByLabelText("Pedidos")).toHaveTextContent("Pedidos · soma das contas");
+    await userEvent.click(opcao("Mercado Livre 2 · AMR"));
+    expect(screen.getByLabelText("Pedidos")).toHaveTextContent("Mercado Livre 2 · AMR");
+    expect(screen.getByLabelText("Pedidos")).toHaveTextContent("947 pedidos → 884 válidos · 63 fora do FAT");
   });
 
   it("conta única: o título nomeia a conta", () => {
@@ -187,7 +215,7 @@ describe("tabela: linha de composição e marca de cálculo parcial", () => {
     await userEvent.click(screen.getByRole("button", { name: /Cliente AMR/ }));
     await userEvent.click(screen.getByRole("button", { name: /Composição do faturamento de AMR/ }));
     expect(screen.getByRole("rowheader", { name: /Faturamento bruto/ })).toBeInTheDocument();
-    expect(screen.getByText("Soma das contas")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Soma das contas" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("sem conta com pedidos importados (só manual) não há linha de composição", () => {
