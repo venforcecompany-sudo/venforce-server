@@ -1451,8 +1451,47 @@
   color: var(--vf-text-muted);
 }
 
-/* Demonstrativo e leitura lado a lado enquanto couber; sem largura para a
-   leitura (várias contas em 1440), ela desce e ocupa a linha inteira. */
+/* Seletor do demonstrativo: soma + uma opção por conta. Quebra em linhas
+   quando há muitas contas — nunca espreme o demonstrativo. */
+.vf-ph-comp__seletor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px 2px;
+}
+
+.vf-ph-comp__opcao {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--vf-border);
+  border-radius: 999px;
+  background: var(--vf-surface);
+  font: inherit;
+  font-size: var(--vf-fs-xs);
+  color: var(--vf-text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.vf-ph-comp__opcao:hover {
+  border-color: var(--vf-border-strong);
+  color: var(--vf-text);
+}
+
+.vf-ph-comp__opcao:focus-visible {
+  outline: 2px solid var(--vf-focus-color);
+  outline-offset: 1px;
+}
+
+.vf-ph-comp__opcao[aria-pressed="true"] {
+  border-color: var(--vf-primary);
+  background: var(--vf-primary-soft);
+  color: var(--vf-primary-strong);
+  font-weight: var(--vf-fw-semibold);
+}
+
+/* Demonstrativo (um só) e leitura lado a lado enquanto couber; sem largura
+   para a leitura, ela desce e ocupa a linha inteira. */
 .vf-ph-comp__corpo {
   display: flex;
   flex-wrap: wrap;
@@ -1460,7 +1499,8 @@
 }
 
 .vf-ph-comp__corpo > .vf-ph-comp__tabela {
-  flex: 0 0 auto;
+  flex: 1 1 460px;
+  max-width: 640px;
 }
 
 /* Tabela aninhada: anula o que a tabela-mãe (.vf-table/.vf-ph-table) aplica
@@ -1517,12 +1557,6 @@
   font-size: var(--vf-fs-2xs);
   font-weight: var(--vf-fw-regular);
   color: var(--vf-text-muted);
-}
-
-/* Soma das contas: separada por um traço e um fundo levíssimo. */
-.vf-ph-table .vf-ph-comp__tabela .is-soma {
-  box-shadow: inset 1px 0 0 var(--vf-border-strong);
-  background: var(--vf-surface-2);
 }
 
 .vf-ph-table .vf-ph-comp__tabela tbody th {
@@ -1603,22 +1637,15 @@
   color: var(--vf-text-muted);
 }
 
-/* Pedidos por conta: bruto → válidos · fora do FAT (contagens do servidor). */
-.vf-ph-comp__fluxos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px var(--vf-sp-5);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: var(--vf-fs-xs);
-}
-
+/* Pedidos do demonstrativo exibido: bruto → válidos · fora do FAT
+   (contagens do servidor). */
 .vf-ph-comp__fluxo {
   display: flex;
   flex-direction: column;
   gap: 1px;
   min-width: 0;
+  margin: 0;
+  font-size: var(--vf-fs-xs);
 }
 
 .vf-ph-comp__fluxo-conta {

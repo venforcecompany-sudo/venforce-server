@@ -2,22 +2,26 @@
 //
 // Demonstrativo do faturamento POR CONTA, dentro da expansão do cliente:
 //
-//                         Mercado Livre 1   Mercado Livre 2   Soma das contas
-//   Faturamento bruto       3.094.153,71        552.142,78      3.646.296,49
-//   − Cancelamentos          −183.665,67        −18.601,48       …
+//   [Soma das contas] [Mercado Livre 1] [Mercado Livre 2] [Mercado Livre 3]
+//
+//   Faturamento bruto            3.646.296,49
+//   − Cancelamentos               −202.267,15
 //   − Devoluções concluídas …
 //   − Devoluções em andamento …
 //   − Mediações em aberto   …
-//   = FAT                   2.850.010,70        527.989,27      …
-//   Conferência             ✓ fecha             ✓ fecha         ✓ fecha
+//   = FAT                        3.377.999,97
+//   Conferência                  ✓ fecha
 //
-// Uma COLUNA por conta: cada operação tem o próprio demonstrativo, e a soma
-// fica ao lado, nunca no lugar. Apresentado como SEÇÃO de detalhe da linha do
-// cliente: demonstrativo à esquerda (valor e pedidos na mesma linha) e, na
-// largura que sobra, a leitura — pedidos por conta, definições e notas. Valores em centavos (é uma conferência, não
-// um resumo). O FAT é o oficial do import; a conferência só diz se
-// bruto − exclusões chega nele. Nada aqui é recalculado no navegador.
+// UM demonstrativo por vez: com várias contas, abre na soma e o seletor troca
+// para cada conta — 1, 3 ou 10 contas ocupam o mesmo espaço (lado a lado, a
+// partir de 3 contas, as colunas ficavam espremidas). Apresentado como SEÇÃO
+// de detalhe da linha do cliente: demonstrativo à esquerda (valor e pedidos
+// na mesma linha) e, na largura que sobra, a leitura — pedidos, definições e
+// notas. Valores em centavos (é uma conferência, não um resumo). O FAT é o
+// oficial do import; a conferência só diz se bruto − exclusões chega nele.
+// Nada aqui é recalculado no navegador.
 
+import { useState } from "react";
 import { formatarMoeda } from "../../utils/currency.js";
 import { formatarNumero } from "../../utils/numbers.js";
 import { formatarData, rotularCompetenciaCurta } from "../../utils/dates.js";
@@ -39,10 +43,10 @@ function periodoCurto(periodo) {
   return `${formatarData(periodo.de).slice(0, 5)}–${formatarData(periodo.ate).slice(0, 5)}`;
 }
 
-function CelulaValor({ grupo, negativo = false, forte = false, soma = false }) {
+function CelulaValor({ grupo, negativo = false, forte = false }) {
   const zero = !grupo || Number(grupo.valor) === 0;
   return (
-    <td className={`num vf-ph-comp__valor${zero ? " is-zero" : ""}${forte ? " is-forte" : ""}${soma ? " is-soma" : ""}`}>
+    <td className={`num vf-ph-comp__valor${zero ? " is-zero" : ""}${forte ? " is-forte" : ""}`}>
       <span className="vf-ph-comp__moeda">
         {negativo && !zero ? "− " : ""}{formatarMoeda(grupo?.valor ?? 0)}
       </span>
@@ -51,17 +55,17 @@ function CelulaValor({ grupo, negativo = false, forte = false, soma = false }) {
   );
 }
 
-function CelulaConferencia({ reconciliacao, soma = false }) {
+function CelulaConferencia({ reconciliacao }) {
   if (reconciliacao?.fecha) {
     return (
-      <td className={`num vf-ph-comp__conferencia is-ok${soma ? " is-soma" : ""}`}>
+      <td className="num vf-ph-comp__conferencia is-ok">
         <span className="vf-status is-success">fecha</span>
       </td>
     );
   }
   const dif = reconciliacao?.diferenca;
   return (
-    <td className={`num vf-ph-comp__conferencia is-erro${soma ? " is-soma" : ""}`} title="O FAT do import e a soma dos pedidos válidos não batem. Nenhum dos dois foi ajustado.">
+    <td className="num vf-ph-comp__conferencia is-erro" title="O FAT do import e a soma dos pedidos válidos não batem. Nenhum dos dois foi ajustado.">
       <span className="vf-status is-danger">
         {dif === null || dif === undefined ? "não confere" : `difere ${formatarMoeda(dif, { sinalPositivo: true })}`}
       </span>
@@ -72,13 +76,15 @@ function CelulaConferencia({ reconciliacao, soma = false }) {
 export function DemonstrativoComposicao({ contas = [], somaDasContas = null, competencia }) {
   const comComposicao = contas.filter((c) => c.composicao);
   const semComposicao = contas.filter((c) => !c.composicao);
-  const colunas = comComposicao.map((c) => ({ chave: c.contaId, rotulo: c.rotulo, comp: c.composicao }));
+  const opcoes = comComposicao.map((c) => ({ chave: c.contaId, rotulo: c.rotulo, comp: c.composicao }));
   if (somaDasContas && comComposicao.length > 1) {
-    colunas.push({ chave: "soma", rotulo: "Soma das contas", comp: somaDasContas, soma: true });
+    opcoes.unshift({ chave: "soma", rotulo: "Soma das contas", comp: somaDasContas, soma: true });
   }
-  const exclusoes = LINHAS_EXCLUSAO.filter(
-    (l) => !l.soSeExistir || colunas.some((c) => Number(c.comp.exclusoes?.[l.chave]?.pedidos) > 0)
-  );
+  // Abre na soma (ou na conta única). Se a conta escolhida sumir num
+  // recarregamento, volta para a primeira opção em vez de mostrar vazio.
+  const [escolhida, setEscolhida] = useState(null);
+  const atual = opcoes.find((o) => o.chave === escolhida) || opcoes[0];
+
   const notas = [];
   if (somaDasContas?.periodo?.diferente) {
     notas.push("As contas cobrem períodos diferentes (ver o período de cada uma) — a soma junta esses períodos como estão.");
@@ -92,7 +98,7 @@ export function DemonstrativoComposicao({ contas = [], somaDasContas = null, com
     notas.push(`${semValor === 1 ? "1 pedido sem valor registrado entra" : `${formatarNumero(semValor)} pedidos sem valor registrado entram`} na contagem com R$ 0,00.`);
   }
 
-  if (!comComposicao.length) {
+  if (!atual) {
     return (
       <p className="vf-ph-comp__vazio">
         Nenhuma conta tem pedidos importados em {rotularCompetenciaCurta(competencia)} — não há o que compor.
@@ -101,9 +107,9 @@ export function DemonstrativoComposicao({ contas = [], somaDasContas = null, com
     );
   }
 
-  // Seção de detalhe, não tabela solta: à esquerda o demonstrativo (uma
-  // coluna por conta, valor e pedidos na MESMA linha); à direita, na largura
-  // que sobra, a leitura — definições e notas. Nenhum número novo.
+  const comp = atual.comp;
+  const exclusoes = LINHAS_EXCLUSAO.filter((l) => !l.soSeExistir || Number(comp.exclusoes?.[l.chave]?.pedidos) > 0);
+  const periodo = periodoCurto(comp.periodo);
   const escopo = comComposicao.length === 1 ? comComposicao[0].rotulo : `${comComposicao.length} contas`;
   return (
     <section className="vf-ph-comp" aria-label={`Composição do faturamento em ${rotularCompetenciaCurta(competencia)}`}>
@@ -115,68 +121,76 @@ export function DemonstrativoComposicao({ contas = [], somaDasContas = null, com
         <p className="vf-ph-comp__formula" aria-hidden="true">bruto − exclusões = FAT</p>
       </header>
 
+      {opcoes.length > 1 && (
+        <div className="vf-ph-comp__seletor" role="group" aria-label="Demonstrativo exibido">
+          {opcoes.map((o) => (
+            <button
+              key={o.chave}
+              type="button"
+              className={`vf-ph-comp__opcao${o.soma ? " is-soma" : ""}`}
+              aria-pressed={o.chave === atual.chave}
+              onClick={() => setEscolhida(o.chave)}
+            >
+              {o.rotulo}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="vf-ph-comp__corpo">
         <table className="vf-ph-comp__tabela">
           <caption className="vf-visually-hidden">
-            Composição do faturamento por conta em {rotularCompetenciaCurta(competencia)}: faturamento bruto, exclusões e FAT.
+            Composição do faturamento — {atual.rotulo} — em {rotularCompetenciaCurta(competencia)}: faturamento bruto, exclusões e FAT.
           </caption>
           <thead>
             <tr>
               <th scope="col" className="vf-ph-comp__rotulo-col">
                 <span className="vf-visually-hidden">Linha</span>
               </th>
-              {colunas.map((c) => (
-                <th key={c.chave} scope="col" className={`num${c.soma ? " is-soma" : ""}`}>
-                  <span className="vf-ph-comp__conta">{c.rotulo}</span>
-                  {periodoCurto(c.comp.periodo) && (
-                    <span className="vf-ph-comp__periodo">
-                      {periodoCurto(c.comp.periodo)}
-                      {c.soma && c.comp.periodo?.diferente ? " · períodos diferentes" : ""}
-                    </span>
-                  )}
-                </th>
-              ))}
+              <th scope="col" className="num">
+                <span className="vf-ph-comp__conta">{atual.rotulo}</span>
+                {periodo && (
+                  <span className="vf-ph-comp__periodo">
+                    {periodo}
+                    {atual.soma && comp.periodo?.diferente ? " · períodos diferentes" : ""}
+                  </span>
+                )}
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr className="vf-ph-comp__linha is-bruto">
               <th scope="row" title="Todos os pedidos, cancelados inclusos · regra da Cliente 360 V1">Faturamento bruto</th>
-              {colunas.map((c) => <CelulaValor key={c.chave} grupo={c.comp.bruto} forte soma={c.soma} />)}
+              <CelulaValor grupo={comp.bruto} forte />
             </tr>
             {exclusoes.map((l) => (
               <tr key={l.chave} className="vf-ph-comp__linha is-exclusao">
                 <th scope="row" title={l.ajuda}>− {l.rotulo}</th>
-                {colunas.map((c) => <CelulaValor key={c.chave} grupo={c.comp.exclusoes?.[l.chave]} negativo soma={c.soma} />)}
+                <CelulaValor grupo={comp.exclusoes?.[l.chave]} negativo />
               </tr>
             ))}
             <tr className="vf-ph-comp__linha is-total">
               <th scope="row" title="Pedidos válidos · Central de Vendas">= FAT</th>
-              {colunas.map((c) => (
-                <td key={c.chave} className={`num vf-ph-comp__valor is-forte${c.soma ? " is-soma" : ""}`}>
-                  <span className="vf-ph-comp__moeda">{c.comp.fat === null ? "—" : formatarMoeda(c.comp.fat)}</span>
-                  <span className="vf-ph-comp__pedidos">{pedidos(c.comp.validos?.pedidos ?? 0)}</span>
-                </td>
-              ))}
+              <td className="num vf-ph-comp__valor is-forte">
+                <span className="vf-ph-comp__moeda">{comp.fat === null ? "—" : formatarMoeda(comp.fat)}</span>
+                <span className="vf-ph-comp__pedidos">{pedidos(comp.validos?.pedidos ?? 0)}</span>
+              </td>
             </tr>
             <tr className="vf-ph-comp__linha is-conferencia">
               <th scope="row" title="Faturamento bruto menos as exclusões, comparado ao FAT oficial do import.">Conferência</th>
-              {colunas.map((c) => <CelulaConferencia key={c.chave} reconciliacao={c.comp.reconciliacao} soma={c.soma} />)}
+              <CelulaConferencia reconciliacao={comp.reconciliacao} />
             </tr>
           </tbody>
         </table>
 
         <aside className="vf-ph-comp__lado" aria-label="Como ler a composição">
-          <ul className="vf-ph-comp__fluxos" aria-label="Pedidos por conta">
-            {colunas.map((c) => (
-              <li key={c.chave} className="vf-ph-comp__fluxo">
-                <span className="vf-ph-comp__fluxo-conta">{c.soma ? "Soma" : c.rotulo}</span>
-                <span className="vf-ph-comp__fluxo-numeros">
-                  {pedidos(c.comp.bruto?.pedidos ?? 0)} → {formatarNumero(c.comp.validos?.pedidos ?? 0)} válidos
-                  {c.comp.totalExcluido?.pedidos != null && ` · ${formatarNumero(c.comp.totalExcluido.pedidos)} fora do FAT`}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <p className="vf-ph-comp__fluxo" aria-label="Pedidos">
+            <span className="vf-ph-comp__fluxo-conta">Pedidos · {atual.soma ? "soma das contas" : atual.rotulo}</span>
+            <span className="vf-ph-comp__fluxo-numeros">
+              {pedidos(comp.bruto?.pedidos ?? 0)} → {formatarNumero(comp.validos?.pedidos ?? 0)} válidos
+              {comp.totalExcluido?.pedidos != null && ` · ${formatarNumero(comp.totalExcluido.pedidos)} fora do FAT`}
+            </span>
+          </p>
           <dl className="vf-ph-comp__definicoes">
             <div><dt>Faturamento bruto</dt><dd>todos os pedidos, cancelados inclusos (regra da Cliente 360 V1)</dd></div>
             <div>
