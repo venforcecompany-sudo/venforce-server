@@ -199,14 +199,17 @@ async function gerarPlanilhaPrecificacaoSemBase({ clienteSlugRaw, clienteContaId
   const clienteSlugStr = String(clienteSlugRaw || "").trim();
   if (!clienteSlugStr) throw criarErroHttp(400, { ok: false, erro: "clienteSlug é obrigatório." });
 
-  const { cliente, mlUserId, basesMeli, base } = await exigirContextoGrantMl({
+  const { cliente, mlUserId, basesConta, base } = await exigirContextoGrantMl({
     clienteSlugRaw: clienteSlugStr,
     clienteContaId,
   });
 
+  // Só as bases da conta selecionada (ou legado sem dono) — contar as do
+  // cliente inteiro marcava "multiplas" com uma base por conta e quebrava
+  // (base null) quando só a OUTRA conta tinha base.
   let baseStatus = "ausente";
-  if (basesMeli.length === 1) baseStatus = "ok";
-  else if (basesMeli.length > 1) baseStatus = "multiplas";
+  if (basesConta.length === 1) baseStatus = "ok";
+  else if (basesConta.length > 1) baseStatus = "multiplas";
 
   const mapasCusto = await carregarMapaCustosBase(baseStatus === "ok" ? base.id : null);
 

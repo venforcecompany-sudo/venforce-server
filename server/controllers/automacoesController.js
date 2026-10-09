@@ -62,6 +62,7 @@ const {
 
 const {
   exigirContextoPronto,
+  resolverContextoPrecificacao,
 } = require("../services/automacoes/contextoPrecificacaoService");
 
 const {
@@ -156,6 +157,50 @@ async function listarClientesAutomacoesController(req, res) {
     res.json({ ok: true, clientes });
   } catch (err) {
     res.status(500).json({ ok: false, erro: err.message });
+  }
+}
+
+// Prontidão de UMA conta ML (cliente + cliente_conta_id), não do cliente.
+// GET /automacoes/clientes agrega todas as bases MELI do cliente e marcava
+// "multiplas" quando cada conta tinha a sua base — falsa duplicidade. Aqui a
+// resolução é a mesma de preview-ml/diagnóstico (resolverContextoPrecificacao):
+// grant da conta selecionada e só as bases dessa conta (ou legado sem dono).
+// Mesmo shape de campos de prontidão da listagem, para o frontend trocar a
+// fonte sem mudar a renderização. Erros estruturais de conta (403/404/409/422)
+// propagam via responderErroService.
+async function prontidaoContaAutomacoesController(req, res) {
+  try {
+    const contexto = await resolverContextoPrecificacao({
+      clienteSlugRaw: req.query.clienteSlug,
+      clienteContaId: req.query.clienteContaId || null,
+    });
+    const basesConta = Array.isArray(contexto.basesConta) ? contexto.basesConta : [];
+    let baseStatus;
+    if (basesConta.length === 0) baseStatus = "ausente";
+    else if (basesConta.length === 1) baseStatus = "ok";
+    else baseStatus = "multiplas";
+    const baseUnica = basesConta.length === 1 ? basesConta[0] : null;
+    const hasGrantMl = Boolean(contexto.grant.conectado);
+
+    return res.json({
+      ok: true,
+      prontidao: {
+        slug: contexto.cliente.slug,
+        clienteContaId: contexto.conta ? contexto.conta.id : (req.query.clienteContaId ? Number(req.query.clienteContaId) : null),
+        hasGrantMl,
+        mlUserId: contexto.grant.ml_user_id || null,
+        baseMeli: baseUnica ? baseUnica.slug : null,
+        baseMeliNome: baseUnica ? baseUnica.nome : null,
+        baseMeliUpdatedAt: baseUnica ? baseUnica.updated_at : null,
+        baseStatus,
+        basesMeliCount: basesConta.length,
+        prontoParaAnalise: contexto.pronto,
+        prontoParaExportacaoCrua: hasGrantMl,
+        motivo: contexto.motivo,
+      },
+    });
+  } catch (err) {
+    return responderErroService(res, err);
   }
 }
 
@@ -551,6 +596,7 @@ async function buscarDiagnosticoCompletoController(req, res) {
 
 module.exports = {
   listarClientesAutomacoesController,
+  prontidaoContaAutomacoesController,
   previewPrecificacaoController,
   previewPrecificacaoMlController,
   previewPromocoesRetornoController,

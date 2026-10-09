@@ -92,6 +92,19 @@ async function buscarBasesMeliDoCliente(clienteId) {
   return result.rows;
 }
 
+// D-8: bases candidatas de UMA conta. Com conta definida, uma base é
+// candidata quando o vínculo já foi migrado para esta conta
+// (cliente_conta_id === contaId) ou ainda é legado/client-level
+// (cliente_conta_id NULL — não pertence a NENHUMA conta específica, logo não
+// é "roubado" de ninguém). Nunca uma base vinculada explicitamente a uma
+// conta DIFERENTE. Sem conta (cliente totalmente legado), todas as bases.
+// Fonte única desta regra: o resolver abaixo e a prontidão por conta
+// (automacoesController) usam o mesmo filtro.
+function basesMeliDaConta(basesMeli, contaId) {
+  if (contaId == null) return basesMeli;
+  return basesMeli.filter((b) => b.cliente_conta_id == null || Number(b.cliente_conta_id) === Number(contaId));
+}
+
 // Quantas cliente_contas ATIVAS o cliente tem no marketplace MELI. MESMA
 // consulta que centralVendasService.js já roda (3x) para decidir
 // `includeLegacy` — não existe hoje um único ponto exportado no
@@ -173,35 +186,25 @@ async function resolverContextoPrecificacao({ clienteSlugRaw, clienteContaId = n
 
   const basesMeli = await buscarBasesMeliDoCliente(cliente.id);
 
+  // Escopo de conta para as bases: a conta resolvida ou, quando o grant
+  // falhou (conta fica null no catch acima), a conta pedida explicitamente —
+  // ela já passou pelas checagens estruturais (pertence ao cliente, MELI,
+  // ativa), que rodam antes do grant. Sem isso a prontidão de uma conta sem
+  // grant exibiria bases de OUTRA conta do cliente.
+  const contaIdEscopo = conta ? conta.id : (clienteContaId != null && clienteContaId !== "" ? Number(clienteContaId) : null);
+  const basesConta = basesMeliDaConta(basesMeli, contaIdEscopo);
+
   let base = null;
   let motivo = MOTIVOS.OK;
 
   if (!grant.conectado) {
     motivo = MOTIVOS.GRANT_ML_NAO_CONECTADO;
-  } else if (conta) {
-    // D-8: a conta já foi resolvida (explícita via clienteContaId, ou
-    // auto-resolvida por ser a única ativa — legado single-account). NUNCA
-    // reabrir ambiguidade client-level pegando a base de OUTRA conta
-    // específica. Uma base é candidata para ESTA conta quando: (a) o
-    // vínculo já foi migrado para esta conta (cliente_conta_id === conta.id),
-    // ou (b) o vínculo ainda é legado/client-level (cliente_conta_id NULL —
-    // não migrado por conta, não pertence especificamente a NENHUMA conta,
-    // logo não é "roubado" de ninguém). Nunca uma base vinculada
-    // explicitamente a uma conta DIFERENTE.
-    const candidatas = basesMeli.filter((b) => b.cliente_conta_id == null || b.cliente_conta_id === conta.id);
-    if (candidatas.length === 0) {
-      motivo = MOTIVOS.BASE_MELI_NAO_VINCULADA;
-    } else if (candidatas.length > 1) {
-      motivo = MOTIVOS.MULTIPLAS_BASES_MELI;
-    } else {
-      base = candidatas[0];
-    }
-  } else if (basesMeli.length === 0) {
+  } else if (basesConta.length === 0) {
     motivo = MOTIVOS.BASE_MELI_NAO_VINCULADA;
-  } else if (basesMeli.length > 1) {
+  } else if (basesConta.length > 1) {
     motivo = MOTIVOS.MULTIPLAS_BASES_MELI;
   } else {
-    base = basesMeli[0];
+    base = basesConta[0];
   }
 
   const pronto = motivo === MOTIVOS.OK;
@@ -221,6 +224,7 @@ async function resolverContextoPrecificacao({ clienteSlugRaw, clienteContaId = n
         }
       : null,
     basesMeli,
+    basesConta,
     pronto,
     motivo,
     mensagem: pronto ? null : MENSAGENS[motivo] || "Contexto de precificação indisponível.",
@@ -326,6 +330,7 @@ async function exigirContextoGrantMl({ clienteSlugRaw, clienteContaId = null }) 
     grant: contexto.grant,
     mlUserId: contexto.grant.ml_user_id,
     basesMeli: contexto.basesMeli,
+    basesConta: contexto.basesConta,
     base: contexto.base,
   };
 }
@@ -337,6 +342,7 @@ module.exports = {
   normalizarSlug,
   criarErroHttp,
   buscarBasesMeliDoCliente,
+  basesMeliDaConta,
   contarContasMeliAtivas,
   resolverContextoPrecificacao,
   exigirContextoPronto,

@@ -9,6 +9,7 @@ const { requireClienteNaCarteira } = require("../middlewares/carteiraMiddleware"
 
 const {
   listarClientesAutomacoesController,
+  prontidaoContaAutomacoesController,
   previewPrecificacaoController,
   previewPrecificacaoMlController,
   previewPromocoesRetornoController,
@@ -42,6 +43,9 @@ const router = express.Router();
 const naCarteira = requireClienteNaCarteira({ param: "clienteSlug", query: "clienteSlug", body: "clienteSlug" });
 
 router.get("/automacoes/clientes", authMiddleware, requireAutomacoesAccess, listarClientesAutomacoesController);
+
+// Prontidão por CONTA ML (clienteSlug + clienteContaId) — a que o Otimizador usa.
+router.get("/automacoes/prontidao", authMiddleware, requireAutomacoesAccess, naCarteira, prontidaoContaAutomacoesController);
 
 router.get("/automacoes/precificacao/preview", authMiddleware, requireAutomacoesAccess, naCarteira, previewPrecificacaoController);
 

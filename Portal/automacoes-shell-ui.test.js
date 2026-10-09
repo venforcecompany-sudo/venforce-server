@@ -72,9 +72,24 @@ const AUTOMACOES_CLIENTES = {
   clientes: [
     { id: 87, nome: "N97 Comercial", slug: "n97", ativo: true, hasGrantMl: true, mlUserId: "182993004", baseMeli: "custo-2026", baseMeliNome: "Custo 2026", baseMeliUpdatedAt: "2026-08-20T10:00:00Z", baseStatus: "ok", basesMeliCount: 1, prontoParaAnalise: true, prontoParaExportacaoCrua: true },
     { id: 88, nome: "Extra Máquinas", slug: "extra", ativo: true, hasGrantMl: true, mlUserId: "119847221", baseMeli: null, baseMeliNome: null, baseMeliUpdatedAt: null, baseStatus: "ausente", basesMeliCount: 0, prontoParaAnalise: false, prontoParaExportacaoCrua: true },
-    { id: 90, nome: "WBS 2", slug: "wbs-2", ativo: true, hasGrantMl: true, mlUserId: "234836231", baseMeli: "custo-wbs2", baseMeliNome: "Custo WBS 2", baseMeliUpdatedAt: "2026-08-20T10:00:00Z", baseStatus: "ok", basesMeliCount: 1, prontoParaAnalise: true, prontoParaExportacaoCrua: true },
+    // Hotfix readiness por conta: a listagem é client-level e soma a base de
+    // cada conta — "multiplas" aqui é a falsa duplicidade do incidente. A
+    // tela não pode mais usar isto para bloquear.
+    { id: 90, nome: "WBS 2", slug: "wbs-2", ativo: true, hasGrantMl: true, mlUserId: "234836231", baseMeli: null, baseMeliNome: null, baseMeliUpdatedAt: null, baseStatus: "multiplas", basesMeliCount: 2, prontoParaAnalise: false, prontoParaExportacaoCrua: true },
   ],
 };
+
+/* Shape de GET /automacoes/prontidao (prontidaoContaAutomacoesController),
+   por slug:clienteContaId — cada conta do WBS 2 com a SUA base. */
+const prontoCom = (mlUserId, baseMeli, baseMeliNome) => ({ hasGrantMl: true, mlUserId, baseMeli, baseMeliNome, baseMeliUpdatedAt: "2026-08-20T10:00:00Z", baseStatus: "ok", basesMeliCount: 1, prontoParaAnalise: true, prontoParaExportacaoCrua: true, motivo: "OK" });
+const PRONTIDAO_POR_CONTA = {
+  "n97:42": prontoCom("182993004", "custo-2026", "Custo 2026"),
+  "extra:51": { hasGrantMl: true, mlUserId: "119847221", baseMeli: null, baseMeliNome: null, baseMeliUpdatedAt: null, baseStatus: "ausente", basesMeliCount: 0, prontoParaAnalise: false, prontoParaExportacaoCrua: true, motivo: "BASE_MELI_NAO_VINCULADA" },
+  "wbs-2:101": prontoCom("710361722", "custo-wbs2-ml1", "Custo WBS 2 ML1"),
+  "wbs-2:102": prontoCom("234836231", "custo-wbs2-ml2", "Custo WBS 2 ML2"),
+};
+// Atraso artificial por chave — prova que resposta antiga não sobrescreve a nova conta.
+const ATRASO_PRONTIDAO = {};
 
 // fix/automacoes-account-scope — cada POST /diagnostico-completo/start
 // interceptado é registrado aqui (com o body decodificado) para provar que
@@ -194,6 +209,15 @@ function wireInterception(cdp) {
       await json({ ok: true, cliente: { id: 1, nome: slug, slug, ativo: true }, contas: CONTAS[slug] || [] });
       return;
     }
+    if (url.includes("/automacoes/prontidao")) {
+      const q = new URL(url).searchParams;
+      const chave = `${q.get("clienteSlug")}:${q.get("clienteContaId") || ""}`;
+      if (ATRASO_PRONTIDAO[chave]) await sleep(ATRASO_PRONTIDAO[chave]);
+      const p = PRONTIDAO_POR_CONTA[chave];
+      if (!p) { await respond("Fetch.fulfillRequest", { requestId: params.requestId, responseCode: 404, responseHeaders: [...cors, { name: "content-type", value: "application/json" }], body: Buffer.from(JSON.stringify({ ok: false, erro: "Cliente não encontrado." })).toString("base64") }); return; }
+      await json({ ok: true, prontidao: { slug: q.get("clienteSlug"), clienteContaId: Number(q.get("clienteContaId")) || null, ...p } });
+      return;
+    }
     if (url.includes("/automacoes/clientes")) {
       if (automacoesFalham) { await respond("Fetch.failRequest", { requestId: params.requestId, errorReason: "ConnectionRefused" }); return; }
       await json(AUTOMACOES_CLIENTES);
@@ -286,6 +310,7 @@ async function run() {
       await waitFor(cdp, "document.getElementById('auto-cliente-nome').textContent.trim() === 'Extra Máquinas'", "a tela não acompanhou a troca de cliente");
       assert.strictEqual(await cdp.evaluate("window.__marca"), 1, "a página recarregou — a troca de cliente deveria ser reativa");
       // Extra tem grant mas nenhuma base: análise bloqueada, planilha liberada.
+      await waitFor(cdp, "document.getElementById('rd-base').textContent.trim() === 'Nenhuma vinculada'", "a prontidão da conta do Extra não chegou");
       assert.strictEqual(await cdp.evaluate("document.getElementById('rd-base').textContent.trim()"), "Nenhuma vinculada");
       assert.strictEqual(await cdp.evaluate("document.getElementById('btn-otimizador-analisar').disabled"), true);
       assert.strictEqual(await cdp.evaluate("document.getElementById('btn-baixar-planilha-precificacao').disabled"), false);
@@ -346,6 +371,14 @@ async function run() {
       assert.strictEqual(await cdp.evaluate("document.getElementById('auto-conta-nome').textContent.trim()"), "Mercado Livre 1");
     });
 
+    await check("HOTFIX — 2 contas com uma base cada: sem falsa duplicidade, Conta A pronta com a SUA base", async () => {
+      await waitFor(cdp, "document.getElementById('rd-base').textContent.trim() === 'Custo WBS 2 ML1'", "a base exibida não é a da Conta A");
+      assert.strictEqual(await cdp.evaluate("document.getElementById('rd-status').textContent.trim()"), "Pronto");
+      assert.strictEqual(await cdp.evaluate("document.getElementById('btn-otimizador-analisar').disabled"), false);
+      const banner = await cdp.evaluate("document.getElementById('auto-state-banner').innerText");
+      assert.ok(!/Mais de uma base/i.test(banner), `falsa duplicidade ainda exibida: ${banner}`);
+    });
+
     await check("TESTE 1 — Analisar com Conta A selecionada: o request enviado carrega clienteContaId=101", async () => {
       DIAGNOSTICOS_INICIADOS.length = 0;
       await cdp.evaluate("document.getElementById('btn-otimizador-analisar').click()");
@@ -361,6 +394,7 @@ async function run() {
       const trocou = await cdp.evaluate("window.VF.context.setConta(102)");
       assert.strictEqual(trocou, true, "setConta(102) foi rejeitado");
       await waitFor(cdp, "document.getElementById('auto-conta-nome').textContent.trim() === 'Mercado Livre 2'", "a tela não acompanhou a troca para Conta B");
+      await waitFor(cdp, "document.getElementById('rd-base').textContent.trim() === 'Custo WBS 2 ML2'", "a prontidão não trocou para a base da Conta B");
       assert.strictEqual(await cdp.evaluate("window.__marca_wbs2"), 1, "a página recarregou — a troca de conta deveria ser reativa, sem reload");
       // O resultado da Conta A não pode continuar na tela como se fosse da B.
       assert.strictEqual(await cdp.evaluate("document.getElementById('auto-results').hidden"), true,
@@ -377,12 +411,26 @@ async function run() {
       const trocou = await cdp.evaluate("window.VF.context.setConta(101)");
       assert.strictEqual(trocou, true, "setConta(101) foi rejeitado");
       await waitFor(cdp, "document.getElementById('auto-conta-nome').textContent.trim() === 'Mercado Livre 1'", "a tela não acompanhou a volta para Conta A");
+      await waitFor(cdp, "document.getElementById('rd-base').textContent.trim() === 'Custo WBS 2 ML1'", "a prontidão não voltou para a base da Conta A");
 
       await cdp.evaluate("document.getElementById('btn-otimizador-analisar').click()");
       await waitFor(cdp, "document.getElementById('btn-otimizador-analisar').disabled === false", "a análise (volta para Conta A) não terminou");
       assert.strictEqual(DIAGNOSTICOS_INICIADOS.length, 1);
       assert.strictEqual(DIAGNOSTICOS_INICIADOS[0].body.clienteContaId, 101,
         `Conta B é is_primary — se o request usasse 102 aqui, seria exatamente o bug original. Veio: ${JSON.stringify(DIAGNOSTICOS_INICIADOS[0].body)}`);
+    });
+
+    await check("HOTFIX — resposta atrasada da conta anterior não sobrescreve a prontidão da conta nova", async () => {
+      ATRASO_PRONTIDAO["wbs-2:102"] = 700;
+      assert.strictEqual(await cdp.evaluate("window.VF.context.setConta(102)"), true);
+      await sleep(50);
+      assert.strictEqual(await cdp.evaluate("window.VF.context.setConta(101)"), true);
+      await waitFor(cdp, "document.getElementById('rd-base').textContent.trim() === 'Custo WBS 2 ML1'", "Conta A não carregou");
+      await sleep(900); // a resposta de 102 chega agora — tem de ser descartada
+      delete ATRASO_PRONTIDAO["wbs-2:102"];
+      assert.strictEqual(await cdp.evaluate("document.getElementById('auto-conta-nome').textContent.trim()"), "Mercado Livre 1");
+      assert.strictEqual(await cdp.evaluate("document.getElementById('rd-base').textContent.trim()"), "Custo WBS 2 ML1",
+        "a resposta antiga da Conta B pintou a tela da Conta A");
     });
 
     await check("F5 — nenhuma exceção de JS não tratada em nenhum cenário", async () => {

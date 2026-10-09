@@ -229,6 +229,7 @@ async function run() {
     cliente: { id: 90, nome: "Cliente X", slug: "cliente-x" },
     mlUserId: "222",
     basesMeli: [{ id: 77 }],
+    basesConta: [{ id: 77 }],
     base: { id: 77, nome: "Base MLB" },
   });
 
