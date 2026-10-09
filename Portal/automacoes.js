@@ -21,12 +21,12 @@
 // cliente tiver 2+ contas ML). O Shell só libera o conteúdo desta tela
 // quando cliente E conta estão resolvidos (state READY).
 //
-// GET /automacoes/clientes continua sendo chamado, mas deixou de alimentar um
-// seletor: agora é a fonte de PRONTIDÃO (hasGrantMl, baseStatus,
-// prontoParaAnalise) do cliente que o shell escolheu. Esta lista ainda
-// resolve o grant por CLIENTE (fallback/principal), não pela conta
-// selecionada — é um indicador aproximado; a análise em si (abaixo) sempre
-// usa a conta exata.
+// GET /automacoes/clientes só diz se o cliente está habilitado para
+// automações. A PRONTIDÃO (hasGrantMl, baseStatus, prontoParaAnalise) vem de
+// GET /automacoes/prontidao?clienteSlug&clienteContaId — grant e base da
+// CONTA selecionada no Shell, pelo mesmo resolver da análise. A listagem é
+// client-level (soma as bases de todas as contas) e marcava "2 bases
+// vinculadas" quando cada conta tinha a sua — falsa duplicidade.
 //
 // A base NÃO é escolhida manualmente: o backend resolve a base MELI vinculada
 // ao cliente (custo/imposto/taxa fixa). O grant fornece anúncios/preço/comissão/frete.
@@ -195,10 +195,70 @@ function contaIdDoContexto() {
   return ctx && ctx.clienteContaId ? ctx.clienteContaId : null;
 }
 
-function getClienteAtual() {
+// Cliente do contexto presente na lista de automações (habilitado).
+function getClienteHabilitado() {
   const slug = slugDoContexto();
   if (!slug) return null;
   return ALL_CLIENTES.find((c) => (c.slug || "") === slug) || null;
+}
+
+// Chave cliente+conta: a prontidão só vale para a conta em que foi pedida.
+function chaveDoContexto() {
+  const slug = slugDoContexto();
+  return slug ? `${slug}:${contaIdDoContexto() || ""}` : "";
+}
+
+// ─── Prontidão da CONTA selecionada ──────────────────────────────────────
+// `prontidaoContaSeq` descarta respostas antigas: trocar de ML1 para ML2
+// enquanto a de ML1 ainda está em voo nunca pode pintar ML1 na tela de ML2.
+let PRONTIDAO_CONTA = null;
+let prontidaoContaChave = "";
+let prontidaoContaErro = null;
+let prontidaoContaSeq = 0;
+
+async function loadProntidaoConta() {
+  const seq = ++prontidaoContaSeq;
+  const chave = chaveDoContexto();
+  PRONTIDAO_CONTA = null;
+  prontidaoContaErro = null;
+  prontidaoContaChave = chave;
+  if (!TOKEN || !chave) return;
+
+  const params = new URLSearchParams({ clienteSlug: slugDoContexto() });
+  const contaId = contaIdDoContexto();
+  if (contaId) params.set("clienteContaId", String(contaId));
+
+  try {
+    const res = await fetch(`${API_BASE}/automacoes/prontidao?${params}`, {
+      headers: { Authorization: "Bearer " + TOKEN },
+    });
+    if (seq !== prontidaoContaSeq) return;
+    if (res.status === 401) { clearSession(); return; }
+    const json = await res.json().catch(() => ({}));
+    if (seq !== prontidaoContaSeq) return;
+    if (!res.ok) {
+      if (res.status === 403 && json?.code !== "CONTA_NAO_PERTENCE_AO_CLIENTE") { window.location.replace("carteira.html"); return; }
+      if (json?.code && ["CONTA_AMBIGUA", "CONTA_NAO_PERTENCE_AO_CLIENTE", "MARKETPLACE_INCOMPATIVEL", "CONTA_INATIVA"].includes(json.code)) {
+        window.VF?.context?.signalContextError?.({ code: json.code });
+      }
+      throw new Error(json?.erro || `HTTP ${res.status}`);
+    }
+    if (!json || !json.prontidao) throw new Error("Resposta sem prontidão.");
+    PRONTIDAO_CONTA = json.prontidao;
+  } catch (err) {
+    if (seq !== prontidaoContaSeq) return;
+    PRONTIDAO_CONTA = null;
+    prontidaoContaErro = `Não foi possível carregar a prontidão desta conta (${err.message}). Recarregue a página.`;
+  }
+  onClienteChange();
+}
+
+// Cliente habilitado + prontidão da conta ATUAL. null enquanto a prontidão
+// desta conta não chegou — nunca a de outra conta.
+function getClienteAtual() {
+  const cliente = getClienteHabilitado();
+  if (!cliente || !PRONTIDAO_CONTA || prontidaoContaChave !== chaveDoContexto()) return null;
+  return { ...cliente, ...PRONTIDAO_CONTA, slug: cliente.slug };
 }
 
 function renderIdentidadeCliente() {
@@ -217,7 +277,9 @@ function renderIdentidadeCliente() {
   if (!slug) hintEl.textContent = "Escolha o cliente na barra lateral.";
   else if (!prontidaoCarregada && !prontidaoErro) hintEl.textContent = "Verificando a prontidão deste cliente…";
   else if (prontidaoErro) hintEl.textContent = prontidaoErro;
-  else if (!getClienteAtual()) hintEl.textContent = "Este cliente não está habilitado para automações.";
+  else if (!getClienteHabilitado()) hintEl.textContent = "Este cliente não está habilitado para automações.";
+  else if (prontidaoContaErro) hintEl.textContent = prontidaoContaErro;
+  else if (!getClienteAtual()) hintEl.textContent = "Verificando a prontidão desta conta…";
   else hintEl.textContent = slug;
 }
 
@@ -240,14 +302,14 @@ function onClienteChange() {
     // Cliente escolhido, prontidão já carregada e ele NÃO está na lista: é
     // uma resposta, não um limbo. Sem cliente ou ainda carregando, o Shell e
     // a dica já explicam — um banner de erro aqui seria ruído.
-    if (slugDoContexto() && prontidaoCarregada && !prontidaoErro) {
+    if (slugDoContexto() && prontidaoCarregada && !prontidaoErro && !getClienteHabilitado()) {
       setStateBanner({
         tone: "warning",
         titulo: "Cliente sem automações habilitadas",
         descricao: "Este cliente não aparece na lista de automações do Mercado Livre. Confira o grant ML em Clientes e Contas.",
       });
-    } else if (prontidaoErro) {
-      setStateBanner({ tone: "danger", titulo: "Prontidão indisponível", descricao: prontidaoErro });
+    } else if (prontidaoErro || prontidaoContaErro) {
+      setStateBanner({ tone: "danger", titulo: "Prontidão indisponível", descricao: prontidaoErro || prontidaoContaErro });
     } else {
       setStateBanner({});
     }
@@ -769,6 +831,7 @@ document.addEventListener("vf:context", () => {
   const chave = slug ? `${slug}:${contaId || ""}` : "";
   if (chave === ultimoContextoAplicado) return;
   ultimoContextoAplicado = chave;
+  loadProntidaoConta(); // zera a prontidão da conta anterior de forma síncrona
   onClienteChange();
 });
 
