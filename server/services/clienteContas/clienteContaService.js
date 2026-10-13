@@ -14,6 +14,7 @@
 
 const pool = require("../../config/database");
 const mlTokenService = require("../mlTokenService");
+const { erroContexto, validarIdentidade, validarTitularidadeSeller, resolverBaseEstrita } = require("./accountContextIdentityService");
 
 const MARKETPLACES_SUPORTADOS = new Set(["meli", "shopee"]);
 // Cadastro de conta aceita também TikTok Shop (operação de lançamento manual
@@ -705,7 +706,7 @@ async function desconectarGrantMlDaConta(contaId) {
 // sem precisar monkeypatchar o singleton do pool. Todo chamador existente
 // (Central Full, /clientes, /bases) continua igual — não passa esse campo e
 // cai no default.
-async function resolveMarketplaceAccountContext({ clienteId, clienteSlug, marketplace, clienteContaId = null, requireUsableGrant = false, queryable = pool }) {
+async function resolveMarketplaceAccountContext({ clienteId, clienteSlug, marketplace, clienteContaId = null, requireUsableGrant = false, queryable = pool, strictIdentity = false, resolveBase = true }) {
   const cliente = await resolverClientePorIdOuSlug({ clienteId, clienteSlug }, queryable);
   const marketplaceNorm = normalizarMarketplaceConta(marketplace);
   if (!marketplaceNorm) throw criarErroHttp(400, "marketplace deve ser 'meli' ou 'shopee'.");
@@ -749,6 +750,13 @@ async function resolveMarketplaceAccountContext({ clienteId, clienteSlug, market
     // 0 contas ativas: segue em modo legado (conta = null).
   }
 
+  if (strictIdentity) {
+    if (!conta) throw erroContexto("ACCOUNT_CONTEXT_NOT_FOUND", "Cliente sem operação ativa.", 404);
+    if (cliente.ativo === false) throw erroContexto("CLIENTE_INATIVO", "Cliente inativo.");
+    validarIdentidade({ cliente, conta, marketplace: marketplaceNorm });
+    await validarTitularidadeSeller(cliente, conta, queryable);
+  }
+
   const context = {
     cliente: { id: cliente.id, nome: cliente.nome, slug: cliente.slug },
     marketplace: marketplaceNorm,
@@ -784,6 +792,15 @@ async function resolveMarketplaceAccountContext({ clienteId, clienteSlug, market
         context.grantError = error.code || error.message;
       }
     }
+  }
+
+  if (strictIdentity) {
+    validarIdentidade({ cliente, conta: context.conta, grant: context.grant, marketplace: marketplaceNorm });
+    if (marketplaceNorm === "meli" && requireUsableGrant && !context.grant) {
+      throw erroContexto("ML_GRANT_NOT_FOUND", "Conta sem Grant Mercado Livre exato.", 424);
+    }
+    context.base = resolveBase ? await resolverBaseEstrita(cliente, context.conta, queryable) : null;
+    return context;
   }
 
   if (conta) {

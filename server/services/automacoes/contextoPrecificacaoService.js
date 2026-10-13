@@ -14,7 +14,7 @@
 
 const pool = require("../../config/database");
 const { resolveMarketplaceAccountContext, resolverContaParaVinculoLegado, obterConta } = require("../clienteContas/clienteContaService");
-const { assertAccountContext } = require("../clienteContas/accountContextInvariant");
+const { erroContexto, validarIdentidade, validarTitularidadeSeller } = require("../clienteContas/accountContextIdentityService");
 const { CODIGOS_CANONICOS } = require("../../utils/erroContextoCanonico");
 
 function normalizarSlug(nome) {
@@ -100,43 +100,6 @@ function basesMeliDaConta(basesMeli, contaId, eligibleAccountCount = null) {
   if (contaId == null) return [];
   return basesMeli.filter((b) => Number(b.cliente_conta_id) === Number(contaId) ||
     (b.cliente_conta_id == null && Number(eligibleAccountCount) === 1));
-}
-
-function erroContexto(code, mensagem, statusCode = 409, ids = {}) {
-  return criarErroHttp(statusCode, { ok: false, code, codigo: code, erro: mensagem, ...ids });
-}
-
-function validarIdentidade({ cliente, conta, grant = null, base = null, eligibleAccountCount = null, clienteContaId = conta?.id }) {
-  assertAccountContext({ clienteId: cliente.id, clienteContaId,
-    marketplace: "meli", conta, grant, base, requireAccount: true,
-    mlUserId: grant?.ml_user_id, strict: true, eligibleAccountCount });
-}
-
-// Projeções de identidade, sem credenciais. Inclui Grants históricos: um
-// status inválido não é prova de titularidade comercial diferente.
-async function validarTitularidadeSeller(cliente, conta) {
-  const seller = conta.external_account_id;
-  if (!seller) return;
-  const contas = await pool.query(
-    "SELECT id, cliente_id FROM cliente_contas WHERE marketplace = 'meli' AND external_account_id = $1",
-    [String(seller)]
-  );
-  const grants = await pool.query(
-    "SELECT id, cliente_id, cliente_conta_id, ml_user_id FROM ml_tokens WHERE ml_user_id = $1",
-    [String(seller)]
-  );
-  if (contas.rows.some((c) => Number(c.cliente_id) !== Number(cliente.id)) ||
-      grants.rows.some((g) => Number(g.cliente_id) !== Number(cliente.id))) {
-    throw erroContexto("SELLER_OWNERSHIP_AMBIGUOUS", "Seller vinculado a mais de um Cliente; revise a titularidade.", 409,
-      { clienteId: cliente.id, clienteContaId: conta.id });
-  }
-  if (contas.rows.some((c) => Number(c.id) !== Number(conta.id))) {
-    throw erroContexto("ACCOUNT_CONTEXT_AMBIGUOUS", "Seller vinculado a mais de uma Conta.");
-  }
-  if (grants.rows.length > 1) {
-    throw erroContexto("GRANT_CONTEXT_AMBIGUOUS", "Mais de um Grant para a identidade operacional.");
-  }
-  for (const grant of grants.rows) validarIdentidade({ cliente, conta, grant });
 }
 
 // Quantas cliente_contas ATIVAS o cliente tem no marketplace MELI. MESMA
