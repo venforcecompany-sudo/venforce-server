@@ -762,6 +762,7 @@ async function obterResumo(params = {}, deps = {}) {
   const workspace = await carregarWorkspace(
     {
       clienteSlug: params.clienteSlug,
+      clienteContaId: params.clienteContaId ?? null,
       baseSlug: params.baseSlug,
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,

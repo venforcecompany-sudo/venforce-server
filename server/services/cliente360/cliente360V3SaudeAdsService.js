@@ -35,7 +35,7 @@ async function obterAds({ clienteSlug, marketplace, competencia, clienteContaId 
   }
   return blocoSeguro(async () => {
     const performance = await (deps.buscarPerformanceML || buscarPerformanceML)(
-      clienteSlug, competencia, null, clienteContaId
+      clienteSlug, competencia, null, clienteContaId, { strictIdentity: true }
     );
     if (performance.semDados) {
       throw Object.assign(new Error(performance.motivo), { code: performance.codigo });

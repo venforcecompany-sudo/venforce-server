@@ -68,7 +68,7 @@ function mlFetchOptions(mlUserId) {
 // marketplace sem clienteContaId explícito, propaga o 409 estrutural para o
 // chamador decidir (UI pede a conta) em vez de misturar dado entre contas.
 
-async function resolverContextoConta(clienteSlug, clienteContaId = null) {
+async function resolverContextoConta(clienteSlug, clienteContaId = null, { strictIdentity = false } = {}) {
   let context;
   try {
     context = await resolveMarketplaceAccountContext({
@@ -76,6 +76,8 @@ async function resolverContextoConta(clienteSlug, clienteContaId = null) {
       marketplace: "meli",
       clienteContaId: clienteContaId || null,
       requireUsableGrant: true,
+      strictIdentity,
+      resolveBase: !strictIdentity,
     });
   } catch (err) {
     if (err.statusCode) throw err; // erros estruturais (404, 409) propagam intactos
@@ -519,11 +521,11 @@ function normalizarCampanhas(campanhasApi, itens) {
 // — usado pela Cliente 360 quando o mês corrente ainda está aberto, para não
 // comparar Ads parcial com mês anterior cheio. Sem `janela`, o comportamento é o
 // de sempre: a competência inteira.
-async function buscarPerformanceML(clienteSlug, mesRef, janela = null, clienteContaId = null) {
+async function buscarPerformanceML(clienteSlug, mesRef, janela = null, clienteContaId = null, options = {}) {
   // 1. Resolver a conta ML exata (Cliente/Conta/Grant)
   let clienteId, mlUserId, contaId, contaNome;
   try {
-    ({ clienteId, mlUserId, contaId, contaNome } = await resolverContextoConta(clienteSlug, clienteContaId));
+    ({ clienteId, mlUserId, contaId, contaNome } = await resolverContextoConta(clienteSlug, clienteContaId, options));
   } catch (err) {
     if (err.adsCodigo === "NO_TOKEN") {
       return { semDados: true, codigo: "NO_TOKEN", motivo: err.message };

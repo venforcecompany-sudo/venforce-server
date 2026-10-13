@@ -228,7 +228,7 @@ async function getAdsPerformance(req, res) {
       return res.status(400).json({ ok: false, erro: "mes é obrigatório no formato YYYY-MM." });
     }
 
-    const result = await buscarPerformanceML(clienteSlug, mes, null, clienteContaId);
+    const result = await buscarPerformanceML(clienteSlug, mes, null, clienteContaId, { strictIdentity: true });
 
     // Erros sem dados (sem token, sem permissão, sem advertiser, erro de API)
     if (result.semDados) {

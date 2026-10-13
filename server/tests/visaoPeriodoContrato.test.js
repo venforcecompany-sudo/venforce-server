@@ -130,7 +130,7 @@ async function run() {
     const r = await obterVisao({ clienteSlugRaw: "n97", clienteContaIdRaw: "10", periodoRaw: "2026-08" }, depsBase());
     ok("saude continua client-level declarado", r.saude.escopoConta === false);
     ok("resultado (Central de Vendas) e account-aware", r.resultado.escopoConta === true);
-    ok("margem continua client-level declarado", r.margem.escopoConta === false);
+    ok("margem recebe a Conta selecionada", r.margem.escopoConta === true);
     ok("ads e account-aware", r.ads.escopoConta === true);
     ok("fechamento continua client-level (entregas_cliente sem cliente_conta_id)", r.fechamento.escopoConta === false);
     ok("atividade e account-aware", r.atividade.escopoConta === true);

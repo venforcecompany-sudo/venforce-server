@@ -64,7 +64,7 @@ async function run() {
     ok("contexto reflete a conta e o marketplace derivado dela", resultado.contexto.clienteContaId === 10 && resultado.contexto.marketplace === "meli");
     ok("saude disponível, escopoConta=false (Cliente 360 não é account-aware)", resultado.saude.disponivel === true && resultado.saude.escopoConta === false);
     ok("resultado (Central de Vendas) disponível, escopoConta=true", resultado.resultado.disponivel === true && resultado.resultado.escopoConta === true);
-    ok("margem disponível para MELI, escopoConta=false", resultado.margem.disponivel === true && resultado.margem.escopoConta === false);
+    ok("margem disponível para MELI, escopoConta=true", resultado.margem.disponivel === true && resultado.margem.escopoConta === true);
     ok("ads disponível para MELI, escopoConta=true", resultado.ads.disponivel === true && resultado.ads.escopoConta === true);
     ok("atividade (sync runs) disponível, escopoConta=true", resultado.atividade.disponivel === true && resultado.atividade.escopoConta === true);
   }

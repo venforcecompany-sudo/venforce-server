@@ -89,6 +89,9 @@ class MockDb {
 
   async query(sql, params = []) {
     const q = String(sql).replace(/\s+/g, " ").trim();
+    if (q.startsWith("SELECT id, cliente_id FROM cliente_contas WHERE marketplace")) return { rows: this.contas.filter(c => c.marketplace === "meli" && String(c.external_account_id) === String(params[0])) };
+    if (q.startsWith("SELECT id, cliente_id, cliente_conta_id, ml_user_id FROM ml_tokens")) return { rows: this.grants.filter(g => String(g.ml_user_id) === String(params[0])) };
+
 
     if (q.includes("FROM clientes WHERE id = $1")) {
       return { rows: cliente.id === Number(params[0]) ? [cliente] : [] };

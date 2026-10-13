@@ -43,6 +43,8 @@ async function buscarClienteComToken(slug, clienteContaId = null) {
       marketplace: 'meli',
       clienteContaId: clienteContaId || null,
       requireUsableGrant: true,
+      strictIdentity: true,
+      resolveBase: false,
     });
   } catch (err) {
     if (err.code === 'MULTIPLE_MARKETPLACE_ACCOUNTS') throw err;

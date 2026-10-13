@@ -12,7 +12,7 @@
 //   - `escopoConta: true`  → o bloco já é account-aware (recebeu clienteContaId
 //     e respeita a conta pedida: Central de Vendas, Ads, atividade/sync runs).
 //   - `escopoConta: false` → o bloco ainda é só por CLIENTE (Cliente 360,
-//     Central de Margem, fechamento/relatórios) — nunca finge filtrar por
+//     fechamento/relatórios) — nunca finge filtrar por
 //     conta o que não filtra. Documentado, não escondido (ver
 //     Squads_migration/VENFORCE_V3_BACKEND_READINESS.md §14).
 //
@@ -171,15 +171,14 @@ async function obterVisao({ clienteSlugRaw, clienteContaIdRaw, periodoRaw }, dep
       })
     ),
 
-    // Central de Margem: só MELI (contextoPrecificacaoService só resolve
-    // bases MELI) e ainda não é account-aware — escopo é o cliente inteiro.
-    bloco({ escopoConta: false, aplicavel: isMeli, motivoInaplicavel: "Central de Margem está disponível só para operações Mercado Livre." }, () =>
-      d.obterResumoMargem({ clienteSlug: cliente.slug, dateFrom: periodo.dateFrom, dateTo: periodo.dateTo })
+    // Central de Margem: Conta explícita até o workspace, que valida Base/Grant.
+    bloco({ escopoConta: true, aplicavel: isMeli, motivoInaplicavel: "Central de Margem está disponível só para operações Mercado Livre." }, () =>
+      d.obterResumoMargem({ clienteSlug: cliente.slug, clienteContaId: conta.id, dateFrom: periodo.dateFrom, dateTo: periodo.dateTo })
     ),
 
     // Ads: só MELI, account-aware.
     bloco({ escopoConta: true, aplicavel: isMeli, motivoInaplicavel: "Ads está disponível só para operações Mercado Livre." }, () =>
-      d.buscarPerformanceML(cliente.slug, periodo.competencia, null, conta.id)
+      d.buscarPerformanceML(cliente.slug, periodo.competencia, null, conta.id, { strictIdentity: true })
     ),
 
     // Fechamento: entregas_cliente não tem cliente_conta_id — escopo é o
