@@ -144,9 +144,12 @@ function manifestoDoArquivo(tipo, file) {
 // Impressão digital das linhas de custo efetivamente entregues ao motor
 // (planilha OU base vinculada). A base muda com o tempo (upsert); com este
 // hash dá para afirmar depois se ela ainda é a mesma daquele fechamento.
+// INDEPENDENTE DA ORDEM: a leitura da base não tem ORDER BY (a ordem física
+// muda sem o conteúdo mudar), então o hash é do conjunto de linhas canônicas
+// ordenadas — mesmo conteúdo, mesmo hash.
 function impressaoDosCustos(costRowsRaw) {
   const linhas = Array.isArray(costRowsRaw) ? costRowsRaw : [];
-  return { linhas: linhas.length, sha256: sha256(json(linhas)) };
+  return { linhas: linhas.length, sha256: sha256(linhas.map((l) => json(l)).sort().join("\n")) };
 }
 
 function ajustesDoMotor(valores) {

@@ -29,6 +29,7 @@ import { CoberturaFechamento } from "./CoberturaFechamento.jsx";
 import { LeituraFechamento } from "./LeituraFechamento.jsx";
 import { MetricasSecundarias } from "./MetricasSecundarias.jsx";
 import { EstadoDoResultado } from "../snapshot/EstadoDoResultado.jsx";
+import { OrigemDoFechamento } from "../snapshot/OrigemDoFechamento.jsx";
 
 // `estado`: de QUANDO são estes números (processamento atual × revisão
 // salva) — ver EstadoDoResultado. O histórico passa `processamento` montado
@@ -141,6 +142,8 @@ export function ResultadoProcessado({ processamento, marketplace, periodo, linha
           unmatchedIds={processamento.unmatchedIds}
           unmatchedCosts={processamento.unmatchedCosts}
         />
+        {/* De onde vieram estes números (manifesto + origem dos custos). */}
+        <OrigemDoFechamento processamento={processamento} snapshotId={estado?.tipo === "revisao" ? estado.snapshot?.id ?? null : null} />
       </SecaoFinanceira>
 
       {typeof pendencias === "function" ? pendencias({ linhas }) : pendencias}

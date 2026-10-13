@@ -55,6 +55,15 @@ export function processamentoDoSnapshot(snapshot) {
     summary: snapshot.summary || {},
     costsSource: snapshot.origemCustos?.costsSource ?? null,
     costsBase: snapshot.origemCustos?.costsBase ?? null,
+    // O mesmo bloco `processamento` da resposta do motor (manifesto, custos,
+    // ajustes, quem/quando). O DTO do snapshot não expõe o selo.
+    processamento: {
+      arquivos: Array.isArray(snapshot.arquivos) ? snapshot.arquivos : [],
+      custos: snapshot.origemCustos?.custos ?? null,
+      ajustes: snapshot.ajustes || {},
+      processadoEm: snapshot.processadoEm ?? null,
+      processadoPor: snapshot.processadoPor ?? null,
+    },
     detailedRows: [],
     excelBase64: null,
     incidente: null,

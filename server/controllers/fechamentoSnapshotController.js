@@ -88,4 +88,14 @@ async function itens(req, res) {
   }
 }
 
-module.exports = { criar, listar, buscar, itens, autorizarPorSnapshot };
+async function baseAtual(req, res) {
+  try {
+    await autorizarPorSnapshot(req);
+    const r = await service.conferirBaseAtual({ id: req.params.id });
+    return res.json({ ok: true, ...r });
+  } catch (err) {
+    return responderErro(res, err);
+  }
+}
+
+module.exports = { criar, listar, buscar, itens, baseAtual, autorizarPorSnapshot };

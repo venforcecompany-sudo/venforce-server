@@ -171,6 +171,32 @@ async function main() {
     await assert.rejects(() => svc.listarItensDoSnapshot({ id: 5, query: { status: "drop table" } }, d), (e) => e.code === "FILTRO_INVALIDO");
   });
 
+  console.log("\n▸ base atual × base da revisão");
+  const { impressaoDosCustos } = require("../services/fechamentoSnapshot/seloProcessamento");
+  const LINHAS_BASE = [{ "ID": "1", custo: 10 }, { "ID": "2", custo: 20 }];
+  const snapBase = { id: 5, cliente_slug: "zorza", marketplace: "shopee", cliente_conta_id: 121, origem_custos_json: { costsSource: "base", costsBase: { id: 9, nome: "zorza shopee 3" }, custos: impressaoDosCustos(LINHAS_BASE) } };
+  const depsBase = (linhas, extra = {}) => ({ repo: { buscarSnapshot: async () => snapBase }, buildCostRowsFromBase: async (p) => { depsBase.ultimo = p; return { costRows: linhas }; }, ...extra });
+  await caso("mesma base (mesmo conteúdo, outra ordem) → mesma: true; relida com base/cliente/conta da revisão", async () => {
+    const r = await svc.conferirBaseAtual({ id: 5 }, depsBase([LINHAS_BASE[1], LINHAS_BASE[0]]));
+    assert.strictEqual(r.mesma, true);
+    assert.deepStrictEqual(depsBase.ultimo, { baseId: 9, clienteSlug: "zorza", marketplace: "shopee", clienteContaId: 121 });
+  });
+  await caso("base alterada depois → mesma: false, com as contagens", async () => {
+    const r = await svc.conferirBaseAtual({ id: 5 }, depsBase([...LINHAS_BASE, { "ID": "3", custo: 5 }]));
+    assert.strictEqual(r.mesma, false);
+    assert.strictEqual(r.linhasNaRevisao, 2);
+    assert.strictEqual(r.linhasAgora, 3);
+  });
+  await caso("base desvinculada → disponivel: false com o motivo (sem 500)", async () => {
+    const r = await svc.conferirBaseAtual({ id: 5 }, { repo: { buscarSnapshot: async () => snapBase }, buildCostRowsFromBase: async () => { throw Object.assign(new Error("x"), { payload: { erro: "Nenhuma base vinculada encontrada." } }); } });
+    assert.strictEqual(r.disponivel, false);
+    assert.strictEqual(r.motivo, "Nenhuma base vinculada encontrada.");
+  });
+  await caso("custos de planilha enviada → não aplicável", async () => {
+    const r = await svc.conferirBaseAtual({ id: 5 }, { repo: { buscarSnapshot: async () => ({ ...snapBase, origem_custos_json: { costsSource: "upload" } }) } });
+    assert.strictEqual(r.aplicavel, false);
+  });
+
   console.log(`\n${checks} verificações OK`);
 }
 

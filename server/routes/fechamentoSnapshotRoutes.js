@@ -13,5 +13,7 @@ router.post("/", authMiddleware, requireAutomacoesAccess, controller.criar);
 router.get("/", authMiddleware, requireAutomacoesAccess, controller.listar);
 router.get("/:id", authMiddleware, requireAutomacoesAccess, controller.buscar);
 router.get("/:id/itens", authMiddleware, requireAutomacoesAccess, controller.itens);
+// "A base de custos desta revisão ainda é a mesma?" (só leitura)
+router.get("/:id/base-atual", authMiddleware, requireAutomacoesAccess, controller.baseAtual);
 
 module.exports = router;

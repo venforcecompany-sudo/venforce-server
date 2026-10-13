@@ -20,7 +20,7 @@
 "use strict";
 
 const repo = require("../../repositories/fechamentoSnapshotRepository");
-const { verificar, CAMPOS_DO_RESULTADO } = require("./seloProcessamento");
+const { verificar, CAMPOS_DO_RESULTADO, impressaoDosCustos } = require("./seloProcessamento");
 const { itemDoSnapshot, contarItens, normalizarBusca, STATUS_PRINCIPAIS } = require("./itemDoSnapshot");
 const { resolverClientePorIdOuSlug, obterConta } = require("../clienteContas/clienteContaService");
 const { normalizarCompetencia } = require("../../utils/competenciaCanonica");
@@ -246,7 +246,56 @@ async function listarItensDoSnapshot({ id, query = {} }, deps = {}) {
   };
 }
 
+// "A base de custos desta revisão ainda é a mesma?" — relê a base vinculada
+// com a MESMA função do processamento (buildCostRowsFromBase, carregada sob
+// demanda) e compara a impressão digital com a gravada no snapshot. Só
+// leitura; nenhum número é recalculado. Custos de planilha enviada não têm o
+// que conferir (o arquivo não é guardado — só o hash, no manifesto).
+async function conferirBaseAtual({ id }, deps = {}) {
+  const d = {
+    repo,
+    buildCostRowsFromBase: (...a) => require("../bases/baseCustosService").buildCostRowsFromBase(...a),
+    agora: () => new Date(),
+    ...deps,
+  };
+  const n = Number(id);
+  if (!Number.isInteger(n) || n <= 0) throw erro(400, "ID_INVALIDO", "id inválido.");
+  const snap = await d.repo.buscarSnapshot(n);
+  if (!snap) throw erro(404, "SNAPSHOT_NAO_ENCONTRADO", "Snapshot não encontrado.");
+  const origem = snap.origem_custos_json || {};
+  if (origem.costsSource !== "base" || !origem.costsBase?.id || !origem.custos?.sha256) {
+    return {
+      aplicavel: false,
+      motivo: origem.costsSource === "upload"
+        ? "Os custos desta revisão vieram de uma planilha enviada — o manifesto guarda o hash do arquivo."
+        : "Esta revisão não registrou a impressão dos custos.",
+    };
+  }
+  try {
+    const r = await d.buildCostRowsFromBase({
+      baseId: origem.costsBase.id,
+      clienteSlug: snap.cliente_slug,
+      marketplace: snap.marketplace,
+      clienteContaId: snap.cliente_conta_id,
+    });
+    const atual = impressaoDosCustos(r?.costRows);
+    return {
+      aplicavel: true,
+      disponivel: true,
+      mesma: atual.sha256 === origem.custos.sha256,
+      base: origem.costsBase,
+      linhasNaRevisao: origem.custos.linhas ?? null,
+      linhasAgora: atual.linhas,
+      conferidoEm: d.agora().toISOString(),
+    };
+  } catch (err) {
+    // Base desvinculada, desativada ou vazia: dito como está, sem 500.
+    return { aplicavel: true, disponivel: false, base: origem.costsBase, motivo: err?.payload?.erro || err?.message || "Base indisponível." };
+  }
+}
+
 module.exports = {
+  conferirBaseAtual,
   criarSnapshot,
   listarSnapshots,
   buscarSnapshot,

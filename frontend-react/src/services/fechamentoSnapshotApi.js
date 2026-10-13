@@ -30,3 +30,9 @@ export function listarItensDoSnapshot(id, { offset = 0, limit = 25, status = nul
     signal,
   });
 }
+
+// "A base de custos desta revisão ainda é a mesma?" — o backend relê a base
+// e compara a impressão digital com a gravada. Só leitura.
+export function conferirBaseAtual(id, { signal } = {}) {
+  return requisitar(`/fechamento-snapshots/${encodeURIComponent(id)}/base-atual`, { signal });
+}

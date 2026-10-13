@@ -10,11 +10,12 @@ import { SnapshotFechamento } from "./SnapshotFechamento.jsx";
 import { CompetenciaFechamento } from "../fechamento/CompetenciaFechamento.jsx";
 import { EntregaPainel } from "../entrega/EntregaPainel.jsx";
 
-const api = vi.hoisted(() => ({ buscar: vi.fn(), itens: vi.fn() }));
+const api = vi.hoisted(() => ({ buscar: vi.fn(), itens: vi.fn(), baseAtual: vi.fn() }));
 vi.mock("../../../services/fechamentoSnapshotApi.js", () => ({
   buscarSnapshot: api.buscar,
   listarItensDoSnapshot: api.itens,
   listarSnapshots: vi.fn(),
+  conferirBaseAtual: api.baseAtual,
 }));
 vi.mock("../../../services/apiClient.js", async (orig) => ({ ...(await orig()), requisitar: vi.fn(async () => ({ ok: true, entrega: { payload_json: {} } })), ehAdmin: () => false }));
 
@@ -27,7 +28,14 @@ const META = (rev, extra = {}) => ({
 // GET /:id devolve o mesmo `publicado`/`entregas` da lista (calculados no servidor).
 const DETALHE = (rev, finalResult) => ({
   ...META(rev, rev === 1 ? { publicado: true, entregas: [{ id: 9, publicado: true }] } : {}), summary: { finalResult, grossRevenueTotal: 200000, calculatedCoveragePercent: rev === 1 ? 91 : 98, calculationMode: "real_financial" },
-  origemCustos: { costsSource: "base", costsBase: { nome: "zorza shopee 3" } }, diagnostico: { unmatchedIds: [] },
+  origemCustos: { costsSource: "base", costsBase: { id: 9, nome: "zorza shopee 3" }, custos: { linhas: 1234, sha256: "f".repeat(64) } },
+  ajustes: { ads: 5000, venforce: 1500, affiliates: null },
+  arquivos: [
+    { tipo: "vendas", nomeOriginal: "parentskudetail.20260901_20260930.xlsx", tamanhoBytes: 245760, sha256: "a1b2c3d4e5f6".padEnd(64, "0"), origem: "upload" },
+    { tipo: "order_all", nomeOriginal: "Order.all.20260901_20260930.xlsx", tamanhoBytes: 3145728, sha256: "b".repeat(64), origem: "upload" },
+    { tipo: "resultado", nomeOriginal: "fechamento-shopee.xlsx", tamanhoBytes: 9000, sha256: "c".repeat(64), origem: "gerado" },
+  ],
+  diagnostico: { unmatchedIds: [] },
 });
 const linha = (i) => ({ ordem: i, linha: { "ID do pedido": `25090${i}`, Produto: `Produto ${i}`, SKU: `S${i}`, "Receita bruta": 10, CMV: 3, LC: 2, MC: 20, "Match de custo": "direct_sku", "Cobertura de custo": "com custo" } });
 
@@ -75,6 +83,25 @@ describe("SnapshotFechamento", () => {
     await waitFor(() => expect(api.itens).toHaveBeenLastCalledWith(102, expect.objectContaining({ status: "sem_custo", offset: 0 })));
     // contagem do filtro vem do snapshot (gravada), não da página
     expect(screen.getByRole("button", { name: /Sem custo/ })).toHaveTextContent("300");
+  });
+});
+
+describe("SnapshotFechamento · arquivos e origem", () => {
+  it("manifesto (nome, tamanho, sha256), origem dos custos, ajustes — e conferir se a base mudou", async () => {
+    api.baseAtual.mockResolvedValue({ ok: true, aplicavel: true, disponivel: true, mesma: false, linhasNaRevisao: 1234, linhasAgora: 1240 });
+    const usuario = userEvent.setup();
+    render(<SnapshotFechamento revisoes={REVISOES} marketplace="shopee" periodo="2026-09" periodoLabel="Setembro/2026" />);
+    await usuario.click(await screen.findByText(/Arquivos e origem · 2 arquivo\(s\) · base zorza shopee 3/));
+    const tabela = screen.getByRole("table", { name: "Arquivos do fechamento" });
+    expect(within(tabela).getByText("Order.all")).toBeInTheDocument();
+    expect(within(tabela).getByText("3,0 MB")).toBeInTheDocument();
+    expect(within(tabela).getByText("a1b2c3d4e5f6…")).toBeInTheDocument();
+    const origem = screen.getByTestId("origem-fechamento");
+    expect(origem).toHaveTextContent("Base vinculada zorza shopee 3 · 1.234 linhas · impressão ffffffffffff…");
+    expect(origem).toHaveTextContent(/ADS R\$\s?5\.000,00 · Venforce R\$\s?1\.500,00/);
+    await usuario.click(screen.getByRole("button", { name: "Conferir se a base mudou" }));
+    expect(await screen.findByText(/A base mudou depois desta revisão \(1\.234 → 1\.240 linhas\)/)).toBeInTheDocument();
+    expect(api.baseAtual).toHaveBeenCalledWith(102);
   });
 });
 

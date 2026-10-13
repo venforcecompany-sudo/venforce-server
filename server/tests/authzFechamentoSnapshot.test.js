@@ -70,6 +70,11 @@ async function run() {
   }
   {
     const res = fakeRes();
+    await controller.baseAtual({ params: { id: "2" }, query: {}, user: interno }, res);
+    ok("GET /:id/base-atual fora da carteira → 403 (a base do cliente não é relida)", res.statusCode === 403);
+  }
+  {
+    const res = fakeRes();
     await controller.itens({ params: { id: "99" }, query: {}, user: admin }, res);
     ok("snapshot inexistente → 404", res.statusCode === 404 && res.body.code === "SNAPSHOT_NAO_ENCONTRADO");
   }

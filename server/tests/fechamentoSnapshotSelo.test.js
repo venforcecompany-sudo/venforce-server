@@ -52,6 +52,9 @@ console.log("\n▸ forma do bloco");
 ok("selo é hex de 64", /^[0-9a-f]{64}$/.test(processamento.selo));
 ok("manifesto com sha256 do arquivo (sem binário) e nulos descartados", processamento.arquivos.length === 1 && processamento.arquivos[0].sha256 === selo.sha256(Buffer.from("abc")) && !("buffer" in processamento.arquivos[0]));
 ok("impressão dos custos: contagem + hash", processamento.custos.linhas === 1 && /^[0-9a-f]{64}$/.test(processamento.custos.sha256));
+ok("impressão dos custos não depende da ordem das linhas (a base é lida sem ORDER BY)",
+  selo.impressaoDosCustos([{ a: 1 }, { b: 2 }]).sha256 === selo.impressaoDosCustos([{ b: 2 }, { a: 1 }]).sha256
+  && selo.impressaoDosCustos([{ a: 1 }]).sha256 !== selo.impressaoDosCustos([{ a: 2 }]).sha256);
 ok("ajustes não numéricos viram null, nunca 0", selo.selarProcessamento({ contexto, resultado, ajustes: { ads: NaN }, arquivos: [], costRowsRaw: [] }).ajustes.ads === null);
 
 console.log("\n▸ ida e volta pelo navegador");
