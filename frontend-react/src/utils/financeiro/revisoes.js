@@ -8,6 +8,8 @@
 // Só leitura e organização: nada aqui calcula número financeiro.
 
 import { mesmaCompetencia } from "./competencia.js";
+import { numOuNull } from "./resumoFechamento.js";
+import { formatarPercentual, pontosParaFracao } from "../percentage.js";
 
 export const rotuloRevisao = (s) => (s && s.revisao != null ? `v${s.revisao}` : "—");
 
@@ -95,4 +97,19 @@ export function contagemDosFiltros(contagens = {}) {
     aguardando_financeiro: c.aguardando_financeiro ?? 0,
     cancelados: c.cancelados ?? 0,
   };
+}
+
+// O que a confirmação de PUBLICAR precisa dizer sobre a revisão: qual vai ao
+// cliente, se há uma mais nova e se a cobertura está abaixo do esperado.
+// Não bloqueia — o operador decide, sabendo.
+export function avisosDePublicacao({ revisao = null, ultima = null, coberturaMinima = 95 } = {}) {
+  const avisos = [];
+  if (revisao && ultima && ultima.revisao > revisao.revisao) {
+    avisos.push(`Esta entrega apresenta a ${rotuloRevisao(revisao)}; a ${rotuloRevisao(ultima)} é mais nova.`);
+  }
+  const cobertura = numOuNull(revisao?.summary?.calculatedCoveragePercent);
+  if (cobertura !== null && cobertura < coberturaMinima) {
+    avisos.push(`Cobertura de custo de ${formatarPercentual(pontosParaFracao(cobertura))}, abaixo dos ${coberturaMinima}% esperados.`);
+  }
+  return avisos;
 }

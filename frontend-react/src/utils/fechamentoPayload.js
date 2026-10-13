@@ -68,6 +68,9 @@ export function montarPayloadFechamento({
   marketplace,
   ajustes = {},
   snapshot = null,
+  // Total de linhas do fechamento quando `detailedRows` já é só a amostra
+  // (entrega montada a partir de uma revisão salva).
+  totalLinhas = null,
 }) {
   const summary = processamento?.summary || {};
   const detailedRows = Array.isArray(processamento?.detailedRows)
@@ -101,7 +104,7 @@ export function montarPayloadFechamento({
       // linhas acima são só a AMOSTRA do relatório público; o histórico
       // completo (todas as linhas) é o snapshot.
       snapshot: snapshot ? { id: snapshot.id, revisao: snapshot.revisao } : null,
-      detailedRowsTotal: Array.isArray(processamento?.detailedRows) ? processamento.detailedRows.length : 0,
+      detailedRowsTotal: totalLinhas ?? (Array.isArray(processamento?.detailedRows) ? processamento.detailedRows.length : 0),
       marketplace: marketplace || null,
       ads: parseMoedaBR(ajustes.ads),
       venforce: parseMoedaBR(ajustes.venforce),

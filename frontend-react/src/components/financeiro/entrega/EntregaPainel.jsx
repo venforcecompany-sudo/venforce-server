@@ -21,7 +21,8 @@ import { useEntregaApresentacao } from "../../../hooks/useEntregaApresentacao.js
 import { EntregaAcoes } from "../EntregaAcoes.jsx";
 import { MK_LABEL } from "../fechamento/FechamentoContextoBar.jsx";
 import { EntregaEditor } from "./EntregaEditor.jsx";
-import { resumoRevisoes, revisaoDaEntrega, rotuloRevisao } from "../../../utils/financeiro/revisoes.js";
+import { avisosDePublicacao, resumoRevisoes, revisaoDaEntrega, rotuloRevisao } from "../../../utils/financeiro/revisoes.js";
+import { COBERTURA_MINIMA_ESPERADA } from "../../../utils/financeiro/preCheck.js";
 
 export function EntregaPainel({ entrega, entregas, clienteNome, marketplace, contaNome, clienteContaId, periodo, periodoLabel, onAlterado, revisoes = null, snapshots = null }) {
   const historica = !!entrega?.token_publico;
@@ -124,6 +125,8 @@ export function EntregaPainel({ entrega, entregas, clienteNome, marketplace, con
           erro={entregas.erroDeAcao?.id === entrega.id ? entregas.erroDeAcao.mensagem : null}
           onPublicar={entregas.publicar}
           onDespublicar={entregas.despublicar}
+          revisao={revisao ? rotuloRevisao(revisao) : null}
+          avisos={avisosDePublicacao({ revisao, ultima, coberturaMinima: COBERTURA_MINIMA_ESPERADA })}
         />
         <p className="vf-field__hint">
           {alterado

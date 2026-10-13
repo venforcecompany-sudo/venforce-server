@@ -10,13 +10,22 @@
 // a revisão nova vira uma entrega nova (rascunho): o link do cliente segue na
 // revisão que ele recebeu até você publicar a nova.
 
+import { useEffect, useState } from "react";
 import { rotuloRevisao } from "../../../utils/financeiro/revisoes.js";
+import { COBERTURA_MINIMA_ESPERADA } from "../../../utils/financeiro/preCheck.js";
+import { numOuNull } from "../../../utils/financeiro/resumoFechamento.js";
+import { formatarPercentual, pontosParaFracao } from "../../../utils/percentage.js";
 
 export function AcoesFechamento({ f, periodoLabel, legado, proximaRevisao = null, revisaoPublicada = null }) {
   const salvando = f.estado === "salvando";
   const salvo = f.estado === "salvo";
   const reprocessando = f.estado === "processando";
   const revisaoSalva = f.snapshotSalvo || null;
+  // Cobertura abaixo do esperado: salvar pede uma confirmação (não bloqueia).
+  const cobertura = numOuNull(f.processamento?.summary?.calculatedCoveragePercent);
+  const coberturaBaixa = cobertura !== null && cobertura < COBERTURA_MINIMA_ESPERADA;
+  const [confirmouCobertura, setConfirmouCobertura] = useState(false);
+  useEffect(() => setConfirmouCobertura(false), [f.processamento]);
   const rotuloSalvar = revisaoSalva ? `Salvar entrega da ${rotuloRevisao(revisaoSalva)}` : proximaRevisao ? `Salvar revisão v${proximaRevisao}` : "Salvar fechamento";
 
   return (
@@ -62,11 +71,21 @@ export function AcoesFechamento({ f, periodoLabel, legado, proximaRevisao = null
           </button>
         </div>
       ) : !f.duplicidade ? (
+        <div className="vf-stack vf-stack--sm">
+        {coberturaBaixa && !revisaoSalva && (
+          <label className="vf-fin-confirmacao-cobertura" data-testid="confirmar-cobertura">
+            <input type="checkbox" checked={confirmouCobertura} onChange={(e) => setConfirmouCobertura(e.target.checked)} />
+            <span className="vf-field__hint">
+              Cobertura de custo de <strong>{formatarPercentual(pontosParaFracao(cobertura))}</strong>, abaixo dos {COBERTURA_MINIMA_ESPERADA}% esperados.
+              Salvar mesmo assim (as pendências ficam registradas na revisão).
+            </span>
+          </label>
+        )}
         <div className="vf-cluster vf-fin-acoes">
           <button
             type="button"
             className="vf-btn vf-btn--primary"
-            disabled={salvando || reprocessando || (f.divergente && !f.confirmouDivergencia)}
+            disabled={salvando || reprocessando || (f.divergente && !f.confirmouDivergencia) || (coberturaBaixa && !revisaoSalva && !confirmouCobertura)}
             aria-busy={salvando ? "true" : undefined}
             onClick={() => f.salvar()}
           >
@@ -78,6 +97,7 @@ export function AcoesFechamento({ f, periodoLabel, legado, proximaRevisao = null
           <button type="button" className="vf-btn vf-btn--ghost vf-btn--sm" disabled={salvando} onClick={f.voltarAoFormulario}>
             Editar arquivos e ajustes
           </button>
+        </div>
         </div>
       ) : null}
 

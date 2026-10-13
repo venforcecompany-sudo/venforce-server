@@ -23,7 +23,8 @@ import { formatarValor } from "./shared/ValorFinanceiro.jsx";
 import { BlocoIndisponivel, BlocoSkeleton } from "../visao/BlocoCard.jsx";
 import { EntregaAcoes, linkPublico } from "./EntregaAcoes.jsx";
 import { ExcluirEntrega } from "./relatorios/ExcluirEntrega.jsx";
-import { revisaoDaEntrega, rotuloRevisao } from "../../utils/financeiro/revisoes.js";
+import { avisosDePublicacao, resumoRevisoes, revisaoDaEntrega, revisoesDoPeriodo, rotuloRevisao } from "../../utils/financeiro/revisoes.js";
+import { COBERTURA_MINIMA_ESPERADA } from "../../utils/financeiro/preCheck.js";
 
 function Vazio() {
   return (
@@ -154,6 +155,8 @@ export function RelatoriosTab({ relatorios, entregas, periodo, clienteContaId, m
                         erro={entregas.erroDeAcao?.id === e.id ? entregas.erroDeAcao.mensagem : null}
                         onPublicar={entregas.publicar}
                         onDespublicar={entregas.despublicar}
+                        revisao={revisao ? rotuloRevisao(revisao) : null}
+                        avisos={avisosDePublicacao({ revisao, ultima: resumoRevisoes(revisoesDoPeriodo(snapshots, e.periodo)).ultima, coberturaMinima: COBERTURA_MINIMA_ESPERADA })}
                       />
                       <ExcluirEntrega descricao={d} publicado={!!e.publicado} ocupada={ocupada} bloqueada={bloqueada} onExcluir={entregas.excluir} />
                     </div>

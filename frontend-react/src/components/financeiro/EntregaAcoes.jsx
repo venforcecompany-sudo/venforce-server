@@ -22,7 +22,11 @@ export function linkPublico(token) {
   return `${window.location.origin}/relatorio-publico.html?token=${encodeURIComponent(token)}`;
 }
 
-export function EntregaAcoes({ entrega, ocupada, bloqueada, erro, onPublicar, onDespublicar }) {
+// `revisao`: a revisão do fechamento que esta entrega apresenta (vai no
+// texto da confirmação — "Publicar Setembro/2026 (v2)?"). `avisos`: o que
+// o operador precisa saber antes de publicar (revisão mais nova, cobertura
+// baixa) — informam, não bloqueiam.
+export function EntregaAcoes({ entrega, ocupada, bloqueada, erro, onPublicar, onDespublicar, revisao = null, avisos = [] }) {
   const [confirmando, setConfirmando] = useState(null); // "publicar" | "despublicar" | null
   const [copiado, setCopiado] = useState(false);
 
@@ -58,9 +62,12 @@ export function EntregaAcoes({ entrega, ocupada, bloqueada, erro, onPublicar, on
       <div className="vf-cluster vf-fin-confirm" role="group" aria-label={`Confirmar ${confirmando}`}>
         <span className="vf-field__hint">
           {publicar
-            ? `Publicar ${competencia}? Gera um link público sem senha.`
-            : `Despublicar ${competencia}? O link atual deixa de abrir.`}
+            ? `Publicar ${competencia}${revisao ? ` (${revisao})` : ""}? Gera um link público sem senha.`
+            : `Despublicar ${competencia}${revisao ? ` (${revisao})` : ""}? O link atual deixa de abrir.`}
         </span>
+        {publicar && avisos.length > 0 && (
+          <span className="vf-status is-warning" data-testid="avisos-publicacao">{avisos.join(" ")}</span>
+        )}
         <button
           type="button"
           className={`vf-btn vf-btn--sm ${publicar ? "vf-btn--primary" : "vf-btn--danger"}`}

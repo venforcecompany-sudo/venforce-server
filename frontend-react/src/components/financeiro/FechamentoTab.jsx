@@ -94,6 +94,8 @@ export function FechamentoTab({
         <FechamentoSalvo
           revisoes={revisoes}
           revisaoPreferida={revisaoPreferida}
+          contexto={{ clienteSlug, clienteNome, clienteContaId }}
+          onApresentado={onSalvo}
           resultado={resultado}
           conciliacao={conciliacao}
           carregando={carregandoLeitura}
@@ -109,7 +111,7 @@ export function FechamentoTab({
 
 // O fechamento JÁ SALVO desta competência — leitura. Sem processamento em
 // memória, é o que a tela tem a dizer sobre o mês.
-function FechamentoSalvo({ revisoes, revisaoPreferida, resultado, conciliacao, carregando, entrega, marketplace, periodo, periodoLabel }) {
+function FechamentoSalvo({ revisoes, revisaoPreferida, contexto, onApresentado, resultado, conciliacao, carregando, entrega, marketplace, periodo, periodoLabel }) {
   const conciliacaoMeli = marketplace === "meli" && conciliacao && (
     <details className="vf-fin-disclosure">
       <summary>Conciliação Mercado Pago (Central de Vendas)</summary>
@@ -123,7 +125,16 @@ function FechamentoSalvo({ revisoes, revisaoPreferida, resultado, conciliacao, c
   if (Array.isArray(revisoes) && revisoes.length) {
     return (
       <section className="vf-section vf-section--inset vf-stack vf-stack--sm" aria-label="Fechamento salvo">
-        <SnapshotFechamento revisoes={revisoes} revisaoPreferida={revisaoPreferida} marketplace={marketplace} periodo={periodo} periodoLabel={periodoLabel} />
+        <SnapshotFechamento
+          revisoes={revisoes}
+          revisaoPreferida={revisaoPreferida}
+          marketplace={marketplace}
+          periodo={periodo}
+          periodoLabel={periodoLabel}
+          entrega={entrega}
+          contexto={contexto}
+          onApresentado={onApresentado}
+        />
         {conciliacaoMeli}
       </section>
     );

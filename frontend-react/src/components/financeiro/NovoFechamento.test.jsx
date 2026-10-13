@@ -636,3 +636,22 @@ describe("NovoFechamento · pré-check", () => {
     expect(screen.getByRole("button", { name: "Processar fechamento" })).toBeEnabled();
   });
 });
+
+describe("NovoFechamento · cobertura abaixo do esperado", () => {
+  it("salvar pede confirmação explícita (não bloqueia em definitivo)", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "meli", contaId: 42 }));
+    api.processar.mockResolvedValue(respostaOk({ summary: { ...SUMMARY, calculatedCoveragePercent: 91.2 } }));
+    api.salvar.mockResolvedValue({ id: 5 });
+    const usuario = userEvent.setup();
+    render(<NovoFechamento {...props} />);
+    await screen.findByText("Base vinculada");
+    await subirVendas(usuario);
+    await usuario.click(screen.getByRole("button", { name: "Processar fechamento" }));
+    await screen.findByText(/Competência confere/);
+    const salvar = screen.getByRole("button", { name: "Salvar fechamento" });
+    expect(salvar).toBeDisabled();
+    expect(screen.getByTestId("confirmar-cobertura")).toHaveTextContent("91,2%");
+    await usuario.click(within(screen.getByTestId("confirmar-cobertura")).getByRole("checkbox"));
+    expect(salvar).toBeEnabled();
+  });
+});

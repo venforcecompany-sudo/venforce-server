@@ -1019,3 +1019,5 @@
 .vf-fin-precheck__item.is-pendente .vf-fin-precheck__icone { color: var(--vf-text-muted, #6b7285); }
 .vf-fin-precheck__texto { min-width: 0; overflow-wrap: anywhere; }
 .vf-fin-precheck__nivel { font-size: var(--vf-fs-2xs, 0.6875rem); text-transform: uppercase; letter-spacing: 0.04em; color: var(--vf-text-muted, #6b7285); white-space: nowrap; }
+.vf-fin-confirmacao-cobertura { display: flex; gap: var(--vf-sp-2, 8px); align-items: flex-start; }
+.vf-fin-confirmacao-cobertura input { margin-top: 3px; }

@@ -17,6 +17,8 @@ vi.mock("../../../services/fechamentoSnapshotApi.js", () => ({
   listarSnapshots: vi.fn(),
   conferirBaseAtual: api.baseAtual,
 }));
+const entregaApi = vi.hoisted(() => ({ salvar: vi.fn() }));
+vi.mock("../../../services/financeiroFechamentoApi.js", async (orig) => ({ ...(await orig()), salvarEntregaFechamento: entregaApi.salvar }));
 vi.mock("../../../services/apiClient.js", async (orig) => ({ ...(await orig()), requisitar: vi.fn(async () => ({ ok: true, entrega: { payload_json: {} } })), ehAdmin: () => false }));
 
 const META = (rev, extra = {}) => ({
@@ -105,6 +107,44 @@ describe("SnapshotFechamento · arquivos e origem", () => {
   });
 });
 
+describe("SnapshotFechamento · apresentar uma revisão salva (sem reprocessar)", () => {
+  const ctx = { clienteSlug: "zorza", clienteNome: "Zorza", clienteContaId: 121 };
+  it("rascunho em v1 → 'Trocar a entrega para a v2': payload do snapshot (summary + 50 linhas), snapshot_id e substituir", async () => {
+    entregaApi.salvar.mockResolvedValue({ id: 9 });
+    const onApresentado = vi.fn();
+    const usuario = userEvent.setup();
+    const revs = [META(2), META(1, { entregas: [{ id: 9, publicado: false }] })];
+    render(<SnapshotFechamento revisoes={revs} marketplace="shopee" periodo="2026-09" periodoLabel="Setembro/2026" entrega={{ id: 9, token_publico: null }} contexto={ctx} onApresentado={onApresentado} />);
+    await usuario.click(await screen.findByRole("button", { name: "Trocar a entrega para a v2" }));
+    expect(screen.getByText(/O rascunho desta competência \(v1\) passa a apresentar a v2/)).toBeInTheDocument();
+    await usuario.click(screen.getByRole("button", { name: "Confirmar" }));
+    await waitFor(() => expect(entregaApi.salvar).toHaveBeenCalledTimes(1));
+    const body = entregaApi.salvar.mock.calls[0][0];
+    expect(body).toMatchObject({ snapshot_id: 102, substituir: true, cliente_conta_id: 121, periodo: "2026-09", tipo: "fechamento_mensal" });
+    expect(body.payload_json.summary.finalResult).toBe(29500);
+    expect(body.payload_json.detailedRows).toHaveLength(50);
+    expect(body.payload_json.metadados.snapshot).toEqual({ id: 102, revisao: 2 });
+    expect(body.payload_json.metadados.detailedRowsTotal).toBe(4321);
+    expect(api.itens).toHaveBeenCalledWith(102, { offset: 0, limit: 50 });
+    expect(onApresentado).toHaveBeenCalled();
+  });
+
+  it("entrega com link: cria uma NOVA entrega e diz que o link do cliente não muda", async () => {
+    const usuario = userEvent.setup();
+    const revs = [META(2), META(1, { publicado: true, entregas: [{ id: 9, publicado: true }] })];
+    render(<SnapshotFechamento revisoes={revs} marketplace="shopee" periodo="2026-09" periodoLabel="Setembro/2026" entrega={{ id: 9, token_publico: "t", publicado: true }} contexto={ctx} />);
+    await usuario.click(await screen.findByRole("button", { name: "Criar nova entrega com a v2" }));
+    expect(screen.getByText(/A entrega com link \(v1\) não muda/)).toBeInTheDocument();
+  });
+
+  it("a revisão que a entrega já apresenta não oferece nada", async () => {
+    const revs = [META(2, { entregas: [{ id: 9 }] }), META(1)];
+    render(<SnapshotFechamento revisoes={revs} marketplace="shopee" periodo="2026-09" periodoLabel="Setembro/2026" entrega={{ id: 9 }} contexto={ctx} />);
+    await screen.findByText(/3 produtos pendentes/);
+    expect(screen.queryByTestId("apresentar-revisao")).toBeNull();
+  });
+});
+
 describe("SnapshotFechamento · comparar revisões", () => {
   it("v1 → v2 com diferenças objetivas (valor, p.p., pendências)", async () => {
     const usuario = userEvent.setup();
@@ -152,6 +192,20 @@ describe("EntregaPainel · revisão apresentada", () => {
     expect(screen.getByTestId("revisao-entrega")).toHaveTextContent("v1");
     expect(screen.getByText(/a v2 é mais nova/)).toBeInTheDocument();
   });
+  it("publicar confirma QUAL revisão vai ao cliente e avisa (revisão mais nova, cobertura baixa) sem bloquear", async () => {
+    const usuario = userEvent.setup();
+    const revs = [META(2), META(1, { entregas: [{ id: 9 }], summary: { calculatedCoveragePercent: 91 } })];
+    const entrega = { id: 9, publicado: false, token_publico: null, periodo: "2026-09", created_at: "2026-10-01T10:00:00Z" };
+    const publicar = vi.fn();
+    render(<EntregaPainel entrega={entrega} entregas={{ acaoEmCurso: null, publicar }} clienteNome="Zorza" marketplace="shopee" clienteContaId={121} periodo="2026-09" periodoLabel="Setembro/2026" revisoes={revs} snapshots={revs} />);
+    await usuario.click(screen.getByRole("button", { name: "Publicar" }));
+    expect(screen.getByText(/Publicar Setembro\/2026 \(v1\)\?/)).toBeInTheDocument();
+    expect(screen.getByTestId("avisos-publicacao")).toHaveTextContent("a v2 é mais nova");
+    expect(screen.getByTestId("avisos-publicacao")).toHaveTextContent("Cobertura de custo de 91,0%, abaixo dos 95% esperados.");
+    await usuario.click(within(screen.getByRole("group", { name: "Confirmar publicar" })).getByRole("button", { name: "Publicar" }));
+    expect(publicar).toHaveBeenCalledWith(9);
+  });
+
   it("entrega antiga (sem snapshot) é 'anterior às revisões'", () => {
     const entrega = { id: 5, publicado: false, token_publico: null, created_at: "2026-08-01T10:00:00Z" };
     render(<EntregaPainel entrega={entrega} entregas={{ acaoEmCurso: null }} clienteNome="Zorza" marketplace="shopee" clienteContaId={121} periodo="2026-09" periodoLabel="Setembro/2026" revisoes={REVISOES} snapshots={REVISOES} />);

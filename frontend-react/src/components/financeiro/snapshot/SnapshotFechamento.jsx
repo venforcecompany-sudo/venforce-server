@@ -15,6 +15,7 @@ import { ResultadoProcessado } from "../resultado/ResultadoProcessado.jsx";
 import { SecaoFinanceira } from "../shared/SecaoFinanceira.jsx";
 import { ProdutosSnapshot } from "./ProdutosSnapshot.jsx";
 import { ComparacaoFechamentos } from "./ComparacaoFechamentos.jsx";
+import { ApresentarRevisao } from "./ApresentarRevisao.jsx";
 
 function PendenciasDaRevisao({ snapshot }) {
   const c = snapshot?.contagens || {};
@@ -43,7 +44,9 @@ function parDeComparacao(revisoes, meta) {
   return i > 0 ? [ordenadas[i - 1], ordenadas[i]] : [ordenadas[0], ordenadas[ordenadas.length - 1]];
 }
 
-export function SnapshotFechamento({ revisoes, marketplace, periodo, periodoLabel, revisaoPreferida = null }) {
+// `entrega` + `contexto` + `onApresentado`: permitem apresentar uma revisão
+// salva na entrega desta competência sem reprocessar (ApresentarRevisao).
+export function SnapshotFechamento({ revisoes, marketplace, periodo, periodoLabel, revisaoPreferida = null, entrega = null, contexto = null, onApresentado = null }) {
   const resumo = resumoRevisoes(revisoes);
   const inicial = (revisoes || []).some((s) => s.id === revisaoPreferida) ? revisaoPreferida : resumo.ultima?.id ?? null;
   const [escolhida, setEscolhida] = useState(inicial);
@@ -117,6 +120,15 @@ export function SnapshotFechamento({ revisoes, marketplace, periodo, periodoLabe
           <div className="vf-skeleton vf-skeleton--title" />
           <div className="vf-skeleton vf-skeleton--row" />
         </div>
+      )}
+      {snapshot && contexto && (
+        <ApresentarRevisao
+          snapshot={snapshot}
+          entregaAtual={entrega}
+          revisaoDaEntregaAtual={entrega ? (revisoes || []).find((s) => (s.entregas || []).some((e) => Number(e.id) === Number(entrega.id))) || null : null}
+          contexto={contexto}
+          onApresentado={onApresentado}
+        />
       )}
       {snapshot && (
         <>
