@@ -60,3 +60,39 @@ describe("HistoricoTab", () => {
     expect(mes("2026-06")).toHaveTextContent("Publicado");
   });
 });
+
+describe("HistoricoTab · revisões", () => {
+  const snap = (periodo, revisao, extra = {}) => ({
+    id: Number(periodo.replace("-", "")) * 10 + revisao, periodo, revisao, publicado: false, criadoEm: "2026-10-13T17:30:00.000Z", entregas: [],
+    summary: { finalResult: 25000 + revisao * 1000, contributionMarginCalculated: 0.15, calculatedCoveragePercent: 90 + revisao, grossRevenueTotal: 100000 },
+    contagens: { pendencias: 10 - revisao },
+    ...extra,
+  });
+
+  it("mês mostra a revisão mais nova, a publicada e os números; meses sem revisão seguem iguais", () => {
+    const snapshots = { snapshots: [snap("2026-09", 2), snap("2026-09", 1, { publicado: true }), snap("2026-08", 1)] };
+    render(<HistoricoTab relatorios={null} entregas={estado()} periodo="2026-10" clienteContaId={1} snapshots={snapshots} />);
+    expect(screen.getAllByRole("listitem")).toHaveLength(12);
+    expect(mes("2026-09")).toHaveTextContent("v2 · publicado v1 · v2 mais nova");
+    expect(mes("2026-09")).toHaveTextContent(/Resultado R\$\s?27\.000,00 · MC 15,0% · Cobertura 92,0%/);
+    expect(mes("2026-09")).toHaveTextContent("2 revisões · comparar com Agosto/2026");
+    expect(mes("2026-08")).toHaveTextContent("v1 · não publicada");
+    expect(mes("2026-07").querySelector("[data-revisoes]")).toBeNull();
+  });
+
+  it("abrir lista as revisões (Abrir vN pede competência + revisão) e compara com o mês anterior", async () => {
+    vi.useRealTimers();
+    const usuario = userEvent.setup();
+    const escolher = vi.fn();
+    const snapshots = { snapshots: [snap("2026-09", 2), snap("2026-09", 1, { publicado: true }), snap("2026-08", 1)] };
+    render(<HistoricoTab relatorios={null} entregas={estado()} periodo="2026-10" clienteContaId={1} snapshots={snapshots} onEscolherCompetencia={escolher} />);
+    await usuario.click(within(mes("2026-09")).getByText(/2 revisões/));
+    const tabela = within(mes("2026-09")).getByRole("table", { name: "Revisões de Setembro/2026" });
+    expect(within(tabela).getAllByRole("row")).toHaveLength(3);
+    await usuario.click(within(tabela).getByRole("button", { name: "Abrir v1" }));
+    expect(escolher).toHaveBeenCalledWith("2026-09", 202609 * 10 + 1);
+    // Setembro (v2) × Agosto (v1): frases determinísticas
+    expect(within(mes("2026-09")).getByText(/Resultado Final subiu 3,8%\./)).toBeInTheDocument();
+    expect(within(mes("2026-09")).getByText("Cobertura melhorou de 91,0% para 92,0%.")).toBeInTheDocument();
+  });
+});

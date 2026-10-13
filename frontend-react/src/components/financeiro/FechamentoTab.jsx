@@ -44,6 +44,7 @@ export function FechamentoTab({
   onTrabalho,
   revisoes = null,
   snapshots = null,
+  revisaoPreferida = null,
 }) {
   const [trabalhoForm, setTrabalhoForm] = useState({ temTrabalho: false, temResultado: false, processadoNaoSalvo: false });
   const [apresentacaoAlterada, setApresentacaoAlterada] = useState(false);
@@ -91,6 +92,7 @@ export function FechamentoTab({
       {!processadoAgora && (
         <FechamentoSalvo
           revisoes={revisoes}
+          revisaoPreferida={revisaoPreferida}
           resultado={resultado}
           conciliacao={conciliacao}
           carregando={carregandoLeitura}
@@ -106,7 +108,7 @@ export function FechamentoTab({
 
 // O fechamento JÁ SALVO desta competência — leitura. Sem processamento em
 // memória, é o que a tela tem a dizer sobre o mês.
-function FechamentoSalvo({ revisoes, resultado, conciliacao, carregando, entrega, marketplace, periodo, periodoLabel }) {
+function FechamentoSalvo({ revisoes, revisaoPreferida, resultado, conciliacao, carregando, entrega, marketplace, periodo, periodoLabel }) {
   const conciliacaoMeli = marketplace === "meli" && conciliacao && (
     <details className="vf-fin-disclosure">
       <summary>Conciliação Mercado Pago (Central de Vendas)</summary>
@@ -120,7 +122,7 @@ function FechamentoSalvo({ revisoes, resultado, conciliacao, carregando, entrega
   if (Array.isArray(revisoes) && revisoes.length) {
     return (
       <section className="vf-section vf-section--inset vf-stack vf-stack--sm" aria-label="Fechamento salvo">
-        <SnapshotFechamento revisoes={revisoes} marketplace={marketplace} periodo={periodo} periodoLabel={periodoLabel} />
+        <SnapshotFechamento revisoes={revisoes} revisaoPreferida={revisaoPreferida} marketplace={marketplace} periodo={periodo} periodoLabel={periodoLabel} />
         {conciliacaoMeli}
       </section>
     );

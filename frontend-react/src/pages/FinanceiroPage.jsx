@@ -58,6 +58,8 @@ export default function FinanceiroPage() {
   const [abaAtiva, setAbaAtiva] = useState("fechamento");
   const [trabalho, setTrabalho] = useState(SEM_TRABALHO);
   const [trocaPendente, setTrocaPendente] = useState(null);
+  // Revisão pedida pelo Histórico ("Abrir v1"): o fechamento salvo abre nela.
+  const [revisaoPreferida, setRevisaoPreferida] = useState(null);
 
   // Trocou a operação no Shell: qualquer troca de mês pendente era sobre a
   // operação anterior.
@@ -104,6 +106,7 @@ export default function FinanceiroPage() {
   const revisoes = Array.isArray(snapshots.snapshots) ? revisoesDoPeriodo(snapshots.snapshots, periodo) : null;
 
   const aoSalvarFechamento = () => {
+    setRevisaoPreferida(null); // salvou: o fechamento salvo volta para a revisão mais nova
     entregas.recarregar?.();
     snapshots.recarregar?.();
     recarregarFinanceiro?.();
@@ -160,7 +163,10 @@ export default function FinanceiroPage() {
             revisoes={revisoes}
             processadoNaoSalvo={trabalho.processadoNaoSalvo}
             trocaPendente={trocaPendente}
-            onPedirTroca={pedirTroca}
+            onPedirTroca={(p) => {
+              setRevisaoPreferida(null);
+              pedirTroca(p);
+            }}
             onConfirmarTroca={confirmarTroca}
             onCancelarTroca={() => setTrocaPendente(null)}
           />
@@ -197,6 +203,7 @@ export default function FinanceiroPage() {
               onTrabalho={setTrabalho}
               revisoes={revisoes}
               snapshots={snapshots.snapshots}
+              revisaoPreferida={revisaoPreferida}
             />
           </div>
           {abaAtiva === "relatorios" && (
@@ -219,11 +226,12 @@ export default function FinanceiroPage() {
               <HistoricoTab
                 relatorios={dados?.relatorios || null}
                 entregas={entregas}
-                snapshots={snapshots}
                 periodo={periodo}
                 clienteContaId={clienteContaId}
-                onEscolherCompetencia={(p) => {
-                  pedirTroca(p);
+                snapshots={snapshots}
+                onEscolherCompetencia={(p, snapshotId = null) => {
+                  setRevisaoPreferida(snapshotId);
+                  if (p !== periodo) pedirTroca(p);
                   setAbaAtiva("fechamento");
                 }}
               />

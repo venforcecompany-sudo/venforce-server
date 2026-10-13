@@ -78,6 +78,26 @@ describe("SnapshotFechamento", () => {
   });
 });
 
+describe("SnapshotFechamento · comparar revisões", () => {
+  it("v1 → v2 com diferenças objetivas (valor, p.p., pendências)", async () => {
+    const usuario = userEvent.setup();
+    const comSummary = [
+      { ...META(2), summary: { finalResult: 29500, contributionMarginCalculated: 0.182, calculatedCoveragePercent: 98, revenueWithoutCost: 3700 } },
+      { ...META(1, { publicado: true }), summary: { finalResult: 25000, contributionMarginCalculated: 0.15, calculatedCoveragePercent: 91, revenueWithoutCost: 12000 } },
+    ];
+    render(<SnapshotFechamento revisoes={comSummary} marketplace="shopee" periodo="2026-09" periodoLabel="Setembro/2026" />);
+    await usuario.click(await screen.findByText("Comparar revisões · v1 → v2"));
+    const tabela = screen.getByRole("table", { name: "Comparação v1 → v2" });
+    const linha = (k) => tabela.querySelector(`[data-metrica="${k}"]`);
+    expect(linha("finalResult")).toHaveTextContent(/\+R\$\s?4\.500,00/);
+    expect(linha("finalResult").dataset.tom).toBe("melhora");
+    expect(linha("mcCalculada")).toHaveTextContent("+3,2 p.p.");
+    expect(linha("cobertura")).toHaveTextContent("+7,0 p.p.");
+    expect(linha("revenueWithoutCost")).toHaveTextContent(/−R\$\s?8\.300,00/);
+    expect(linha("pendencias")).toHaveTextContent("17 → 3");
+  });
+});
+
 describe("CompetenciaFechamento · linha das revisões", () => {
   const base = { periodo: "2026-09", status: { label: "Rascunho salvo", tom: "info" }, onPedirTroca: () => {}, onConfirmarTroca: () => {}, onCancelarTroca: () => {} };
   it("salva v2, publicado v1, v2 ainda não publicada", () => {

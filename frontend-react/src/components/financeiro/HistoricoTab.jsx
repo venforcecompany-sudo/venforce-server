@@ -11,8 +11,18 @@
 //
 // O status do mês é o DESTA conta; entrega legada (sem operação registrada)
 // é sinalizada, nunca contada como fechamento da conta.
+//
+// Com REVISÕES (snapshots), cada mês diz também: a revisão mais nova, qual
+// está publicada, os números dela (Resultado, MC, cobertura) e, aberto, a
+// lista de revisões (abrir qualquer uma) e a comparação com o mês anterior.
+// Sem revisões o mês segue como antes (fechamentos anteriores a elas).
 
+import { useState } from "react";
 import { competenciaAnterior, competenciaNoFuso, ehCompetencia, rotularCompetencia, formatarDataHora } from "../../utils/dates.js";
+import { kpisPrincipais } from "../../utils/financeiro/resumoFechamento.js";
+import { resumoRevisoes, revisoesDoPeriodo, rotuloRevisao } from "../../utils/financeiro/revisoes.js";
+import { METRICAS_COMPETENCIA, formatarValorDaMetrica } from "../../utils/financeiro/comparacao.js";
+import { ComparacaoFechamentos } from "./snapshot/ComparacaoFechamentos.jsx";
 import { normalizarCompetencia } from "../../utils/financeiro/competencia.js";
 import { escopoDaEntrega, entregaDoPeriodo, entregaLegadaDoPeriodo, entregasDoPeriodo } from "../../hooks/useEntregasFechamento.js";
 import { statusDaCompetencia } from "../../utils/financeiro/statusCompetencia.js";
@@ -43,7 +53,69 @@ function sequencia(fim, quantidade) {
   return lista;
 }
 
-export function HistoricoTab({ relatorios, entregas, periodo, clienteContaId, onEscolherCompetencia }) {
+// Os números de uma revisão numa linha: Resultado · MC · Cobertura.
+function NumerosDaRevisao({ snapshot }) {
+  const s = snapshot?.summary || {};
+  const k = Object.fromEntries(kpisPrincipais(s).map((i) => [i.chave, i.valor]));
+  return (
+    <span className="vf-fin-historico__numeros">
+      Resultado {formatarValorDaMetrica(k.finalResult, "moeda")} · MC {formatarValorDaMetrica(k.mcCalculada, "fracao")} · Cobertura{" "}
+      {formatarValorDaMetrica(s.calculatedCoveragePercent, "pontos")}
+    </span>
+  );
+}
+
+// Revisões do mês + comparação com o mês anterior — só monta ao abrir.
+function DetalheDoMes({ mes, revisoes, anterior, mesAnterior, onAbrir }) {
+  const [aberto, setAberto] = useState(false);
+  const r = resumoRevisoes(revisoes);
+  return (
+    <details className="vf-fin-disclosure vf-fin-historico__detalhe" onToggle={(e) => setAberto(e.currentTarget.open)}>
+      <summary>
+        {r.total} {r.total === 1 ? "revisão" : "revisões"}
+        {anterior ? ` · comparar com ${rotularCompetencia(mesAnterior)}` : ""}
+      </summary>
+      {aberto && (
+        <div className="vf-stack vf-stack--sm">
+          <div className="vf-table-wrap">
+            <table className="vf-table vf-table--compact" aria-label={`Revisões de ${rotularCompetencia(mes)}`}>
+              <thead>
+                <tr><th>Revisão</th><th>Salva em</th><th>Números</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody>
+                {revisoes.map((s) => (
+                  <tr key={s.id} data-revisao={s.revisao}>
+                    <td><strong>{rotuloRevisao(s)}</strong></td>
+                    <td>{formatarDataHora(s.criadoEm)}{s.criadoPorEmail ? ` · ${s.criadoPorEmail}` : ""}</td>
+                    <td><NumerosDaRevisao snapshot={s} /></td>
+                    <td>{s.publicado ? <span className="vf-tag is-success">Publicada</span> : <span className="vf-field__hint">—</span>}</td>
+                    <td>
+                      <button type="button" className="vf-btn vf-btn--ghost vf-btn--sm" onClick={() => onAbrir?.(mes, s.id)}>
+                        Abrir {rotuloRevisao(s)}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {anterior && (
+            <ComparacaoFechamentos
+              anterior={anterior}
+              atual={r.ultima}
+              rotuloAnterior={`${rotularCompetencia(mesAnterior)} (${rotuloRevisao(anterior)})`}
+              rotuloAtual={`${rotularCompetencia(mes)} (${rotuloRevisao(r.ultima)})`}
+              metricas={METRICAS_COMPETENCIA}
+              comFrases
+            />
+          )}
+        </div>
+      )}
+    </details>
+  );
+}
+
+export function HistoricoTab({ relatorios, entregas, periodo, clienteContaId, onEscolherCompetencia, snapshots = null }) {
   if (relatorios && !relatorios.disponivel && !Array.isArray(entregas?.entregas)) return <BlocoIndisponivel motivo={relatorios.motivo} />;
   if (entregas.carregando && !entregas.entregas) return <BlocoSkeleton linhas={6} />;
 
@@ -63,7 +135,12 @@ export function HistoricoTab({ relatorios, entregas, periodo, clienteContaId, on
         <p className="vf-field__hint">Lista operacional indisponível — histórico montado a partir da leitura do Financeiro.</p>
       )}
       <ul className="vf-fin-historico" aria-label="Competências desta operação">
-        {meses.map((m) => {
+        {meses.map((m, i) => {
+          const revisoes = revisoesDoPeriodo(snapshots?.snapshots, m);
+          const rev = resumoRevisoes(revisoes);
+          // Mês anterior com revisão (a régua vai do mais novo ao mais antigo).
+          const mesAnterior = meses[i + 1] || competenciaAnterior(m);
+          const anterior = resumoRevisoes(revisoesDoPeriodo(snapshots?.snapshots, mesAnterior)).ultima;
           const entrega = entregaDoPeriodo(lista, m, clienteContaId);
           const legada = entregaLegadaDoPeriodo(lista, m);
           const status = statusDaCompetencia({ entrega, entregaLegada: legada });
@@ -84,6 +161,17 @@ export function HistoricoTab({ relatorios, entregas, periodo, clienteContaId, on
                 {status.legado ? " · existe fechamento legado (sem conta)" : ""}
               </span>
               {emTela && <span className="vf-tag">em tela</span>}
+              {rev.ultima && (
+                <div className="vf-fin-historico__revisoes" data-revisoes={rev.total}>
+                  <span>
+                    <strong>{rotuloRevisao(rev.ultima)}</strong>
+                    {rev.publicada ? ` · publicado ${rotuloRevisao(rev.publicada)}` : " · não publicada"}
+                    {rev.publicada && rev.novaNaoPublicada ? ` · ${rotuloRevisao(rev.ultima)} mais nova` : ""}
+                  </span>
+                  <NumerosDaRevisao snapshot={rev.ultima} />
+                  <DetalheDoMes mes={m} revisoes={revisoes} anterior={anterior} mesAnterior={mesAnterior} onAbrir={onEscolherCompetencia} />
+                </div>
+              )}
             </li>
           );
         })}

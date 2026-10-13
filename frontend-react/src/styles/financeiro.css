@@ -976,3 +976,25 @@
 }
 .vf-fin-competencia__revisoes strong { color: var(--vf-text, #1d2130); }
 .vf-fin-revisoes { flex-wrap: wrap; }
+.vf-fin-comparacao__frases { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 2px; font-size: var(--vf-fs-sm, 0.875rem); }
+.vf-fin-comparacao__delta { white-space: nowrap; font-weight: var(--vf-fw-medium, 500); }
+.vf-fin-comparacao__delta.is-success { color: var(--vf-success-strong, #0a5c3d); }
+.vf-fin-comparacao__delta.is-danger { color: var(--vf-danger-strong, #9b1c1c); }
+/* Histórico com revisões: a linha do mês quebra e o bloco de revisões ocupa
+   a largura toda, abaixo do mês. */
+.vf-fin-historico__item { flex-wrap: wrap; }
+.vf-fin-historico__revisoes {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--vf-sp-3, 12px);
+  padding-left: calc(96px + var(--vf-sp-3, 12px) * 2);
+  font-size: var(--vf-fs-sm, 0.875rem);
+  min-width: 0;
+}
+.vf-fin-historico__numeros { color: var(--vf-text-muted, #6b7285); }
+.vf-fin-historico__detalhe { flex-basis: 100%; min-width: 0; }
+@media (max-width: 640px) {
+  .vf-fin-historico__revisoes { padding-left: 0; }
+}

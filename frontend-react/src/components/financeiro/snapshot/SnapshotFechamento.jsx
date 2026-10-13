@@ -14,6 +14,7 @@ import { processamentoDoSnapshot, resumoRevisoes, rotuloRevisao } from "../../..
 import { ResultadoProcessado } from "../resultado/ResultadoProcessado.jsx";
 import { SecaoFinanceira } from "../shared/SecaoFinanceira.jsx";
 import { ProdutosSnapshot } from "./ProdutosSnapshot.jsx";
+import { ComparacaoFechamentos } from "./ComparacaoFechamentos.jsx";
 
 function PendenciasDaRevisao({ snapshot }) {
   const c = snapshot?.contagens || {};
@@ -33,17 +34,29 @@ function PendenciasDaRevisao({ snapshot }) {
   );
 }
 
-export function SnapshotFechamento({ revisoes, marketplace, periodo, periodoLabel }) {
+// Revisões v(n-1) → v(n) para a comparação: a anterior à escolhida (ou, se a
+// escolhida é a v1, a v1 → a mais nova).
+function parDeComparacao(revisoes, meta) {
+  const ordenadas = [...(revisoes || [])].sort((a, b) => a.revisao - b.revisao);
+  const i = ordenadas.findIndex((s) => s.id === meta?.id);
+  if (ordenadas.length < 2 || i < 0) return null;
+  return i > 0 ? [ordenadas[i - 1], ordenadas[i]] : [ordenadas[0], ordenadas[ordenadas.length - 1]];
+}
+
+export function SnapshotFechamento({ revisoes, marketplace, periodo, periodoLabel, revisaoPreferida = null }) {
   const resumo = resumoRevisoes(revisoes);
-  const [escolhida, setEscolhida] = useState(resumo.ultima?.id ?? null);
+  const inicial = (revisoes || []).some((s) => s.id === revisaoPreferida) ? revisaoPreferida : resumo.ultima?.id ?? null;
+  const [escolhida, setEscolhida] = useState(inicial);
   const [detalhe, setDetalhe] = useState(null);
   const [erro, setErro] = useState(null);
 
   // Nova revisão salva (ou troca de competência): volta para a mais nova.
+  // Vindo do Histórico com uma revisão específica, abre nela.
   const ultimaId = resumo.ultima?.id ?? null;
   useEffect(() => {
-    setEscolhida(ultimaId);
-  }, [ultimaId]);
+    setEscolhida((revisoes || []).some((s) => s.id === revisaoPreferida) ? revisaoPreferida : ultimaId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ultimaId, revisaoPreferida]);
 
   const meta = (revisoes || []).find((s) => s.id === escolhida) || resumo.ultima;
 
@@ -85,6 +98,18 @@ export function SnapshotFechamento({ revisoes, marketplace, periodo, periodoLabe
           </div>
         )}
       </div>
+
+      {(() => {
+        const par = parDeComparacao(revisoes, meta);
+        if (!par) return null;
+        const [a, b] = par;
+        return (
+          <details className="vf-fin-disclosure" data-testid="comparar-revisoes">
+            <summary>Comparar revisões · {rotuloRevisao(a)} → {rotuloRevisao(b)}</summary>
+            <ComparacaoFechamentos anterior={a} atual={b} rotuloAnterior={rotuloRevisao(a)} rotuloAtual={rotuloRevisao(b)} />
+          </details>
+        );
+      })()}
 
       {erro && <div className="vf-status is-danger" role="alert">{erro}</div>}
       {!snapshot && !erro && (
