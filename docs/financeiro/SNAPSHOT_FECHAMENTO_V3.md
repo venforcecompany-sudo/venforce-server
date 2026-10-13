@@ -98,3 +98,38 @@ O snapshot não depende do marketplace: o `marketplace` está no CHECK (`meli|sh
 ## 5. Arquivos: próximo passo com storage
 
 Hoje fica guardado o manifesto `{tipo, nome_original, sha256, tamanho, mime_type, origem:"upload"}`. Com um storage (R2/S3), basta acrescentar `storage_key` em cada entrada do manifesto e enviar o buffer no processamento. Mas isso exige decisão humana sobre custo, retenção e LGPD, então não foi feito.
+
+## 6. Implementado (13/10/2026, branch `feat/financeiro-v3-snapshot-operacional`)
+
+### Endpoints (todos com carteira; por `:id` vale o cliente do snapshot)
+
+| Método | Rota | O que faz |
+|---|---|---|
+| POST | `/fechamentos/financeiro` | igual a antes, mais o bloco aditivo `processamento` (selo, manifesto, impressão dos custos, ajustes, quem/quando) |
+| POST | `/fechamento-snapshots` | grava a próxima revisão, só se o selo bater (409 `SELO_INVALIDO`). Mesmo selo de novo → mesma revisão (`reaproveitado`) |
+| GET | `/fechamento-snapshots?cliente_slug&cliente_conta_id[&periodo]` | revisões DA CONTA, com summary, contagens e entregas que apontam para cada uma |
+| GET | `/fechamento-snapshots/:id` | revisão + diagnóstico |
+| GET | `/fechamento-snapshots/:id/itens?offset&limit&status&busca` | todas as linhas, paginadas no backend (limit ≤ 200) |
+| GET | `/fechamento-snapshots/:id/base-atual` | relê a base vinculada e diz se ela mudou desde a revisão (só leitura) |
+| POST/PATCH | `/entregas-cliente` | aceitam `snapshot_id`, validado contra cliente, conta, competência e números (409 `SNAPSHOT_DIVERGENTE`) |
+
+### Configuração operacional por conta: sem tabela nova
+
+"Como esta conta costuma ser fechada" é o **precedente**, ou seja, a última revisão salva da conta: base, arquivos e ajustes usados e as pendências que ficaram. O pré-check compara o que está na tela com esse precedente e avisa (ADS vazio quando antes houve ADS, base diferente, Order.all usado antes, mesmo arquivo do mês anterior pelo sha256). Uma tabela de configuração duplicaria o que o histórico já diz e poderia divergir dele. A cobertura mínima esperada é uma constante (`COBERTURA_MINIMA_ESPERADA = 95`): abaixo dela, salvar pede confirmação e publicar avisa.
+
+### Eventos (`activity_logs`, reutilizada)
+
+`financeiro_snapshot_criado`, `entrega_salva`, `entrega_editada`, `entrega_publicada` e `entrega_despublicada`. Os eventos de entrega levam o `snapshotId` (qual revisão o cliente recebeu e quem publicou).
+
+### Validação
+
+- SQL real em PGlite: `server/scripts/fechamentoSnapshotSqlCheck.js` (13 verificações, incluindo o fluxo ponta a ponta pelas funções reais do service).
+- Chrome headless: `Portal/financeiro-v3-shell-ui.test.js`, cenário 2f.
+- Concorrência entre duas sessões NÃO foi exercitada (o PGlite tem conexão única). A garantia vem do `pg_advisory_xact_lock` mais a UNIQUE, como nas outras migrations do repo.
+
+### Pendências reais
+
+- Validar a migration num Postgres de homologação antes do deploy (o boot a aplica sozinho).
+- Executor de unificação Clientes×Contas (`feat/unificacao-clientes-contas`, não mergeado): se ele mover ou apagar contas, precisa levar `fechamento_snapshots.cliente_conta_id` junto, porque a FK sem ação recusa apagar uma conta que tenha revisões.
+- Storage de arquivos (§5): decisão humana.
+- TikTok (§4).
