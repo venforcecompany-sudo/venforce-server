@@ -165,7 +165,11 @@ export function HistoricoTab({ relatorios, entregas, periodo, clienteContaId, on
                 <div className="vf-fin-historico__revisoes" data-revisoes={rev.total}>
                   <span>
                     <strong>{rotuloRevisao(rev.ultima)}</strong>
-                    {rev.publicada ? ` · publicado ${rotuloRevisao(rev.publicada)}` : " · não publicada"}
+                    {rev.publicada
+                      ? rev.publicada.id === rev.ultima.id
+                        ? " · publicada"
+                        : ` · publicado ${rotuloRevisao(rev.publicada)}`
+                      : " · não publicada"}
                     {rev.publicada && rev.novaNaoPublicada ? ` · ${rotuloRevisao(rev.ultima)} mais nova` : ""}
                   </span>
                   <NumerosDaRevisao snapshot={rev.ultima} />

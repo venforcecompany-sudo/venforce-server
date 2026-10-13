@@ -82,7 +82,8 @@ function payloadFeliz() {
    provar a hierarquia da página, a paginação e as pendências na linha. Shapes
    confirmados em server/services/fechamentoFinanceiro/* (summary) e em
    frontend-react/src/utils/financeiro/produtos.js (detailedRows). */
-function processamentoRicoMeli() {
+function processamentoRicoMeli() { return selar(processamentoRicoMeliBruto()); }
+function processamentoRicoMeliBruto() {
   const detailedRows = Array.from({ length: 3625 }, (_, i) => {
     const semCusto = i < 4;
     return {
@@ -115,7 +116,8 @@ function processamentoRicoMeli() {
     unmatchedCosts: [],
   };
 }
-function processamentoRicoShopee() {
+function processamentoRicoShopee() { return selar(processamentoRicoShopeeBruto()); }
+function processamentoRicoShopeeBruto() {
   const detailedRows = Array.from({ length: 1800 }, (_, i) => ({
     Produto: `Kit ${i} título longo de produto Shopee para validar a coluna de produto ${i}`,
     ID: String(169417000000 + i), "ID Model": String(555000000000 + i),
@@ -149,6 +151,42 @@ function processamentoRicoShopee() {
     unmatchedCosts: [{ type: "variation_id", value: "555000000000", reason: "cost_only_on_parent_item", parentItemId: "169417000000", blockedBy: "multiple_variations_in_performance" }],
   };
 }
+/* Financeiro V3 — REVISÕES (snapshots). Fake COM ESTADO no shape de
+   server/services/fechamentoSnapshot/fechamentoSnapshotService.paraDto: o
+   POST grava a próxima revisão da (conta, competência) com TODAS as linhas;
+   `entregas`/`publicado` de cada revisão saem de entregasFake (snapshot_id),
+   como o backend real faz em SQL. */
+let snapshotsFake = [];
+let snapshotItensFake = {}; // id → linhas do motor
+let snapshotPostsFake = [];
+// O bloco `processamento` (selo) que o backend real acrescenta à resposta.
+function selar(resp) {
+  return {
+    ...resp,
+    processamento: {
+      versao: 1, processadoEm: "2026-08-26T14:58:00.000Z", processadoPor: 12, selo: "a".repeat(64),
+      ajustes: { ads: 25200, venforce: 9800, affiliates: 4850.2, fullCost: 0, additionalCosts: 0 },
+      custos: { linhas: 812, sha256: "c".repeat(64) },
+      arquivos: [{ tipo: "vendas", nomeOriginal: "vendas-agosto.xlsx", tamanhoBytes: 2048000, mimeType: "application/vnd.ms-excel", sha256: "d".repeat(64), origem: "upload" }],
+    },
+  };
+}
+function revisaoFake({ id, periodo, revisao, summary, linhas = [], criadoEm = "2026-08-20T10:00:00.000Z", pendencias = 0 }) {
+  snapshotItensFake[id] = linhas;
+  return {
+    id, clienteId: 87, clienteSlug: "n97", clienteContaId: 42, marketplace: "meli", periodo, revisao,
+    totalItens: linhas.length, contagens: { total: linhas.length, saudavel: linhas.length - pendencias, sem_custo: pendencias, pendencias, linhasPendentes: pendencias },
+    origemCustos: { costsSource: "base", costsBase: { id: 9, slug: "base-n97-meli", nome: "Comprou_chegou_meli1" }, custos: { linhas: 812, sha256: "c".repeat(64) } },
+    ajustes: { ads: 25200, venforce: 9800, affiliates: 4850.2 }, arquivos: [{ tipo: "vendas", nomeOriginal: `vendas-${periodo}.xlsx`, tamanhoBytes: 2048000, sha256: `${id}`.padEnd(64, "e"), origem: "upload" }],
+    origem: "financeiro-v3", processadoEm: criadoEm, processadoPor: 12, criadoPor: 12, criadoPorEmail: "pedro@venforce", criadoEm,
+    summary, diagnostico: { unmatchedIds: [], competencia: { periodoDetectado: periodo } },
+  };
+}
+function comEntregas(s) {
+  const entregas = entregasFake.filter((e) => e.snapshot_id === s.id).map((e) => ({ id: e.id, publicado: !!e.publicado, status: e.status, temLink: !!e.token_publico, publishedAt: e.published_at, createdAt: e.created_at }));
+  return { ...s, entregas, publicado: entregas.some((e) => e.publicado) };
+}
+
 let processamentoFake = null; // quando setado, POST /fechamentos/financeiro devolve isto
 let upsertsFake = [];
 let baseCustosFake = {}; // slug → dicionário `dados` de GET /bases/:slug
@@ -280,6 +318,11 @@ let competenciaFake = { periodoSolicitado: "2026-08", periodoDetectado: "2026-08
 function resetEntregas() {
   entregasFalham = false;
   entregasRequestCount = 0;
+  // Cada cenário começa sem revisões (as entregas abaixo são anteriores a elas).
+  snapshotsFake = [];
+  snapshotItensFake = {};
+  snapshotPostsFake = [];
+  ultimaEntregaPostFake = null;
   // Paridade operacional: a lista vem filtrada por conta (+ legadas). 801–803
   // são DESTA conta (42); 804 é legada (sem operação registrada) e nunca pode
   // ser atribuída à conta em tela.
@@ -291,6 +334,7 @@ function resetEntregas() {
   ];
 }
 let ultimaListaEntregasUrl = null;
+let ultimaEntregaPostFake = null;
 resetEntregas();
 
 function wireFetchInterception(cdp) {
@@ -338,18 +382,53 @@ function wireFetchInterception(cdp) {
       await json({ ok: true, entrega: alvo });
       return;
     }
+    // Financeiro V3 — revisões (snapshots).
+    const snapItens = url.match(/\/fechamento-snapshots\/(\d+)\/itens/);
+    if (snapItens) {
+      const q = new URL(url).searchParams;
+      const offset = Number(q.get("offset") || 0);
+      const limit = Number(q.get("limit") || 25);
+      const status = q.get("status");
+      let linhas = (snapshotItensFake[Number(snapItens[1])] || []).map((linha, i) => ({ ordem: i + 1, linha }));
+      if (status === "sem_custo") linhas = linhas.filter((l) => l.linha["Cobertura de custo"] === "sem custo");
+      await json({ ok: true, total: linhas.length, offset, limit, itens: linhas.slice(offset, offset + limit) });
+      return;
+    }
+    if (/\/fechamento-snapshots\/\d+\/base-atual/.test(url)) {
+      await json({ ok: true, aplicavel: true, disponivel: true, mesma: true, linhasNaRevisao: 812, linhasAgora: 812 });
+      return;
+    }
+    const snapUm = url.match(/\/fechamento-snapshots\/(\d+)(?:[?#]|$)/);
+    if (snapUm) {
+      const alvo = snapshotsFake.find((x) => x.id === Number(snapUm[1]));
+      await json({ ok: true, snapshot: comEntregas(alvo) });
+      return;
+    }
+    if (url.includes("/fechamento-snapshots")) {
+      if (req.method === "POST") {
+        const corpo = JSON.parse(req.postData || "{}");
+        snapshotPostsFake.push(corpo);
+        const revisao = Math.max(0, ...snapshotsFake.filter((x) => x.periodo === corpo.periodo).map((x) => x.revisao)) + 1;
+        const nova = revisaoFake({ id: 600 + snapshotPostsFake.length, periodo: corpo.periodo, revisao, summary: corpo.resultado.summary, linhas: corpo.resultado.detailedRows, criadoEm: "2026-08-26T15:00:00.000Z" });
+        snapshotsFake = [nova, ...snapshotsFake];
+        await respond("Fetch.fulfillRequest", { requestId: params.requestId, responseCode: 201, responseHeaders: [...cors, { name: "content-type", value: "application/json" }], body: Buffer.from(JSON.stringify({ ok: true, snapshot: comEntregas(nova), reaproveitado: false })).toString("base64") });
+        return;
+      }
+      await json({ ok: true, snapshots: snapshotsFake.map(comEntregas).sort((a, b) => (a.periodo === b.periodo ? b.revisao - a.revisao : a.periodo < b.periodo ? 1 : -1)) });
+      return;
+    }
     // Conv#3 — processamento nativo (POST multipart). Devolve summary +
     // competência declarada; `competenciaFake` controla a divergência.
     if (url.includes("/fechamentos/financeiro")) {
       fechamentoRequestCount += 1;
       if (processamentoFake) { await json(processamentoFake); return; }
-      await json({
+      await json(selar({
         ok: true,
         summary: { marketplace: "meli", grossRevenueTotal: 120000, paidRevenueTotal: 110000, contributionProfitTotal: 21000, averageContributionMargin: 0.19, finalResult: 15000, tacos: 0.04 },
         competencia: competenciaFake,
         detailedRows: [{ id: "MLB1", mc: 0.19 }],
         unmatchedIds: [],
-      });
+      }));
       return;
     }
     // GET /entregas-cliente/:id — a apresentação da entrega (payload_json),
@@ -364,7 +443,9 @@ function wireFetchInterception(cdp) {
     if (url.includes("/entregas-cliente")) {
       // POST sem sufixo /:id/(des)publicar = criar entrega
       if (req.method === "POST") {
-        const nova = { id: 900, tipo: "fechamento_mensal", cliente_slug: "n97", cliente_conta_id: 42, periodo: "2026-08", status: "rascunho", publicado: false, token_publico: null, created_at: "2026-09-06T10:00:00Z", published_at: null };
+        const corpoEntrega = JSON.parse(req.postData || "{}");
+        const nova = { id: 900, tipo: "fechamento_mensal", cliente_slug: "n97", cliente_conta_id: 42, periodo: "2026-08", status: "rascunho", publicado: false, token_publico: null, created_at: "2026-09-06T10:00:00Z", published_at: null, snapshot_id: corpoEntrega.snapshot_id ?? null };
+        ultimaEntregaPostFake = corpoEntrega;
         entregasFake = [nova, ...entregasFake];
         await respond("Fetch.fulfillRequest", { requestId: params.requestId, responseCode: 201, responseHeaders: [...cors, { name: "content-type", value: "application/json" }], body: Buffer.from(JSON.stringify({ ok: true, entrega: nova })).toString("base64") });
         return;
@@ -788,19 +869,23 @@ async function run() {
       assert.strictEqual(fechamentoRequestCount, 1, "trocar de aba não pode reprocessar");
     });
 
-    await check("Conv#3 §13 — competência divergente: 'Salvar entrega' fica travado até confirmação explícita", async () => {
+    await check("Conv#3 §13 — competência divergente: 'Salvar revisão' fica travado até confirmação explícita", async () => {
       const texto = await textoDe(".vf-fin-novo");
       assert.ok(/não bate com o período em tela/.test(texto), `o aviso de divergência deveria aparecer: ${texto.slice(0, 200)}`);
       assert.ok(/julho\/2026/i.test(texto), "o aviso deve nomear a competência detectada");
-      assert.strictEqual(await botaoDesabilitado("Salvar entrega"), true, "Salvar não pode estar habilitado antes da confirmação");
+      assert.strictEqual(await botaoDesabilitado("Salvar revisão v1"), true, "Salvar não pode estar habilitado antes da confirmação");
       await cdp.evaluate(`document.querySelector('.vf-fin-novo .vf-banner input[type=checkbox]').click()`);
       await sleep(80);
-      assert.strictEqual(await botaoDesabilitado("Salvar entrega"), false, "depois de confirmar, Salvar libera");
+      assert.strictEqual(await botaoDesabilitado("Salvar revisão v1"), false, "depois de confirmar, Salvar libera");
     });
 
     await check("Conv#3 §16 — salvar cria a entrega e o painel 'Entrega para o cliente' passa a oferecer publicar (sem ida ao legado)", async () => {
-      assert.ok(await clicarBotao(".vf-fin-novo", "Salvar entrega"), "botão Salvar entrega ausente");
-      await waitFor(cdp, "document.querySelector('.vf-fin-novo').innerText.indexOf('Entrega salva') >= 0", "a confirmação de salvo não apareceu");
+      assert.ok(await clicarBotao(".vf-fin-novo", "Salvar revisão v1"), "botão Salvar revisão v1 ausente");
+      await waitFor(cdp, "document.querySelector('.vf-fin-novo').innerText.indexOf('Revisão v1 salva e entrega gravada') >= 0", "a confirmação de salvo não apareceu");
+      // Salvar = a REVISÃO (com o selo do processamento) e a entrega apontando para ela.
+      assert.strictEqual(snapshotPostsFake.length, 1, "a revisão deveria ter sido gravada");
+      assert.strictEqual(snapshotPostsFake[0].processamento.selo, "a".repeat(64), "a revisão vai com o selo do servidor");
+      assert.strictEqual(ultimaEntregaPostFake.snapshot_id, snapshotsFake[0].id, "a entrega aponta para a revisão gravada");
       assert.strictEqual(entregasFake.length, 1, "a entrega deveria ter sido criada no backend fake");
       assert.strictEqual(entregasFake[0].id, 900);
       // a lista operacional foi relida e a entrega desta conta agora tem ação
@@ -1207,6 +1292,124 @@ async function run() {
     processamentoFake = null;
     N97_CONTAS[0].marketplace = "meli";
     N97_CONTAS[0].nome = "Mercado Livre 1";
+
+    // ═══ 2f. REVISÕES (snapshot) — Agosto com v1 PUBLICADA e v2 salva depois
+    // (correção de custos), Julho com v1: cabeçalho salvo × publicado,
+    // fechamento salvo = a revisão (todas as linhas, paginadas no backend),
+    // comparação v1→v2, apresentar a v2 sem reprocessar, histórico por
+    // revisão e o processamento atual nunca confundido com o salvo. ═══
+    resetEntregas();
+    baseVinculosFake = [
+      { id: 9, slug: "base-n97-meli", nome: "Comprou_chegou_meli1", ativo: true, vinculo: { cliente_slug: "n97", marketplace: "meli", cliente_conta_id: 42, conta_nome: "Mercado Livre 1" } },
+    ];
+    const linhasRev = (n, semCusto) => Array.from({ length: n }, (_, i) => ({
+      "# de anúncio": `MLB${String(5000 + i)}`, "Título do anúncio": `Produto revisado ${i}`, Unidades: 1, "Venda Total": 100, "Total (BRL)": 80,
+      "Preço de custo": i < semCusto ? null : 30, "Preço de custo total": i < semCusto ? null : 30, Imposto: 10,
+      LC: i < semCusto ? null : 12.5, MC: i < semCusto ? null : 18, "Cobertura de custo": i < semCusto ? "sem custo" : "com custo",
+    }));
+    const sumRev = (finalResult, cobertura, mc, semCustoR) => ({
+      marketplace: "meli", calculationMode: "real_meli_vendas", financialConfidence: "parcial", grossRevenueTotal: 412880.5, paidRevenueTotal: 371200.1,
+      revenueWithCost: 412880.5 - semCustoR, revenueWithoutCost: semCustoR, calculatedCoveragePercent: cobertura, contributionProfitTotal: 61250.4,
+      contributionMarginCalculated: mc, finalResult, finalMarginCalculated: 0.05, tacos: 0.061, adsTotal: 25200, venforceTotal: 9800, affiliatesTotal: 4850.2,
+    });
+    snapshotsFake = [
+      revisaoFake({ id: 502, periodo: "2026-08", revisao: 2, summary: sumRev(29500, 98, 0.182, 3700), linhas: linhasRev(3625, 3), criadoEm: "2026-08-25T14:30:00.000Z", pendencias: 3 }),
+      revisaoFake({ id: 501, periodo: "2026-08", revisao: 1, summary: sumRev(25000, 91, 0.15, 12000), linhas: linhasRev(3625, 17), criadoEm: "2026-08-20T10:00:00.000Z", pendencias: 17 }),
+      revisaoFake({ id: 401, periodo: "2026-07", revisao: 1, summary: sumRev(22000, 93, 0.16, 9000), linhas: linhasRev(3000, 9), criadoEm: "2026-07-28T10:00:00.000Z", pendencias: 9 }),
+    ];
+    entregasFake = [
+      { id: 801, tipo: "fechamento_mensal", cliente_id: 87, cliente_slug: "n97", cliente_conta_id: 42, titulo: "Fechamento Agosto", periodo: "2026-08", status: "publicado", publicado: true, token_publico: "tok-agosto", created_at: "2026-08-21T10:00:00Z", published_at: "2026-08-21T12:00:00Z", snapshot_id: 501 },
+      { id: 802, tipo: "fechamento_mensal", cliente_id: 87, cliente_slug: "n97", cliente_conta_id: 42, titulo: "Fechamento Julho", periodo: "2026-07", status: "publicado", publicado: true, token_publico: "tok-julho", created_at: "2026-07-28T10:00:00Z", published_at: "2026-07-28T11:00:00Z", snapshot_id: 401 },
+    ];
+    await navegar(`http://127.0.0.1:${serverPort}/financeiro-v3.html?cliente=n97&conta=42&periodo=2026-08&_r=revisoes`);
+    await waitFor(cdp, "window.VF && window.VF.context && window.VF.context.getState() === 'READY'", "reload não voltou a READY (revisões)");
+    await waitFor(cdp, `document.querySelector('[data-testid="revisoes-competencia"]') !== null`, "a linha das revisões não apareceu no cabeçalho");
+    await sleep(200);
+
+    await check("Revisões — cabeçalho diz o SALVO e o PUBLICADO: 'Revisão v2 · … · Publicado: v1 · v2 ainda não foi publicada'", async () => {
+      const linha = await textoDe('[data-testid="revisoes-competencia"]');
+      assert.ok(/Revisão v2/.test(linha) && /2 revisões/.test(linha), `linha das revisões: ${linha}`);
+      assert.ok(/Publicado: v1/.test(linha) && /v2 ainda não foi publicada/.test(linha), `publicado × salvo: ${linha}`);
+    });
+
+    await check("Revisões — fechamento salvo É a revisão: faixa 'Revisão v2 … histórico gravado', números da v2, 3.625 linhas paginadas no backend", async () => {
+      await waitFor(cdp, `document.querySelector('${PAINEL} [data-estado="revisao"]') !== null`, "a faixa de estado da revisão não apareceu");
+      const faixa = await textoDe(`${PAINEL} [data-estado="revisao"]`);
+      assert.ok(/Revisão v2/.test(faixa) && /histórico gravado/.test(faixa) && /Publicado: v1/.test(faixa), `faixa: ${faixa}`);
+      const salvo = await textoDe(`${PAINEL} ${SALVO}`);
+      assert.ok(/29\.500,00/.test(salvo), "o resultado exibido é o da v2 (R$ 29.500,00)");
+      assert.ok(/3\.625 linhas gravadas nesta revisão/.test(salvo), "todas as linhas da revisão, não 50");
+      await waitFor(cdp, `document.querySelector('${PAINEL} [aria-label="Produtos da revisão"] tbody tr') !== null`, "a tabela da revisão não carregou");
+      assert.ok(/Página 1 de 145/.test(salvo), `paginação do backend: ${salvo.match(/Página[^\n]*/)}`);
+    });
+
+    await check("Revisões — comparar v1 → v2: Resultado +R$ 4.500,00, MC +3,2 p.p., cobertura +7 p.p., pendências 17 → 3", async () => {
+      await cdp.evaluate(`document.querySelector('${PAINEL} [data-testid="comparar-revisoes"] summary').click()`);
+      await sleep(120);
+      const t = await textoDe(`${PAINEL} [data-testid="comparar-revisoes"]`);
+      assert.ok(/4\.500,00/.test(t) && /\+3,2 p\.p\./.test(t) && /\+7,0 p\.p\./.test(t) && /17 → 3/.test(t), `comparação: ${t}`);
+    });
+
+    await check("Revisões — entrega publicada apresenta a v1 e a tela oferece 'Criar nova entrega com a v2' (sem reprocessar)", async () => {
+      const ent = await textoDe(`${PAINEL} ${ENTREGA}`);
+      // innerText respeita o text-transform do <dt> (REVISÃO): sem caixa.
+      assert.ok(/revisão\s*v1/i.test(ent) && /a v2 é mais nova/.test(ent), `entrega: ${ent && ent.slice(0, 400)}`);
+      assert.ok(await clicarBotao(`${PAINEL} [data-testid="apresentar-revisao"]`, "Criar nova entrega com a v2"), "ação de apresentar a v2 ausente");
+      await sleep(80);
+      const conf = await textoDe(`${PAINEL} [data-testid="apresentar-revisao"]`);
+      assert.ok(/A entrega com link \(v1\) não muda/.test(conf), `explicação: ${conf}`);
+      assert.ok(await clicarBotao(`${PAINEL} [data-testid="apresentar-revisao"]`, "Confirmar"), "Confirmar ausente");
+      for (let i = 0; i < 80 && !(ultimaEntregaPostFake && ultimaEntregaPostFake.snapshot_id === 502); i++) await sleep(50);
+      assert.ok(ultimaEntregaPostFake && ultimaEntregaPostFake.snapshot_id === 502, "a entrega da v2 não foi gravada");
+      assert.strictEqual(ultimaEntregaPostFake.substituir, true, "apresentar a revisão é sempre um substituir explícito");
+      assert.strictEqual(ultimaEntregaPostFake.payload_json.summary.finalResult, 29500, "os números da entrega são os da v2");
+      assert.strictEqual(ultimaEntregaPostFake.payload_json.detailedRows.length, 50, "a entrega leva só a amostra de 50 linhas");
+    });
+
+    await check("Revisões — screenshots da revisão salva em 1440 e 1366, sem scroll horizontal na página", async () => {
+      for (const largura of [1440, 1366]) {
+        const arquivo = await fotografar("financeiro-v3-revisao-salva", largura);
+        assert.ok(await semScrollHorizontalNaPagina(), `scroll horizontal na página em ${largura}px`);
+        console.log(`   screenshot: ${arquivo}`);
+      }
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1200, deviceScaleFactor: 1, mobile: false });
+    });
+
+    await check("Revisões — Histórico: Agosto 'v2 · publicado v1 · v2 mais nova' com números; 'Abrir v1' abre o fechamento salvo NA v1", async () => {
+      await abrirAba("Histórico");
+      const ago = await textoDe(`${PAINEL} li[data-competencia="2026-08"]`);
+      assert.ok(/v2 · publicado v1 · v2 mais nova/.test(ago), `Agosto: ${ago}`);
+      assert.ok(/Resultado R\$\s?29\.500,00 · MC 18,2% · Cobertura 98,0%/.test(ago), `números de Agosto: ${ago}`);
+      await cdp.evaluate(`document.querySelector('${PAINEL} li[data-competencia="2026-08"] details summary').click()`);
+      await sleep(150);
+      const det = await textoDe(`${PAINEL} li[data-competencia="2026-08"] details`);
+      assert.ok(/Receita Bruta|Resultado Final subiu/.test(det), `comparação com Julho: ${det}`);
+      const arquivo = await fotografar("financeiro-v3-historico-revisoes", 1366);
+      console.log(`   screenshot: ${arquivo}`);
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1200, deviceScaleFactor: 1, mobile: false });
+      assert.ok(await clicarBotao(`${PAINEL} li[data-competencia="2026-08"]`, "Abrir v1"), "Abrir v1 ausente");
+      await waitFor(cdp, `(document.querySelector('${PAINEL} [data-estado="revisao"]') || {}).dataset && document.querySelector('${PAINEL} [data-estado="revisao"]').dataset.revisao === '1'`, "o fechamento salvo deveria abrir na v1");
+    });
+
+    await check("Revisões — processar agora: pré-check antes, depois 'Processamento atual · Ainda não salvo' e 'Salvar revisão v3' (o salvo nunca parece processado agora)", async () => {
+      const pre = await textoDe(`${PAINEL} [aria-label="Antes de processar"]`);
+      assert.ok(/Competência/.test(pre) && /já tem v2 salva \(publicado v1\) — salvar cria v3/.test(pre), `pré-check: ${pre}`);
+      processamentoFake = processamentoRicoMeli();
+      const doc = await cdp.send("DOM.getDocument", { depth: -1 });
+      const salesNode = await cdp.send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: 'input[aria-label^="Planilha de vendas"]' });
+      const tmp = path.join(require("os").tmpdir(), `vf-rev-${process.pid}.xlsx`);
+      fs.writeFileSync(tmp, "planilha");
+      await cdp.send("DOM.setFileInputFiles", { nodeId: salesNode.nodeId, files: [tmp] });
+      await sleep(150);
+      assert.ok(await clicarBotao(PAINEL, "Processar fechamento"), "Processar ausente");
+      await waitFor(cdp, `document.querySelector('${PAINEL} [data-estado="atual-nao-salvo"]') !== null`, "a faixa do processamento atual não apareceu");
+      const faixa = await textoDe(`${PAINEL} [data-estado="atual-nao-salvo"]`);
+      assert.ok(/Processamento atual/.test(faixa) && /Ainda não salvo/.test(faixa) && /revisão v3/.test(faixa), `faixa: ${faixa}`);
+      assert.strictEqual(await cdp.evaluate(`document.querySelector('${PAINEL} [data-estado="revisao"]') === null`), true, "com processamento em tela, o bloco da revisão salva não aparece misturado");
+      assert.strictEqual(await botaoDesabilitado("Salvar revisão v3"), false, "Salvar revisão v3 deveria estar disponível");
+      processamentoFake = null;
+    });
+    resetEntregas();
 
     // ═══ 3. REGRESSÃO P0 — sem vf-token: nunca pode ficar em branco pra
     // sempre. bootProduction() (vf-shell.js) só chama vfContext.init() se

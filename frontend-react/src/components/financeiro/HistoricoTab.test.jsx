@@ -77,6 +77,9 @@ describe("HistoricoTab · revisões", () => {
     expect(mes("2026-09")).toHaveTextContent(/Resultado R\$\s?27\.000,00 · MC 15,0% · Cobertura 92,0%/);
     expect(mes("2026-09")).toHaveTextContent("2 revisões · comparar com Agosto/2026");
     expect(mes("2026-08")).toHaveTextContent("v1 · não publicada");
+    const so1Publicada = { snapshots: [snap("2026-07", 1, { publicado: true })] };
+    render(<HistoricoTab relatorios={null} entregas={estado()} periodo="2026-10" clienteContaId={1} snapshots={so1Publicada} />);
+    expect(document.querySelectorAll('li[data-competencia="2026-07"]')[1]).toHaveTextContent("v1 · publicada");
     expect(mes("2026-07").querySelector("[data-revisoes]")).toBeNull();
   });
 
