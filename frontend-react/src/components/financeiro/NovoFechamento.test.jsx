@@ -617,3 +617,22 @@ describe("NovoFechamento · hierarquia da página (UI/UX)", () => {
     expect(api.processar).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("NovoFechamento · pré-check", () => {
+  it("antes de processar: obrigatórios, recomendado e o aviso de MESMO arquivo do mês anterior (sha256 no navegador)", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "shopee", contaId: 42 }));
+    // sha256("a") — o conteúdo que subirVendas envia.
+    const SHA_A = "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb";
+    const snapshots = [{ id: 9, periodo: "2026-07", revisao: 1, ajustes: { ads: 0 }, contagens: { pendencias: 0 }, origemCustos: { costsSource: "base", costsBase: { id: 900 } }, arquivos: [{ tipo: "vendas", sha256: SHA_A }] }];
+    const usuario = userEvent.setup();
+    render(<NovoFechamento {...props} marketplace="shopee" snapshots={snapshots} />);
+    await screen.findByText("Base vinculada");
+    const pre = screen.getByRole("region", { name: "Antes de processar" });
+    expect(within(pre).getByText("Planilha principal (Performance)").closest("li").dataset.estado).toBe("falta");
+    expect(within(pre).getByText("Order.all").closest("li").dataset.estado).toBe("recomendado");
+    await subirVendas(usuario, "Performance.xlsx");
+    await waitFor(() => expect(within(pre).getByText(/MESMO arquivo usado em Julho\/2026 \(v1\)/)).toBeInTheDocument());
+    // aviso não bloqueia: o botão segue habilitado
+    expect(screen.getByRole("button", { name: "Processar fechamento" })).toBeEnabled();
+  });
+});

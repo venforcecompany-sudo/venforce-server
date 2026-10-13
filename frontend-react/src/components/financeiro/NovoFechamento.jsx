@@ -35,14 +35,29 @@ import { ProdutosFechamento } from "./produtos/ProdutosFechamento.jsx";
 import { SecaoFinanceira } from "./shared/SecaoFinanceira.jsx";
 import { PendenciasCusto } from "./pendencias/PendenciasCusto.jsx";
 import { resumoRevisoes } from "../../utils/financeiro/revisoes.js";
+import { montarPreCheck } from "../../utils/financeiro/preCheck.js";
+import { useAssinaturaArquivos } from "../../hooks/useAssinaturaArquivos.js";
+import { PreCheckFechamento } from "./fechamento/PreCheckFechamento.jsx";
 
 function avisoDoCampo(validacao, campo) {
   if (validacao.ok) return null;
   return validacao.itens.find((i) => i.campo === campo)?.mensagem || null;
 }
 
-export function NovoFechamento({ clienteSlug, clienteNome, clienteContaId, marketplace, contaNome, periodo, periodoLabel, onSalvo, onTrabalho, entregaSlot = null, revisoes = null }) {
+export function NovoFechamento({ clienteSlug, clienteNome, clienteContaId, marketplace, contaNome, periodo, periodoLabel, onSalvo, onTrabalho, entregaSlot = null, revisoes = null, snapshots = null }) {
   const f = useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, marketplace, periodo, onSalvo });
+  // Pré-check: sha256 dos arquivos escolhidos (o mesmo do manifesto) para
+  // pegar "é o arquivo do mês passado" antes de processar.
+  const assinaturas = useAssinaturaArquivos(f.arquivos);
+  const preCheck = useMemo(
+    () =>
+      montarPreCheck({
+        clienteNome, contaNome, clienteContaId, periodo, marketplace: f.marketplace,
+        base: f.base, usarUploadDeCustos: f.usarUploadDeCustos, custosObrigatorios: f.custosObrigatorios,
+        arquivos: f.arquivos, ajustes: f.ajustes, snapshots, assinaturas,
+      }),
+    [clienteNome, contaNome, clienteContaId, periodo, f.marketplace, f.base, f.usarUploadDeCustos, f.custosObrigatorios, f.arquivos, f.ajustes, snapshots, assinaturas]
+  );
 
   // A página precisa saber se há trabalho em andamento para não trocar de
   // competência em silêncio (CompetenciaFechamento pede confirmação).
@@ -145,6 +160,8 @@ export function NovoFechamento({ clienteSlug, clienteNome, clienteContaId, marke
             <p className="vf-fin-novo__passo-nota">Valores adicionais que afetam o resultado deste fechamento.</p>
             <FechamentoAjustes marketplace={f.marketplace} ajustes={f.ajustes} onAjuste={f.setAjuste} />
           </section>
+
+          <PreCheckFechamento preCheck={preCheck} />
 
           <FechamentoAcao validacao={f.validacao} processando={processando} onProcessar={f.processar} />
         </>

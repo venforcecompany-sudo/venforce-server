@@ -998,3 +998,24 @@
 @media (max-width: 640px) {
   .vf-fin-historico__revisoes { padding-left: 0; }
 }
+
+/* ── Pré-check (antes de processar) ───────────────────────────────────── */
+.vf-fin-precheck__lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.vf-fin-precheck__item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: var(--vf-sp-2, 8px);
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--vf-border, #e3e6ee);
+  font-size: var(--vf-fs-sm, 0.875rem);
+}
+.vf-fin-precheck__item:last-child { border-bottom: none; }
+.vf-fin-precheck__icone { font-weight: var(--vf-fw-semibold, 600); text-align: center; }
+.vf-fin-precheck__item.is-ok .vf-fin-precheck__icone { color: var(--vf-success-strong, #0a5c3d); }
+.vf-fin-precheck__item.is-falta .vf-fin-precheck__icone { color: var(--vf-danger-strong, #9b1c1c); }
+.vf-fin-precheck__item.is-aviso .vf-fin-precheck__icone { color: var(--vf-warning-strong, #8f4c00); }
+.vf-fin-precheck__item.is-recomendado .vf-fin-precheck__icone,
+.vf-fin-precheck__item.is-pendente .vf-fin-precheck__icone { color: var(--vf-text-muted, #6b7285); }
+.vf-fin-precheck__texto { min-width: 0; overflow-wrap: anywhere; }
+.vf-fin-precheck__nivel { font-size: var(--vf-fs-2xs, 0.6875rem); text-transform: uppercase; letter-spacing: 0.04em; color: var(--vf-text-muted, #6b7285); white-space: nowrap; }

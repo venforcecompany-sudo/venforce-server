@@ -72,6 +72,7 @@ export function FechamentoTab({
         onSalvo={onSalvo}
         onTrabalho={aoMudarTrabalho}
         revisoes={revisoes}
+        snapshots={snapshots}
         entregaSlot={
           <EntregaPainel
             entrega={entrega}
