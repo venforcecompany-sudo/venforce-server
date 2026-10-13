@@ -22,8 +22,7 @@ const {
   extrairIp,
 } = require("../services/activityLogService");
 const {
-  garantirContaMlParaGrant,
-  vincularGrantMlNaConta,
+  concluirOAuthContaMl,
   obterConta,
   atualizarNicknameConta,
 } = require("../services/clienteContas/clienteContaService");
@@ -36,7 +35,6 @@ const {
   verificarMlState,
   trocarCodePorTokenMl,
   calcularMlExpiresAt,
-  salvarMlToken,
 } = require("../services/mlApiService");
 
 function escapeHtml(value) {
@@ -300,35 +298,10 @@ async function callbackMlController(req, res) {
 
     const expiresAt = calcularMlExpiresAt(expires_in);
 
-    const grantSalvo = await salvarMlToken({
-      clienteId: cliente.id,
-      mlUserId,
-      accessToken: access_token,
-      refreshToken: refresh_token,
-      expiresAt,
+    const { conta: contaResolvida } = await concluirOAuthContaMl({
+      clienteId: cliente.id, clienteSlug: cliente.slug, clienteContaId: contaAlvo?.id ?? null,
+      mlUserId, accessToken: access_token, refreshToken: refresh_token, expiresAt,
     });
-
-    let contaResolvida = null;
-    if (contaAlvo) {
-      // Fluxo account-scoped: liga o grant exatamente à conta pedida pelo
-      // link (nunca escolhe/cria outra). Não deve derrubar o OAuth — se
-      // falhar aqui o grant já foi salvo (comportamento igual ao legado).
-      try {
-        contaResolvida = await vincularGrantMlNaConta({ contaId: contaAlvo.id, mlUserId });
-      } catch (vinculoErr) {
-        console.error(JSON.stringify({ event: "ml_conta_vinculo_falhou", cliente_conta_id: contaAlvo.id, error: vinculoErr.message }));
-      }
-    } else {
-      // Aditivo: garante que a conta VenForce exista desde a primeira conexão
-      // (não só via backfill em massa). Nunca lança — não pode derrubar o
-      // fluxo OAuth por causa da fundação de contas.
-      contaResolvida = await garantirContaMlParaGrant({
-        clienteId: cliente.id,
-        clienteSlug: cliente.slug,
-        mlUserId,
-        grantIsPrimary: grantSalvo?.is_primary === true,
-      });
-    }
 
     // externalAccountLabel (V3 Master Spec §14.3): captura o nickname/nome
     // de loja UMA VEZ, aqui, para que a Carteira nunca precise consultar o
@@ -376,7 +349,7 @@ async function callbackMlController(req, res) {
       </body></html>`);
   } catch (err) {
     console.error(JSON.stringify({ event: "ml_oauth_callback_failed", error: sanitizeErrorMessage(err) }));
-    return res.status(500).send("Erro interno ao concluir a autorização.");
+    return res.status(err.statusCode || 500).send(err.statusCode === 409 ? "Contexto OAuth ambíguo ou incompatível; nenhum vínculo foi alterado." : "Erro interno ao concluir a autorização.");
   }
 }
 

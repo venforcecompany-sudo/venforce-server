@@ -494,10 +494,16 @@ function createService({ db = pool, fetchFn = (...args) => fetch(...args), nowFn
     return { grant, accessToken: grant.access_token };
   }
 
-  async function saveMlToken({ clienteId, mlUserId, accessToken, refreshToken, expiresAt }) {
-    const client = await db.connect();
+  // Com transação externa, o dono invalida cache somente DEPOIS do COMMIT.
+  function clearGrantBackoff(grantId) {
+    legacyBackoffByGrantId.delete(Number(grantId));
+    legacyFailureCountByGrantId.delete(Number(grantId));
+  }
+
+  async function saveMlToken({ clienteId, mlUserId, accessToken, refreshToken, expiresAt, transactionClient = null }) {
+    const client = transactionClient || await db.connect();
     try {
-      await client.query("BEGIN");
+      if (!transactionClient) await client.query("BEGIN");
       await client.query(`SELECT pg_advisory_xact_lock($1, $2)`, [ADVISORY_CLIENT_LOCK_NAMESPACE, Number(clienteId)]);
       const capabilities = await client.query(`
         SELECT
@@ -564,15 +570,14 @@ function createService({ db = pool, fetchFn = (...args) => fetch(...args), nowFn
           [clienteId, String(mlUserId), accessToken, refreshToken, expiresAt]
         );
       }
-      legacyBackoffByGrantId.delete(Number(saved.rows[0]?.id));
-      legacyFailureCountByGrantId.delete(Number(saved.rows[0]?.id));
-      await client.query("COMMIT");
+      if (!transactionClient) clearGrantBackoff(saved.rows[0]?.id);
+      if (!transactionClient) await client.query("COMMIT");
       return saved.rows[0];
     } catch (error) {
-      try { await client.query("ROLLBACK"); } catch (_) {}
+      if (!transactionClient) { try { await client.query("ROLLBACK"); } catch (_) {} }
       throw error;
     } finally {
-      client.release();
+      if (!transactionClient) client.release();
     }
   }
 
@@ -610,6 +615,7 @@ function createService({ db = pool, fetchFn = (...args) => fetch(...args), nowFn
     getValidMlGrantToken,
     getValidMlTokenByCliente,
     getMlGrantTokenNoRefresh,
+    clearGrantBackoff,
     saveMlToken,
     findRefreshCandidates,
     markGrantValid,

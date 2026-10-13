@@ -53,6 +53,10 @@ class MemoryDb {
 
   async query(sql, params = []) {
     const q = String(sql).replace(/\s+/g, " ").trim();
+    if (q.startsWith("SELECT id, nome, slug, ativo FROM clientes WHERE id = $1")) return { rows: this.clientes.filter(c => c.id === Number(params[0])) };
+    if (q.startsWith("SELECT id, cliente_id FROM cliente_contas WHERE marketplace")) return { rows: this.contas.filter(c => c.marketplace === "meli" && String(c.external_account_id) === String(params[0])) };
+    if (q.startsWith("SELECT id, cliente_id, cliente_conta_id, ml_user_id FROM ml_tokens")) return { rows: this.grants.filter(g => String(g.ml_user_id) === String(params[0])) };
+
 
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(q) || q.includes("pg_advisory")) return { rows: [] };
 
