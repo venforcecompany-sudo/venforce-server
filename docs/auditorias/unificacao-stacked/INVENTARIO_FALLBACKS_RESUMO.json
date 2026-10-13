@@ -1,0 +1,10 @@
+{
+  "ocorrencias": 3089,
+  "arquivos": 488,
+  "classes": {
+    "UX_DEFAULT_OK": 2682,
+    "OPERACIONAL_PERIGOSO": 406,
+    "LEGADO_SINGLE_ACCOUNT_OK": 1
+  },
+  "limite": "triagem por função/módulo, não certificação semântica de todas as ocorrências; bundles/testes/docs incluídos"
+}

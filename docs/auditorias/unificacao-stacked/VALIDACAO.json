@@ -1,0 +1,99 @@
+{
+  "foundationSha": "d220e2713fe6537a2900bfa3472b54ead3d053d2",
+  "baseline_backend": {
+    "total": 326,
+    "passed": 323,
+    "failed": 3
+  },
+  "stack_backend": {
+    "total": 331,
+    "passed": 328,
+    "failed": 3,
+    "new_failures": 0
+  },
+  "historical_failures": [
+    {
+      "file": "designStudioWorkspace.test.js",
+      "identical_normalized_log": true,
+      "sha256": "5969d6d4f450b2e8fad31b62fdc0ec1a86dcfc676a72ef9779fb56f99147fd14"
+    },
+    {
+      "file": "meliAnunciosOrdenacaoGlobal.test.js",
+      "identical_normalized_log": true,
+      "sha256": "411ba4d1822a174225d43ef18d23135c13d7d65e4139cb88baec2eb1e9b2e1de"
+    },
+    {
+      "file": "mlTokenService.test.js",
+      "identical_normalized_log": true,
+      "sha256": "70449c1e8452c984acef2a466c2257710b09be01f5c4073900438fb3aa7cabe5"
+    }
+  ],
+  "directed": {
+    "files": 26,
+    "passed": 26,
+    "new_cases": {
+      "accountContextStrict.test.js": 17,
+      "oauthAccountBindingAtomic.test.js": 13,
+      "consumerAccountConvergence.test.js": 5,
+      "unificacaoClientesPlanner.test.js": 43
+    },
+    "readonly_collector": "passou sem driver/rede reais"
+  },
+  "protected_paths_no_diff": [
+    "server/services/centralVendas",
+    "server/jobs",
+    "server/config",
+    "server/sql",
+    "server/services/painelContas",
+    "server/controllers/painelContasController.js",
+    "server/services/promoSnapshot",
+    "server/services/automacoes/promocoesDiagnosticoService.js",
+    "server/services/automacoes/promocoesRetornoService.js",
+    "server/services/motorMargem/marginSnapshotApiService.js",
+    "server/services/motorMargem/marginSnapshotProcessor.js",
+    "server/controllers/fechamentosFinanceiroController.js",
+    "Portal",
+    "frontend-react"
+  ],
+  "private_files": {
+    "total": 54,
+    "all_ignored": true,
+    "tracked": 0,
+    "secret_fields_exported": false
+  },
+  "production_queries": "SELECT direto com read-only confirmado",
+  "production_writes": 0,
+  "migrations": 0,
+  "merge": false,
+  "deploy": false,
+  "dataset_summary": {
+    "collectedAt": "2026-10-13T18:54:30.221Z",
+    "clientes": 103,
+    "cliente_contas": 156,
+    "grants": 84,
+    "bases": 76,
+    "squads": 7,
+    "pares_candidatos": 37,
+    "grupos_candidatos": 11,
+    "grupos_empresa_comprovada": 0,
+    "pares_por_classificacao": {
+      "PROVAVEL": 20,
+      "DECISAO_HUMANA": 5,
+      "MUITO_PROVAVEL": 12
+    },
+    "sellers_compartilhados": 6,
+    "decisoes_humanas_pendentes": 11,
+    "grants_sem_conta": 9,
+    "base_ambigua_operacoes": 2,
+    "contas_sem_grant": 22,
+    "contas_sem_base": 97,
+    "limits": [
+      {
+        "table": "central_vendas_componentes",
+        "code": "VOLUME_ESTIMATED_ONLY",
+        "estimated_rows": "1293502"
+      }
+    ]
+  },
+  "diff_check": true
+}
