@@ -11,9 +11,38 @@
 // qual competência se trata.
 
 import { VFMonthYearSelector } from "../../ui/VFMonthYearSelector/index.js";
-import { rotularCompetencia } from "../../../utils/dates.js";
+import { formatarDataHora, rotularCompetencia } from "../../../utils/dates.js";
+import { resumoRevisoes, rotuloRevisao } from "../../../utils/financeiro/revisoes.js";
 
-export function CompetenciaFechamento({ periodo, status, trocaPendente, onPedirTroca, onConfirmarTroca, onCancelarTroca }) {
+// Linha das revisões, logo abaixo do mês: o que está SALVO e o que está
+// PUBLICADO, para nunca confundir com o processamento em tela.
+//   Revisão v2 · salva em 13/10 14:30 · Publicado: v1 · v2 ainda não publicada
+function LinhaRevisoes({ revisoes, processadoNaoSalvo }) {
+  if (!Array.isArray(revisoes)) return null;
+  const r = resumoRevisoes(revisoes);
+  if (!r.ultima) {
+    return processadoNaoSalvo ? null : <p className="vf-field__hint" data-testid="revisoes-competencia">Nenhuma revisão salva nesta competência.</p>;
+  }
+  return (
+    <p className="vf-fin-competencia__revisoes" data-testid="revisoes-competencia">
+      <span>
+        <strong>Revisão {rotuloRevisao(r.ultima)}</strong> · salva em {formatarDataHora(r.ultima.criadoEm)}
+        {r.total > 1 ? ` · ${r.total} revisões` : ""}
+      </span>
+      <span className={`vf-tag is-${r.publicada ? "success" : "neutral"}`}>
+        {r.publicada ? `Publicado: ${rotuloRevisao(r.publicada)}` : "Nenhuma revisão publicada"}
+      </span>
+      {r.publicada && r.novaNaoPublicada && (
+        <span className="vf-field__hint">· {rotuloRevisao(r.ultima)} ainda não foi publicada</span>
+      )}
+      {r.publicadas.length > 1 && (
+        <span className="vf-field__hint">· {r.publicadas.length} revisões com link ativo ({r.publicadas.map(rotuloRevisao).join(", ")})</span>
+      )}
+    </p>
+  );
+}
+
+export function CompetenciaFechamento({ periodo, status, trocaPendente, onPedirTroca, onConfirmarTroca, onCancelarTroca, revisoes = null, processadoNaoSalvo = false }) {
   const atual = rotularCompetencia(periodo);
   return (
     <div className="vf-fin-competencia">
@@ -29,6 +58,7 @@ export function CompetenciaFechamento({ periodo, status, trocaPendente, onPedirT
           </span>
         )}
       </div>
+      <LinhaRevisoes revisoes={revisoes} processadoNaoSalvo={processadoNaoSalvo} />
       {status?.legado && (
         <p className="vf-field__hint">
           Existe um fechamento legado desta competência sem operação registrada — ele é do cliente, não desta conta.

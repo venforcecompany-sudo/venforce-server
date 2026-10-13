@@ -47,6 +47,8 @@ async function criarDb() {
   // Mínimo do schema real de que as FKs dependem.
   await pg.exec(`
     CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT);
+    INSERT INTO users (email) VALUES ('op@venforce');
+    CREATE TABLE activity_logs (id SERIAL PRIMARY KEY, user_id INTEGER, user_email TEXT, user_nome TEXT, acao TEXT, detalhes TEXT, ip TEXT, status TEXT, created_at TIMESTAMP DEFAULT NOW());
     CREATE TABLE clientes (id SERIAL PRIMARY KEY, slug TEXT UNIQUE, nome TEXT, ativo BOOLEAN DEFAULT true);
     CREATE TABLE cliente_contas (
       id SERIAL PRIMARY KEY,
@@ -227,6 +229,126 @@ check("entrega → snapshot: lista diz qual entrega (e se publicada) aponta para
   const ident = await repo.buscarIdentidadeDoSnapshot(v2.snapshot.id, db);
   assert.strictEqual(ident.periodo, "2026-09");
   assert.strictEqual(Number(ident.cliente_conta_id), 1);
+});
+
+// ─── Ponta a ponta pelas funções REAIS, com o pool apontado para o PGlite ───
+// (entregasClienteService e o service do snapshot usam config/database).
+const pool = require("../config/database");
+const entregas = require("../services/entregasClienteService");
+const snapshotService = require("../services/fechamentoSnapshot/fechamentoSnapshotService");
+const { selarProcessamento } = require("../services/fechamentoSnapshot/seloProcessamento");
+delete process.env.NODE_ENV;
+process.env.JWT_SECRET = process.env.JWT_SECRET || "segredo-de-teste-com-tamanho-suficiente-123";
+
+// O ensure é single-flight POR objeto de conexão: o `pool` é o mesmo entre
+// os checks, então o schema é aplicado explicitamente em cada PGlite novo.
+async function apontarPool(db) {
+  pool.query = (sql, params) => db.query(sql, params);
+  pool.connect = async () => ({ query: (sql, params) => db.query(sql, params), release() {} });
+  await schemaEnsure.ensureFechamentoSnapshotsSchema(db);
+}
+
+function processamentoSelado({ finalResult = 25000, n = 80, periodo = "2026-09", clienteContaId = 1 } = {}) {
+  const ctx = { clienteSlug: "zorza", clienteContaId, periodo, marketplace: "shopee" };
+  const resposta = {
+    ok: true, summary: { finalResult, calculatedCoveragePercent: 91 }, detailedRows: Array.from({ length: n }, (_, i) => linhaOrderAll(i + 1)),
+    unmatchedIds: [], competencia: { periodoDetectado: periodo }, costsSource: "base", costsBase: { id: 9, slug: "b", nome: "zorza shopee 3" },
+  };
+  resposta.processamento = selarProcessamento({ contexto: ctx, resultado: resposta, usuarioId: 1, ajustes: { ads: 20 }, arquivos: [], costRowsRaw: [] });
+  const volta = JSON.parse(JSON.stringify(resposta));
+  const { processamento, ...resultado } = volta;
+  return { ...ctx, resultado, processamento };
+}
+
+function corpoEntrega(snapshot, summary, extra = {}) {
+  return {
+    tipo: "fechamento_mensal", titulo: "Fechamento Financeiro", periodo: "2026-09", cliente_slug: "zorza", cliente_conta_id: 1,
+    status: "rascunho", snapshot_id: snapshot.id,
+    payload_json: { cliente: { slug: "zorza" }, summary, detailedRows: [], entrega: { destaques: [] } },
+    ...extra,
+  };
+}
+
+const codigo = (code) => (e) => (e.code === code || e.payload?.code === code) || assert.fail(`esperava ${code}, veio ${e.code || e.payload?.code}: ${e.message}`);
+
+check("ponta a ponta: v1 → entrega → apresentação → publicar v1 → v2 → nova entrega v2; v1 publicada intacta", async ({ db }) => {
+  await apontarPool(db);
+  const u = { id: 1, email: "op@venforce" };
+  const p1 = processamentoSelado();
+  const { snapshot: v1 } = await snapshotService.criarSnapshot({ user: u, body: p1 });
+  assert.strictEqual(v1.revisao, 1);
+  assert.strictEqual(v1.totalItens, 80);
+
+  // entrega aponta para v1
+  const { entrega: e1 } = await entregas.criarEntrega({ userId: 1, body: corpoEntrega(v1, p1.resultado.summary) });
+  assert.strictEqual(Number(e1.snapshot_id), v1.id);
+
+  // editar a apresentação (texto) não mexe nos números — aceito
+  await entregas.atualizarEntrega({ idRaw: e1.id, body: { payload_json: { ...corpoEntrega(v1, p1.resultado.summary).payload_json, entrega: { destaques: ["Melhoramos a margem"] } } } });
+  // trocar um número pela apresentação — recusado
+  await assert.rejects(
+    () => entregas.atualizarEntrega({ idRaw: e1.id, body: { payload_json: { ...corpoEntrega(v1, p1.resultado.summary).payload_json, summary: { finalResult: 1 } } } }),
+    codigo("SNAPSHOT_DIVERGENTE")
+  );
+  const sV1 = await snapshotService.buscarSnapshot({ id: v1.id });
+  assert.strictEqual(sV1.summary.finalResult, 25000, "o snapshot nunca muda com a apresentação");
+
+  await entregas.publicarEntrega({ idRaw: e1.id });
+
+  // corrigiu custos → v2
+  const p2 = processamentoSelado({ finalResult: 29500 });
+  const { snapshot: v2 } = await snapshotService.criarSnapshot({ user: u, body: p2 });
+  assert.strictEqual(v2.revisao, 2);
+
+  // salvar a entrega de v2 sem substituir → 409 (já existe entrega publicada)
+  await assert.rejects(() => entregas.criarEntrega({ userId: 1, body: corpoEntrega(v2, p2.resultado.summary) }), codigo("ENTREGA_JA_EXISTE"));
+  // substituir com a publicada existente → NOVA entrega (rascunho) em v2
+  const { entrega: e2 } = await entregas.criarEntrega({ userId: 1, body: corpoEntrega(v2, p2.resultado.summary, { substituir: true }) });
+  assert.notStrictEqual(e2.id, e1.id);
+  assert.strictEqual(Number(e2.snapshot_id), v2.id);
+
+  // a publicada continua em v1 — trocar a revisão dela é recusado
+  await assert.rejects(() => entregas.atualizarEntrega({ idRaw: e1.id, body: { snapshot_id: v2.id } }), codigo("ENTREGA_PUBLICADA_IMUTAVEL"));
+  const lista = await snapshotService.listarSnapshots({ query: { cliente_slug: "zorza", cliente_conta_id: 1, periodo: "2026-09" } });
+  const porRev = Object.fromEntries(lista.map((s) => [s.revisao, s]));
+  assert.strictEqual(porRev[1].publicado, true, "Publicado: v1");
+  assert.strictEqual(porRev[2].publicado, false, "v2 salva, ainda não publicada");
+  assert.deepStrictEqual(porRev[2].entregas.map((e) => e.id), [e2.id]);
+  // trilha reutilizada: activity_logs (registrarLog é fire-and-forget)
+  await new Promise((r) => setTimeout(r, 20));
+  const logs = await db.query("SELECT acao, detalhes FROM activity_logs ORDER BY id");
+  assert.deepStrictEqual(logs.rows.map((l) => l.acao), ["financeiro_snapshot_criado", "financeiro_snapshot_criado"]);
+  assert.strictEqual(JSON.parse(logs.rows[1].detalhes).revisao, 2);
+});
+
+check("vínculo entrega → snapshot só quando é verdadeiro (cliente, conta, competência, números)", async ({ db }) => {
+  await apontarPool(db);
+  const p1 = processamentoSelado();
+  const { snapshot: v1 } = await snapshotService.criarSnapshot({ user: { id: 1 }, body: p1 });
+  await assert.rejects(() => entregas.criarEntrega({ userId: 1, body: corpoEntrega(v1, { finalResult: 1 }) }), codigo("SNAPSHOT_DIVERGENTE"));
+  await assert.rejects(() => entregas.criarEntrega({ userId: 1, body: corpoEntrega(v1, p1.resultado.summary, { periodo: "2026-10" }) }), codigo("SNAPSHOT_DIVERGENTE"));
+  await assert.rejects(() => entregas.criarEntrega({ userId: 1, body: corpoEntrega(v1, p1.resultado.summary, { cliente_conta_id: 2 }) }), codigo("SNAPSHOT_DIVERGENTE"));
+  await assert.rejects(() => entregas.criarEntrega({ userId: 1, body: corpoEntrega(v1, p1.resultado.summary, { snapshot_id: 999 }) }), codigo("SNAPSHOT_NAO_ENCONTRADO"));
+  await assert.rejects(() => entregas.criarEntrega({ userId: 1, body: corpoEntrega(v1, p1.resultado.summary, { tipo: "relatorio_misto" }) }), codigo("SNAPSHOT_DIVERGENTE"));
+});
+
+check("substituir um RASCUNHO troca a revisão no lugar (explícito); entrega antiga sem snapshot segue igual", async ({ db }) => {
+  await apontarPool(db);
+  // entrega antiga, sem snapshot (legado)
+  const { entrega: antiga } = await entregas.criarEntrega({ userId: 1, body: { tipo: "fechamento_mensal", titulo: "F", periodo: "2026-08", cliente_slug: "zorza", cliente_conta_id: 1, payload_json: { cliente: { slug: "zorza" }, summary: { finalResult: 1 }, detailedRows: [] } } });
+  assert.strictEqual(antiga.snapshot_id ?? null, null);
+  await entregas.atualizarEntrega({ idRaw: antiga.id, body: { payload_json: { cliente: { slug: "zorza" }, summary: { finalResult: 2 }, detailedRows: [] } } });
+
+  const p1 = processamentoSelado();
+  const { snapshot: v1 } = await snapshotService.criarSnapshot({ user: { id: 1 }, body: p1 });
+  const { entrega: rasc } = await entregas.criarEntrega({ userId: 1, body: corpoEntrega(v1, p1.resultado.summary) });
+  const p2 = processamentoSelado({ finalResult: 30000 });
+  const { snapshot: v2 } = await snapshotService.criarSnapshot({ user: { id: 1 }, body: p2 });
+  const { entrega: mesma } = await entregas.criarEntrega({ userId: 1, body: corpoEntrega(v2, p2.resultado.summary, { substituir: true }) });
+  assert.strictEqual(mesma.id, rasc.id, "rascunho sem link é atualizado no lugar");
+  assert.strictEqual(Number(mesma.snapshot_id), v2.id);
+  const n = await db.query("SELECT COUNT(*)::int AS n FROM entregas_cliente WHERE periodo = '2026-09'");
+  assert.strictEqual(n.rows[0].n, 1);
 });
 
 (async () => {

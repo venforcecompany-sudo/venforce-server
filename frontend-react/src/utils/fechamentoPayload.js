@@ -67,6 +67,7 @@ export function montarPayloadFechamento({
   periodo,
   marketplace,
   ajustes = {},
+  snapshot = null,
 }) {
   const summary = processamento?.summary || {};
   const detailedRows = Array.isArray(processamento?.detailedRows)
@@ -96,6 +97,11 @@ export function montarPayloadFechamento({
     metadados: {
       geradoEm,
       origem: "financeiro-v3-nativo",
+      // A revisão financeira (snapshot) que esta apresentação mostra. As 50
+      // linhas acima são só a AMOSTRA do relatório público; o histórico
+      // completo (todas as linhas) é o snapshot.
+      snapshot: snapshot ? { id: snapshot.id, revisao: snapshot.revisao } : null,
+      detailedRowsTotal: Array.isArray(processamento?.detailedRows) ? processamento.detailedRows.length : 0,
       marketplace: marketplace || null,
       ads: parseMoedaBR(ajustes.ads),
       venforce: parseMoedaBR(ajustes.venforce),

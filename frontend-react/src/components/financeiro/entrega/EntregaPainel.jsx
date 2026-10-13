@@ -21,8 +21,9 @@ import { useEntregaApresentacao } from "../../../hooks/useEntregaApresentacao.js
 import { EntregaAcoes } from "../EntregaAcoes.jsx";
 import { MK_LABEL } from "../fechamento/FechamentoContextoBar.jsx";
 import { EntregaEditor } from "./EntregaEditor.jsx";
+import { resumoRevisoes, revisaoDaEntrega, rotuloRevisao } from "../../../utils/financeiro/revisoes.js";
 
-export function EntregaPainel({ entrega, entregas, clienteNome, marketplace, contaNome, clienteContaId, periodo, periodoLabel, onAlterado }) {
+export function EntregaPainel({ entrega, entregas, clienteNome, marketplace, contaNome, clienteContaId, periodo, periodoLabel, onAlterado, revisoes = null, snapshots = null }) {
   const historica = !!entrega?.token_publico;
   const apresentacao = useEntregaApresentacao({
     entregaId: entrega?.id ?? null,
@@ -46,6 +47,10 @@ export function EntregaPainel({ entrega, entregas, clienteNome, marketplace, con
   }
 
   const status = entrega.publicado ? "Publicado" : historica ? "Despublicado" : "Rascunho";
+  // Qual REVISÃO financeira esta entrega apresenta (e se já existe uma mais nova).
+  const revisao = revisaoDaEntrega(snapshots, entrega.id);
+  const ultima = resumoRevisoes(revisoes).ultima;
+  const haMaisNova = !!revisao && !!ultima && ultima.revisao > revisao.revisao;
 
   return (
     <section className="vf-section vf-section--inset vf-stack" aria-label="Entrega para o cliente">
@@ -58,7 +63,17 @@ export function EntregaPainel({ entrega, entregas, clienteNome, marketplace, con
         <div className="vf-fin-contexto__item"><dt>Marketplace</dt><dd>{MK_LABEL[marketplace] || marketplace || "—"}</dd></div>
         <div className="vf-fin-contexto__item"><dt>Conta</dt><dd>{contaNome || (clienteContaId ? `Operação #${clienteContaId}` : "—")}</dd></div>
         <div className="vf-fin-contexto__item"><dt>Competência</dt><dd>{periodoLabel}</dd></div>
+        <div className="vf-fin-contexto__item">
+          <dt>Revisão</dt>
+          <dd data-testid="revisao-entrega">{revisao ? rotuloRevisao(revisao) : Array.isArray(snapshots) ? "anterior às revisões" : "—"}</dd>
+        </div>
       </dl>
+      {haMaisNova && (
+        <p className="vf-field__hint" data-aviso="revisao-mais-nova">
+          Esta entrega apresenta a {rotuloRevisao(revisao)}; a {rotuloRevisao(ultima)} é mais nova.
+          {historica ? " O link do cliente continua na revisão que ele recebeu." : " A entrega não muda sozinha: continua apresentando a revisão dela até ser trocada."}
+        </p>
+      )}
       <p className="vf-field__hint">
         Salva em {formatarDataHora(entrega.created_at)}
         {entrega.publicado ? ` · publicada em ${formatarDataHora(entrega.published_at)}` : ""}

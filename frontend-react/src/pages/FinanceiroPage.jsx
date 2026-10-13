@@ -28,6 +28,8 @@ import { useEffect, useState } from "react";
 import { useOperacaoAtual } from "../hooks/useVfContext.js";
 import { useFinanceiro } from "../hooks/useFinanceiro.js";
 import { useEntregasFechamento, entregaDoPeriodo, entregaLegadaDoPeriodo } from "../hooks/useEntregasFechamento.js";
+import { useSnapshotsFechamento } from "../hooks/useSnapshotsFechamento.js";
+import { revisoesDoPeriodo } from "../utils/financeiro/revisoes.js";
 import { rotularCompetencia } from "../utils/dates.js";
 import { statusDaCompetencia } from "../utils/financeiro/statusCompetencia.js";
 import { Tabs } from "../components/financeiro/Tabs.jsx";
@@ -51,6 +53,8 @@ export default function FinanceiroPage() {
   const contaRotuloExterno = snapshot?.meta?.externalAccountLabel ?? null;
   const { periodo, setPeriodo, dados, carregando, erro, recarregar: recarregarFinanceiro } = useFinanceiro({ clienteSlug, clienteContaId, pronta });
   const entregas = useEntregasFechamento({ clienteSlug, clienteContaId, habilitado: pronta });
+  // Revisões (snapshots) DESTA conta — cabeçalho, fechamento salvo e histórico.
+  const snapshots = useSnapshotsFechamento({ clienteSlug, clienteContaId, habilitado: pronta });
   const [abaAtiva, setAbaAtiva] = useState("fechamento");
   const [trabalho, setTrabalho] = useState(SEM_TRABALHO);
   const [trocaPendente, setTrocaPendente] = useState(null);
@@ -96,9 +100,20 @@ export default function FinanceiroPage() {
     processadoNaoSalvo: trabalho.processadoNaoSalvo,
   });
 
+  // `null` = lista indisponível (a tela cai no fechamento antigo); `[]` = sem revisões.
+  const revisoes = Array.isArray(snapshots.snapshots) ? revisoesDoPeriodo(snapshots.snapshots, periodo) : null;
+
   const aoSalvarFechamento = () => {
     entregas.recarregar?.();
+    snapshots.recarregar?.();
     recarregarFinanceiro?.();
+  };
+  // Publicar/despublicar muda "Publicado: vN" — a lista de revisões recarrega junto.
+  const entregasComRevisoes = {
+    ...entregas,
+    publicar: (id) => entregas.publicar(id).then((r) => { snapshots.recarregar?.(); return r; }),
+    despublicar: (id) => entregas.despublicar(id).then((r) => { snapshots.recarregar?.(); return r; }),
+    excluir: (id) => entregas.excluir(id).then((r) => { snapshots.recarregar?.(); return r; }),
   };
 
   function pedirTroca(nova) {
@@ -142,6 +157,8 @@ export default function FinanceiroPage() {
           <CompetenciaFechamento
             periodo={periodo}
             status={status}
+            revisoes={revisoes}
+            processadoNaoSalvo={trabalho.processadoNaoSalvo}
             trocaPendente={trocaPendente}
             onPedirTroca={pedirTroca}
             onConfirmarTroca={confirmarTroca}
@@ -174,17 +191,20 @@ export default function FinanceiroPage() {
               contaNome={contaNome}
               periodo={periodo}
               periodoLabel={periodoLabel}
-              entregas={entregas}
+              entregas={entregasComRevisoes}
               entrega={entregaDaConta}
               onSalvo={aoSalvarFechamento}
               onTrabalho={setTrabalho}
+              revisoes={revisoes}
+              snapshots={snapshots.snapshots}
             />
           </div>
           {abaAtiva === "relatorios" && (
             <div className="vf-fin-painel">
               <RelatoriosTab
                 relatorios={dados?.relatorios || null}
-                entregas={entregas}
+                entregas={entregasComRevisoes}
+                snapshots={snapshots.snapshots}
                 periodo={periodo}
                 clienteNome={clienteNome}
                 clienteContaId={clienteContaId}
@@ -199,6 +219,7 @@ export default function FinanceiroPage() {
               <HistoricoTab
                 relatorios={dados?.relatorios || null}
                 entregas={entregas}
+                snapshots={snapshots}
                 periodo={periodo}
                 clienteContaId={clienteContaId}
                 onEscolherCompetencia={(p) => {

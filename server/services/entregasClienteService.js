@@ -182,6 +182,67 @@ async function resolverContaDaEntrega({ clienteContaIdRaw, clienteId }, db = poo
   return conta.id;
 }
 
+// Financeiro V3 — SNAPSHOT. A entrega (apresentação) aponta para a revisão
+// financeira que ela mostra (fechamento_snapshots). O vínculo só é aceito
+// quando é VERDADEIRO:
+//   · só fechamento_mensal;
+//   · mesmo cliente, mesma conta e mesma competência do snapshot;
+//   · os números do payload (summary) são EXATAMENTE os do snapshot — editar
+//     a apresentação (destaques, prioridades) nunca pode mudar LC/MC.
+// Sem snapshot_id o comportamento é o de sempre (entrega antiga / legado).
+// O repositório do snapshot é carregado sob demanda: quem não manda
+// snapshot_id não toca nas tabelas novas.
+function snapshotRepo() {
+  return require("../repositories/fechamentoSnapshotRepository");
+}
+
+function normalizarSnapshotId(raw) {
+  if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw criarErroHttp(400, { ok: false, code: "SNAPSHOT_INVALIDO", erro: "snapshot_id inválido." });
+  }
+  return id;
+}
+
+const comoJson = (v) => JSON.parse(JSON.stringify(v ?? null));
+
+function conferirNumerosDoSnapshot(payloadJson, snapshot) {
+  const summary = payloadJson && typeof payloadJson === "object" ? payloadJson.summary : undefined;
+  if (summary === undefined) return;
+  if (!isDeepStrictEqual(comoJson(summary), comoJson(snapshot.summary_json))) {
+    throw criarErroHttp(409, {
+      ok: false,
+      code: "SNAPSHOT_DIVERGENTE",
+      erro: `Os números desta entrega não são os da revisão v${snapshot.revisao}. A apresentação não altera o resultado — salve uma nova revisão.`,
+    });
+  }
+}
+
+async function resolverSnapshotDaEntrega({ snapshotId, tipo, clienteId, clienteContaId, periodo, payloadJson }) {
+  if (snapshotId == null) return null;
+  if (tipo !== "fechamento_mensal") {
+    throw criarErroHttp(409, { ok: false, code: "SNAPSHOT_DIVERGENTE", erro: "Só fechamento mensal aponta para uma revisão do fechamento." });
+  }
+  const snap = await snapshotRepo().buscarIdentidadeDoSnapshot(snapshotId);
+  if (!snap) throw criarErroHttp(404, { ok: false, code: "SNAPSHOT_NAO_ENCONTRADO", erro: "Revisão do fechamento não encontrada." });
+  const competencia = normalizarCompetencia(periodo) || null;
+  const divergencias = [];
+  if (Number(snap.cliente_id) !== Number(clienteId)) divergencias.push("cliente");
+  if (clienteContaId == null || Number(snap.cliente_conta_id) !== Number(clienteContaId)) divergencias.push("conta");
+  if (competencia !== snap.periodo) divergencias.push("competência");
+  if (divergencias.length) {
+    throw criarErroHttp(409, {
+      ok: false,
+      code: "SNAPSHOT_DIVERGENTE",
+      erro: `A revisão v${snap.revisao} não é desta entrega (${divergencias.join(", ")} diferente).`,
+      campos: divergencias,
+    });
+  }
+  conferirNumerosDoSnapshot(payloadJson, snap);
+  return snap;
+}
+
 // V3 P2.6 D4 — duas entregas publicadas da MESMA competencia significam DOIS
 // links publicos com numeros diferentes circulando para o mesmo cliente.
 //
@@ -261,6 +322,12 @@ async function criarEntrega({ userId, body }) {
     clienteId: cliente_id,
   });
 
+  // Financeiro V3 — a revisão financeira que esta entrega apresenta.
+  const snapshotId = normalizarSnapshotId(body?.snapshot_id ?? body?.snapshotId);
+  await resolverSnapshotDaEntrega({
+    snapshotId, tipo, clienteId: cliente_id, clienteContaId: cliente_conta_id, periodo, payloadJson: body?.payload_json,
+  });
+
   // V3 P2.6 D4 — reprocessar nao pode duplicar em silencio.
   const existente = await encontrarEntregaDaCompetencia({
     tipo, clienteId: cliente_id, clienteContaId: cliente_conta_id, periodo,
@@ -316,16 +383,19 @@ async function criarEntrega({ userId, body }) {
       })
     : payloadInput;
 
+  // snapshot_id só entra no INSERT quando existe: sem ele, a query é a de
+  // sempre (e não depende da coluna nova).
+  const comSnapshot = snapshotId != null;
   const ins = await pool.query(
     `INSERT INTO entregas_cliente
       (tipo, cliente_id, cliente_conta_id, cliente_slug, cliente_nome, titulo, periodo,
-       status, publicado, payload_json, origem_tipo, origem_id, created_by, expires_at)
+       status, publicado, payload_json, origem_tipo, origem_id, created_by, expires_at${comSnapshot ? ", snapshot_id" : ""})
      VALUES
-      ($1,$2,$13,$3,$4,$5,$6,$7,false,$8,$9,$10,$11,$12)
+      ($1,$2,$13,$3,$4,$5,$6,$7,false,$8,$9,$10,$11,$12${comSnapshot ? ",$14" : ""})
      RETURNING
       id, tipo, cliente_id, cliente_conta_id, cliente_slug, cliente_nome, titulo, periodo, status,
       token_publico, publicado, payload_json, origem_tipo, origem_id,
-      created_by, created_at, updated_at, published_at, expires_at`,
+      created_by, created_at, updated_at, published_at, expires_at${comSnapshot ? ", snapshot_id" : ""}`,
     [
       tipo,
       cliente_id,
@@ -340,6 +410,7 @@ async function criarEntrega({ userId, body }) {
       userId || null,
       expiresAt,
       cliente_conta_id, // $13
+      ...(comSnapshot ? [snapshotId] : []), // $14
     ]
   );
 
@@ -543,6 +614,7 @@ async function atualizarEntrega({ idRaw, body }) {
 
   let cliente_slug_final = atual.rows[0].cliente_slug;
   let clienteIdFinal = atual.rows[0].cliente_id;
+  let contaIdFinal = atual.rows[0].cliente_conta_id ?? null;
 
   if (Object.prototype.hasOwnProperty.call(body || {}, "cliente_id") ||
       Object.prototype.hasOwnProperty.call(body || {}, "cliente_slug") ||
@@ -597,6 +669,7 @@ async function atualizarEntrega({ idRaw, body }) {
     if (comLink && (contaId ?? null) !== (atual.rows[0].cliente_conta_id ?? null)) {
       camposHistoricosAlterados.push("cliente_conta_id");
     }
+    contaIdFinal = contaId;
     params.push(contaId);
     patches.push(`cliente_conta_id = $${params.length}`);
   } else if (Object.prototype.hasOwnProperty.call(body || {}, "cliente_id")
@@ -605,9 +678,42 @@ async function atualizarEntrega({ idRaw, body }) {
     // de outro cliente, entao ela DEIXA de valer. Limpar e a resposta honesta
     // (mesma logica de P2.4 na transferencia de Squad).
     if (atual.rows[0].cliente_conta_id != null && clienteIdFinal !== atual.rows[0].cliente_id) {
+      contaIdFinal = null;
       params.push(null);
       patches.push(`cliente_conta_id = $${params.length}`);
     }
+  }
+
+  // Financeiro V3 — revisão financeira da entrega. Trocar a revisão de um
+  // RASCUNHO é explícito (o "Substituir" do fechamento); de uma entrega que
+  // já teve link, nunca (campo histórico). E, enquanto a entrega apontar
+  // para uma revisão, o payload não pode trazer números diferentes dos dela.
+  const temSnapshotNoBody = Object.prototype.hasOwnProperty.call(body || {}, "snapshot_id")
+    || Object.prototype.hasOwnProperty.call(body || {}, "snapshotId");
+  const snapshotAtual = atual.rows[0].snapshot_id ?? null;
+  const snapshotFinal = temSnapshotNoBody
+    ? normalizarSnapshotId(body.snapshot_id ?? body.snapshotId)
+    : snapshotAtual;
+  if (temSnapshotNoBody) {
+    if (comLink && (snapshotFinal ?? null) !== (snapshotAtual == null ? null : Number(snapshotAtual))) {
+      camposHistoricosAlterados.push("snapshot_id");
+    }
+    params.push(snapshotFinal);
+    patches.push(`snapshot_id = $${params.length}`);
+  }
+  if (snapshotFinal != null && !camposHistoricosAlterados.length) {
+    const tipoFinal = Object.prototype.hasOwnProperty.call(body || {}, "tipo") ? String(body.tipo).trim() : atual.rows[0].tipo;
+    const periodoFinal = Object.prototype.hasOwnProperty.call(body || {}, "periodo")
+      ? normalizarPeriodoParaEscrita(body.periodo)
+      : atual.rows[0].periodo;
+    await resolverSnapshotDaEntrega({
+      snapshotId: Number(snapshotFinal),
+      tipo: tipoFinal,
+      clienteId: clienteIdFinal,
+      clienteContaId: contaIdFinal,
+      periodo: periodoFinal,
+      payloadJson: payloadParaValidar,
+    });
   }
 
   if (camposHistoricosAlterados.length) {

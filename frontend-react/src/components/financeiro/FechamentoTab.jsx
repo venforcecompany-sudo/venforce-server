@@ -9,10 +9,11 @@
 //      antes): apresentação para o cliente, publicar, copiar/abrir o link.
 //      É passada como slot ao NovoFechamento, que a posiciona entre as ações
 //      e os produtos (sempre no mesmo ponto da árvore: sem remontar).
-//   3. Fechamento salvo — quando nada foi processado agora, a composição
-//      gravada na entrega desta competência (GET /financeiro/:cliente) e, no
-//      MELI, a conciliação Mercado Pago da Central de Vendas. Era o conteúdo
-//      das antigas abas "Resultado" e "Conciliação".
+//   3. Fechamento salvo — quando nada foi processado agora: a REVISÃO
+//      gravada (snapshot) com o resultado completo e todos os produtos; sem
+//      revisão (fechamento anterior a elas), a composição gravada na entrega
+//      (GET /financeiro/:cliente). No MELI, a conciliação Mercado Pago da
+//      Central de Vendas.
 //
 // Publicar/despublicar agem sobre uma entrega concreta, por `id`, e só a
 // entrega DESTA conta é operável aqui (entregaDoPeriodo). A legada, sem
@@ -24,6 +25,7 @@ import { EntregaPainel } from "./entrega/EntregaPainel.jsx";
 import { NovoFechamento } from "./NovoFechamento.jsx";
 import { ResultadoTab } from "./ResultadoTab.jsx";
 import { ConciliacaoTab } from "./ConciliacaoTab.jsx";
+import { SnapshotFechamento } from "./snapshot/SnapshotFechamento.jsx";
 
 export function FechamentoTab({
   resultado,
@@ -40,6 +42,8 @@ export function FechamentoTab({
   entrega,
   onSalvo,
   onTrabalho,
+  revisoes = null,
+  snapshots = null,
 }) {
   const [trabalhoForm, setTrabalhoForm] = useState({ temTrabalho: false, temResultado: false, processadoNaoSalvo: false });
   const [apresentacaoAlterada, setApresentacaoAlterada] = useState(false);
@@ -66,6 +70,7 @@ export function FechamentoTab({
         periodoLabel={periodoLabel}
         onSalvo={onSalvo}
         onTrabalho={aoMudarTrabalho}
+        revisoes={revisoes}
         entregaSlot={
           <EntregaPainel
             entrega={entrega}
@@ -77,17 +82,21 @@ export function FechamentoTab({
             periodo={periodo}
             periodoLabel={periodoLabel}
             onAlterado={setApresentacaoAlterada}
+            revisoes={revisoes}
+            snapshots={snapshots}
           />
         }
       />
 
       {!processadoAgora && (
         <FechamentoSalvo
+          revisoes={revisoes}
           resultado={resultado}
           conciliacao={conciliacao}
           carregando={carregandoLeitura}
           entrega={entrega}
           marketplace={mkt}
+          periodo={periodo}
           periodoLabel={periodoLabel}
         />
       )}
@@ -97,7 +106,26 @@ export function FechamentoTab({
 
 // O fechamento JÁ SALVO desta competência — leitura. Sem processamento em
 // memória, é o que a tela tem a dizer sobre o mês.
-function FechamentoSalvo({ resultado, conciliacao, carregando, entrega, marketplace, periodoLabel }) {
+function FechamentoSalvo({ revisoes, resultado, conciliacao, carregando, entrega, marketplace, periodo, periodoLabel }) {
+  const conciliacaoMeli = marketplace === "meli" && conciliacao && (
+    <details className="vf-fin-disclosure">
+      <summary>Conciliação Mercado Pago (Central de Vendas)</summary>
+      <ConciliacaoTab conciliacao={conciliacao} />
+    </details>
+  );
+
+  // Com revisão gravada, o salvo É a revisão (resultado completo + todas as
+  // linhas). O bloco antigo (cards do payload) fica para fechamentos
+  // anteriores às revisões.
+  if (Array.isArray(revisoes) && revisoes.length) {
+    return (
+      <section className="vf-section vf-section--inset vf-stack vf-stack--sm" aria-label="Fechamento salvo">
+        <SnapshotFechamento revisoes={revisoes} marketplace={marketplace} periodo={periodo} periodoLabel={periodoLabel} />
+        {conciliacaoMeli}
+      </section>
+    );
+  }
+
   if (carregando) {
     return (
       <div className="vf-stack vf-stack--sm" aria-busy="true">
@@ -128,8 +156,8 @@ function FechamentoSalvo({ resultado, conciliacao, carregando, entrega, marketpl
       {temSalvo && (
         <p className="vf-field__hint" data-estado-leitura="salvo">
           É o fechamento GRAVADO ({dados.status === "publicado" ? "publicado" : "rascunho"}), não um processamento novo: os números são os
-          que foram salvos naquele dia, com os arquivos e a base de custos daquele momento. Processar de novo acima mostra o
-          resultado atual — e só substitui o gravado se você salvar.
+          que foram salvos naquele dia, com os arquivos e a base de custos daquele momento. Ele é anterior às revisões, então só a
+          composição foi guardada. Processar de novo acima e salvar cria a revisão v1, com todos os produtos.
         </p>
       )}
       {resultado.origemClientLevel && (
@@ -144,12 +172,7 @@ function FechamentoSalvo({ resultado, conciliacao, carregando, entrega, marketpl
       )}
       <ResultadoTab resultado={resultado} periodoLabel={periodoLabel} />
 
-      {marketplace === "meli" && conciliacao && (
-        <details className="vf-fin-disclosure">
-          <summary>Conciliação Mercado Pago (Central de Vendas)</summary>
-          <ConciliacaoTab conciliacao={conciliacao} />
-        </details>
-      )}
+      {conciliacaoMeli}
     </section>
   );
 }

@@ -13,10 +13,10 @@ import { ProdutosFinanceiroFilters } from "./ProdutosFinanceiroFilters.jsx";
 
 // Página de tamanho razoável: o Order.all chega a milhares de linhas e a tela
 // nunca renderiza mais que isto de uma vez.
-const TAMANHOS_PAGINA = [25, 50, 100];
+export const TAMANHOS_PAGINA = [25, 50, 100];
 const POR_PAGINA_PADRAO = 25;
 
-const COLUNAS = [
+export const COLUNAS = [
   { id: "titulo", rotulo: "Produto", texto: true },
   { id: "pedidoId", rotulo: "Pedido", texto: true, mono: true },
   { id: "itemId", rotulo: "MLB / Item ID", texto: true, mono: true },

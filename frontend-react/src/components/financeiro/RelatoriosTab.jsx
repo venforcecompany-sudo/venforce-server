@@ -23,6 +23,7 @@ import { formatarValor } from "./shared/ValorFinanceiro.jsx";
 import { BlocoIndisponivel, BlocoSkeleton } from "../visao/BlocoCard.jsx";
 import { EntregaAcoes, linkPublico } from "./EntregaAcoes.jsx";
 import { ExcluirEntrega } from "./relatorios/ExcluirEntrega.jsx";
+import { revisaoDaEntrega, rotuloRevisao } from "../../utils/financeiro/revisoes.js";
 
 function Vazio() {
   return (
@@ -76,7 +77,7 @@ function TabelaSomenteLeitura({ lista, motivo, onTentarDeNovo, clienteContaId })
   );
 }
 
-export function RelatoriosTab({ relatorios, entregas, periodo, clienteContaId, marketplace, contaNome, contaRotuloExterno }) {
+export function RelatoriosTab({ relatorios, entregas, periodo, clienteContaId, marketplace, contaNome, contaRotuloExterno, snapshots = null }) {
   if (relatorios && !relatorios.disponivel) return <BlocoIndisponivel motivo={relatorios.motivo} />;
   const leitura = relatorios?.dados || [];
 
@@ -123,11 +124,14 @@ export function RelatoriosTab({ relatorios, entregas, periodo, clienteContaId, m
               const doPeriodoEmTela = mesmaCompetencia(e.periodo, periodo);
               const ocupada = entregas.acaoEmCurso === e.id;
               const bloqueada = entregas.acaoEmCurso != null && entregas.acaoEmCurso !== e.id;
+              // A revisão financeira que esta entrega apresenta (entregas antigas não têm).
+              const revisao = revisaoDaEntrega(snapshots, e.id);
               return (
                 <tr key={e.id} className={doPeriodoEmTela ? "is-destacada" : undefined} data-escopo={d.escopo} data-entrega={e.id}>
                   <td>
                     <strong>{d.competenciaLabel}</strong>
                     {d.periodoBruto && <span className="vf-field__hint"> ({d.periodoBruto})</span>}
+                    {revisao && <span className="vf-tag is-info" style={{ marginLeft: 8 }} data-revisao={revisao.revisao} title="Revisão do fechamento que esta entrega apresenta">{rotuloRevisao(revisao)}</span>}
                     {doPeriodoEmTela && <span className="vf-tag" style={{ marginLeft: 8 }}>em tela</span>}
                   </td>
                   <td>

@@ -34,13 +34,14 @@ import { ResultadoProcessado } from "./resultado/ResultadoProcessado.jsx";
 import { ProdutosFechamento } from "./produtos/ProdutosFechamento.jsx";
 import { SecaoFinanceira } from "./shared/SecaoFinanceira.jsx";
 import { PendenciasCusto } from "./pendencias/PendenciasCusto.jsx";
+import { resumoRevisoes } from "../../utils/financeiro/revisoes.js";
 
 function avisoDoCampo(validacao, campo) {
   if (validacao.ok) return null;
   return validacao.itens.find((i) => i.campo === campo)?.mensagem || null;
 }
 
-export function NovoFechamento({ clienteSlug, clienteNome, clienteContaId, marketplace, contaNome, periodo, periodoLabel, onSalvo, onTrabalho, entregaSlot = null }) {
+export function NovoFechamento({ clienteSlug, clienteNome, clienteContaId, marketplace, contaNome, periodo, periodoLabel, onSalvo, onTrabalho, entregaSlot = null, revisoes = null }) {
   const f = useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, marketplace, periodo, onSalvo });
 
   // A página precisa saber se há trabalho em andamento para não trocar de
@@ -154,6 +155,7 @@ export function NovoFechamento({ clienteSlug, clienteNome, clienteContaId, marke
       {comResultado && (
         <PreviewFechamento
           f={f}
+          revisoes={revisoes}
           linhas={linhas}
           periodo={periodo}
           periodoLabel={periodoLabel}
@@ -172,9 +174,12 @@ export function NovoFechamento({ clienteSlug, clienteNome, clienteContaId, marke
   );
 }
 
-function PreviewFechamento({ f, linhas, periodo, periodoLabel, legado, contexto }) {
+function PreviewFechamento({ f, linhas, periodo, periodoLabel, legado, contexto, revisoes }) {
   const comp = f.competencia || {};
   const reprocessando = f.estado === "processando";
+  // Próxima revisão desta competência (a tela diz o número ANTES de salvar).
+  const resumo = resumoRevisoes(revisoes);
+  const proximaRevisao = (resumo.ultima?.revisao || 0) + 1;
 
   return (
     <div className={`vf-fin-pagina${reprocessando ? " is-atualizando" : ""}`} aria-busy={reprocessando ? "true" : undefined}>
@@ -212,6 +217,7 @@ function PreviewFechamento({ f, linhas, periodo, periodoLabel, legado, contexto 
         marketplace={f.marketplace}
         periodo={periodo}
         linhas={linhas}
+        estado={{ tipo: "atual", salvo: f.snapshotSalvo || null, proximaRevisao: revisoes ? proximaRevisao : null }}
         pendencias={() => (
           <PendenciasCusto
             linhas={linhas}
@@ -225,7 +231,7 @@ function PreviewFechamento({ f, linhas, periodo, periodoLabel, legado, contexto 
         )}
         acoes={
           <SecaoFinanceira id="acoes" titulo="Ações do fechamento">
-            <AcoesFechamento f={f} periodoLabel={periodoLabel} legado={legado} />
+            <AcoesFechamento f={f} periodoLabel={periodoLabel} legado={legado} proximaRevisao={revisoes ? proximaRevisao : null} revisaoPublicada={resumo.publicada} />
           </SecaoFinanceira>
         }
       />

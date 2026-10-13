@@ -1,15 +1,23 @@
 // frontend-react/src/components/financeiro/fechamento/AcoesFechamento.jsx
 //
-// O que fazer com o fechamento processado: salvar a entrega, reprocessar ou
-// voltar para os arquivos/ajustes. Fica DEPOIS da leitura (resultado,
-// pendências, composição) e ANTES dos produtos: quem decide salvar já viu o
-// que está salvando. Duplicidade (409) mora aqui porque é uma decisão sobre
-// salvar.
+// O que fazer com o fechamento processado: salvar, reprocessar ou voltar
+// para os arquivos/ajustes. Fica DEPOIS da leitura (resultado, pendências,
+// composição) e ANTES dos produtos: quem decide salvar já viu o que está
+// salvando. Duplicidade (409) mora aqui porque é uma decisão sobre salvar.
+//
+// Salvar grava uma REVISÃO nova (v1, v2, …) — a anterior nunca some — e a
+// entrega desta competência passa a apresentá-la. Com entrega já publicada,
+// a revisão nova vira uma entrega nova (rascunho): o link do cliente segue na
+// revisão que ele recebeu até você publicar a nova.
 
-export function AcoesFechamento({ f, periodoLabel, legado }) {
+import { rotuloRevisao } from "../../../utils/financeiro/revisoes.js";
+
+export function AcoesFechamento({ f, periodoLabel, legado, proximaRevisao = null, revisaoPublicada = null }) {
   const salvando = f.estado === "salvando";
   const salvo = f.estado === "salvo";
   const reprocessando = f.estado === "processando";
+  const revisaoSalva = f.snapshotSalvo || null;
+  const rotuloSalvar = revisaoSalva ? `Salvar entrega da ${rotuloRevisao(revisaoSalva)}` : proximaRevisao ? `Salvar revisão v${proximaRevisao}` : "Salvar fechamento";
 
   return (
     <div className="vf-stack">
@@ -23,9 +31,14 @@ export function AcoesFechamento({ f, periodoLabel, legado }) {
                 : `${periodoLabel} já tem um fechamento salvo para esta operação`}
             </p>
             <p className="vf-banner__description">
+              {revisaoSalva ? (
+                <>
+                  A <strong>revisão {rotuloRevisao(revisaoSalva)}</strong> já está salva no histórico (cancelar não a apaga). Falta decidir a entrega.{" "}
+                </>
+              ) : null}
               {f.duplicidade.publicado
-                ? "Substituir grava um novo fechamento desta competência. O link que já está com o cliente continua abrindo o fechamento antigo; o novo ganha um link próprio quando for publicado."
-                : "Substituir atualiza a entrega existente com o que acabou de ser processado."}
+                ? `Substituir cria uma entrega nova com a ${revisaoSalva ? rotuloRevisao(revisaoSalva) : "revisão nova"}. O link que já está com o cliente continua abrindo ${revisaoPublicada ? `a ${rotuloRevisao(revisaoPublicada)}` : "o fechamento antigo"}; a entrega nova ganha um link próprio quando for publicada.`
+                : `Substituir faz a entrega (rascunho) desta competência apresentar a ${revisaoSalva ? rotuloRevisao(revisaoSalva) : "revisão nova"}. As revisões anteriores continuam no histórico.`}
             </p>
             <div className="vf-cluster">
               <button type="button" className="vf-btn vf-btn--danger vf-btn--sm" disabled={salvando} onClick={f.substituir}>
@@ -42,7 +55,7 @@ export function AcoesFechamento({ f, periodoLabel, legado }) {
       {salvo ? (
         <div className="vf-cluster">
           <span className="vf-status is-success" role="status">
-            Entrega salva. Edite a apresentação e publique em “Entrega para o cliente”, logo abaixo.
+            {revisaoSalva ? `Revisão ${rotuloRevisao(revisaoSalva)} salva e entrega gravada.` : "Entrega salva."} Edite a apresentação e publique em “Entrega para o cliente”, logo abaixo.
           </span>
           <button type="button" className="vf-btn vf-btn--ghost vf-btn--sm" onClick={f.resetar}>
             Processar outro
@@ -57,7 +70,7 @@ export function AcoesFechamento({ f, periodoLabel, legado }) {
             aria-busy={salvando ? "true" : undefined}
             onClick={() => f.salvar()}
           >
-            {salvando ? "Salvando…" : "Salvar entrega"}
+            {salvando ? "Salvando…" : rotuloSalvar}
           </button>
           <button type="button" className="vf-btn vf-btn--secondary vf-btn--sm" disabled={salvando || reprocessando} onClick={f.reprocessar}>
             {reprocessando ? "Reprocessando…" : "Reprocessar fechamento"}

@@ -28,8 +28,12 @@ import { ComposicaoFinanceira } from "./ComposicaoFinanceira.jsx";
 import { CoberturaFechamento } from "./CoberturaFechamento.jsx";
 import { LeituraFechamento } from "./LeituraFechamento.jsx";
 import { MetricasSecundarias } from "./MetricasSecundarias.jsx";
+import { EstadoDoResultado } from "../snapshot/EstadoDoResultado.jsx";
 
-export function ResultadoProcessado({ processamento, marketplace, periodo, linhas: linhasDoPai = null, pendencias = null, acoes = null }) {
+// `estado`: de QUANDO são estes números (processamento atual × revisão
+// salva) — ver EstadoDoResultado. O histórico passa `processamento` montado
+// do snapshot (processamentoDoSnapshot) e os MESMOS componentes leem.
+export function ResultadoProcessado({ processamento, marketplace, periodo, linhas: linhasDoPai = null, pendencias = null, acoes = null, estado = null }) {
   // Linhas COMPLETAS do processamento em memória, normalizadas uma vez — a
   // mesma lista alimenta pendências e tabela de produtos. O pai pode entregar
   // a lista pronta (para não normalizar duas vezes).
@@ -56,7 +60,8 @@ export function ResultadoProcessado({ processamento, marketplace, periodo, linha
   }
 
   return (
-    <section className="vf-fin-resultado vf-fin-pagina" aria-label="Resultado do processamento">
+    <section className="vf-fin-resultado vf-fin-pagina" aria-label={estado?.tipo === "revisao" ? "Resultado da revisão salva" : "Resultado do processamento"}>
+      <EstadoDoResultado estado={estado} />
       <SecaoFinanceira
         id="resultado"
         titulo="Resultado do fechamento"

@@ -149,6 +149,42 @@ export async function salvarEntregaFechamento(body, { signal } = {}) {
   return dados?.entrega || dados;
 }
 
+// ── POST /fechamento-snapshots (JSON) ────────────────────────────────────────
+//
+// Grava a REVISÃO do fechamento (snapshot): o resultado do motor exatamente
+// como veio do processamento + o bloco `processamento` (selo). O backend só
+// aceita se o selo bater — números alterados no navegador, linha a menos ou
+// outro cliente/conta/competência viram 409 SELO_INVALIDO. Mesmo
+// processamento salvo de novo devolve a MESMA revisão (`reaproveitado`).
+export async function salvarSnapshotFechamento(body, { signal } = {}) {
+  const token = exigirToken();
+
+  let resposta;
+  try {
+    resposta = await fetch(`${API_BASE}/fechamento-snapshots`, {
+      method: "POST",
+      signal,
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    if (err?.name === "AbortError") throw err;
+    throw new FechamentoApiError("Não foi possível falar com o servidor. Verifique a conexão.", { status: 0, codigo: "rede" });
+  }
+
+  tratarComuns(resposta);
+  const dados = await lerJson(resposta);
+
+  if (!resposta.ok || dados?.ok === false) {
+    throw new FechamentoApiError(mensagemDeErro(dados, resposta.status), {
+      status: resposta.status,
+      codigo: dados?.code || (resposta.status >= 500 ? "servidor" : "erro_api"),
+    });
+  }
+
+  return { snapshot: dados?.snapshot || null, reaproveitado: dados?.reaproveitado === true };
+}
+
 // ── PATCH /entregas-cliente/:id (JSON) ───────────────────────────────────────
 //
 // Atualiza a apresentação (payload_json.entrega) de uma entrega que NUNCA

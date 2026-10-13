@@ -12,11 +12,12 @@ import { NovoFechamento } from "./NovoFechamento.jsx";
 import { montarPayloadFechamento, parseMoedaBR, cardsDoSummary } from "../../utils/fechamentoPayload.js";
 import { FechamentoApiError } from "../../services/financeiroFechamentoApi.js";
 
-const api = vi.hoisted(() => ({ processar: vi.fn(), salvar: vi.fn() }));
+const api = vi.hoisted(() => ({ processar: vi.fn(), salvar: vi.fn(), salvarSnapshot: vi.fn() }));
 vi.mock("../../services/financeiroFechamentoApi.js", async (orig) => ({
   ...(await orig()),
   processarFechamento: api.processar,
   salvarEntregaFechamento: api.salvar,
+  salvarSnapshotFechamento: api.salvarSnapshot,
 }));
 
 // A verificação da base vinculada bate em GET /base-vinculos via
@@ -46,9 +47,14 @@ function respostaOk(extra = {}) {
     competencia: { periodoSolicitado: "2026-08", periodoDetectado: "2026-08", divergente: false },
     detailedRows: [{ id: "MLB1", mc: 0.2 }],
     unmatchedIds: [],
+    excelBase64: "UEsDB-planilha",
+    // Selo do servidor (seloProcessamento.js) — sem ele não há revisão.
+    processamento: { versao: 1, processadoEm: "2026-08-31T12:00:00.000Z", selo: "a".repeat(64), arquivos: [] },
     ...extra,
   };
 }
+
+const REVISAO_1 = { id: 77, revisao: 1, criadoEm: "2026-10-13T17:30:00.000Z", periodo: "2026-08", entregas: [] };
 
 // GET /base-vinculos com um vínculo para (slug, marketplace, conta).
 function vinculosCom({ slug = "zenite", marketplace = "meli", contaId = 42, nome = "Base Zenite" } = {}) {
@@ -82,6 +88,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   rede.requisitar.mockResolvedValue(semVinculos);
   rede.ehAdmin.mockReturnValue(false);
+  api.salvarSnapshot.mockResolvedValue({ snapshot: REVISAO_1, reaproveitado: false });
 });
 
 async function subirVendas(usuario, nome = "vendas.xlsx") {
@@ -339,7 +346,7 @@ describe("NovoFechamento · competência divergente", () => {
     await usuario.click(screen.getByRole("button", { name: "Processar fechamento" }));
 
     expect(await screen.findByText(/não bate com o período em tela/)).toBeInTheDocument();
-    const salvar = screen.getByRole("button", { name: "Salvar entrega" });
+    const salvar = screen.getByRole("button", { name: "Salvar fechamento" });
     expect(salvar).toBeDisabled();
     await usuario.click(screen.getByRole("checkbox"));
     expect(salvar).toBeEnabled();
@@ -357,7 +364,7 @@ describe("NovoFechamento · identidade do cliente no payload", () => {
     await subirVendas(usuario);
     await usuario.click(screen.getByRole("button", { name: "Processar fechamento" }));
     await screen.findByText(/Competência confere/);
-    await usuario.click(screen.getByRole("button", { name: "Salvar entrega" }));
+    await usuario.click(screen.getByRole("button", { name: "Salvar fechamento" }));
     await waitFor(() => expect(api.salvar).toHaveBeenCalledTimes(1));
     expect(api.salvar.mock.calls[0][0].payload_json.cliente).toEqual({ slug: "zenite", nome: "Zenite Comercial" });
   });
@@ -383,14 +390,107 @@ describe("NovoFechamento · duplicidade 409", () => {
     await subirVendas(usuario);
     await usuario.click(screen.getByRole("button", { name: "Processar fechamento" }));
     await screen.findByText(/Competência confere/);
-    await usuario.click(screen.getByRole("button", { name: "Salvar entrega" }));
+    await usuario.click(screen.getByRole("button", { name: "Salvar fechamento" }));
 
     expect(await screen.findByText(/já tem um fechamento PUBLICADO/)).toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Substituir" }));
     await waitFor(() => expect(api.salvar).toHaveBeenCalledTimes(2));
     expect(api.salvar.mock.calls[1][0].substituir).toBe(true);
     expect(api.salvar.mock.calls[1][0].cliente_conta_id).toBe(42);
+    // Substituir é sobre a ENTREGA: a revisão gravada antes do 409 é a mesma.
+    expect(api.salvarSnapshot).toHaveBeenCalledTimes(1);
+    expect(api.salvar.mock.calls[1][0].snapshot_id).toBe(77);
     expect(props.onSalvo).toHaveBeenCalled();
+  });
+
+  it("o 409 diz que a revisão já ficou salva (cancelar não a apaga)", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "meli", contaId: 42 }));
+    api.processar.mockResolvedValue(respostaOk());
+    api.salvar.mockRejectedValueOnce(new FechamentoApiError("Já existe.", { status: 409, codigo: "ENTREGA_JA_EXISTE", entregaId: 78, publicado: false }));
+    const usuario = userEvent.setup();
+    render(<NovoFechamento {...props} />);
+    await screen.findByText("Base vinculada");
+    await subirVendas(usuario);
+    await usuario.click(screen.getByRole("button", { name: "Processar fechamento" }));
+    await screen.findByText(/Competência confere/);
+    await usuario.click(screen.getByRole("button", { name: "Salvar fechamento" }));
+    expect(await screen.findByText(/já está salva no histórico \(cancelar não a apaga\)/)).toBeInTheDocument();
+  });
+});
+
+describe("NovoFechamento · revisão (snapshot)", () => {
+  async function processarMeli(usuario, extraProps = {}) {
+    rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "meli", contaId: 42 }));
+    render(<NovoFechamento {...props} {...extraProps} />);
+    await screen.findByText("Base vinculada");
+    await subirVendas(usuario);
+    await usuario.click(screen.getByRole("button", { name: "Processar fechamento" }));
+    await screen.findByText(/Competência confere/);
+  }
+
+  it("grava a revisão com o resultado do motor + selo (sem a planilha) e a entrega aponta para ela", async () => {
+    api.processar.mockResolvedValue(respostaOk());
+    api.salvar.mockResolvedValue({ id: 5, publicado: false, token_publico: null });
+    const usuario = userEvent.setup();
+    await processarMeli(usuario);
+    expect(screen.getByText(/Ainda não salvo\./)).toBeInTheDocument();
+    await usuario.click(screen.getByRole("button", { name: "Salvar fechamento" }));
+    await waitFor(() => expect(api.salvar).toHaveBeenCalledTimes(1));
+
+    const corpo = api.salvarSnapshot.mock.calls[0][0];
+    expect(corpo).toMatchObject({ clienteSlug: "zenite", clienteContaId: 42, periodo: "2026-08", marketplace: "meli" });
+    expect(corpo.processamento.selo).toBe("a".repeat(64));
+    expect(corpo.resultado.summary).toEqual(SUMMARY);
+    expect(corpo.resultado.detailedRows).toEqual([{ id: "MLB1", mc: 0.2 }]);
+    expect(corpo.resultado).not.toHaveProperty("excelBase64");
+    expect(corpo.resultado).not.toHaveProperty("processamento");
+
+    const entrega = api.salvar.mock.calls[0][0];
+    expect(entrega.snapshot_id).toBe(77);
+    expect(entrega.payload_json.metadados.snapshot).toEqual({ id: 77, revisao: 1 });
+    expect(await screen.findByText(/Salvo como/)).toBeInTheDocument();
+    expect(screen.getByText(/Revisão v1 salva e entrega gravada/)).toBeInTheDocument();
+  });
+
+  it("diz o número da próxima revisão antes de salvar", async () => {
+    api.processar.mockResolvedValue(respostaOk());
+    const usuario = userEvent.setup();
+    await processarMeli(usuario, { revisoes: [{ id: 76, revisao: 2, periodo: "2026-08", publicado: true, entregas: [] }, { id: 70, revisao: 1, periodo: "2026-08", entregas: [] }] });
+    expect(screen.getByRole("button", { name: "Salvar revisão v3" })).toBeInTheDocument();
+    expect(screen.getByText(/Salvar cria a revisão v3\./)).toBeInTheDocument();
+  });
+
+  it("sem o selo do servidor não grava nada — pede para processar de novo", async () => {
+    api.processar.mockResolvedValue(respostaOk({ processamento: undefined }));
+    const usuario = userEvent.setup();
+    await processarMeli(usuario);
+    await usuario.click(screen.getByRole("button", { name: "Salvar fechamento" }));
+    expect(await screen.findByText(/não veio com o selo do servidor/)).toBeInTheDocument();
+    expect(api.salvarSnapshot).not.toHaveBeenCalled();
+    expect(api.salvar).not.toHaveBeenCalled();
+  });
+
+  it("selo recusado (409 SELO_INVALIDO) não cria entrega", async () => {
+    api.processar.mockResolvedValue(respostaOk());
+    api.salvarSnapshot.mockRejectedValueOnce(new FechamentoApiError("Este resultado não corresponde a um processamento do motor.", { status: 409, codigo: "SELO_INVALIDO" }));
+    const usuario = userEvent.setup();
+    await processarMeli(usuario);
+    await usuario.click(screen.getByRole("button", { name: "Salvar fechamento" }));
+    expect(await screen.findByText(/não corresponde a um processamento do motor/)).toBeInTheDocument();
+    expect(api.salvar).not.toHaveBeenCalled();
+  });
+
+  it("entrega falhou depois da revisão: tentar de novo NÃO cria outra revisão", async () => {
+    api.processar.mockResolvedValue(respostaOk());
+    api.salvar.mockRejectedValueOnce(new FechamentoApiError("Falha de rede.", { status: 0, codigo: "rede" })).mockResolvedValueOnce({ id: 5 });
+    const usuario = userEvent.setup();
+    await processarMeli(usuario);
+    await usuario.click(screen.getByRole("button", { name: "Salvar fechamento" }));
+    expect(await screen.findByText(/Revisão v1 salva, mas a entrega não foi gravada: Falha de rede\./)).toBeInTheDocument();
+    await usuario.click(screen.getByRole("button", { name: "Salvar entrega da v1" }));
+    await waitFor(() => expect(api.salvar).toHaveBeenCalledTimes(2));
+    expect(api.salvarSnapshot).toHaveBeenCalledTimes(1);
+    expect(api.salvar.mock.calls[1][0].snapshot_id).toBe(77);
   });
 });
 
@@ -411,7 +511,7 @@ describe("NovoFechamento · substituir preserva a apresentação", () => {
     await subirVendas(usuario);
     await subirCustos(usuario);
     await usuario.click(screen.getByRole("button", { name: "Processar fechamento" }));
-    await usuario.click(await screen.findByRole("button", { name: "Salvar entrega" }));
+    await usuario.click(await screen.findByRole("button", { name: "Salvar fechamento" }));
     await usuario.click(await screen.findByRole("button", { name: "Substituir" }));
     await waitFor(() => expect(api.salvar).toHaveBeenCalledTimes(2));
     const body = api.salvar.mock.calls[1][0];

@@ -17,6 +17,29 @@ const {
   resolvePortfolioClientes,
   ehAdmin,
 } = require("../services/squads/authorizationService");
+const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("../services/activityLogService");
+
+// Trilha de auditoria (activity_logs, reutilizada — não há tabela de eventos
+// própria). Só depois do sucesso; registrarLog nunca lança. `snapshotId` diz
+// QUAL revisão do fechamento a entrega apresentava no momento da ação — é o
+// que responde "qual versão o cliente recebeu?" depois.
+function registrarEventoEntrega(req, acao, entrega, extra = {}) {
+  if (!entrega) return;
+  registrarLog({
+    ...dadosUsuarioDeReq(req),
+    acao,
+    detalhes: {
+      entregaId: entrega.id ?? null,
+      tipo: entrega.tipo ?? null,
+      clienteSlug: entrega.cliente_slug ?? null,
+      clienteContaId: entrega.cliente_conta_id ?? null,
+      periodo: entrega.periodo ?? null,
+      snapshotId: entrega.snapshot_id ?? null,
+      ...extra,
+    },
+    ip: extrairIp(req),
+  });
+}
 
 // V3 P2.7 BLOCO U — erro conhecido nunca vira 500 generico. Antes so dois
 // codigos eram mapeados por nome; qualquer erro novo com statusCode+code caia
@@ -76,6 +99,7 @@ async function criarEntregaController(req, res) {
       await assertClienteNaCarteira(req.user || {}, ref);
     }
     const resultado = await criarEntrega({ userId: req.user?.id, body: req.body });
+    registrarEventoEntrega(req, "entrega_salva", resultado.entrega, { substituir: req.body?.substituir === true });
     return res.status(201).json({ ok: true, entrega: resultado.entrega });
   } catch (err) {
     return responderErro(res, err);
@@ -121,6 +145,7 @@ async function atualizarEntregaController(req, res) {
       await assertClienteNaCarteira(req.user || {}, novoRef);
     }
     const resultado = await atualizarEntrega({ idRaw: req.params.id, body: req.body });
+    registrarEventoEntrega(req, "entrega_editada", resultado.entrega, { campos: Object.keys(req.body || {}) });
     return res.json({ ok: true, entrega: resultado.entrega });
   } catch (err) {
     return responderErro(res, err);
@@ -131,6 +156,7 @@ async function publicarEntregaController(req, res) {
   try {
     await autorizarPorEntrega(req, req.params.id);
     const resultado = await publicarEntrega({ idRaw: req.params.id });
+    registrarEventoEntrega(req, "entrega_publicada", resultado.entrega);
     return res.json({ ok: true, entrega: resultado.entrega });
   } catch (err) {
     return responderErro(res, err);
@@ -141,6 +167,7 @@ async function despublicarEntregaController(req, res) {
   try {
     await autorizarPorEntrega(req, req.params.id);
     const resultado = await despublicarEntrega({ idRaw: req.params.id });
+    registrarEventoEntrega(req, "entrega_despublicada", resultado.entrega);
     return res.json({ ok: true, entrega: resultado.entrega });
   } catch (err) {
     return responderErro(res, err);

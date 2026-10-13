@@ -945,3 +945,34 @@
 .vf-fin-pendencias__tabela td:last-child { min-width: 0; }
 .vf-fin-pendencias__tabela .vf-btn { white-space: nowrap; }
 .vf-fin-pendencias__tabela th, .vf-fin-pendencias__tabela td { padding-left: 8px; padding-right: 8px; }
+
+/* ── Revisões do fechamento (snapshot) ─────────────────────────────────
+   Faixa de estado: de QUANDO são os números (processamento atual × revisão
+   salva). Discreta — uma linha, borda à esquerda no tom do estado. */
+.vf-fin-estado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--vf-sp-2, 8px);
+  padding: var(--vf-sp-2, 8px) var(--vf-sp-3, 12px);
+  border: 1px solid var(--vf-border, #e3e6ee);
+  border-left-width: 3px;
+  background: var(--vf-surface, #fff);
+  font-size: var(--vf-fs-sm, 0.875rem);
+  color: var(--vf-text, #1d2130);
+  min-width: 0;
+}
+.vf-fin-estado.is-atual { border-left-color: var(--vf-warning-strong, #8f4c00); }
+.vf-fin-estado.is-salvo { border-left-color: var(--vf-success-strong, #0a5c3d); }
+.vf-fin-estado.is-revisao { border-left-color: var(--vf-info-strong, #1d4ed8); }
+.vf-fin-competencia__revisoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--vf-sp-2, 8px);
+  margin: 0;
+  font-size: var(--vf-fs-sm, 0.875rem);
+  color: var(--vf-text-muted, #6b7285);
+}
+.vf-fin-competencia__revisoes strong { color: var(--vf-text, #1d2130); }
+.vf-fin-revisoes { flex-wrap: wrap; }

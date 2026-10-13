@@ -17,10 +17,14 @@
 //  · Competência divergente NUNCA é salva em silêncio.
 //  · 409 ENTREGA_JA_EXISTE vira a escolha "cancelar × substituir", e
 //    substituir preserva o token público.
+//  · Salvar = gravar a REVISÃO (snapshot, com TODAS as linhas, só se o selo
+//    do processamento bater) e só então a entrega, apontando para ela. Se a
+//    entrega falhar, a revisão já gravada é reaproveitada na nova tentativa
+//    (nunca v3 por causa de um retry).
 //  · Uma ação por vez; abort em troca de contexto / unmount.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { processarFechamento, salvarEntregaFechamento, FechamentoApiError } from "../services/financeiroFechamentoApi.js";
+import { processarFechamento, salvarEntregaFechamento, salvarSnapshotFechamento, FechamentoApiError } from "../services/financeiroFechamentoApi.js";
 import { montarPayloadFechamento } from "../utils/fechamentoPayload.js";
 import { buscarEntrega } from "../services/entregasApi.js";
 import { useBaseVinculada } from "./useBaseVinculada.js";
@@ -50,6 +54,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
   const [duplicidade, setDuplicidade] = useState(null); // { entregaId, publicado }
   const [confirmouDivergencia, setConfirmouDivergencia] = useState(false);
   const [entregaSalva, setEntregaSalva] = useState(null);
+  const [snapshotSalvo, setSnapshotSalvo] = useState(null); // revisão gravada DESTE processamento
 
   const mkt = String(marketplace || "").trim().toLowerCase();
   const marketplaceSuportado = MARKETPLACES_NATIVOS.includes(mkt);
@@ -79,6 +84,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     setDuplicidade(null);
     setConfirmouDivergencia(false);
     setEntregaSalva(null);
+    setSnapshotSalvo(null);
     setUsarUploadDeCustos(false);
     setArquivos(ARQUIVOS_INICIAIS);
   }, [clienteSlug, clienteContaId, periodo, mkt]);
@@ -165,6 +171,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     setDuplicidade(null);
     setConfirmouDivergencia(false);
     setEntregaSalva(null);
+    setSnapshotSalvo(null);
 
     const form = new FormData();
     form.append("sales", arquivos.sales);
@@ -210,6 +217,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     setDuplicidade(null);
     setConfirmouDivergencia(false);
     setEntregaSalva(null);
+    setSnapshotSalvo(null);
     setEstado("form");
   }, []);
 
@@ -233,6 +241,37 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
       setEstado("salvando");
       setErro(null);
 
+      // 1) A REVISÃO (snapshot). Uma vez por processamento: retry e
+      // "Substituir" reusam a mesma.
+      let snapshot = snapshotSalvo;
+      if (!snapshot) {
+        const { processamento: bloco, excelBase64: _planilha, incidente: _incidente, ok: _ok, ...resultado } = processamento;
+        if (!bloco?.selo) {
+          setErro({
+            mensagem: "Este processamento não veio com o selo do servidor, então não pode virar uma revisão. Processe novamente.",
+            codigo: "sem_selo",
+            status: 0,
+          });
+          setEstado("preview");
+          return;
+        }
+        try {
+          const r = await salvarSnapshotFechamento(
+            { clienteSlug, clienteContaId, periodo, marketplace: mkt, resultado, processamento: bloco },
+            { signal: controlador.signal }
+          );
+          if (controlador.signal.aborted) return;
+          snapshot = r.snapshot;
+          setSnapshotSalvo(snapshot);
+        } catch (err) {
+          if (err?.name === "AbortError") return;
+          setErro(normalizarErro(err));
+          setEstado("preview");
+          return;
+        }
+      }
+
+      // 2) A ENTREGA (apresentação), apontando para a revisão.
       const payload = montarPayloadFechamento({
         processamento,
         clienteSlug,
@@ -240,6 +279,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
         periodo,
         marketplace: mkt,
         ajustes,
+        snapshot,
       });
 
       // Substituir NÃO pode apagar a apresentação (destaques/prioridades) que
@@ -265,6 +305,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
         status: "rascunho",
         payload_json: payload,
         origem_tipo: "fechamento_financeiro",
+        snapshot_id: snapshot.id,
         ...(substituir ? { substituir: true } : {}),
       };
 
@@ -282,11 +323,13 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
           setEstado("preview");
           return;
         }
-        setErro(normalizarErro(err));
+        // A revisão já está gravada: o erro é só da entrega.
+        const e = normalizarErro(err);
+        setErro({ ...e, mensagem: `Revisão v${snapshot.revisao} salva, mas a entrega não foi gravada: ${e.mensagem}` });
         setEstado("preview");
       }
     },
-    [processamento, divergente, confirmouDivergencia, clienteSlug, clienteNome, clienteContaId, periodo, mkt, ajustes, onSalvo, duplicidade]
+    [processamento, divergente, confirmouDivergencia, clienteSlug, clienteNome, clienteContaId, periodo, mkt, ajustes, onSalvo, duplicidade, snapshotSalvo]
   );
 
   const substituir = useCallback(() => salvar({ substituir: true }), [salvar]);
@@ -313,6 +356,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     setDuplicidade(null);
     setConfirmouDivergencia(false);
     setEntregaSalva(null);
+    setSnapshotSalvo(null);
     setArquivos(ARQUIVOS_INICIAIS);
     setUsarUploadDeCustos(false);
   }, []);
@@ -339,6 +383,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     limparErro: () => setErro(null),
     duplicidade,
     entregaSalva,
+    snapshotSalvo,
     processar,
     // Reprocessar = o MESMO processamento, com os arquivos/ajustes atuais
     // (ex.: depois de corrigir a base vinculada). Nenhum endpoint novo.
