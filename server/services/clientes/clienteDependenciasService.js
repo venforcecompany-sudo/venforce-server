@@ -30,6 +30,7 @@ const TABELAS_DEPENDENTES = [
   ["Grants Mercado Livre", "ml_tokens", "cliente_id", "id"],
   ["Vínculos de base", "base_cliente_vinculos", "cliente_id", "id"],
   ["Entregas/fechamentos", "entregas_cliente", "cliente_id", "id"],
+  ["Revisões de fechamento (snapshots)", "fechamento_snapshots", "cliente_id", "id"],
   ["Relatórios", "relatorios", "cliente_id", "id"],
   ["Diagnósticos iniciais", "diagnosticos_iniciais", "cliente_id", "id"],
   ["Permissões de seller", "seller_clientes", "cliente_id", "id"],

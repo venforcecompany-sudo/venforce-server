@@ -78,6 +78,7 @@ const clienteResponsaveisRoutes = require("./routes/clienteResponsaveisRoutes");
 const clienteImagemRoutes = require("./routes/clienteImagemRoutes");
 const visaoRoutes = require("./routes/visaoRoutes");
 const financeiroVisaoRoutes = require("./routes/financeiroVisaoRoutes");
+const fechamentoSnapshotRoutes = require("./routes/fechamentoSnapshotRoutes");
 const { verificarDependenciasCliente } = require("./services/clientes/clienteDependenciasService");
 const { purgarClientePermanentemente } = require("./services/clientes/clientePurgeService");
 const automacoesRoutes = require("./routes/automacoesRoutes");
@@ -130,6 +131,7 @@ const {
   ensureAnunciosMargemProjetadaSnapshotSchema,
   ensureMargemPrecificacaoSchema,
   ensurePromoSnapshotSchema,
+  ensureFechamentoSnapshotsSchema,
 } = require("./services/schema/schemaEnsure");
 const { logReadinessNoBoot, verificarSchemaV3 } = require("./services/schema/schemaReadiness");
 const {
@@ -843,6 +845,7 @@ app.use("/operacao/central-margem", promoSnapshotRoutes);
 // Financeiro por periodo/conta — nao confundir com /fechamentos (upload).
 app.use("/operacao/visao", visaoRoutes);
 app.use("/financeiro", financeiroVisaoRoutes);
+app.use("/fechamento-snapshots", fechamentoSnapshotRoutes);
 // Cliente 360 V3 (Projeto_cliente360, FASE 1) - ilha nova, prefixo proprio,
 // nao aninhado em /operacao/cliente-360: contrato aditivo, nao altera o
 // cockpit V2 acima.
@@ -2040,6 +2043,14 @@ const server = app.listen(PORT, () => {
     .then(() => logReadinessNoBoot())
     .catch((err) => {
       console.error("[schema] erro ao garantir schema de entregas_cliente / readiness no boot:", err.message);
+    })
+    // Snapshot do fechamento (Financeiro V3): DEPOIS de entregas_cliente,
+    // porque a migration acrescenta entregas_cliente.snapshot_id. Falhar aqui
+    // não derruba nada: o repositório do snapshot reaplica o mesmo runner
+    // antes de usar as tabelas, e as entregas seguem pelo payload_json.
+    .then(() => ensureFechamentoSnapshotsSchema())
+    .catch((err) => {
+      console.error("[schema] erro ao garantir schema de fechamento_snapshots no boot:", err.message);
     });
 
   // FASE 1 do plano de ordenação global por margem PROJETADA (Anúncios ML) —

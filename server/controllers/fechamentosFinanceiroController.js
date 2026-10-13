@@ -31,6 +31,7 @@ const { CODIGOS_CANONICOS } = require("../utils/erroContextoCanonico");
 const { detectarIncidenteFechamento } = require("../services/fechamentoFinanceiro/incidente/detectarIncidenteFechamento");
 const fechamentoIncidentStorageService = require("../services/fechamentoFinanceiro/incidente/fechamentoIncidentStorageService");
 const { createDebugCollector } = require("../utils/fechamento/debugCollector");
+const { selarProcessamento, manifestoDoArquivo, sha256 } = require("../services/fechamentoSnapshot/seloProcessamento");
 
 // V3 Pós-Convergência #2 — BLOCO 8: quando o processamento se declara
 // account-aware (clienteContaId informado), o backend PROVA cliente + conta +
@@ -527,7 +528,7 @@ async function processarFechamentoFinanceiroController(req, res) {
       console.error("[FinanceiroIncident] erro inesperado na captura automática (ignorado):", incidentErr.message);
     }
 
-    res.json({
+    const resposta = {
       ok: true,
       summary: result.summary,
       competencia,
@@ -556,7 +557,45 @@ async function processarFechamentoFinanceiroController(req, res) {
           totalVendasReconhecidas: result.parsingDiagnostics?.recognizedSalesCount ?? 0,
         },
       } : {}),
-    });
+    };
+
+    // Financeiro V3 — SELO do processamento (aditivo; o legado ignora). Assina
+    // o resultado do motor + contexto + manifesto dos arquivos, para o
+    // snapshot só ser gravado se for exatamente esta saída
+    // (services/fechamentoSnapshot/seloProcessamento.js). Nada aqui altera um
+    // número da resposta; uma falha só deixa a resposta sem selo.
+    try {
+      resposta.processamento = selarProcessamento({
+        contexto: {
+          clienteSlug,
+          clienteContaId,
+          periodo: req.body?.periodo || null,
+          marketplace,
+        },
+        resultado: resposta,
+        usuarioId: req.user?.id ?? null,
+        ajustes: { ads, venforce, affiliates, fullCost, additionalCosts },
+        arquivos: [
+          manifestoDoArquivo("vendas", salesFile),
+          manifestoDoArquivo("custos", costsFile && marketplace !== "tiktok" ? costsFile : null),
+          manifestoDoArquivo("order_all", ordersAllFile && marketplace === "shopee" ? ordersAllFile : null),
+          manifestoDoArquivo("onhold", onholdFile && marketplace === "tiktok" ? onholdFile : null),
+          {
+            tipo: "resultado",
+            nomeOriginal: `fechamento-${marketplace}.xlsx`,
+            tamanhoBytes: excelBuffer.length,
+            mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            sha256: sha256(Buffer.from(excelBuffer)),
+            origem: "gerado",
+          },
+        ],
+        costRowsRaw,
+      });
+    } catch (seloErr) {
+      console.error("[fechamento-snapshot] selo não gerado (resposta segue sem ele):", seloErr.message);
+    }
+
+    res.json(resposta);
   } catch (error) {
     console.error("Erro em /fechamentos/financeiro:", error);
     const statusCode =

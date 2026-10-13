@@ -292,6 +292,25 @@ async function ensurePromoSnapshotSchema(db = pool) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Financeiro V3 — snapshot do fechamento (fechamento_snapshots / itens +
+// entregas_cliente.snapshot_id). Mesmo desenho da trilha de precificação: o
+// .sql versionado é a fonte, o boot aplica serializado por advisory lock
+// (DEPOIS de ensureEntregasClienteSchema, por causa da coluna nova) e o
+// repositório chama o mesmo runner como proteção.
+const FECHAMENTO_SNAPSHOTS_MIGRATION = "20261013_fechamento_snapshots.sql";
+const FECHAMENTO_SNAPSHOTS_LOCK_KEY = "vf:schema:fechamento_snapshots";
+const fechamentoSnapshotsEmCurso = new WeakMap();
+
+function fechamentoSnapshotsDdl() {
+  return fs.readFileSync(path.join(migrationsDir, FECHAMENTO_SNAPSHOTS_MIGRATION), "utf8");
+}
+
+async function ensureFechamentoSnapshotsSchema(db = pool) {
+  return singleFlight(fechamentoSnapshotsEmCurso, db, (chave) =>
+    aplicarMigrationSerializada(chave, fechamentoSnapshotsDdl(), FECHAMENTO_SNAPSHOTS_LOCK_KEY));
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // BLOCO 18 — GOVERNANÇA DE MIGRATIONS (inventário legível por máquina)
 // ───────────────────────────────────────────────────────────────────────────
 // `auto: true`  → aplicada por um `ensure*` no boot (idempotente, aditiva).
@@ -435,6 +454,26 @@ const MIGRATIONS_INVENTARIO = [
       "diagnóstico legado)",
     nota: "Sem backfill: promocoes_diagnosticos não tem cliente_conta_id. Cada conta nasce vazia.",
   },
+  {
+    arquivo: FECHAMENTO_SNAPSHOTS_MIGRATION,
+    descricao:
+      "cria fechamento_snapshots / fechamento_snapshot_itens (revisões imutáveis do " +
+      "fechamento por conta × competência, com TODAS as linhas do motor) e a coluna " +
+      "NULLABLE entregas_cliente.snapshot_id (a apresentação aponta para a revisão)",
+    tipo: "estrutural-aditiva",
+    auto: true,
+    runner: "schemaEnsure.ensureFechamentoSnapshotsSchema",
+    idempotente: true,
+    risco: "baixo",
+    prerequisito:
+      "nenhum (FK para cliente_contas e coluna em entregas_cliente guardadas por to_regclass). " +
+      "Serializado por pg_advisory_xact_lock; no boot roda depois de ensureEntregasClienteSchema",
+    rollback:
+      "ALTER TABLE entregas_cliente DROP COLUMN snapshot_id; DROP TABLE fechamento_snapshot_itens, " +
+      "fechamento_snapshots; DROP FUNCTION fechamento_snapshot_recusar_update (nenhuma linha " +
+      "existente é alterada; entregas voltam a ser lidas só pelo payload_json)",
+    nota: "Sem backfill: entrega antiga fica snapshot_id NULL e segue lida pelo payload_json.",
+  },
 ];
 
 // Arquivos que QUALQUER runner automático tem permissão de aplicar. Usado por
@@ -454,6 +493,10 @@ module.exports = {
   promoSnapshotDdl,
   PROMO_SNAPSHOT_MIGRATION,
   PROMO_SNAPSHOT_LOCK_KEY,
+  ensureFechamentoSnapshotsSchema,
+  fechamentoSnapshotsDdl,
+  FECHAMENTO_SNAPSHOTS_MIGRATION,
+  FECHAMENTO_SNAPSHOTS_LOCK_KEY,
   MIGRATIONS_INVENTARIO,
   MIGRATIONS_AUTO,
   migrationsDir,

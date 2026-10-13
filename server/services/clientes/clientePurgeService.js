@@ -10,7 +10,7 @@
 //
 //   1) ON DELETE CASCADE  -> Postgres apaga sozinho quando o Cliente é
 //      apagado (cliente_contas, ml_tokens, base_cliente_vinculos,
-//      entregas_cliente, diagnosticos_iniciais, seller_clientes,
+//      entregas_cliente, fechamento_snapshots [+ itens], diagnosticos_iniciais, seller_clientes,
 //      seller_custos_submissoes, design_client_profiles/templates/artworks
 //      [+ versions, que cascateiam dos templates/artworks], cliente_360_*
 //      [resumos/diagnosticos(+itens)/frete/sync_jobs], central_vendas_sync_runs
