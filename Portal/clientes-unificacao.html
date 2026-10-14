@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Venforce — Unificação de Clientes</title>
+    <link rel="stylesheet" href="css/vf-tokens-v2.css" />
+    <link rel="stylesheet" href="css/vf-components-v2.css" />
+    <link rel="stylesheet" href="css/vf-shell.css" />
+    <link
+      rel="stylesheet"
+      href="css/pages/clientes-unificacao.css?v=20261014-1"
+    />
+  </head>
+  <body
+    class="vf-page cu-page"
+    data-vf-scope="global"
+    data-vf-module="clientes-unificacao"
+  >
+    <div class="vf-page-shell">
+      <main class="vf-page-container vf-page-container--wide">
+        <header class="vf-page-header">
+          <div class="vf-page-header__main">
+            <p class="vf-page-header__eyebrow">Administração</p>
+            <h1 class="vf-page-header__title">Unificação de Clientes</h1>
+            <p class="vf-page-header__description">
+              Organize registros duplicados sem perder contas, integrações ou
+              histórico.
+            </p>
+          </div>
+          <button
+            type="button"
+            id="cu-new"
+            class="vf-btn vf-btn--primary"
+            hidden
+          >
+            Nova unificação
+          </button>
+        </header>
+        <p id="cu-access" role="status" aria-live="polite">Validando acesso…</p>
+        <div id="cu-app" hidden>
+          <div
+            class="vf-tabs"
+            role="tablist"
+            aria-label="Unificação de Clientes"
+          >
+            <button
+              type="button"
+              id="cu-tab-candidates"
+              class="vf-tab is-active"
+              role="tab"
+              aria-selected="true"
+              aria-controls="cu-candidates"
+            >
+              Candidatos
+            </button>
+            <button
+              type="button"
+              id="cu-tab-history"
+              class="vf-tab"
+              role="tab"
+              aria-selected="false"
+              aria-controls="cu-history"
+              tabindex="-1"
+            >
+              Histórico
+            </button>
+          </div>
+          <section
+            id="cu-candidates"
+            role="tabpanel"
+            aria-labelledby="cu-tab-candidates"
+            tabindex="0"
+          ></section>
+          <section
+            id="cu-history"
+            role="tabpanel"
+            aria-labelledby="cu-tab-history"
+            tabindex="0"
+            hidden
+          ></section>
+          <section
+            id="cu-editor"
+            class="cu-panel"
+            aria-labelledby="cu-editor-title"
+            hidden
+          >
+            <div class="cu-toolbar">
+              <h2 id="cu-editor-title" tabindex="-1">Nova unificação</h2>
+              <button
+                type="button"
+                id="cu-close-editor"
+                class="vf-btn vf-btn--ghost"
+              >
+                Fechar revisão
+              </button>
+            </div>
+            <p id="cu-candidate-context" class="cu-muted"></p>
+            <fieldset id="cu-selection">
+              <legend class="vf-visually-hidden">
+                Escolha explícita dos clientes
+              </legend>
+              <div class="cu-selection-grid">
+                <section>
+                  <h3>Este cliente vai permanecer</h3>
+                  <div id="cu-canonical"></div>
+                  <label class="vf-field__label" for="cu-search-canonical"
+                    >Buscar cliente canônico</label
+                  >
+                  <input
+                    id="cu-search-canonical"
+                    class="vf-input"
+                    type="search"
+                    maxlength="100"
+                    autocomplete="off"
+                    aria-controls="cu-results-canonical"
+                  />
+                  <div
+                    id="cu-results-canonical"
+                    class="cu-search-results"
+                    aria-live="polite"
+                  ></div>
+                </section>
+                <section>
+                  <h3>Clientes que serão incorporados</h3>
+                  <div id="cu-legacies"></div>
+                  <label class="vf-field__label" for="cu-search-legacy"
+                    >Buscar e adicionar legado</label
+                  >
+                  <input
+                    id="cu-search-legacy"
+                    class="vf-input"
+                    type="search"
+                    maxlength="100"
+                    autocomplete="off"
+                    aria-controls="cu-results-legacy"
+                  />
+                  <div
+                    id="cu-results-legacy"
+                    class="cu-search-results"
+                    aria-live="polite"
+                  ></div>
+                </section>
+              </div>
+            </fieldset>
+            <button
+              type="button"
+              id="cu-preview"
+              class="vf-btn vf-btn--secondary"
+              disabled
+            >
+              Gerar preview
+            </button>
+            <p id="cu-feedback" role="status" aria-live="polite"></p>
+            <div id="cu-review" hidden></div>
+            <section id="cu-decisions" hidden></section>
+            <fieldset id="cu-confirm" class="cu-confirm" hidden>
+              <legend>Confirmação final</legend>
+              <p id="cu-execution-state"></p>
+              <label
+                ><input type="checkbox" id="cu-reviewed" /> Revisei as contas,
+                Grants, Bases e Squad.</label
+              >
+              <label class="vf-field__label" for="cu-confirmation"
+                >Digite
+                <strong id="cu-confirmation-text" class="vf-mono"></strong
+              ></label>
+              <input
+                id="cu-confirmation"
+                class="vf-input vf-mono"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button
+                type="button"
+                id="cu-execute"
+                class="vf-btn vf-btn--primary"
+                disabled
+              >
+                Unificar clientes
+              </button>
+            </fieldset>
+          </section>
+          <section
+            id="cu-result"
+            class="cu-panel"
+            tabindex="-1"
+            aria-live="polite"
+            hidden
+          ></section>
+          <section
+            id="cu-detail"
+            class="cu-panel"
+            tabindex="-1"
+            aria-live="polite"
+            hidden
+          ></section>
+        </div>
+        <noscript
+          >Ative JavaScript para validar a sessão e acessar esta interface
+          administrativa.</noscript
+        >
+      </main>
+    </div>
+    <script type="module" src="clientes-unificacao.js?v=20261014-1"></script>
+  </body>
+</html>

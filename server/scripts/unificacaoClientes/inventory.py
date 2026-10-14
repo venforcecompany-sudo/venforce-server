@@ -1,4 +1,4 @@
-import pathlib,json,csv,re,unicodedata,difflib,itertools,collections,argparse
+import pathlib,json,csv,re,unicodedata,difflib,itertools,collections,argparse,subprocess
 parser=argparse.ArgumentParser();parser.add_argument("--snapshot",required=True);parser.add_argument("--historical-candidates");args=parser.parse_args()
 p=pathlib.Path(args.snapshot).resolve().parent;s=json.loads(pathlib.Path(args.snapshot).read_text());t=s['tables'];C=t['clientes'];A=t['cliente_contas'];G=t['ml_tokens'];B=t['bases'];V=t['base_cliente_vinculos'];H=t['cliente_squad_history']
 def no_secrets(obj):
@@ -18,19 +18,11 @@ squads=lambda cid:[h['squad_id'] for h in rowsby(H,'cliente_id',cid) if h.get('f
 external=lambda cid:set(str(a['external_account_id']) for a in rowsby(A,'cliente_id',cid) if a.get('external_account_id'))|set(str(g['ml_user_id']) for g in rowsby(G,'cliente_id',cid) if g.get('ml_user_id'))
 def stem(x):
  x=''.join(c for c in unicodedata.normalize('NFKD',str(x).lower()) if not unicodedata.combining(c));x=re.sub(r'[^a-z0-9]+',' ',x).strip();x=re.sub(r'(?:\s+(?:ml|meli|mercado livre|shopee|tiktok))?\s*\d+$','',x).strip();return x
-pairs=[]
-for c,d in itertools.combinations(C,2):
- cn,dn=stem(c['nome']),stem(d['nome']);cs,ds=stem(c['slug']),stem(d['slug']);shared=external(c['id'])&external(d['id']);same=(cn==dn or cs==ds) and len(cn)>=3;similar=max(difflib.SequenceMatcher(None,cn,dn).ratio(),difflib.SequenceMatcher(None,cs,ds).ratio())
- if not(shared or same or similar>=.86):continue
- reasons=[];score=0
- if shared:reasons.append({'motivo':'seller compartilhado comprova identidade externa, não empresa','pontos':30});score+=30
- if same:reasons.append({'motivo':'mesma raiz de nome/slug','pontos':10});score+=10
- elif similar>=.86:reasons.append({'motivo':'similaridade textual >=0.86','pontos':5});score+=5
- sh=squads(c['id']);dh=squads(d['id'])
- if len(sh)==len(dh)==1 and sh==dh:reasons.append({'motivo':'Squad atual igual, sem prova empresarial','pontos':10});score+=10
- elif sh!=dh:reasons.append({'motivo':'carteiras distintas sem decisão de acesso','pontos':-50});score-=50
- cls='DECISAO_HUMANA' if shared and (not same or sh!=dh) else 'MUITO_PROVAVEL' if shared and same else 'PROVAVEL' if same else 'POSSIVEL'
- pairs.append({'cliente_a':c['id'],'cliente_b':d['id'],'classificacao':cls,'score_priorizacao':score,'motivos':reasons,'sellers_compartilhados':sorted(shared),'decisao':'PENDENTE','cliente_canonico_aprovado':None})
+# Mesma triagem que a API backend; os candidatos históricos abaixo continuam
+# exclusivos do inventário explícito offline, sem inferência empresarial.
+candidate_domain=pathlib.Path(__file__).resolve().parents[2]/'services/clientesUnificacao/candidates.js'
+result=subprocess.run(['node',str(candidate_domain)],input=json.dumps({k:t[k] for k in ['clientes','cliente_contas','ml_tokens','cliente_squad_history']}),text=True,capture_output=True,check=True)
+pairs=json.loads(result.stdout)
 # Preserva candidatos da auditoria anterior ausentes no limiar atual, sem
 # promover a prova empresarial ou apagar a revisão humana pendente.
 old=json.loads(pathlib.Path(args.historical_candidates).read_text()) if args.historical_candidates else []

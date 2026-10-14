@@ -1,0 +1,127 @@
+{
+  "baseBranch": "feat/clientes-unificacao-executor-stacked",
+  "baseSha": "6aafd52aba419c229312c51d74c534a7a8d10b4b",
+  "headBranch": "feat/clientes-unificacao-ui-stacked",
+  "checkedAtUtc": "2026-10-14T17:34:21.935387+00:00",
+  "uiChrome": {
+    "passedScenarios": 41,
+    "viewports": [
+      1440,
+      1024,
+      390
+    ]
+  },
+  "uiPostgres": {
+    "passedScenarios": 7,
+    "postgresVersion": "18.6",
+    "scope": "loopback-only disposable synthetic database"
+  },
+  "backendPostgres": {
+    "passedScenarios": 39
+  },
+  "apiAuth": {
+    "passedChecks": 65
+  },
+  "domain": {
+    "passedScenarios": 41
+  },
+  "backendSuite": {
+    "base": {
+      "total": 334,
+      "passed": 331,
+      "failures": [
+        {
+          "file": "designStudioWorkspace.test.js",
+          "exit": 1
+        },
+        {
+          "file": "meliAnunciosOrdenacaoGlobal.test.js",
+          "exit": 1
+        },
+        {
+          "file": "mlTokenService.test.js",
+          "exit": 1
+        }
+      ]
+    },
+    "head": {
+      "total": 334,
+      "passed": 331,
+      "failures": [
+        {
+          "file": "designStudioWorkspace.test.js",
+          "exit": 1
+        },
+        {
+          "file": "meliAnunciosOrdenacaoGlobal.test.js",
+          "exit": 1
+        },
+        {
+          "file": "mlTokenService.test.js",
+          "exit": 1
+        }
+      ]
+    },
+    "normalizedFailureLogsIdentical": true
+  },
+  "portalRegression": {
+    "files": [
+      {
+        "file": "clientes-criar-com-squad-ui.test.js",
+        "exit": 0
+      },
+      {
+        "file": "clientes-diagnostico-ui.test.js",
+        "exit": 0
+      },
+      {
+        "file": "clientes-exclusao-squad-ui.test.js",
+        "exit": 0
+      },
+      {
+        "file": "clientes-squad-coluna-ui.test.js",
+        "exit": 0
+      },
+      {
+        "file": "vf-shell-adoption-ui.test.js",
+        "exit": 0
+      },
+      {
+        "file": "vf-shell-f5-lote-ui.test.js",
+        "exit": 0
+      },
+      {
+        "file": "vf-shell-hardening.test.js",
+        "exit": 0
+      },
+      {
+        "file": "vf-shell-navigation-recovery-ui.test.js",
+        "exit": 0
+      },
+      {
+        "file": "vf-shell-ui.test.js",
+        "exit": 1
+      }
+    ],
+    "inheritedFailure": "vf-shell-ui.test.js:409",
+    "normalizedFailureLogIdenticalToBase": true,
+    "navigationRecoveryFinalChecksPassed": 18
+  },
+  "criticalBackendChanged": false,
+  "backendPresentationAdditions": [
+    "GET /admin/clientes-unificacao/config",
+    "preview.baseVinculos",
+    "operation.rollbackConfirmationText"
+  ],
+  "featureFlagsDefaultOff": [
+    "CLIENTES_UNIFICACAO_UI_ENABLED",
+    "CLIENTES_UNIFICACAO_EXECUTE_ENABLED",
+    "CLIENTES_UNIFICACAO_ROLLBACK_ENABLED"
+  ],
+  "productionAccessed": false,
+  "productionModified": false,
+  "productionFlagsModified": false,
+  "deployment": false,
+  "merge": false,
+  "newProductDependencies": false
+}

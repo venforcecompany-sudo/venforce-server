@@ -66,6 +66,7 @@ const {
 } = require("./services/fechamentoFinanceiro/shopeePerformanceService");
 const authRoutes = require("./routes/authRoutes");
 const logsRoutes = require("./routes/logsRoutes");
+const clientesUnificacaoRoutes = require("./routes/clientesUnificacaoRoutes");
 const fechamentosFinanceiroRoutes = require("./routes/fechamentosFinanceiroRoutes");
 const fechamentoDebugRoutes = require("./routes/fechamentoDebugRoutes");
 const fechamentoIncidentesRoutes = require("./routes/fechamentoIncidentesRoutes");
@@ -806,6 +807,7 @@ END $$;
 
 app.use("/auth", authRoutes);
 app.use("/admin/logs", logsRoutes);
+app.use("/admin/clientes-unificacao", clientesUnificacaoRoutes);
 app.use("/admin/observability", observabilityRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/fechamentos", fechamentosFinanceiroRoutes);

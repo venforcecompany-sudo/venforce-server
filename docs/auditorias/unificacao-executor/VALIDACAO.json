@@ -1,0 +1,86 @@
+{
+  "baseBranch": "feat/unificacao-clientes-fase2-stacked",
+  "baseSha": "fe100d97d8b331e4f55bbf633120d679c21dd7a7",
+  "branch": "feat/clientes-unificacao-executor-stacked",
+  "baseline": {
+    "files": 331,
+    "passed": 328,
+    "failed": [
+      "designStudioWorkspace.test.js",
+      "meliAnunciosOrdenacaoGlobal.test.js",
+      "mlTokenService.test.js"
+    ]
+  },
+  "backend": {
+    "files": 334,
+    "passed": 331,
+    "failed": [
+      "designStudioWorkspace.test.js",
+      "meliAnunciosOrdenacaoGlobal.test.js",
+      "mlTokenService.test.js"
+    ],
+    "newFailures": 0,
+    "historicalFailureLogsEqual": true,
+    "skippedFiles": 0
+  },
+  "directed": {
+    "files": 173,
+    "passed": 173,
+    "failed": []
+  },
+  "domainScenarios": 41,
+  "httpAuthAssertions": 52,
+  "postgresScenarios": 39,
+  "postgres": {
+    "version": "18.6",
+    "location": "localhost disposable vf_unificacao_test_*",
+    "migrationRunsPerHarness": 2,
+    "syntheticDataOnly": true,
+    "thirdStepFailureVerifiedAfterTwoSuccessfulChanges": true,
+    "concurrentOverlapSingleSuccess": true,
+    "independentDestinationsSameSquad": true,
+    "commitResponseLostReplay": true,
+    "poolMaxOne": true,
+    "deadlineRollback": true,
+    "rollbackDivergenceBlocked": true,
+    "mappingProtectedAgainstPurge": true
+  },
+  "sharedDomain": {
+    "cliV0Compatibility": true,
+    "cliV1ApiHashParity": true,
+    "candidatePairs": 35,
+    "candidateParityPriorPrivateInventory": true,
+    "historicalPairsKeptOffline": 2
+  },
+  "protectedPathsUnchanged": [
+    "server/services/centralVendas",
+    "server/jobs",
+    "server/config/database.js",
+    "server/config/databaseConexao.js",
+    "server/services/painelContas",
+    "server/services/promoSnapshot",
+    "server/services/motorMargem/marginSnapshotApi.js",
+    "server/services/motorMargem/marginSnapshotProcessor.js",
+    "server/controllers/fechamentosFinanceiroController.js",
+    "Portal",
+    "frontend-react"
+  ],
+  "security": {
+    "productionConnectionOpened": false,
+    "productionWrites": false,
+    "productionMigrationApplied": false,
+    "merge": false,
+    "deploy": false,
+    "frontendChanged": false,
+    "externalMarketplaceRequests": false,
+    "credentialsSelectedByRepository": false,
+    "flagsDefaultOff": true
+  },
+  "limitations": [
+    "production/homologation not authorized",
+    "human business approval not inferred",
+    "Central history blocked pending account-context integration",
+    "unknown references/UNIQUES/CHECKS/triggers/coverage blocked",
+    "stack requires rebase and review after foundation merges"
+  ]
+}

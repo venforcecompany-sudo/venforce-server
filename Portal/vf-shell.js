@@ -28,6 +28,7 @@ import { vfContext } from "./vf-context.js";
 import { vfApi } from "./vf-api.js";
 import { format as fmt } from "./vf-format.js";
 import { statusOperacao, rotuloExterno } from "./vf-context.js";
+import { loadUnificacaoAccess } from "./clientes-unificacao-access.js";
 
 const TOKEN_KEY = "vf-token";
 const USER_KEY = "vf-user";
@@ -111,6 +112,7 @@ export const GLOBAIS = [
 ];
 
 export const ADMIN = [
+  { id: "clientes-unificacao", label: "Unificação de Clientes", rota: "clientes-unificacao.html", unificacaoUi: true },
   // Tokens ML era `adminOnly` em layout.js (e ml-tokens.js:12 já redireciona
   // sozinho quem não é admin) — recuperado só aqui, no grupo Administração,
   // para preservar exatamente a mesma restrição de acesso que já existia.
@@ -417,6 +419,7 @@ export function createVfShell(options = {}) {
   const onCommand = options.onCommand || defaultCommand;
   const getUser = options.getUser || readUser;
   const storage = options.storage || safeLocalStorage();
+  let unificacaoUiEnabled = options.unificacaoUiEnabled === true;
 
   const dom = options.dom || buildShellDom();
   if (!dom) return null; // abortou: .vf-sidebar (layout.js) já presente
@@ -578,7 +581,7 @@ export function createVfShell(options = {}) {
       const admin = el("details", "vf-shell__admin");
       admin.innerHTML = "<summary>Administração</summary>";
       const navA = el("nav", "vf-shell__nav");
-      ADMIN.forEach((mod) => navA.appendChild(itemNav(mod, null, null)));
+      ADMIN.filter((mod) => !mod.unificacaoUi || unificacaoUiEnabled).forEach((mod) => navA.appendChild(itemNav(mod, null, null)));
       admin.appendChild(navA);
       host.appendChild(admin);
     }
@@ -1036,6 +1039,12 @@ export function createVfShell(options = {}) {
   const unsubscribe = ctxStore.subscribe((snap) => render(snap));
 
   return {
+    setUnificacaoUiEnabled(value) {
+      const next = value === true;
+      if (next === unificacaoUiEnabled) return;
+      unificacaoUiEnabled = next;
+      render(ctxStore.getSnapshot());
+    },
     render,
     dom,
     abrirOperacao: () => abrirDropdown("operacao"),
@@ -1111,6 +1120,21 @@ function bootProduction() {
   if (!shell) return null; // abortou: .vf-sidebar já presente (layout.js)
 
   vfContext.init({ api: createProductionContextApi(vfApi), user, scope });
+  if (String(user.role || "").toLowerCase() === "admin") {
+    loadUnificacaoAccess().then((access) => {
+      const allowed = access?.uiEnabled === true && access.actor?.role === "admin";
+      shell.setUnificacaoUiEnabled(allowed);
+      const actions = document.getElementById("clientes-header-acoes");
+      if (allowed && actions && !document.getElementById("cu-clientes-shortcut")) {
+        const link = document.createElement("a");
+        link.id = "cu-clientes-shortcut";
+        link.className = "vf-btn vf-btn--secondary";
+        link.href = "clientes-unificacao.html";
+        link.textContent = "Unificar clientes";
+        actions.appendChild(link);
+      }
+    }).catch(() => { /* flag indisponível mantém apenas este item oculto */ });
+  }
   return shell;
 }
 

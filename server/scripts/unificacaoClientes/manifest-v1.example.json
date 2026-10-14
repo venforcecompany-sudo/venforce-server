@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "clienteCanonicoId": 1001,
+  "clientesLegadosIds": [1002],
+  "decisoes": {
+    "primaryAccounts": { "meli": 12002 },
+    "primaryGrantId": 13002,
+    "referencias": {}
+  },
+  "aprovacao": {
+    "aprovada": false,
+    "aprovadorUserId": null,
+    "evidencia": "EXEMPLO-SINTETICO-SEM-APROVACAO"
+  }
+}

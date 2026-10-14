@@ -103,3 +103,17 @@ não habilitam escrita. A ausência de erro estrutural não valida token online,
 empresa real, payloads nem efeitos de integração externa. Antes de produção,
 recoletar estado vivo, implementar/testar lookup e executor em PR próprio e
 obter autorização específica. Nenhuma migration é exigida/aplicada pela ferramenta.
+
+## Backend v1 e compatibilidade
+
+O adapter `planner.js` importa agora o domínio em
+`server/services/clientesUnificacao/planner.js`. Manifestos v1 usam o mesmo
+planner/validator/hash da API administrativa; o contrato anterior sem versão
+continua exclusivamente read-only. Não há modo de execução na CLI.
+
+V1 precisa do snapshot estruturado do repository (profile `executor-v1`,
+PK/FK e chaves/predicados de índices completos); a fotografia agregada antiga
+não é promovida automaticamente a snapshot executável. O exemplo
+`manifest-v1.example.json` é sintético e não aprovado.
+
+Consulte [contratos, endpoints, flags OFF e limites de homologação](../../../docs/UNIFICACAO_CLIENTES_EXECUTOR.md).

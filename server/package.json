@@ -8,7 +8,8 @@
     "test": "node tests/run-all.js",
     "sync:central-vendas:noturno": "node jobs/syncCentralVendasNoturno.js",
     "sync:central-vendas:backfill": "node jobs/backfillCentralVendas.js",
-    "test:cliente360": "node tests/cliente360Contratos.test.js && node tests/cliente360Ponte.test.js && node tests/cliente360Ads.test.js && node tests/cliente360Capacidades.test.js && node tests/cliente360Resultado.test.js"
+    "test:cliente360": "node tests/cliente360Contratos.test.js && node tests/cliente360Ponte.test.js && node tests/cliente360Ads.test.js && node tests/cliente360Capacidades.test.js && node tests/cliente360Resultado.test.js",
+    "test:unificacao:postgres": "node tests/clientesUnificacao.postgres.cjs"
   },
   "dependencies": {
     "archiver": "^7.0.1",
