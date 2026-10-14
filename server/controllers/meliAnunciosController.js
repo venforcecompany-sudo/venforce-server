@@ -30,6 +30,7 @@ const promocoesService = require("../services/meliAnuncios/meliPromocoesService"
 const promocoesEscritaService = require("../services/meliAnuncios/meliPromocoesEscritaService");
 const metricas7dService = require("../services/meliAnuncios/meliMetricas7dService");
 const custosLoteService = require("../services/meliAnuncios/meliCustosLoteService");
+const custosPlanilhaService = require("../services/meliAnuncios/meliCustosPlanilhaService");
 const { registrarLog, extrairIp, dadosUsuarioDeReq } = require("../services/activityLogService");
 const motorMargemService = require("../services/motorMargem/motorMargemService");
 const cliente360ProdutosEngine = require("../services/cliente360/cliente360ProdutosEngine");
@@ -3563,9 +3564,64 @@ async function retryPrecosAtacado(req, res) {
   }
 }
 
+// ----------------------------------------------------------------------------
+// GET  /anuncios-meli/custos/planilha?clienteSlug=&clienteContaId=
+// POST /anuncios-meli/custos/planilha/previa?clienteSlug=&clienteContaId=  (multipart "arquivo")
+//
+// "Importar base de custo": baixa o XLSX com TODOS os anúncios da conta (com e
+// sem custo) e lê o preenchido devolvendo a prévia. Nenhuma das duas grava —
+// a gravação é POST /custos/lote. clienteSlug na QUERY também no POST: o guard
+// de carteira roda antes do multer. Ver meliCustosPlanilhaService.
+// ----------------------------------------------------------------------------
+function responderErroPlanilha(res, err, rotulo) {
+  if (err.code === "MULTIPLE_MARKETPLACE_ACCOUNTS") return responderAmbiguidade(res, err);
+  if (err.statusCode && err.payload) {
+    return res.status(err.statusCode).json({
+      ok: false,
+      codigo: err.payload.codigo || null,
+      motivo: err.payload.motivo || err.payload.erro || "Não foi possível processar a planilha.",
+    });
+  }
+  console.error(`[anuncios-meli] ${rotulo}:`, err.message);
+  return res.status(500).json({ ok: false, motivo: "Erro interno ao processar a planilha de custos." });
+}
+
+async function baixarPlanilhaCustos(req, res) {
+  try {
+    const { clienteSlug } = req.query || {};
+    if (!clienteSlug) return res.status(400).json({ ok: false, motivo: "Informe o clienteSlug." });
+    const r = await custosPlanilhaService.gerarPlanilha({
+      clienteSlug,
+      clienteContaId: extrairClienteContaId(req.query && req.query.clienteContaId),
+    });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${r.filename}"`);
+    return res.send(r.buffer);
+  } catch (err) {
+    return responderErroPlanilha(res, err, "baixarPlanilhaCustos");
+  }
+}
+
+async function previaPlanilhaCustos(req, res) {
+  try {
+    const { clienteSlug } = req.query || {};
+    if (!clienteSlug) return res.status(400).json({ ok: false, motivo: "Informe o clienteSlug." });
+    const r = await custosPlanilhaService.lerPlanilha({
+      clienteSlug,
+      clienteContaId: extrairClienteContaId(req.query && req.query.clienteContaId),
+      buffer: req.file && req.file.buffer,
+    });
+    return res.json({ ok: true, ...r });
+  } catch (err) {
+    return responderErroPlanilha(res, err, "previaPlanilhaCustos");
+  }
+}
+
 module.exports = {
   lerCustos,
   salvarCustosLote,
+  baixarPlanilhaCustos,
+  previaPlanilhaCustos,
   listarClientes,
   sincronizar,
   resumo,

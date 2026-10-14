@@ -550,6 +550,10 @@
     document.addEventListener("vf:context", aplicarContextoDoShell);
     bindCustos(el("am-catalogo-container"));
     bindBarrasCustos();
+    // O botão mora no cabeçalho da lista, que é recriado a cada render.
+    el("am-catalogo-container").addEventListener("click", function (e) {
+      if (e.target.closest("#am-expandir-todos")) alternarTodosGrupos();
+    });
     el("am-busca").addEventListener("input", function (e) {
       AM.filtros.q = e.target.value;
       atualizarIndicadorFiltros();
@@ -732,6 +736,7 @@
 
     AM.carregandoCatalogo = true;
     box.innerHTML = estadoHtml("loading", "Carregando anúncios…");
+    atualizarBotaoExpandir();
 
     var qs = "clienteSlug=" + encodeURIComponent(AM.clienteAtual.slug) +
              "&page=" + AM.paginacao.page + "&limit=" + AM.paginacao.limit;
@@ -816,11 +821,18 @@
       return;
     }
 
+    // Os rótulos são decorativos (aria-hidden); o botão "Expandir todos" no
+    // cabeçalho, não — por isso o aria-hidden fica em cada rótulo.
+    var temGrupo = AM.anuncios.some(function (l) { return l.tipo === "familia"; });
     var html = '<div class="am-listagem" aria-label="Lista de anúncios">' +
-      '<div class="am-listagem__head" aria-hidden="true">' +
-        "<span></span><span>Anúncio</span><span>Status</span><span>Preço</span>" +
-        "<span>Estoque</span><span>Vendidos</span><span>Faturamento</span><span>Métricas últ. 7 dias</span>" +
-        "<span>Margem</span><span>Score VenForce</span><span></span>" +
+      '<div class="am-listagem__head">' +
+        '<span aria-hidden="true"></span>' +
+        '<span class="am-listagem__head-anuncio"><b class="am-listagem__head-rotulo" aria-hidden="true">Anúncio</b>' +
+          (temGrupo ? '<button type="button" class="am-expandir-todos" id="am-expandir-todos" aria-pressed="false">Expandir todos</button>' : "") +
+        "</span>" +
+        ["Status", "Preço", "Estoque", "Vendidos", "Faturamento", "Métricas 7 dias", "Margem", "Score VenForce", ""].map(function (r) {
+          return '<span aria-hidden="true">' + r + "</span>";
+        }).join("") +
       "</div>";
     // Mesma grade, mesmas colunas, mesma densidade para os dois tipos de
     // linha. O que muda é só o que existe embaixo: um agrupador abre, um
@@ -841,6 +853,7 @@
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); alternarGrupo(row); }
       });
     });
+    atualizarBotaoExpandir();
 
     bindPaginacao("am-pag", AM.paginacao, function (pagina) {
       irParaPaginaComCustos(pagina, function (p) {
@@ -1156,6 +1169,7 @@
     linha.setAttribute("aria-expanded", abrindo ? "true" : "false");
     linha.classList.toggle("is-aberta", abrindo);
     painel.hidden = !abrindo;
+    atualizarBotaoExpandir();
     if (!abrindo) return;
 
     var cache = AM.state.familyCache[familyId];
@@ -1169,6 +1183,36 @@
     }
     if (painel.getAttribute("data-carregando") === "1") return; // já tem um clique em voo
     carregarFamiliaDetalhe(familyId, painel);
+  }
+
+  // "Expandir agrupadores": abre (ou fecha) TODAS as famílias da página pelo
+  // mesmo alternarGrupo do clique — mesmo cache, mesma Promise em voo, nenhuma
+  // requisição duplicada. Abre quando há alguma fechada; fecha quando todas
+  // já estão abertas.
+  function linhasDeGrupo() {
+    return Array.prototype.slice.call(document.querySelectorAll("#am-catalogo-container .am-row--grupo[data-familia]"));
+  }
+
+  function atualizarBotaoExpandir() {
+    var btn = el("am-expandir-todos");
+    if (!btn) return;
+    var grupos = linhasDeGrupo();
+    btn.hidden = !grupos.length;
+    if (!grupos.length) return;
+    var todasAbertas = grupos.every(function (g) { return g.getAttribute("aria-expanded") === "true"; });
+    btn.textContent = todasAbertas ? "Recolher todos" : "Expandir todos";
+    btn.setAttribute("aria-pressed", todasAbertas ? "true" : "false");
+  }
+
+  function alternarTodosGrupos() {
+    var grupos = linhasDeGrupo();
+    if (!grupos.length) return;
+    var abrir = grupos.some(function (g) { return g.getAttribute("aria-expanded") !== "true"; });
+    grupos.forEach(function (g) {
+      var aberta = g.getAttribute("aria-expanded") === "true";
+      if (aberta !== abrir) alternarGrupo(g);
+    });
+    atualizarBotaoExpandir();
   }
 
   function carregarFamiliaDetalhe(familyId, painel) {
@@ -3960,6 +4004,8 @@
   function renderBarraCustos() {
     var box = el("am-custos-barra");
     if (!box) return;
+    var slot = el("am-custos-acoes-slot");
+    if (slot) slot.innerHTML = "";
     if (!AM.clienteAtual || CUSTOS.base === undefined) { box.innerHTML = ""; return; }
 
     if (CUSTOS.base === null) {
@@ -3972,11 +4018,18 @@
 
     if (!CUSTOS.modo) {
       var semCusto = itensDeCustoNaTela().filter(function (id) { return CUSTOS.cache[id] === null; }).length;
-      box.innerHTML = '<div class="am-custos-acoes">' +
-        (semCusto ? '<span class="vf-tag is-warning" title="Anúncios desta página sem custo na Base">' +
-          semCusto + " sem custo nesta página</span>" : "") +
-        '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-custos-acao="entrar">' +
-          icLapis(12) + " Editar custos</button>" +
+      // Na linha da busca quando há o slot; senão, na barra própria.
+      var alvo = slot || box;
+      if (slot) box.innerHTML = "";
+      alvo.innerHTML = '<div class="am-custos-acoes">' +
+        // Mesma altura/fonte dos campos de busca e ordenação ao lado
+        // (vf-btn no tamanho padrão, aviso com a altura de controle).
+        (semCusto ? '<span class="am-custos-acoes__aviso" title="Anúncios desta página sem custo na Base">' +
+          icAlerta(14) + " " + semCusto + " sem custo nesta página</span>" : "") +
+        '<button type="button" class="vf-btn vf-btn--secondary" data-custos-acao="importar">' +
+          icPlanilha(14) + " Importar base de custo</button>" +
+        '<button type="button" class="vf-btn vf-btn--secondary" data-custos-acao="entrar">' +
+          icLapis(14) + " Editar custos</button>" +
         "</div>";
       return;
     }
@@ -4051,6 +4104,7 @@
       if (!b || b.disabled) return;
       switch (b.getAttribute("data-custos-acao")) {
         case "entrar": entrarModoCustos(); break;
+        case "importar": abrirImportacaoCustos(); break;
         case "sair": sairModoCustos(false); break;
         case "selecionar-pagina":
           document.querySelectorAll("#am-catalogo-container [data-custo-sel]").forEach(function (c) {
@@ -4077,6 +4131,8 @@
     }
     var barra = el("am-custos-barra");
     var savebar = el("am-custos-savebar");
+    var slot = el("am-custos-acoes-slot");
+    if (slot) slot.addEventListener("click", onClick);
     if (barra) {
       barra.addEventListener("click", onClick);
       barra.addEventListener("change", function (e) {
@@ -4093,6 +4149,270 @@
       });
     }
     if (savebar) savebar.addEventListener("click", onClick);
+  }
+
+  // ===========================================================================
+  // IMPORTAR BASE DE CUSTO — planilha da conta inteira
+  //
+  // Mesmo fluxo da correção em lote do Financeiro, mas com TODOS os anúncios
+  // da conta (com e sem custo):
+  //   1. Baixar   GET  /anuncios-meli/custos/planilha (custo atual preenchido)
+  //   2. Enviar   POST /anuncios-meli/custos/planilha/previa — só lê e diz o
+  //               que mudaria (atualizar / adicionar / igual / recusada)
+  //   3. Gravar   POST /anuncios-meli/custos/lote, de 100 em 100 — a MESMA
+  //               porta da edição na lista (revalida tudo, loga, enfileira o
+  //               Margin Snapshot)
+  // Célula de custo vazia é ignorada: a importação nunca zera nem apaga.
+  // ===========================================================================
+  var IMP = null;
+
+  function qsContaCustos() {
+    var qs = "clienteSlug=" + encodeURIComponent(AM.clienteAtual.slug);
+    if (AM.contaMlId) qs += "&clienteContaId=" + encodeURIComponent(AM.contaMlId);
+    return qs;
+  }
+
+  function abrirImportacaoCustos() {
+    if (!AM.clienteAtual || !CUSTOS.base || IMP) return;
+    var overlay = document.createElement("div");
+    overlay.className = "am-imp-overlay vf-overlay is-open";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "am-imp-titulo");
+    overlay.innerHTML = '<div class="am-imp-box vf-modal vf-modal--lg"></div>';
+    document.body.appendChild(overlay);
+    document.body.classList.add("vf-no-scroll");
+    IMP = {
+      overlay: overlay, epoca: CUSTOS.epoca, baixando: false, lendo: false, arquivo: null,
+      previa: null, erro: null, gravando: false, progresso: 0, resultado: null,
+    };
+
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay && !IMP.gravando) { fecharImportacaoCustos(); return; }
+      var b = e.target.closest("[data-imp-acao]");
+      if (!b || b.disabled) return;
+      switch (b.getAttribute("data-imp-acao")) {
+        case "fechar": fecharImportacaoCustos(); break;
+        case "baixar": baixarPlanilhaCustos(); break;
+        case "escolher": overlay.querySelector("#am-imp-arquivo").click(); break;
+        case "gravar": gravarImportacaoCustos(); break;
+      }
+    });
+    overlay.addEventListener("change", function (e) {
+      if (e.target.id === "am-imp-arquivo" && e.target.files && e.target.files[0]) lerPlanilhaCustos(e.target.files[0]);
+    });
+    overlay.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !IMP.gravando) fecharImportacaoCustos();
+    });
+    renderImportacaoCustos();
+    var primeiro = overlay.querySelector('[data-imp-acao="baixar"]');
+    if (primeiro) primeiro.focus();
+  }
+
+  function fecharImportacaoCustos() {
+    if (!IMP) return;
+    if (IMP.overlay.parentNode) IMP.overlay.parentNode.removeChild(IMP.overlay);
+    document.body.classList.remove("vf-no-scroll");
+    IMP = null;
+  }
+
+  function baixarPlanilhaCustos() {
+    var imp = IMP;
+    imp.baixando = true;
+    imp.erro = null;
+    renderImportacaoCustos();
+    fetch(API_BASE + "/anuncios-meli/custos/planilha?" + qsContaCustos(), {
+      headers: { Authorization: "Bearer " + (AM.token || "") },
+    }).then(function (r) {
+      if (!r.ok) {
+        return r.json().catch(function () { return {}; }).then(function (d) {
+          throw new Error(d.motivo || "Não foi possível gerar a planilha (HTTP " + r.status + ").");
+        });
+      }
+      var m = /filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") || "");
+      return r.blob().then(function (blob) { return { blob: blob, nome: m ? m[1] : "custos-anuncios-ml.xlsx" }; });
+    }).then(function (x) {
+      var url = URL.createObjectURL(x.blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = x.nome;
+      document.body.appendChild(a);
+      a.click();
+      a.parentNode.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }).catch(function (err) {
+      imp.erro = err && err.message ? err.message : "Falha de conexão.";
+    }).then(function () {
+      imp.baixando = false;
+      if (IMP === imp) renderImportacaoCustos();
+    });
+  }
+
+  function lerPlanilhaCustos(arquivo) {
+    var imp = IMP;
+    imp.arquivo = arquivo;
+    imp.previa = null;
+    imp.resultado = null;
+    imp.erro = null;
+    if (!/\.(xlsx|xls|csv)$/i.test(arquivo.name)) {
+      imp.erro = "Arquivo inválido. Envie .xlsx, .xls ou .csv.";
+      renderImportacaoCustos();
+      return;
+    }
+    imp.lendo = true;
+    renderImportacaoCustos();
+    var form = new FormData();
+    form.append("arquivo", arquivo);
+    fetch(API_BASE + "/anuncios-meli/custos/planilha/previa?" + qsContaCustos(), {
+      method: "POST",
+      headers: { Authorization: "Bearer " + (AM.token || "") },
+      body: form,
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (!r.ok || !d.ok) throw new Error(d.motivo || "Não foi possível ler a planilha (HTTP " + r.status + ").");
+        return d;
+      });
+    }).then(function (d) {
+      imp.previa = d;
+    }).catch(function (err) {
+      imp.erro = err && err.message ? err.message : "Falha de conexão.";
+    }).then(function () {
+      imp.lendo = false;
+      if (IMP === imp) renderImportacaoCustos();
+    });
+  }
+
+  function linhasParaGravar(previa) {
+    return ((previa && previa.linhas) || []).filter(function (l) { return l.acao === "atualizar" || l.acao === "adicionar"; });
+  }
+
+  function gravarImportacaoCustos() {
+    var imp = IMP;
+    var linhas = linhasParaGravar(imp.previa);
+    if (!linhas.length) return;
+    imp.gravando = true;
+    imp.progresso = 0;
+    renderImportacaoCustos();
+    var res = { gravados: 0, falhas: [] };
+    var lotes = [];
+    for (var i = 0; i < linhas.length; i += CUSTO_LOTE_MAX) lotes.push(linhas.slice(i, i + CUSTO_LOTE_MAX));
+
+    function proximo(k) {
+      if (k >= lotes.length) {
+        imp.gravando = false;
+        imp.resultado = res;
+        if (IMP === imp) renderImportacaoCustos();
+        return;
+      }
+      var lote = lotes[k];
+      enviarCustos(lote.map(function (l) { return { itemId: l.itemId, custo: l.custo }; })).then(function (r) {
+        lote.forEach(function (l) {
+          var x = r.porItem[l.itemId];
+          if (r.ok && x && x.ok) {
+            res.gravados += 1;
+            // Só o que está na tela agora precisa repintar — o resto a lista
+            // lê da Base quando a página for carregada.
+            if (r.valido && imp.epoca === CUSTOS.epoca && CUSTOS.cache[l.itemId] !== undefined) aplicarCustoGravado(l.itemId, x.custo);
+          } else {
+            res.falhas.push({ itemId: l.itemId, motivo: (x && x.motivo) || r.motivo || "Não foi salvo." });
+          }
+        });
+        imp.progresso += lote.length;
+        if (IMP === imp) renderImportacaoCustos();
+        proximo(k + 1);
+      });
+    }
+    proximo(0);
+  }
+
+  function renderImportacaoCustos() {
+    if (!IMP) return;
+    var imp = IMP;
+    var box = imp.overlay.querySelector(".am-imp-box");
+    var p = imp.previa;
+    var paraGravar = linhasParaGravar(p);
+    var nomeBase = CUSTOS.base ? (CUSTOS.base.nome || CUSTOS.base.slug) : "";
+    var travado = imp.gravando || !!imp.resultado;
+
+    var html = '<div class="vf-modal__header"><h3 class="vf-modal__title" id="am-imp-titulo">Importar base de custo</h3>' +
+      '<button type="button" class="vf-btn vf-btn--ghost vf-btn--sm" data-imp-acao="fechar" aria-label="Fechar"' + (imp.gravando ? " disabled" : "") + ">" + icFechar() + "</button></div>" +
+      '<div class="vf-modal__body">' +
+      '<p class="am-imp-intro">Atualiza a Base de custos <strong>' + escapeHtml(nomeBase) + "</strong> com uma planilha de todos os anúncios desta conta.</p>" +
+      '<ol class="am-imp-passos">' +
+        '<li class="am-imp-passo"><strong class="am-imp-passo__titulo">Baixar a planilha</strong>' +
+          '<p class="vf-field__hint">Todos os anúncios da conta, com o custo que já está na Base. Os sem custo vêm com a célula vazia.</p>' +
+          '<div class="am-imp-cluster"><button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-imp-acao="baixar"' + (imp.baixando || travado ? " disabled" : "") + ">" +
+            (imp.baixando ? "Gerando…" : "Baixar XLSX") + "</button></div></li>" +
+        '<li class="am-imp-passo"><strong class="am-imp-passo__titulo">Preencher</strong>' +
+          '<p class="vf-field__hint">Preencha ou altere a coluna <strong>Custo</strong>. Não troque os IDs nem os cabeçalhos. Célula vazia é ignorada — nada é zerado.</p></li>' +
+        '<li class="am-imp-passo"><strong class="am-imp-passo__titulo">Enviar a planilha preenchida</strong>' +
+          '<input type="file" id="am-imp-arquivo" class="vf-visually-hidden" accept=".xlsx,.xls,.csv" aria-label="Planilha de custos preenchida">' +
+          '<div class="am-imp-cluster">' +
+            '<button type="button" class="vf-btn vf-btn--secondary vf-btn--sm" data-imp-acao="escolher"' + (imp.lendo || travado ? " disabled" : "") + ">" +
+              (imp.arquivo ? "Trocar arquivo" : "Selecionar arquivo") + "</button>" +
+            (imp.arquivo ? '<span class="vf-field__hint vf-mono">' + escapeHtml(imp.arquivo.name) + "</span>" : "") +
+            (imp.lendo ? '<span class="vf-field__hint" role="status">Lendo a planilha…</span>' : "") +
+          "</div>";
+
+    if (p) {
+      var r = p.resumo || {};
+      html += '<p class="am-imp-resumo" data-imp-resumo>' +
+        '<span class="is-ok">' + r.atualizar + " para atualizar</span>" +
+        '<span class="is-ok">' + r.adicionar + " para adicionar</span>" +
+        "<span>" + r.inalterado + " iguais à Base</span>" +
+        "<span>" + r.vazias + " sem custo (ignoradas)</span>" +
+        (r.recusadas ? '<span class="is-erro">' + r.recusadas + " recusadas</span>" : "") +
+      "</p>";
+      if (paraGravar.length) {
+        html += '<div class="vf-table-wrap am-imp-tabela"><table class="vf-table vf-table--compact" aria-label="Custos que serão gravados">' +
+          '<thead><tr><th>Anúncio</th><th>ID</th><th class="is-numeric">Custo atual</th><th class="is-numeric">Novo custo</th></tr></thead><tbody>' +
+          paraGravar.slice(0, 50).map(function (l) {
+            return "<tr><td>" + escapeHtml(l.titulo || "—") + '</td><td class="vf-mono">' + escapeHtml(l.itemId) + "</td>" +
+              '<td class="is-numeric">' + formatMoeda(l.custoAtual) + '</td><td class="is-numeric"><strong>' + formatMoeda(l.custo) + "</strong></td></tr>";
+          }).join("") +
+          "</tbody></table></div>" +
+          (paraGravar.length > 50 ? '<p class="vf-field__hint">Mostrando 50 de ' + paraGravar.length + " — todos serão gravados.</p>" : "");
+      }
+      var recusadas = (p.linhas || []).filter(function (l) { return l.acao === "recusada"; });
+      if (recusadas.length) {
+        html += '<details class="am-imp-recusadas"><summary>Linhas recusadas (' + recusadas.length + ") — não serão gravadas</summary><ul>" +
+          recusadas.slice(0, 200).map(function (l) {
+            return '<li><span class="vf-mono">Linha ' + l.linha + " · " + escapeHtml(l.itemId || "—") + "</span> — " + escapeHtml(l.motivo) + "</li>";
+          }).join("") + "</ul></details>";
+      }
+      if (!paraGravar.length && !imp.resultado) {
+        html += '<p class="vf-field__hint">Nada a gravar: a planilha não muda nenhum custo da Base.</p>';
+      }
+    }
+    html += "</li></ol>";
+
+    if (imp.erro) {
+      html += '<div class="vf-banner is-danger" role="alert"><div class="vf-banner__content"><p class="vf-banner__description">' + escapeHtml(imp.erro) + "</p></div></div>";
+    }
+    if (imp.gravando) {
+      html += '<p class="vf-field__hint" role="status">Gravando na Base… ' + imp.progresso + " de " + paraGravar.length + "</p>";
+    }
+    if (imp.resultado) {
+      var res = imp.resultado;
+      html += '<div class="vf-banner ' + (res.falhas.length ? "is-warning" : "is-success") + '" role="status"><div class="vf-banner__content">' +
+        '<p class="vf-banner__description">' + res.gravados + (res.gravados === 1 ? " custo gravado" : " custos gravados") + " na Base" +
+        (res.falhas.length ? " · " + res.falhas.length + " não foram salvos" : "") +
+        ". A margem dos anúncios é recalculada em seguida.</p>" +
+        (res.falhas.length ? '<ul class="am-imp-falhas">' + res.falhas.slice(0, 20).map(function (f) {
+          return '<li><span class="vf-mono">' + escapeHtml(f.itemId) + "</span> — " + escapeHtml(f.motivo) + "</li>";
+        }).join("") + "</ul>" : "") +
+        "</div></div>";
+    }
+    html += "</div>";
+
+    html += '<div class="vf-modal__footer">' +
+      '<button type="button" class="vf-btn vf-btn--ghost vf-btn--sm" data-imp-acao="fechar"' + (imp.gravando ? " disabled" : "") + ">" + (imp.resultado ? "Fechar" : "Cancelar") + "</button>" +
+      (imp.resultado ? "" :
+        '<button type="button" class="vf-btn vf-btn--primary vf-btn--sm" data-imp-acao="gravar"' + (paraGravar.length && !imp.gravando && !imp.lendo ? "" : " disabled") + ">" +
+          (imp.gravando ? "Gravando…" : "Gravar " + paraGravar.length + (paraGravar.length === 1 ? " custo" : " custos")) + "</button>") +
+      "</div>";
+
+    box.innerHTML = html;
   }
 
   function bindPaginacao(prefixo, pag, irPara) {
@@ -4160,6 +4480,7 @@
   function icCheck(t) { return svgIcone('<path d="M20 6 9 17l-5-5"/>', t || 13); }
   function icAlerta(t) { return svgIcone('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4M12 17h.01"/>', t || 13); }
   function icDesfazer(t) { return svgIcone('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>', t || 13); }
+  function icPlanilha(t) { return svgIcone('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h8M10 9H8"/>', t || 12, 1.8); }
   function icLapis(t) { return svgIcone('<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>', t || 12, 1.8); }
   function icExterno(t) { return svgIcone('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/>', t || 12); }
   function icAtualizar(t) { return svgIcone('<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>', t || 13); }

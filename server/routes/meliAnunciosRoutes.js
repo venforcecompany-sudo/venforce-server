@@ -73,6 +73,24 @@ const uploadFotos = multer({
   limits: { fileSize: imagemValidator.MAX_UPLOAD_BYTES, files: MAX_FOTOS_POR_SALVAR },
 });
 
+// Planilha de custos ("Importar base de custo"): memória, um arquivo só.
+const MAX_PLANILHA_CUSTOS_BYTES = 10 * 1024 * 1024;
+const uploadPlanilhaCustos = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PLANILHA_CUSTOS_BYTES, files: 1 },
+});
+
+function tratarErroUploadPlanilha(err, req, res, next) {
+  if (!err) return next();
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ ok: false, codigo: "ARQUIVO_GRANDE", motivo: "Planilha muito grande. O limite é de 10 MB." });
+  }
+  if (err.code === "LIMIT_UNEXPECTED_FILE" || err.code === "LIMIT_FILE_COUNT") {
+    return res.status(400).json({ ok: false, codigo: "CAMPO_INVALIDO", motivo: 'Envie exatamente um arquivo no campo "arquivo".' });
+  }
+  return next(err);
+}
+
 // Erros do Multer no mesmo formato de recusa da rota (codigo/motivo/etapa),
 // em vez de estourar como 500 no handler global.
 function tratarErroUploadImagem(err, req, res, next) {
@@ -113,6 +131,16 @@ router.use(requireClienteNaCarteira({ query: "clienteSlug", body: "clienteSlug" 
 // front). Mesmo acesso das demais escritas do módulo + carteira do cliente.
 router.get("/custos", ctrl.lerCustos);
 router.post("/custos/lote", ctrl.salvarCustosLote);
+// "Importar base de custo": XLSX da conta inteira (com e sem custo) e a prévia
+// do preenchido. Nenhuma grava — a gravação é /custos/lote. clienteSlug na
+// QUERY no POST, pelo mesmo motivo do POST /imagens.
+router.get("/custos/planilha", ctrl.baixarPlanilhaCustos);
+router.post(
+  "/custos/planilha/previa",
+  uploadPlanilhaCustos.single("arquivo"),
+  tratarErroUploadPlanilha,
+  ctrl.previaPlanilhaCustos
+);
 router.get("/clientes", ctrl.listarClientes);
 router.post("/sync", ctrl.sincronizar);
 router.get("/resumo", ctrl.resumo);

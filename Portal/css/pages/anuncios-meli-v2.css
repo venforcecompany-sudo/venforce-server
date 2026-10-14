@@ -495,6 +495,42 @@
   border-bottom: 1px solid var(--vf-border);
 }
 
+/* "Expandir todos" no cabeçalho, ao lado do rótulo Anúncio: ação de texto
+   discreta, sem caixa, para não engrossar a linha do cabeçalho. */
+.vf-page-anuncios-meli .am-listagem__head-anuncio {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vf-sp-3);
+}
+
+.vf-page-anuncios-meli .am-listagem__head-rotulo {
+  font-weight: inherit;
+}
+
+.vf-page-anuncios-meli .am-expandir-todos {
+  padding: 0;
+  text-transform: none;
+  letter-spacing: normal;
+  border: 0;
+  background: none;
+  font-family: var(--vf-font-body);
+  font-size: var(--vf-fs-2xs);
+  font-weight: var(--vf-fw-semibold);
+  color: var(--vf-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vf-page-anuncios-meli .am-expandir-todos:hover {
+  text-decoration: underline;
+}
+
+.vf-page-anuncios-meli .am-expandir-todos:focus-visible {
+  outline: 2px solid var(--vf-primary);
+  outline-offset: 2px;
+  border-radius: var(--vf-radius-sm);
+}
+
 .vf-page-anuncios-meli .am-listagem__head span {
   white-space: nowrap;
   font-size: var(--vf-fs-2xs);
@@ -3567,6 +3603,10 @@
 }
 
 /* Barra acima da lista: ação "Editar custos" / faixa do modo / seleção. */
+.vf-page-anuncios-meli .am-custos-acoes-slot:empty {
+  display: none;
+}
+
 .vf-page-anuncios-meli .am-custos-barra:empty {
   display: none;
 }
@@ -3584,6 +3624,25 @@
   gap: var(--vf-sp-2);
   align-items: center;
   justify-content: flex-end;
+}
+
+/* Aviso "N sem custo nesta página": mesma caixa (altura, borda, raio,
+   fonte) dos campos de busca e ordenação, no tom de atenção. */
+.vf-page-anuncios-meli .am-custos-acoes__aviso {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  height: var(--vf-control-h);
+  padding: 0 var(--vf-sp-3);
+  border: 1px solid var(--vf-warning-border);
+  border-radius: var(--vf-radius-sm);
+  background: var(--vf-warning-bg);
+  color: var(--vf-warning-strong);
+  font-family: var(--vf-font-body);
+  font-size: var(--vf-control-fs);
+  font-weight: var(--vf-fw-medium);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .vf-page-anuncios-meli .am-custos-aviso {
@@ -3729,4 +3788,101 @@ body.vf-page-anuncios-meli.am-custos-savebar-on .vf-toast-stack {
 @media (prefers-reduced-motion: reduce) {
   .vf-page-anuncios-meli .am-custos-savebar,
   .vf-page-anuncios-meli .am-custo__btn svg { transition: none; }
+}
+
+/* ---- Importar base de custo (modal) -------------------------------------
+   Baixar → preencher → enviar → gravar. Ver anuncios-meli.js,
+   "IMPORTAR BASE DE CUSTO". */
+.am-imp-box .vf-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vf-sp-3);
+}
+
+.am-imp-box .vf-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-3);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.am-imp-intro {
+  margin: 0;
+  color: var(--vf-text-secondary);
+  font-size: var(--vf-fs-sm);
+}
+
+.am-imp-passos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-3);
+  margin: 0;
+  padding-left: var(--vf-sp-5);
+}
+
+.am-imp-passo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vf-sp-1);
+}
+
+.am-imp-passo .vf-field__hint {
+  margin: 0;
+}
+
+.am-imp-passo__titulo {
+  color: var(--vf-text);
+  font-size: var(--vf-fs-sm);
+}
+
+.am-imp-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  margin-top: var(--vf-sp-1);
+}
+
+.am-imp-resumo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vf-sp-1) var(--vf-sp-3);
+  margin: var(--vf-sp-2) 0 0;
+  color: var(--vf-text-muted);
+  font-size: var(--vf-fs-xs);
+}
+
+.am-imp-resumo .is-ok {
+  color: var(--vf-success-strong);
+  font-weight: 600;
+}
+
+.am-imp-resumo .is-erro {
+  color: var(--vf-danger-strong);
+  font-weight: 600;
+}
+
+.am-imp-tabela {
+  max-height: 280px;
+  overflow-y: auto;
+  margin-top: var(--vf-sp-2);
+}
+
+.am-imp-recusadas {
+  margin-top: var(--vf-sp-2);
+  font-size: var(--vf-fs-xs);
+}
+
+.am-imp-recusadas summary {
+  cursor: pointer;
+  color: var(--vf-danger-strong);
+}
+
+.am-imp-recusadas ul,
+.am-imp-falhas {
+  margin: var(--vf-sp-1) 0 0;
+  padding-left: var(--vf-sp-4);
+  color: var(--vf-text-secondary);
 }

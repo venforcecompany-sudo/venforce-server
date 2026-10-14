@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="css/vf-tokens-v2.css" />
   <link rel="stylesheet" href="css/vf-components-v2.css" />
-  <link rel="stylesheet" href="css/pages/anuncios-meli-v2.css?v=20261008-2" />
+  <link rel="stylesheet" href="css/pages/anuncios-meli-v2.css?v=20261014-3" />
   <link rel="stylesheet" href="css/vf-shell.css">
 </head>
 <body class="vf-page vf-page-anuncios-meli" data-vf-scope="account" data-vf-module="anuncios">
@@ -97,6 +97,10 @@
                 </div>
                 <div class="vf-toolbar__actions">
                   <span class="vf-tag is-primary am-hidden" id="am-filtros-ativos">Filtros ativos</span>
+                  <!-- Ações de custo fora do modo de edição ("Importar base de
+                       custo" / "Editar custos"): na mesma linha da busca. O
+                       aviso sem Base e a faixa do modo ficam em #am-custos-barra. -->
+                  <div id="am-custos-acoes-slot" class="am-custos-acoes-slot"></div>
                 </div>
               </div>
               <div id="am-ordenacao-aviso" class="vf-alert is-warning" role="status" hidden></div>
@@ -126,6 +130,6 @@
   <div class="vf-toast-stack" id="am-toast-stack" role="status" aria-live="polite" aria-atomic="false"></div>
 
   <script type="module" src="vf-shell.js"></script>
-  <script src="anuncios-meli.js?v=20261008-3"></script>
+  <script src="anuncios-meli.js?v=20261014-3"></script>
 </body>
 </html>
