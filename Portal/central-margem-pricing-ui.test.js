@@ -290,7 +290,7 @@ const MOCK_CLIENT = `
       });
       return {
         ok: true, mlb: mlb, item: { mlb: mlb, ml_promos_url: "https://www.mercadolivre.com.br/anuncios/lista/promos?page=1&search=" + mlb.replace("MLB", "") },
-        atual: Object.assign({ bloqueios: [], rebate_motivo: null }, atualLin),
+        atual: Object.assign({ bloqueios: [], rebate_motivo: null, aliquota: 0.1, preco_cheio: 149.9, preco_cheio_fonte: "margin_snapshot", base: { id: 3, nome: "Custos 2026" } }, atualLin),
         meta: { margem_alvo: 0.1, margem_minima: 0 },
         promocoes: cenarios.some(function (c) { return c.tipo === "todas_promos"; })
           ? (semDados ? { disponivel: false, motivo: "sem_snapshot_promocoes", snapshot_em: null, parcial: null } : { disponivel: true, motivo: null, snapshot_em: "2026-10-14T08:00:00Z", parcial: false })
@@ -705,7 +705,7 @@ async function run() {
       assert.strictEqual(await st("s.bancada.selecionado"), "P-DEAL", "cenário selecionado = promotion_id do chip");
       assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#cm-banc-cenarios [data-cenario]').length >= 3"), true, "o seletor de cenários aparece");
       assert.strictEqual(await cdp.evaluate("Boolean(document.querySelector('[data-cm-bancada-cascata]'))"), true, "a cascata Atual × Cenário aparece");
-      // Mockup: o campo "Preço manual" fica SEMPRE abaixo dos grupos (digitar seleciona "Seu preço"); com a promoção escolhida ele só está vazio.
+      // Mockup: o campo "Preço manual" fica SEMPRE na 1ª linha da tabela (digitar a seleciona); com a promoção escolhida ele só está vazio.
       assert.strictEqual(await cdp.evaluate("document.getElementById('cm-new-price').value"), "", "com a promoção escolhida o campo de preço manual está vazio");
       const colunaCenario = await cdp.evaluate("document.querySelector('tr[data-cm-linha=\"preco\"] td:nth-child(3)').textContent");
       assert.ok(/99,90/.test(colunaCenario), `a coluna Cenário foi preenchida com o preço da promoção: ${colunaCenario}`);
@@ -840,31 +840,36 @@ async function run() {
       assert.strictEqual(await cdp.evaluate("Boolean(document.getElementById('cm-pp-result') || document.querySelector('[data-promo-apply]'))"), false, "o cockpit antigo (cards de promoção, simulação por tipo) saiu do drawer");
     });
 
-    await check("Bancada em 2 colunas (mockup): esquerda = cenário selecionado; direita = Seu preço · Ativa · Pode participar · Já participa · Só pelo ML, cabeçalho de colunas único, resultado texto + bolinha, linha sem simulação desabilitada e botão único no rodapé", async () => {
-      // Esquerda: cenário selecionado · Direita: Cenários (grupos na ordem do mockup)
+    await check("Bancada em 2 colunas (mockup): esquerda = cenário selecionado; direita = UMA tabela num card (Preço manual · Ativa · Pode participar · Já participa · Só pelo ML), cabeçalho único de 4 colunas, resultado texto + bolinha, sem simulação recolhida no fim e botão único no rodapé", async () => {
+      // Esquerda: cenário selecionado · Direita: Cenários
       assert.strictEqual(await cdp.evaluate("Boolean(document.querySelector('.cm-banc__grid .cm-banc__esq #cm-banc-resultado') && document.querySelector('.cm-banc__grid .cm-banc__dir #cm-banc-cenarios'))"), true, "duas colunas");
       assert.strictEqual(await cdp.evaluate("document.getElementById('cm-drawer').classList.contains('cm-drawer--wide')"), true, "Precificar usa o drawer largo");
-      const grupos = JSON.parse(await cdp.evaluate("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('.cm-banc__grupo'), function (g) { return [g.getAttribute('data-grupo'), (g.querySelector('.cm-banc__grupo-titulo') || {}).textContent || null]; }))"));
-      assert.deepStrictEqual(grupos, [["manual", "Seu preço"], ["ativa", "Ativa agora"], ["pode", "Pode participar pelo VenForce"], ["participa", "Você já participa"], ["ml", "Só pelo Mercado Livre"]]);
-      const opcoes = JSON.parse(await cdp.evaluate("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('[data-cenario]'), function (b) { var v = b.querySelector('[data-cm-veredito]'); return [b.getAttribute('data-cenario'), v ? v.getAttribute('data-cm-veredito') : null]; }))"));
-      assert.deepStrictEqual(opcoes, [["preco", null], ["P-ATIVA", "ativa"], ["P-DEAL", "entrar_se_girar"], ["P-NAO", "bloqueado"], ["P-PROG", "nao_entrar"], ["P-SMART", "entrar"]]);
+      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#cm-drawer .cm-cens').length"), 1, "um card só");
+      // Grupos = linhas-título DENTRO da tabela, na ordem do mockup; só os que têm cenário simulável.
+      const grupos = JSON.parse(await cdp.evaluate("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('.cm-cens .cm-cens__grupo'), function (g) { return [g.getAttribute('data-grupo'), g.textContent]; }))"));
+      assert.deepStrictEqual(grupos, [["ativa", "Ativa agora"], ["pode", "Pode participar pelo VenForce"], ["participa", "Você já participa"], ["ml", "Só pelo Mercado Livre"]]);
+      const opcoes = JSON.parse(await cdp.evaluate("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('#cm-banc-cenarios [data-cenario]'), function (b) { var v = b.querySelector('[data-cm-veredito]'); return [b.getAttribute('data-cenario'), v ? v.getAttribute('data-cm-veredito') : null]; }))"));
+      assert.deepStrictEqual(opcoes, [["preco", null], ["P-ATIVA", "ativa"], ["P-DEAL", "entrar_se_girar"], ["P-PROG", "nao_entrar"], ["P-SMART", "entrar"]], "Preço manual primeiro; a promoção sem simulação fica fora da tabela");
       assert.strictEqual(await cdp.evaluate("document.querySelector('[data-cenario=\"preco\"]').getAttribute('aria-checked')"), "true");
-      assert.strictEqual(await cdp.evaluate("document.querySelector('[data-cenario=\"preco\"]').tagName"), "BUTTON", "cada linha é um <button> (acessível, com foco)");
-      // Cabeçalho de colunas UMA vez para todos os grupos
-      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#cm-drawer .cm-banc__cols').length"), 1, "cabeçalho de colunas único");
-      const cols = await cdp.evaluate("Array.prototype.map.call(document.querySelectorAll('.cm-banc__cols > span'), function (s) { return s.textContent; }).join('|')");
-      assert.strictEqual(cols, "|Cenário|Preço final|vs hoje|Resultado", "radio · Cenário · Preço final · vs hoje · Resultado");
-      // Resultado = texto + bolinha (vf-status do Portal), sem chip colorido
+      assert.strictEqual(await cdp.evaluate("JSON.stringify([document.querySelector('[data-cenario=\"P-DEAL\"]').getAttribute('role'), document.querySelector('[data-cenario=\"P-DEAL\"]').tabIndex])"), JSON.stringify(["radio", 0]), "linha inteira = radio com foco de teclado");
+      // Preço manual: o campo fica DENTRO da linha, na coluna Preço (84×30)
+      assert.strictEqual(await cdp.evaluate("Boolean(document.querySelector('[data-cenario=\"preco\"] [data-cm-col=\"preco\"] #cm-new-price'))"), true, "campo inline na coluna Preço");
+      assert.strictEqual(await cdp.evaluate("JSON.stringify([document.getElementById('cm-new-price').offsetWidth, document.getElementById('cm-new-price').offsetHeight])"), "[84,30]");
+      // Cabeçalho único de 4 colunas, com fundo levíssimo
+      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#cm-drawer .cm-cens__cab').length"), 1, "cabeçalho de colunas único");
+      const cols = await cdp.evaluate("Array.prototype.map.call(document.querySelectorAll('.cm-cens__cab > span'), function (s) { return s.textContent; }).join('|')");
+      assert.strictEqual(cols, "Cenário|Preço · mudança|LC / un · vs hoje|Resultado");
+      // Resultado = texto + bolinha de 7px (também no alerta), sem chip colorido
       assert.strictEqual(await cdp.evaluate("getComputedStyle(document.querySelector('[data-cenario=\"P-DEAL\"] .cm-res')).backgroundColor"), "rgba(0, 0, 0, 0)", "resultado sem fundo colorido");
       assert.strictEqual(await cdp.evaluate("getComputedStyle(document.querySelector('[data-cenario=\"P-DEAL\"] .cm-res'), '::before').width"), "7px", "bolinha de 7px");
+      assert.strictEqual(await cdp.evaluate("getComputedStyle(document.querySelector('[data-cenario=\"P-DEAL\"] .cm-res'), '::before').transform"), "none", "bolinha, não losango");
 
-      // Sem sugestão do ML: linha cinza, desabilitada, colunas vazias (sem "—"), motivo no Resultado
-      assert.strictEqual(await cdp.evaluate("document.querySelector('[data-cenario=\"P-NAO\"]').disabled"), true);
-      assert.ok((await cdp.evaluate("document.querySelector('[data-cenario=\"P-NAO\"]').title")).includes("Sem sugestão do Mercado Livre"));
-      assert.strictEqual((await cdp.evaluate("document.querySelector('[data-cenario=\"P-NAO\"] .cm-cen__res').textContent")).trim(), "Sem preço sugerido");
-      assert.strictEqual(await cdp.evaluate("document.querySelector('[data-cenario=\"P-NAO\"] .cm-cen__preco').textContent + document.querySelector('[data-cenario=\"P-NAO\"] .cm-cen__vs').textContent"), "", "colunas vazias, sem '—'");
-      await selecionar("P-NAO");
-      assert.strictEqual(await st("s.bancada.selecionado"), "preco", "clicar na linha desabilitada não troca o cenário");
+      // Sem sugestão do ML: fora da tabela, numa linha recolhida no fim do card (nome · grupo · motivo), fechada
+      assert.strictEqual(await cdp.evaluate("document.querySelector('[data-cenario=\"P-NAO\"]')"), null, "fora da tabela");
+      assert.strictEqual(await cdp.evaluate("document.querySelector('.cm-cens [data-cm-sem-simulacao]').open"), false, "recolhida por padrão");
+      assert.strictEqual(await cdp.evaluate("document.querySelector('[data-cm-sem-simulacao] > summary').textContent"), "1 promoção sem efeito no preço");
+      assert.ok((await cdp.evaluate("document.querySelector('[data-cm-sem=\"P-NAO\"]').textContent")).includes("Sem preço sugerido"));
+      assert.ok((await cdp.evaluate("document.querySelector('[data-cm-sem=\"P-NAO\"]').title")).includes("Sem sugestão do Mercado Livre"));
 
       // Ativa agora: NÃO é bloqueio — é a composição de hoje (Δ 0); botão "Já em vigor" desabilitado (nada é escrito)
       await selecionar("P-ATIVA");
@@ -895,9 +900,9 @@ async function run() {
       assert.ok((await cdp.evaluate("document.getElementById('cm-drawer-position').textContent")).includes("relê a promoção ao vivo"), "dica cinza do rodapé diz o que acontece ao clicar");
       // Linha alterada em destaque na cascata (frete igual: sem destaque; comissão/imposto/LC mudam)
       assert.strictEqual(await cdp.evaluate("document.querySelector('[data-cm-linha=\"comissao\"]').classList.contains('is-mudou')"), true);
-      // Linha da promoção: nome + meta, preço final + % contra hoje, vs hoje colorido, resultado
+      // Linha da promoção: nome + meta (com "ML paga"), preço + mudança, LC + vs hoje colorido, resultado
       const card = (await cdp.evaluate("document.querySelector('[data-cenario=\"P-DEAL\"]').textContent")).replace(/ /g, " ");
-      for (const t of ["Oferta MLB1001", "Deal · 30/09 a 09/10", "99,90", "−9,6%", "−3,05", "Só se vender mais"]) assert.ok(card.includes(t), `linha sem ${t}: ${card}`);
+      for (const t of ["Oferta MLB1001", "Deal · 30/09 a 09/10 · ML paga R$ 5,20", "99,90", "−10,58 (−10%)", "18,12", "−3,05", "Só se vender mais"]) assert.ok(card.includes(t), `linha sem ${t}: ${card}`);
       assert.ok(await cdp.evaluate("Boolean(document.querySelector('[data-cenario=\"P-DEAL\"] .cm-banc__vs.is-down'))"), "vs hoje negativo em vermelho");
       assert.strictEqual(await cdp.evaluate("document.querySelector('[data-cenario=\"P-DEAL\"]').classList.contains('is-active') && document.querySelector('[data-cenario=\"P-DEAL\"]').getAttribute('aria-checked')"), "true", "linha selecionada com radio preenchido");
 
@@ -916,7 +921,7 @@ async function run() {
       assert.ok(await cdp.evaluate("Boolean(document.querySelector('[data-cenario=\"P-SMART\"] .cm-banc__vs.is-up'))"), "vs hoje positivo em verde");
       assert.ok((await cdp.evaluate("document.getElementById('cm-bancada-ml').textContent")).includes("Abrir no Mercado Livre"));
       // Nenhuma coluna com "—"
-      assert.strictEqual(await cdp.evaluate("Array.prototype.filter.call(document.querySelectorAll('#cm-drawer td, #cm-drawer .cm-cen > span'), function (c) { return c.textContent.trim() === '—'; }).length"), 0, "0 '—' em colunas");
+      assert.strictEqual(await cdp.evaluate("Array.prototype.filter.call(document.querySelectorAll('#cm-drawer td, #cm-drawer .cm-cen > span, #cm-drawer .cm-dsum__value'), function (c) { return c.textContent.trim() === '—'; }).length"), 0, "0 '—' em colunas");
       await selecionar("P-DEAL");
       await shot("11-drawer-bancada");
       await selecionar("preco");

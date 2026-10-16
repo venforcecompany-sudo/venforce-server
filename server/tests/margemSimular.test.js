@@ -147,6 +147,42 @@ cenario("94,90 → 89,77 com retorno 3,30: ΔLC negativo, entrar_se_girar, empat
   assert.strictEqual(r.atual.lc, LINHA_BASE.profit);
 });
 
+// ── Topo da Bancada: alíquota, preço cheio e Base de hoje vêm prontos em `atual` ──
+
+cenario("atual: alíquota de hoje, preço cheio do item e a Base (id + nome) para o topo da Bancada", async () => {
+  const w = mundo({ linhaBase: { ...LINHA_BASE, listPrice: 119.9 } });
+  const consultas = [];
+  w.deps.obterBaseNome = async (baseId) => { consultas.push(baseId); return baseId === 3 ? "Base Loja A" : null; };
+  const r = await rodar(w, pedido([{ tipo: "preco", preco: 90 }]));
+  assert.strictEqual(r.atual.aliquota, 0.06);
+  assert.strictEqual(r.atual.imposto, 5.69, "o R$/un continua o da composição");
+  assert.strictEqual(r.atual.preco_cheio, 119.9);
+  assert.strictEqual(r.atual.preco_cheio_fonte, "margin_snapshot");
+  assert.deepStrictEqual(r.atual.base, { id: 3, nome: "Base Loja A" });
+  assert.deepStrictEqual(consultas, [3], "uma leitura do nome da Base");
+});
+
+cenario("atual: sem preço cheio no item ⇒ null (nunca o preço atual nem o original da promoção); nome da Base que falha ⇒ só o id", async () => {
+  const w = mundo({ promocoes: [promoLinha("P1", { precoOriginal: 94.9 })] });
+  w.deps.obterBaseNome = async () => { throw new Error("banco fora"); };
+  const r = await rodar(w, pedido([{ tipo: "promo", promotion_id: "P1" }]));
+  assert.strictEqual(r.atual.preco_cheio, null);
+  assert.strictEqual(r.atual.preco_cheio_fonte, null);
+  assert.deepStrictEqual(r.atual.base, { id: 3, nome: null });
+  assert.strictEqual(r.cenarios[0].preco_cheio_fonte, "promo_snapshot", "o cenário continua usando o original_price");
+});
+
+cenario("atual: sem Margin Snapshot ⇒ alíquota, preço cheio e Base nulos (sem consultar a Base)", async () => {
+  const w = mundo({ snapshots: new Map() });
+  let consultou = false;
+  w.deps.obterBaseNome = async () => { consultou = true; return "x"; };
+  const r = await rodar(w, pedido([{ tipo: "preco", preco: 90 }]));
+  assert.strictEqual(r.atual.aliquota, null);
+  assert.strictEqual(r.atual.preco_cheio, null);
+  assert.strictEqual(r.atual.base, null);
+  assert.strictEqual(consultou, false);
+});
+
 // ── Quem banca: sobre o preço CHEIO do item, não sobre o preço atual (já promocional) ──
 
 cenario("quem banca: preço atual 112,42 já em promoção, cheio 141,90 (do item): desconto 31,65 sobre o cheio, ML 6,62, seller 25,03; Δ vs hoje 2,17 à parte", async () => {

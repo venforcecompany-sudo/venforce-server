@@ -78,7 +78,27 @@ function defaults(deps = {}) {
     carregarRebates: deps.carregarRebates || carregarRebatesAtivos,
     // Tipos de promoção que a camada segura da Central escreve (decide o grupo e a ação).
     tiposComEscrita: deps.tiposComEscrita || null,
+    obterBaseNome: deps.obterBaseNome || ((baseId, db) => consultarNomeDaBase(baseId, db)),
   };
+}
+
+// Nome da Base de custos do snapshot (só o rótulo do topo da Bancada: "Base Red Fish").
+async function consultarNomeDaBase(baseId, db) {
+  if (!db || typeof db.query !== "function") return null;
+  const r = await db.query("SELECT nome FROM bases WHERE id = $1", [baseId]);
+  return r.rows && r.rows[0] ? r.rows[0].nome || null : null;
+}
+
+// Base do snapshot com o nome; sem nome (falha da leitura ou base apagada) fica só o id — nunca derruba o /simular.
+async function baseDoSnapshot(snapshot, d) {
+  const baseId = snapshot ? num(snapshot.baseId) : null;
+  if (baseId === null) return null;
+  try {
+    return { id: baseId, nome: (await d.obterBaseNome(baseId, d.db)) || null };
+  } catch (err) {
+    if (d.logger && d.logger.warn) d.logger.warn("[margemSimular] nome da Base indisponível", { baseId, erro: err.message });
+    return { id: baseId, nome: null };
+  }
 }
 
 // ─── Validação do corpo (400 explícito: nada é ignorado em silêncio) ─────────
@@ -642,6 +662,9 @@ async function simular({ user, body } = {}, deps = {}) {
 
   const atualCalc = core.calcularAtual({ atual, frete_aplicavel: cotador.freteAplicavel });
   const estatisticas = cotador.estatisticas();
+  // Topo da Bancada: preço cheio do ITEM (nunca o original_price de uma promoção) e a Base dos custos.
+  const precoCheioItem = semSnapshot ? { valor: null, fonte: null } : resolverPrecoCheio(snapshot, null);
+  const base = semSnapshot ? null : await baseDoSnapshot(snapshot, d);
 
   return {
     ok: true,
@@ -655,6 +678,11 @@ async function simular({ user, body } = {}, deps = {}) {
     },
     atual: {
       ...atualCalc.atual,
+      // A alíquota que deu o `imposto` (o núcleo só calcula imposto com alíquota válida): "Imposto %" sem conta na tela.
+      aliquota: atualCalc.atual.imposto === null ? null : num(atual.aliquota),
+      preco_cheio: precoCheioItem.valor,
+      preco_cheio_fonte: precoCheioItem.fonte,
+      base,
       bloqueios: atualCalc.bloqueios,
       rebate_motivo: atualRebate.rebateMotivo || null,
       evidencia: semSnapshot

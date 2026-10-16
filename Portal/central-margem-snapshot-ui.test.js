@@ -573,7 +573,9 @@ async function run() {
       await cdp.evaluate("window.VFCentralMargemUi.openDrawer('" + id + "', 'evidence')");
       await waitFor(cdp, "document.getElementById('cm-drawer-summary').textContent.indexOf('Margem projetada') !== -1", "resumo do drawer não abriu");
       const resumo = (await cdp.evaluate("document.getElementById('cm-drawer-summary').textContent")).replace(/\u00a0/g, " ");
-      assert.ok(resumo.includes("21,3%") && resumo.includes("inclui retorno ML"), `drawer: ${resumo}`);
+      assert.ok(resumo.includes("21,3%") && resumo.includes("LC R$ 21,30 / un"), `drawer: ${resumo}`);
+      // Sub do topo numa linha só: o retorno ML somado é explicado no title do "LC / un".
+      assert.ok((await cdp.evaluate("(document.querySelector('#cm-drawer-summary [title*=\"inclui retorno ML\"]') || {}).title || ''")).includes("inclui retorno ML"), "o topo explica o retorno somado");
       await cdp.evaluate("window.VFCentralMargemUi.closeDrawer()");
 
       await cdp.evaluate("document.querySelector('[data-view=\"composition\"]').click()");

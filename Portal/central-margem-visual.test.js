@@ -191,7 +191,8 @@ function fixtureCasoReal() {
   const boot = {
     ok: true, mlb: CASO_REAL.mlb,
     item: { mlb: CASO_REAL.mlb, ml_promos_url: "https://www.mercadolivre.com.br/anuncios/lista/promos?page=1&search=5537622816" },
-    atual: { ...core.calcularAtual({ atual }).atual, bloqueios: [], rebate_motivo: null },
+    // Topo da Bancada: alíquota, preço cheio do item e a Base vêm prontos do /simular.
+    atual: { ...core.calcularAtual({ atual }).atual, aliquota: atual.aliquota, preco_cheio: 79.9, preco_cheio_fonte: "margin_snapshot", base: { id: 7, nome: "Red Fish" }, bloqueios: [], rebate_motivo: null },
     meta,
     promocoes: { disponivel: true, motivo: null, snapshot_em: CASO_REAL.lidoEm, parcial: false },
     fontePromocoes: { estado: "ok", ultimoBom: { geradoEm: CASO_REAL.lidoEm, parcial: false, itensHerdados: 0 }, legado: null, rotulo: null, progresso: null },
@@ -431,34 +432,51 @@ async function run() {
     const resultadoReal = () => cdp.evaluate("document.getElementById('cm-banc-resultado').innerText").then((t) => t.replace(/ /g, " "));
     const celulasComTraco = () => cdp.evaluate("Array.prototype.filter.call(document.querySelectorAll('#cm-drawer td, #cm-drawer th, #cm-drawer .cm-cen > span, #cm-drawer .cm-dsum__value'), function (c) { return c.textContent.trim() === '—'; }).length");
 
-    await check("caso real · 11.11 da Black: 'Só se vender mais', frase do backend (−6,76 · 88%), −13,6% contra hoje; cabeçalho único, 0 '—', números à direita", async () => {
+    await check("caso real · 11.11 da Black: 'Só se vender mais', frase do backend (−6,76 · 88%), −7,52 (−14%); 1 card, 1 cabeçalho, 4 colunas, 0 '—', nada aberto", async () => {
       await cdp.evaluate(`document.querySelector('tr[data-item-id="${CASO_REAL.mlb}"]').click()`);
       await waitFor(cdp, "document.getElementById('cm-drawer').classList.contains('is-open') && document.querySelector('[data-cm-cenarios]') && document.querySelector('[data-cenario=\"P-1111\"]')", "caso real: a Bancada não carregou");
       await sleep(300);
-      // Topo: os 4 números do caso (LC/un e retorno ML junto da margem projetada; receita sob as vendas)
+      // Topo: 6 números do caso, cada um com o sub numa linha (tudo do backend).
       const topo = (await cdp.evaluate("document.getElementById('cm-drawer-summary').textContent")).replace(/\s+/g, " ");
-      for (const t of ["Preço atual", "R$ 55,19", "26,16%", "LC R$ 14,44 / un · inclui retorno ML R$ 2,24", "20,73%", "46 un.", "receita R$ 2.540,45"]) assert.ok(topo.includes(t), `topo sem ${t}: ${topo}`);
+      for (const t of ["Preço atual", "R$ 55,19", "cheio R$ 79,90", "Custo", "R$ 22,42", "Base Red Fish", "Imposto", "11,0%", "R$ 6,07 / un", "Margem projetada", "26,16%", "LC R$ 14,44 / un", "Margem realizada", "20,73%", "últimos 30 dias", "46 un.", "receita R$ 2.540,45"]) assert.ok(topo.includes(t), `topo sem ${t}: ${topo}`);
+      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#cm-drawer-summary .cm-dsum__cell').length"), 6);
+      assert.ok(await cdp.evaluate("document.getElementById('cm-drawer-summary').getBoundingClientRect().height <= 90"), "bloco dos números ≤ 90px");
+      assert.ok((await cdp.evaluate("document.querySelector('#cm-drawer-summary [title*=\"inclui retorno ML\"]').title")).replace(/\u00a0/g, " ").includes("R$ 2,24"), "retorno ML explicado no title");
+      const meta = (await cdp.evaluate("document.getElementById('cm-drawer-meta').innerText")).replace(/\s+/g, " ");
+      assert.ok(/^MLB5537622816 Ativo Dados confiáveis Ver na Base$/.test(meta), meta);
       const manualAntes = await cdp.evaluate("window.__marcaManual = document.getElementById('cm-banc-manual'); window.__pc.calls.simular.length");
       await cdp.evaluate("document.querySelector('[data-cenario=\"P-1111\"]').click()");
       await waitFor(cdp, "document.querySelector('[data-cm-promo-info=\"P-1111\"]')", "o 11.11 não foi selecionado");
       const res = await resultadoReal();
       for (const t of ["Pode participar pelo VenForce", "11.11 da Black", "Deal · 19/10 a 12/11", "Só se vender mais", "Perde R$ 6,76 por unidade. Para empatar o lucro de hoje, precisa vender 88% a mais.", "55,19", "47,67", "14,44", "7,68", "−6,76", "26,2%", "16,1%"]) assert.ok(res.includes(t), `falta ${t}: ${res}`);
       const linha = (await cdp.evaluate("document.querySelector('[data-cenario=\"P-1111\"]').innerText")).replace(/\s+/g, " ");
-      for (const t of ["11.11 da Black", "47,67", "−13,6%", "−6,76", "Só se vender mais"]) assert.ok(linha.includes(t), `linha sem ${t}: ${linha}`);
+      for (const t of ["11.11 da Black", "Deal · 19/10 a 12/11", "47,67", "−7,52 (−14%)", "7,68", "−6,76", "Só se vender mais"]) assert.ok(linha.includes(t), `linha sem ${t}: ${linha}`);
       // Clicar numa linha atualiza a esquerda SEM recarregar o drawer e sem nova chamada ao servidor.
       assert.strictEqual(await cdp.evaluate("window.__marcaManual === document.getElementById('cm-banc-manual')"), true, "o drawer não foi recarregado");
       assert.strictEqual(await cdp.evaluate("window.__pc.calls.simular.length"), manualAntes, "trocar de linha não chama o /simular");
-      // Cabeçalho de colunas UMA vez; grupos na ordem do mockup; linhas sem simulação desabilitadas, sem "—".
-      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#cm-drawer .cm-banc__cols').length"), 1);
-      const grupos = await cdp.evaluate("Array.prototype.map.call(document.querySelectorAll('.cm-banc__grupo-titulo'), function (g) { return g.textContent; }).join(' | ')");
-      assert.strictEqual(grupos, "Seu preço | Ativa agora | Pode participar pelo VenForce | Você já participa | Só pelo Mercado Livre");
-      for (const [id, txt] of [["P-VENDEX", "Não reduz o preço"], ["P-PESCAOFF", "Sem preço sugerido"], ["P-CUPOM", "Sem preço sugerido"], ["P-RELAMPAGO", "Não reduz o preço"]]) {
-        assert.strictEqual(await cdp.evaluate(`document.querySelector('[data-cenario="${id}"]').disabled`), true, `${id} desabilitada`);
-        assert.ok((await cdp.evaluate(`document.querySelector('[data-cenario="${id}"] .cm-cen__res').textContent`)).includes(txt), `${id}: ${txt}`);
+      // UMA tabela num único card: 1 cabeçalho de 4 colunas, "Preço manual" primeiro, grupos dentro, só os simuláveis.
+      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#cm-drawer .cm-cens').length"), 1, "1 card");
+      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#cm-drawer .cm-cens__cab').length"), 1, "1 cabeçalho");
+      assert.strictEqual(await cdp.evaluate("document.querySelector('.cm-cens__cab').innerText.replace(/\\s*\\n\\s*/g, ' | ')"), "Cenário | Preço · mudança | LC / un · vs hoje | Resultado");
+      assert.strictEqual(await cdp.evaluate("getComputedStyle(document.querySelector('.cm-cens__cab')).gridTemplateColumns.split(' ').length"), 4, "4 colunas");
+      assert.strictEqual(await cdp.evaluate("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('.cm-cens .cm-cen'), function (l) { return l.children.length; }).filter(function (v, i, a) { return a.indexOf(v) === i; }))"), "[4]", "toda linha tem 4 células");
+      assert.strictEqual(await cdp.evaluate("document.querySelector('.cm-cens [data-cenario]').getAttribute('data-cenario')"), "preco", "Preço manual é a primeira linha");
+      assert.strictEqual(await cdp.evaluate("Boolean(document.querySelector('[data-cenario=\"preco\"] #cm-new-price'))"), true, "campo inline na linha");
+      const grupos = await cdp.evaluate("Array.prototype.map.call(document.querySelectorAll('.cm-cens__grupo'), function (g) { return g.textContent; }).join(' | ')");
+      assert.strictEqual(grupos, "Ativa agora | Pode participar pelo VenForce", "só grupos com cenário simulável");
+      // Sem simulação: fora da tabela, recolhidas no fim do card, com nome · grupo · motivo.
+      assert.strictEqual(await cdp.evaluate("document.querySelector('[data-cm-sem-simulacao] > summary').textContent"), "4 promoções sem efeito no preço");
+      for (const [id, txt] of [["P-VENDEX", "Você já participa · Não reduz o preço"], ["P-PESCAOFF", "Só pelo Mercado Livre · Sem preço sugerido"], ["P-CUPOM", "Só pelo Mercado Livre · Sem preço sugerido"], ["P-RELAMPAGO", "Só pelo Mercado Livre · Não reduz o preço"]]) {
+        assert.strictEqual(await cdp.evaluate(`document.querySelector('[data-cenario="${id}"]')`), null, `${id} fora da tabela`);
+        assert.ok((await cdp.evaluate(`document.querySelector('[data-cm-sem="${id}"]').textContent`)).includes(txt), `${id}: ${txt}`);
       }
+      assert.strictEqual(await cdp.evaluate("document.querySelectorAll('#cm-drawer details[open]').length"), 0, "nada aberto por padrão");
+      assert.strictEqual(await cdp.evaluate("Array.prototype.filter.call(document.querySelectorAll('.cm-cen__sub, .cm-dsum__value'), function (e) { return e.scrollWidth > e.clientWidth + 1; }).map(function (e) { return e.textContent; }).join(' | ')"), "", "mudança e números sem reticências");
+      // Em 1440 o resultado cabe numa linha (mais estreito, quebra em vez de cortar).
+      if (VIEW_W >= 1440) assert.strictEqual(await cdp.evaluate("Array.prototype.filter.call(document.querySelectorAll('.cm-cen__res .cm-res'), function (e) { return e.getBoundingClientRect().height > 22; }).map(function (e) { return e.textContent; }).join(' | ')"), "", "resultado numa linha em 1440px");
       assert.strictEqual(await celulasComTraco(), 0, "nenhuma coluna com '—'");
       // Números tabulares e alinhados à direita (mesma coluna sempre).
-      const alinhamentos = await cdp.evaluate("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('.cm-banc__cmp td.num, .cm-efeitos td.num, .cm-cen__vs'), function (c) { var s = getComputedStyle(c); return s.textAlign + '/' + s.fontVariantNumeric; }).filter(function (v, i, a) { return a.indexOf(v) === i; }))");
+      const alinhamentos = await cdp.evaluate("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('.cm-banc__cmp td.num, .cm-efeitos td.num, .cm-cen__preco, .cm-cen__lc'), function (c) { var s = getComputedStyle(c); return s.textAlign + '/' + s.fontVariantNumeric; }).filter(function (v, i, a) { return a.indexOf(v) === i; }))");
       assert.deepStrictEqual(JSON.parse(alinhamentos), ["right/tabular-nums"], alinhamentos);
       const bordasPreco = await cdp.evaluate("JSON.stringify(Array.prototype.map.call(document.querySelectorAll('.cm-cen__preco'), function (c) { return Math.round(c.getBoundingClientRect().right); }).filter(function (v, i, a) { return a.indexOf(v) === i; }))");
       assert.strictEqual(JSON.parse(bordasPreco).length, 1, `preço final na mesma coluna: ${bordasPreco}`);
@@ -467,13 +485,14 @@ async function run() {
       await shot("20-caso-real-1111");
     });
 
-    await check("caso real · Seu preço 59,90: 'Vale entrar', 'Ganha R$ 1,41…', +8,5% e +0,3 pp; a linha fica selecionada", async () => {
+    await check("caso real · Preço manual 59,90 (1ª linha, campo inline): 'Vale entrar', 'Ganha R$ 1,41…', +4,71 (+9%) e +0,3 pp; a linha fica selecionada", async () => {
       await cdp.evaluate("(function(){var i=document.getElementById('cm-new-price');i.focus();i.value='59,90';i.dispatchEvent(new Event('input',{bubbles:true}));})()");
       await waitFor(cdp, "document.getElementById('cm-banc-resultado').textContent.indexOf('Ganha R$') !== -1", "o preço digitado não foi simulado");
       const res = await resultadoReal();
-      for (const t of ["Seu preço", "Preço digitado", "sai da promoção ativa", "Vale entrar", "Ganha R$ 1,41 por unidade em relação a hoje.", "59,90", "+4,71", "15,85", "+1,41", "26,5%", "+0,3 pp"]) assert.ok(res.includes(t), `falta ${t}: ${res}`);
+      for (const t of ["Seu preço", "Preço manual", "sai da promoção ativa", "Vale entrar", "Ganha R$ 1,41 por unidade em relação a hoje.", "59,90", "+4,71", "15,85", "+1,41", "26,5%", "+0,3 pp"]) assert.ok(res.includes(t), `falta ${t}: ${res}`);
       const linha = (await cdp.evaluate("document.querySelector('[data-cenario=\"preco\"]').innerText")).replace(/\s+/g, " ");
-      for (const t of ["Preço digitado", "59,90", "+8,5%", "+1,41", "Vale entrar"]) assert.ok(linha.includes(t), `linha sem ${t}: ${linha}`);
+      for (const t of ["Preço manual", "sai da promoção ativa", "+4,71 (+9%)", "15,85", "+1,41", "Vale entrar"]) assert.ok(linha.includes(t), `linha sem ${t}: ${linha}`);
+      assert.strictEqual(await cdp.evaluate("document.getElementById('cm-new-price').value"), "59,90", "o campo inline mantém o que foi digitado");
       assert.strictEqual(await cdp.evaluate("document.querySelector('[data-cenario=\"preco\"]').getAttribute('aria-checked')"), "true");
       assert.strictEqual(await cdp.evaluate("document.activeElement && document.activeElement.id"), "cm-new-price", "o foco continua no campo");
       assert.strictEqual(await cdp.evaluate("document.getElementById('cm-bancada-review').textContent"), "Revisar novo preço");
@@ -488,7 +507,8 @@ async function run() {
       const res = await resultadoReal();
       for (const t of ["Ativa agora", "Impulsione suas vendas", "Smart · 23/08 a 19/02", "Em vigor", "É a promoção que forma o preço de hoje."]) assert.ok(res.includes(t), `falta ${t}: ${res}`);
       const linha = (await cdp.evaluate("document.querySelector('[data-cenario=\"P-IMPULSIONE\"]').innerText")).replace(/\s+/g, " ");
-      for (const t of ["55,19", "0,00", "Em vigor"]) assert.ok(linha.includes(t), `linha sem ${t}: ${linha}`);
+      for (const t of ["Impulsione suas vendas", "ML paga R$ 2,24", "55,19", "sem mudança", "0,00", "Em vigor"]) assert.ok(linha.includes(t), `linha sem ${t}: ${linha}`);
+      assert.strictEqual(await cdp.evaluate("Boolean(document.querySelector('[data-cm-efeitos]'))"), false, "cenário = hoje: sem 'de onde sai a diferença'");
       assert.strictEqual(await cdp.evaluate("document.getElementById('cm-bancada-vigor').disabled"), true);
       assert.strictEqual(await celulasComTraco(), 0, "nenhuma coluna com '—'");
       await shot("22-caso-real-ativa");
