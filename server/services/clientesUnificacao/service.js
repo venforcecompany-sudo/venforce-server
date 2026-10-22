@@ -66,9 +66,9 @@ function createService({
             : "BEGIN ISOLATION LEVEL SERIALIZABLE",
         );
         active = true;
-        // Escrita: nenhuma query legítima pode morrer antes do orçamento global.
+        // Nenhuma query legítima pode morrer antes do orçamento global.
         await db.query(
-          `SET LOCAL statement_timeout='${readOnly ? 10000 : budget}ms'`,
+          `SET LOCAL statement_timeout='${budget}ms'`,
         );
         await db.query("SET LOCAL lock_timeout='1500ms'");
         await db.query(

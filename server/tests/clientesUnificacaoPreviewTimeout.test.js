@@ -14,13 +14,13 @@ const {
   diagnostics,
 } = require("../services/clientesUnificacao/snapshotDiagnostics");
 const actor = { id: 5, role: "admin" };
-function harness(budget, executeBudget = 15000) {
+function harness(budget, executeBudget = 15000, stepMs = 300) {
   let clock = 0;
   const commands = [];
   const db = {
     query: async (sql) => {
       commands.push(sql);
-      clock += 300;
+      clock += stepMs;
       return { rows: [] };
     },
     release() {},
@@ -72,7 +72,7 @@ async function main() {
   );
   assert.ok(write.commands.includes("BEGIN ISOLATION LEVEL SERIALIZABLE"));
   for (const sql of [
-    "SET LOCAL statement_timeout='10000ms'",
+    "SET LOCAL statement_timeout='45000ms'",
     "SET LOCAL lock_timeout='1500ms'",
     "SET LOCAL idle_in_transaction_session_timeout='15000ms'",
   ])
@@ -105,14 +105,27 @@ async function main() {
       executeTimeoutMs({ CLIENTES_UNIFICACAO_EXECUTE_TIMEOUT_MS: value }),
       Number(value),
     );
-  for (const value of ["", "999999", "45001", "14999", "-1", "Infinity", "abc"])
+  for (const value of ["", "999999", "300001", "14999", "-1", "Infinity", "abc"])
     assert.equal(
       previewTimeoutMs({ CLIENTES_UNIFICACAO_PREVIEW_TIMEOUT_MS: value }),
-      30000,
+      120000,
     );
-  assert.equal(
-    previewTimeoutMs({ CLIENTES_UNIFICACAO_PREVIEW_TIMEOUT_MS: "45000" }),
-    45000,
+  assert.equal(previewTimeoutMs({}), 120000);
+  for (const value of ["15000", "45000", "300000"])
+    assert.equal(
+      previewTimeoutMs({ CLIENTES_UNIFICACAO_PREVIEW_TIMEOUT_MS: value }),
+      Number(value),
+    );
+  // Preview de ~44s (conta grande): passa no default, estoura com o teto antigo.
+  const slow = harness(undefined, 15000, 800);
+  const big = await slow.service.preview(manifest(), actor);
+  assert.equal(big.validationReady, true);
+  assert.ok(slow.commands.includes("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"));
+  assert.ok(slow.commands.includes("SET LOCAL statement_timeout='120000ms'"));
+  assert.ok(slow.commands.includes("SET LOCAL lock_timeout='1500ms'"));
+  await assert.rejects(
+    harness(30000, 15000, 800).service.preview(manifest(), actor),
+    { code: "MERGE_TRANSACTION_TIMEOUT" },
   );
   const events = [];
   const timer = diagnostics({ onStage: (e) => events.push(e) });
