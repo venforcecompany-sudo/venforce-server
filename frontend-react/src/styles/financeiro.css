@@ -615,19 +615,28 @@
   color: var(--vf-text-secondary);
 }
 .vf-fin-eventos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vf-sp-2, 8px) var(--vf-sp-6, 24px);
-  margin: 0;
-  padding: var(--vf-sp-2, 8px) var(--vf-sp-3, 12px);
-  border: 1px dashed var(--vf-border);
+  padding: var(--vf-sp-3, 12px) var(--vf-sp-4, 16px);
+  border: 1px solid var(--vf-border);
+  border-radius: var(--vf-radius-sm, 6px);
+  background: var(--vf-bg-2, #f6f7fb);
 }
-.vf-fin-eventos__item { display: flex; align-items: baseline; gap: var(--vf-sp-2, 8px); }
-.vf-fin-eventos__item dt { font-size: var(--vf-fs-xs, 0.75rem); color: var(--vf-text-muted, #6b7285); }
+.vf-fin-eventos .vf-fin-bloco__titulo { margin: 0 0 var(--vf-sp-2, 8px); }
+/* Linhas rótulo ↔ valor alinhadas, em colunas que se ajustam à largura. */
+.vf-fin-eventos__lista {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0 var(--vf-sp-6, 24px);
+  margin: 0;
+}
+.vf-fin-eventos__item { display: flex; justify-content: space-between; align-items: baseline; gap: var(--vf-sp-2, 8px); padding: 4px 0; }
+.vf-fin-eventos__item dt { font-size: var(--vf-fs-sm, 0.875rem); color: var(--vf-text-secondary); }
 .vf-fin-eventos__item dd { margin: 0; font-weight: var(--vf-fw-semibold, 600); font-variant-numeric: tabular-nums; }
 
 /* ── Composição financeira: os quatro cartões do legado ───────────────── */
-.vf-fin-secao[data-secao="composicao"] > .vf-fin-secao__corpo { container-type: inline-size; }
+/* No drawer "Detalhes" a seção também é container — sem isso a grade
+   ficava sempre em 4 colunas espremidas. */
+.vf-fin-secao[data-secao="composicao"] > .vf-fin-secao__corpo,
+.vf-fin-mesa-detalhes [data-secao="composicao"] { container-type: inline-size; }
 .vf-fin-composicao-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -664,7 +673,10 @@
 .vf-fin-composicao-col .vf-fin-extrato__linha.is-total { border-top: 1px solid var(--vf-border-strong, #d6d9e4); }
 .vf-fin-composicao-col .vf-fin-extrato__linha.is-total dt { font-weight: var(--vf-fw-bold, 700); color: var(--vf-text, #1d2130); }
 .vf-fin-composicao-col .vf-fin-extrato__linha.is-total dd { font-size: var(--vf-fs-md, 1rem); font-weight: var(--vf-fw-bold, 700); }
+/* Status é texto, não número: vai abaixo do rótulo, não espremido à direita. */
+.vf-fin-composicao-col .vf-fin-extrato__linha.is-status { flex-direction: column; gap: 2px; }
 .vf-fin-composicao-col .vf-fin-extrato__linha.is-status dd {
+  text-align: left;
   white-space: normal;
   font-family: inherit;
   font-size: var(--vf-fs-xs, 0.75rem);

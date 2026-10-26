@@ -291,10 +291,9 @@ export function metricasSecundarias(summary = {}, marketplace = "") {
       item(s, "returnRefundRevenue", "Valor de devoluções / reembolsos", "moeda"),
     ]);
   }
+  // Cancelamentos (qtd. e valor) e faturamento perdido já estão no cartão
+  // Deduções da composição — aqui só o que ele não mostra.
   return limpar([
-    item(s, "refundsCount", "Cancelamentos / reembolsos", "numero"),
-    item(s, "refundsTotal", "Valor de cancelamentos / reembolsos", "moeda"),
-    item(s, "lostRevenueTotal", "Faturamento perdido", "moeda"),
     item(s, "excludedStatusCount", "Itens fora do LC por status", "numero"),
     item(s, "platformAdjustmentRowsCount", "Linhas com ajuste de plataforma", "numero"),
     item(s, "salesPendingFinancialCount", "Vendas aguardando financeiro", "numero"),
