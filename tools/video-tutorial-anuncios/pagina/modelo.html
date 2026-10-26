@@ -1,0 +1,127 @@
+<title>Tutorial {{TELA}}</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: uma coluna estreita — player em destaque, ação de baixar logo abaixo, roteiro das etapas em seguida. */
+:root {
+  --bg: #f7f6fb; --surface: #ffffff; --fg: #1d1830; --muted: #625b78; --line: #e4e0ef;
+  --accent: #5b21b6; --accent-fg: #ffffff; --accent-soft: #efe9fb; --ok: #166534; --err: #b42318;
+  --display: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --body: "Hanken Grotesk", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #13101c; --surface: #1c1828; --fg: #eeeaf7; --muted: #a59dbb; --line: #2e2840;
+  --accent: #a78bfa; --accent-fg: #160f2b; --accent-soft: #261f3b; --ok: #6ee7a0; --err: #fca5a5; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #13101c; --surface: #1c1828; --fg: #eeeaf7; --muted: #a59dbb; --line: #2e2840;
+  --accent: #a78bfa; --accent-fg: #160f2b; --accent-soft: #261f3b; --ok: #6ee7a0; --err: #fca5a5; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 28px; }
+header { display: grid; gap: 6px; }
+.eyebrow { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(28px, 4vw, 40px); line-height: 1.15; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 0; max-width: 65ch; }
+.player { background: #000; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+video { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; background: #000; }
+.acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+button { font: 600 15px var(--body); border: 0; border-radius: 10px; padding: 12px 20px; cursor: pointer;
+  background: var(--accent); color: var(--accent-fg); display: inline-flex; gap: 10px; align-items: center; }
+button:hover { filter: brightness(1.08); }
+button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+button:disabled { opacity: .6; cursor: progress; }
+.meta { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.status { font-size: 14px; min-height: 1.4em; }
+.status.ok { color: var(--ok); } .status.err { color: var(--err); }
+section h2 { font-family: var(--display); font-size: 20px; margin: 0 0 12px; }
+ol { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px 24px; counter-reset: etapa; }
+li { counter-increment: etapa; display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: baseline;
+  padding: 10px 0; border-top: 1px solid var(--line); min-width: 0; }
+li::before { content: counter(etapa); font: 700 13px var(--display); color: var(--accent); background: var(--accent-soft);
+  border-radius: 6px; text-align: center; padding: 2px 0; font-variant-numeric: tabular-nums; }
+li b { font-weight: 600; }
+li span { color: var(--muted); font-size: 14px; }
+li button.ir { all: unset; cursor: pointer; color: inherit; }
+li button.ir:hover b, li button.ir:focus-visible b { color: var(--accent); text-decoration: underline; }
+.nota { font-size: 14px; color: var(--muted); max-width: 70ch; margin: 0; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">VenForce · Portal · Mercado Livre</span>
+    <h1>Como usar a página {{TELA}}</h1>
+    <p class="sub">{{SUBTITULO}}</p>
+  </header>
+
+  <div class="player">
+    <video id="video" controls preload="metadata" playsinline poster="capa.jpg">
+      <source src="{{ARQUIVO}}" type="video/mp4">
+    </video>
+  </div>
+
+  <div class="acoes">
+    <button type="button" id="baixar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 19h16"/></svg>
+      Baixar vídeo (MP4)
+    </button>
+    <span class="meta">1920 × 1080 · {{DURACAO}} · {{TAMANHO}}</span>
+    <span class="status" id="status" role="status" aria-live="polite"></span>
+  </div>
+
+  <section aria-labelledby="etapas-titulo">
+    <h2 id="etapas-titulo">Etapas do vídeo</h2>
+    <ol id="etapas"></ol>
+  </section>
+
+  <p class="nota">Os produtos, valores e o cliente "Casa Bella Utilidades" são fictícios. A tela, os botões e o comportamento são os do portal.</p>
+</div>
+
+<script>
+(function () {
+  // [segundo do vídeo, nome da etapa, descrição] — tirar de out/<nome>/capitulos.json
+  var ETAPAS = {{ETAPAS}};
+  var video = document.getElementById("video");
+  var lista = document.getElementById("etapas");
+  ETAPAS.forEach(function (e) {
+    var li = document.createElement("li");
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "ir";
+    var t = document.createElement("b"); t.textContent = e[1];
+    var s = document.createElement("span");
+    var m = Math.floor(e[0] / 60), sec = String(e[0] % 60).padStart(2, "0");
+    s.textContent = " " + m + ":" + sec + " · " + e[2];
+    b.appendChild(t); b.appendChild(s);
+    b.addEventListener("click", function () { video.currentTime = e[0]; video.play().catch(function () {}); });
+    li.appendChild(b); lista.appendChild(li);
+  });
+
+  var botao = document.getElementById("baixar");
+  var status = document.getElementById("status");
+  function aviso(txt, tipo) { status.textContent = txt; status.className = "status" + (tipo ? " " + tipo : ""); }
+  botao.addEventListener("click", async function () {
+    botao.disabled = true;
+    aviso("Preparando o arquivo…");
+    try {
+      var downloads = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
+      if (!downloads) { aviso("O download não está disponível nesta visualização. Abra a página no navegador, em claude.ai.", "err"); return; }
+      var resp = await fetch("{{ARQUIVO}}");
+      if (!resp.ok) throw { message: "Não foi possível carregar o vídeo (HTTP " + resp.status + ")." };
+      var blob = await resp.blob();
+      aviso("Confirme o download na janela que abriu.");
+      await downloads.save({ filename: "{{ARQUIVO}}", data: blob });
+      aviso("Download iniciado.", "ok");
+    } catch (err) {
+      var code = err && err.code;
+      if (code === "declined") aviso("Download cancelado.");
+      else if (code === "rate_limited") aviso("Já existe uma confirmação aberta. Aguarde e tente de novo.", "err");
+      else aviso((err && err.message) || "Não foi possível baixar o vídeo.", "err");
+    } finally {
+      botao.disabled = false;
+    }
+  });
+})();
+</script>
