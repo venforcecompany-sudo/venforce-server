@@ -60,8 +60,9 @@ const OVERLAY = () => {
   const port = srv.address().port;
   const browser = await chromium.launch(process.env.HTTPS_PROXY ? { proxy: { server: process.env.HTTPS_PROXY, bypass: "127.0.0.1,localhost" } } : {});
   const ctx = await browser.newContext({
-    viewport: { width: W, height: H }, ignoreHTTPSErrors: true, locale: "pt-BR",
-    recordVideo: { dir: path.join(OUT, "rec"), size: { width: W, height: H } },
+    // deviceScaleFactor 1.2: a página é desenhada em 1920x1080 de verdade
+    // (texto nítido), mantendo o layout de 1600x900.
+    viewport: { width: W, height: H }, deviceScaleFactor: 1.2, ignoreHTTPSErrors: true, locale: "pt-BR",
   });
   await ctx.addInitScript(() => {
     localStorage.setItem("vf-token", "demo");
@@ -107,7 +108,10 @@ const OVERLAY = () => {
     }, [b, pad]);
   }
   async function hlOff() { await page.evaluate(() => { document.getElementById("tv-hl").style.opacity = 0; }); }
+  const capitulos = [];
   async function cap(n, txt) {
+    // Instante da legenda no vídeo final (o vídeo começa no 1º quadro capturado).
+    if (n && quadros.length && !capitulos.some((c) => c.n === n)) capitulos.push({ n, t: +(Date.now() / 1000 - quadros[0].t).toFixed(1), txt: txt.replace(/<[^>]+>/g, "") });
     await page.evaluate(([n, txt]) => {
       const c = document.getElementById("tv-cap");
       c.classList.remove("on");
@@ -143,6 +147,21 @@ const OVERLAY = () => {
   await wait(1500);
   const inicio = (Date.now() - t0) / 1000;
   await page.mouse.move(mx, my);
+
+  // Captura quadro a quadro (screencast do Chromium, JPEG de alta qualidade).
+  // O recordVideo do Playwright grava VP8 a ~750 kbps e borra o texto.
+  const FRAMES = path.join(OUT, "frames");
+  fs.rmSync(FRAMES, { recursive: true, force: true });
+  fs.mkdirSync(FRAMES, { recursive: true });
+  const quadros = [];
+  const cdp = await page.context().newCDPSession(page);
+  cdp.on("Page.screencastFrame", async (f) => {
+    const nome = String(quadros.length).padStart(6, "0") + ".jpg";
+    fs.writeFileSync(path.join(FRAMES, nome), Buffer.from(f.data, "base64"));
+    quadros.push({ nome, t: f.metadata.timestamp });
+    await cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
+  });
+  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 95, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 });
 
   // ── Abertura ───────────────────────────────────────────────────────────
   await card('<div class="k">VenForce · Guia rápido</div><div class="t">Anúncios ML</div><div class="s">Como consultar, filtrar, precificar e otimizar os anúncios Mercado Livre de cada cliente</div>', 4200);
@@ -346,16 +365,24 @@ const OVERLAY = () => {
     '<li>Escolha cliente e operação</li><li>Sincronize o catálogo</li><li>Filtre pelos indicadores</li><li>Busque e ordene</li>' +
     '<li>Acompanhe margem e Score</li><li>Edite custos (um ou em massa)</li><li>Radar de subsídios</li><li>Detalhe, promoções e IA</li></ul>', 5500);
 
-  const fim = (Date.now() - t0) / 1000;
-  const video = page.video();
+  await cdp.send("Page.stopScreencast");
+  fs.writeFileSync(path.join(OUT, "capitulos.json"), JSON.stringify(capitulos, null, 1));
+  const fimTs = Date.now() / 1000;
   await ctx.close();
-  const p = await video.path();
-  fs.writeFileSync(path.join(OUT, "timing.json"), JSON.stringify({ inicio, fim, video: p }));
-  console.log("video", p, "inicio", inicio, "fim", fim, "duração", fim - inicio);
   await browser.close(); srv.close();
-  // MP4 1080p, cortando o carregamento inicial da página.
-  require("child_process").execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-ss", String(inicio), "-i", p,
-    "-vf", "scale=1920:1080:flags=lanczos,fps=30,fade=t=in:st=0:d=0.6", "-c:v", "libx264", "-preset", "slow", "-crf", "22",
+  console.log("quadros", quadros.length, "duração", (Date.now() - t0) / 1000 - inicio);
+
+  // Lista do concat do ffmpeg: cada quadro dura até o próximo chegar (o
+  // screencast só manda quadro quando a tela muda).
+  const linhas = [];
+  quadros.forEach((q, i) => {
+    const prox = i + 1 < quadros.length ? quadros[i + 1].t : fimTs;
+    linhas.push("file '" + path.join(FRAMES, q.nome) + "'", "duration " + Math.max(0.001, prox - q.t).toFixed(4));
+  });
+  linhas.push("file '" + path.join(FRAMES, quadros[quadros.length - 1].nome) + "'");
+  fs.writeFileSync(path.join(OUT, "quadros.txt"), linhas.join("\n"));
+  require("child_process").execFileSync("ffmpeg", ["-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", path.join(OUT, "quadros.txt"),
+    "-vf", "scale=1920:1080:flags=lanczos,fps=30,fade=t=in:st=0:d=0.6", "-c:v", "libx264", "-preset", "veryslow", "-crf", "22", "-tune", "stillimage",
     "-pix_fmt", "yuv420p", "-movflags", "+faststart", path.join(OUT, "tutorial-anuncios-ml.mp4")], { stdio: "inherit" });
   console.log("MP4:", path.join(OUT, "tutorial-anuncios-ml.mp4"));
 })();
