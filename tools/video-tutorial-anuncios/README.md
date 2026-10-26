@@ -9,10 +9,12 @@ Utilidades"); nenhuma requisição chega ao servidor real.
 |---|---|---|---|---|
 | Anúncios ML (`anuncios-meli.html`) | `tour.js` | `mock.js` | 3min05s | https://claude.ai/artifact/LHW542zXZ4T4Fw3ny4XsUn |
 | Financeiro (`financeiro-v3.html`) | `tour-financeiro.js` | `financeiro-mock.js` | 2min13s | https://claude.ai/artifact/RqGGzQeMD4GQe8EBdnGb66 |
+| Bases de Custo (`bases.html`) | `tour-bases.js` | `bases-mock.js` | 2min43s | https://claude.ai/artifact/KEmLt3tqvFy4LoyTKoDipV |
 
 ```bash
 node tools/video-tutorial-anuncios/tour.js             # Anúncios ML
 node tools/video-tutorial-anuncios/tour-financeiro.js  # Financeiro
+node tools/video-tutorial-anuncios/tour-bases.js       # Bases de Custo
 ```
 
 Saída em `out/<nome>/` (ignorado pelo git): o MP4 e `capitulos.json` com o
@@ -85,6 +87,12 @@ do overlay; telas novas devem usar o `gravador.js`.
   Portal, a menos que peçam explicitamente.
 - `select` nativo não abre em headless: mostrar a troca com `selectOption`.
 - `Ctrl+A` fora de um campo seleciona a página inteira (aparece tudo azul).
+- **Legenda sobre rodapé de modal:** a legenda fica embaixo e cobre os
+  botões de modais altos (Importar nova base, pré-visualização). Em Bases o
+  roteiro sobe a legenda para o topo (`legendaNoTopo`) ou a esconde antes do
+  clique.
+- Bases: o menu ⋯ do cartão ML fica por baixo do link de cobertura ("ver em
+  Anúncios ML"); o vídeo abre o ⋯ de um cartão Shopee.
 - `page.reload()` no meio do roteiro funciona: o overlay volta sozinho e a
   captura continua.
 
