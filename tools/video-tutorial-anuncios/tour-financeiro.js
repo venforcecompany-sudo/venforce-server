@@ -103,50 +103,64 @@ gravar({
     await scrollToEl(".vf-fin-mesa-produtos", 90);
     await cap("6", "<u>Produtos</u>: todos os anúncios do mês, ordenados por receita. Busque por título, MLB ou SKU e filtre por situação.");
     await digitar("input[aria-label='Buscar produto']", "garrafa");
-    await wait(2000);
-    await page.locator("input[aria-label='Buscar produto']").fill("");
-    await wait(800);
-    await click(page.locator(".vf-fin-mesa-filtros button").filter({ hasText: "Sem custo" }));
     await wait(2200);
-    await click(page.locator(".vf-fin-mesa-filtros button").filter({ hasText: "Todos" }));
+    await page.locator("input[aria-label='Buscar produto']").fill("");
     await wait(800);
     await cap("6", "Clique numa linha para ver a composição: receita, repasse, custo, imposto, LC e MC daquele anúncio.");
     await click(page.locator(".vf-fin-mesa-lista__linha").first());
-    await wait(3200);
+    await wait(3400);
     await click(page.locator(".vf-fin-mesa-lista__linha").first());
     await wait(600);
 
-    // ── 7. Pendências ────────────────────────────────────────────────────
+    // ── 7. Salvar como rascunho ──────────────────────────────────────────
     await scrollTo(0);
-    await cap("7", "Produtos <u>sem custo</u> ficam fora do lucro. Clique em <u>Ver e corrigir</u> para resolvê-los.");
-    await go(botao("Ver e corrigir"));
-    await wait(1600);
-    await click(botao("Ver e corrigir"));
-    await wait(1200);
-    await cap("7", "Digite o custo unitário na própria linha e clique em <u>Salvar na base</u>. Muitos itens? Corrija todos por planilha.");
-    const custo = page.locator("input[aria-label^='Novo custo unitário']").first();
-    await digitar(custo, "41,90");
-    await wait(700);
-    await click(page.locator(DRAWER + " button").filter({ hasText: "Salvar na base" }).first());
-    await wait(1800);
-    await cap("7", "Depois de corrigir, clique em <u>Reprocessar fechamento</u> para o resultado considerar os novos custos.");
-    await go(botao("Reprocessar fechamento", DRAWER));
-    await wait(2200);
-    await click(FECHAR_DRAWER);
-    await wait(600);
-
-    // ── 8. Salvar e publicar ─────────────────────────────────────────────
-    await cap("8", "Confira tudo e salve. <u>Salvar como rascunho</u> guarda o fechamento sem mostrar ao cliente.");
+    await cap("7", "Confira e clique em <u>Salvar como rascunho</u>: o fechamento fica guardado, ainda sem aparecer para o cliente.");
     await hl(ETAPAS, 4);
     await click(botao("Salvar como rascunho", ETAPAS));
+    await wait(2600);
+    await hlOff();
+
+    // Reabre a competência: com o fechamento salvo, "Ver" leva às pendências
+    // na lista de produtos (é o que o usuário vê ao voltar à página).
+    await capOff();
+    await page.reload();
+    await page.waitForSelector(ETAPAS, { timeout: 20000 });
+    await page.waitForSelector(".vf-fin-mesa-produtos", { timeout: 20000 });
+    await wait(1200);
+
+    // ── 8. Pendências de custo ───────────────────────────────────────────
+    await cap("8", "Produtos <u>sem custo</u> ficam fora do lucro. No aviso (ou na etapa Revisar pendências), clique em <u>Ver</u>.");
+    const verProdutos = page.locator(".vf-fin-mesa__principal button").filter({ hasText: /^Ver/ }).first();
+    await go(verProdutos);
+    await wait(1800);
+    await click(verProdutos);
+    await wait(1600);
+    await cap("8", "A página desce até os produtos com o filtro <u>Sem custo</u>. Clique em <u>+ Custo</u> e digite o custo de cada produto.");
+    await hl(".vf-fin-mesa-filtros", 6);
     await wait(2200);
     await hlOff();
-    await cap("8", "<u>Publicar</u> gera o link de apresentação para o cliente. A tela pede confirmação antes de publicar.");
+    await click(page.locator(".vf-fin-custo-rapido__add").first());
+    await page.locator(".vf-fin-custo-rapido__input").first().pressSequentially("41,90", { delay: 140 });
+    await wait(700);
+    await cap("8", "<u>Enter</u> grava o custo na base de custos. O LC e a MC mudam quando você <u>reprocessar</u> o fechamento.");
+    await page.keyboard.press("Enter");
+    await wait(2200);
+    await click(page.locator(".vf-fin-custo-rapido__add").first());
+    await page.locator(".vf-fin-custo-rapido__input").first().pressSequentially("58,00", { delay: 140 });
+    await wait(500);
+    await page.keyboard.press("Enter");
+    await wait(2600);
+    await scrollTo(0);
+    await go(page.locator(ETAPAS + " button").filter({ hasText: /^Reprocessar/ }).first());
+    await wait(2200);
+
+    // ── 9. Publicar ──────────────────────────────────────────────────────
+    await cap("9", "<u>Publicar</u> gera o link de apresentação para o cliente. A tela pede confirmação antes de publicar.");
     await click(page.locator(ETAPAS + " button").filter({ hasText: /^Publicar/ }).first());
     await wait(1600);
     await click(page.locator(ETAPAS + " .vf-fin-mesa-confirmar button").filter({ hasText: /^Publicar$/ }).first());
     await wait(2200);
-    await cap("8", "Publicado: copie ou abra o link do cliente. Em <u>Apresentação</u> você revisa o que o cliente vai ver.");
+    await cap("9", "Publicado: copie ou abra o link do cliente. Em <u>Apresentação</u> você revisa o que o cliente vai ver.");
     await hl(ETAPAS, 4);
     await wait(2600);
     await hlOff();
@@ -158,13 +172,13 @@ gravar({
       await wait(600);
     }
 
-    // ── 9. Histórico e Relatórios ───────────────────────────────────────
-    await cap("9", "<u>Histórico</u> lista as competências desta operação mês a mês. Clique num mês para abri-lo.");
+    // ── 10. Histórico e Relatórios ───────────────────────────────────────
+    await cap("10", "<u>Histórico</u> lista as competências desta operação mês a mês. Clique num mês para abri-lo.");
     await click(botao("Histórico", ".vf-fin-cabecalho-b__acoes"));
     await wait(3000);
     await click(FECHAR_DRAWER);
     await wait(500);
-    await cap("9", "<u>Relatórios</u> reúne as entregas geradas para o cliente, com status, link e opção de publicar ou despublicar.");
+    await cap("10", "<u>Relatórios</u> reúne as entregas geradas para o cliente, com status, link e opção de publicar ou despublicar.");
     await click(botao("Relatórios", ".vf-fin-cabecalho-b__acoes"));
     await wait(3400);
     await click(FECHAR_DRAWER);
@@ -174,7 +188,7 @@ gravar({
     // ── Fechamento ───────────────────────────────────────────────────────
     await card('<div class="k">Resumo</div><div class="t">Financeiro</div><ul>' +
       '<li>Escolha a competência</li><li>Siga as 6 etapas do painel</li><li>Envie a planilha de vendas</li><li>Informe os ajustes do mês</li>' +
-      '<li>Confira resultado e produtos</li><li>Corrija os custos pendentes</li><li>Salve e publique</li><li>Histórico e Relatórios</li></ul>', 5500);
+      '<li>Confira resultado e produtos</li><li>Salve como rascunho</li><li>Corrija os custos (+ Custo)</li><li>Publique para o cliente</li><li>Histórico e Relatórios</li></ul>', 5500);
   },
 }).catch((e) => { console.error(e); process.exit(1); });
 

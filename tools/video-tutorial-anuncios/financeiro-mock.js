@@ -167,7 +167,7 @@ function rotear(page) {
     if (uma && req.method() === "GET") {
       const alvo = ENTREGAS.find((e) => e.id === Number(uma[1]));
       if (!alvo) return json({ ok: false, erro: "Entrega não encontrada." }, 404);
-      return json({ ok: true, entrega: { ...alvo, payload_json: { summary: ULTIMO_RESUMO || processamento().summary, entrega: {
+      return json({ ok: true, entrega: { ...alvo, payload_json: { summary: ULTIMO_RESUMO || processamento().summary, detailedRows: linhas(), unmatchedIds: SEM_CUSTO, entrega: {
         destaques: ["Margem de contribuição de 17,8% no mês", "Cobertura de custo de 96,5% da receita"],
         atencoes: ["2 anúncios ainda sem custo cadastrado na Base"],
         prioridades: { alta: ["Cadastrar custo do Faqueiro Inox 24 Peças"], media: ["Revisar ADS do Jogo de Panelas"], baixa: [] } } } } });
