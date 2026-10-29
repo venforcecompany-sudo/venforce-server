@@ -149,7 +149,8 @@ async function selecoes(pool) {
       pool, env: envApply, apply: true, host: "127.0.0.1", exportDir, logger: silencioso,
       depoisDoPlano: async () => {
         // entre o plano e o lote: Y é publicado (vira o vigente) e o Painel passa a citar L
-        await q(`UPDATE central_vendas_imports SET publication_status = 'published', published_at = NOW() WHERE id = $1`, [Y]);
+        // (published_at há 4 dias: só o estado muda; a carência do item 5b cobre o "publicado agora")
+        await q(`UPDATE central_vendas_imports SET publication_status = 'published', published_at = NOW() - interval '4 days' WHERE id = $1`, [Y]);
         await q(`INSERT INTO cliente_360_resumos_mensais (cliente_id, cliente_slug, competencia, payload_json)
                  VALUES (1, 'loja', '2026-08', $1)`, [JSON.stringify({ centralVendas: { contas: [{ importId: L }] } })]);
         selAntes = await selecoes(pool);
@@ -214,6 +215,27 @@ async function selecoes(pool) {
     const liberado = await executarRetencao({ pool, env: envApply, apply: true, host: "127.0.0.1", escopo: { contaId: 6 }, cfg: cfg0, logger: silencioso });
     assert.deepStrictEqual(liberado.lotes.flatMap((l) => l.removidos || []).sort((a, b) => a - b), [K1, K2].sort((a, b) => a - b));
     ok("tupla travada por outra transação ⇒ lote adiado (NOWAIT); liberada ⇒ removidos");
+
+    // ── 5b. carência desde a substituição também na re-avaliação do lote ─
+    const G1 = await criarImport({ conta: 6, competencia: "2026-06", from: "2026-06-01", to: "2026-06-30", criadoHaDias: 30 });
+    const G2 = await criarImport({ conta: 6, competencia: "2026-06", from: "2026-06-01", to: "2026-06-30", criadoHaDias: 20 });
+    let G3 = null;
+    const carencia = await executarRetencao({
+      pool, env: envApply, apply: true, host: "127.0.0.1", escopo: { contaId: 6 }, cfg: cfg0, logger: silencioso,
+      depoisDoPlano: async (plano) => {
+        assert.deepStrictEqual(plano.elegiveis, [G1]);
+        // entre plano e lote: um sync publica AGORA um import que domina G1 e G2
+        G3 = await criarImport({ conta: 6, competencia: "2026-06", from: "2026-06-01", to: "2026-06-30", criadoHaDias: 0 });
+      },
+    });
+    assert.strictEqual(carencia.totais.importsRemovidos, 0);
+    const desist = carencia.lotes.flatMap((l) => l.desistidos || []);
+    assert.deepStrictEqual(desist.map((d) => d.id), [G1]);
+    assert.ok(desist[0].motivos.includes("carencia_substituicao"));
+    const planoG = await executarRetencao({ pool, env: ENV, escopo: { contaId: 6 }, cfg: cfg0, logger: silencioso });
+    assert.ok(planoG.plano.motivos[G2].motivos.includes("carencia_substituicao"));
+    assert.strictEqual(planoG.plano.motivos[G3].classe, "essencial");
+    ok("carência: dominador publicado entre plano e lote ⇒ lote desiste (carencia_substituicao); dominado há 1h fica retido");
 
     // ── 6. limite de lotes e sinal de interrupção ───────────────────────
     const W = [];

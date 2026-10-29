@@ -213,6 +213,43 @@ check("published antigo republicado há pouco (published_at recente) conta como 
   assert.strictEqual(classe(plano, a.id), "essencial");
 });
 
+check("carência desde a substituição: dominado antigo cujo dominador foi publicado há 1h fica retido", () => {
+  seq = 0;
+  const umaHora = "2026-10-29T11:00:00Z";
+  const a = imp(); // antigo (jan/2026)
+  const b = imp({ created_at: umaHora, published_at: umaHora });
+  let plano = planejarRetencao({ imports: [a, b], cfg: cfgBase });
+  assert.strictEqual(classe(plano, a.id), "essencial");
+  assert.ok(plano.motivos[a.id].motivos.includes("carencia_substituicao"));
+  assert.ok(!plano.motivos[a.id].motivos.includes("recente"), "a idade própria do dominado é antiga");
+  // o mesmo par 4 dias depois: elegível (a re-avaliação no lote usa este planner)
+  plano = planejarRetencao({ imports: [a, b], cfg: { ...cfgBase, agora: "2026-11-02T12:00:00Z" } });
+  assert.strictEqual(classe(plano, a.id), "substituido");
+  // dominador publicado há 1h mas CRIADO há muito: vale o published_at
+  const c = imp();
+  const d = imp({ created_at: VELHO, published_at: umaHora });
+  plano = planejarRetencao({ imports: [c, d], cfg: cfgBase });
+  assert.ok(plano.motivos[c.id].motivos.includes("carencia_substituicao"));
+});
+
+check("carência também para legacy (legacy novo / published do mês inteiro recentes); cobertura vazia só pela idade própria", () => {
+  seq = 0;
+  const umaHora = "2026-10-29T11:00:00Z";
+  const semCob = { publication_status: "legacy", coverage_date_from: null, coverage_date_to: null, published_at: null };
+  const l1 = imp(semCob);
+  const l2 = imp({ ...semCob, created_at: umaHora });
+  let plano = planejarRetencao({ imports: [l1, l2], cfg: cfgBase });
+  assert.ok(plano.motivos[l1.id].motivos.includes("carencia_substituicao"));
+  const l3 = imp(semCob);
+  const pMes = imp({ created_at: umaHora, published_at: umaHora });
+  plano = planejarRetencao({ imports: [l3, pMes], cfg: cfgBase });
+  assert.ok(plano.motivos[l3.id].motivos.includes("carencia_substituicao"));
+  const inv = imp({ coverage_date_from: "2026-10-01", coverage_date_to: "2026-09-30" });
+  const novo = imp({ created_at: umaHora, published_at: umaHora });
+  plano = planejarRetencao({ imports: [inv, novo], cfg: cfgBase });
+  assert.strictEqual(classe(plano, inv.id), "residuo");
+});
+
 check("refs protegidas (Painel/outros) e run ativo tornam o dominado essencial", () => {
   seq = 0;
   const runs = [{ id: 9, status: "running", created_at: VELHO }];

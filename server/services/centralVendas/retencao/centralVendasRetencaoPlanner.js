@@ -26,7 +26,9 @@
 //
 // Essencial (nunca elegível, mesmo dominado): selecionável hoje; citado por
 // outra persistência (refsProtegidas); de run ativo; mais novo que
-// minIdadeHoras; os manterUltimosSubstituidos published mais recentes abaixo
+// minIdadeHoras; dominado há menos de minIdadeHoras (o DOMINADOR é mais novo
+// que isso — carência desde a substituição; não se aplica a cobertura vazia
+// nem a candidate, que nunca foram selecionáveis); os manterUltimosSubstituidos published mais recentes abaixo
 // do vigente, por tupla (margem de rollback).
 
 const { selecionarMelhorImportPorCompetencia, monthBounds, asDate } = require("../centralVendasRepository");
@@ -123,8 +125,12 @@ function ordemPublicacaoDesc(a, b) {
   return Number(b.id) - Number(a.id);
 }
 
-// Avalia a dominância de cada import de UMA tupla. Devolve Map(id → motivo de
-// dominância | null) e o conjunto de selecionáveis.
+// Avalia a dominância de cada import de UMA tupla. Devolve Map(id →
+// { motivo, desde } | null): `desde` é quando o DOMINADOR passou a valer
+// (published_at do published; created_at do legacy) — base da carência desde
+// a substituição. Para published, o dominador é o que a seleção devolve (o
+// published mais novo que cobre a cobertura de P): o mais recente possível,
+// então a carência nunca é contada a menor.
 function avaliarTupla(rows) {
   const competencia = String(rows[0].competencia).trim();
   const mes = monthBounds(competencia);
@@ -140,12 +146,14 @@ function avaliarTupla(rows) {
       const to = asDate(row.coverage_date_to);
       if (!from || !to || coberturaVazia(row)) { dominancia.set(id, null); continue; }
       const sel = selecionarMelhorImportPorCompetencia(rows, { segmentStart: from, segmentEnd: to });
-      dominancia.set(id, sel && Number(sel.id) !== id ? `dominado_por:${Number(sel.id)}` : null);
+      dominancia.set(id, sel && Number(sel.id) !== id
+        ? { motivo: `dominado_por:${Number(sel.id)}`, desde: ms(sel.published_at) }
+        : null);
     } else if (row.publication_status === "legacy") {
       if (legacyMaisRecente && Number(legacyMaisRecente.id) !== id) {
-        dominancia.set(id, `legacy_mais_recente:${Number(legacyMaisRecente.id)}`);
+        dominancia.set(id, { motivo: `legacy_mais_recente:${Number(legacyMaisRecente.id)}`, desde: ms(legacyMaisRecente.created_at) });
       } else if (selMes && selMes.publication_status === "published") {
-        dominancia.set(id, `published_mes_inteiro:${Number(selMes.id)}`);
+        dominancia.set(id, { motivo: `published_mes_inteiro:${Number(selMes.id)}`, desde: ms(selMes.published_at) });
       } else {
         dominancia.set(id, null);
       }
@@ -209,8 +217,12 @@ function planejarRetencao({ imports = [], refsProtegidas = {}, runs = [], cfg = 
           }
         } else {
           elegivel = "substituido";
-          retidos.push(dom); // registra quem domina (vira só informativo se elegível)
+          retidos.push(dom.motivo); // registra quem domina (vira só informativo se elegível)
           if (margem.has(id)) essenciais.push("margem_rollback");
+          // Carência desde a substituição: quem leu este import como vigente
+          // (Painel/Cliente 360 gravando centralImportIds, leitura em voo) o
+          // fez antes do dominador existir — há mais de minIdadeHoras.
+          if (!dom.desde || dom.desde > limiteIdade) essenciais.push("carencia_substituicao");
           if (status === "legacy" && !politica.incluirLegacy) { elegivel = null; retidos.push("politica:legacy_desligado"); }
         }
       } else if (status === "candidate") {
