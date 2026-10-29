@@ -80,15 +80,31 @@ function slugsDoEscopo(escopo) {
 
 // Lê tudo do escopo e devolve o plano (sem escrever). `db` = client já dentro
 // de uma transação (READ ONLY no dry-run).
-async function planejarEscopo(db, { escopo = {}, cfg, incluirAuditoriaSyncJobs = true, comEstimativa = false } = {}) {
+// Imports do escopo citados SÓ pela auditoria do job do Cliente 360 —
+// informativo (mostra o que essa fonte protegeria/protege), por classe.
+function citadosSoPorAuditoria(plano, citacoes) {
+  const ids = [];
+  const porClasse = {};
+  for (const [id, fontes] of citacoes) {
+    if (!plano.motivos[id] || !fontes.every((f) => f === "cliente360_sync_job")) continue;
+    ids.push(id);
+    const classe = plano.motivos[id].classe;
+    porClasse[classe] = (porClasse[classe] || 0) + 1;
+  }
+  return { total: ids.length, porClasse, ids: ids.sort((a, b) => a - b) };
+}
+
+async function planejarEscopo(db, { escopo = {}, cfg, incluirAuditoriaSyncJobs = false, comEstimativa = false } = {}) {
   const imports = await repo.carregarImports(db, { escopo });
   const runIdsImports = [...new Set(imports.filter((r) => r.sync_run_id != null).map((r) => Number(r.sync_run_id)))];
   const runs = await repo.carregarRuns(db, { runIds: runIdsImports, escopo });
   const runIdsMp = runs.filter((r) => r.tem_mp_payments).map((r) => Number(r.id));
   const refsRuns = await repo.carregarRunsReferenciadosForaDoEscopo(db, { runIds: runIdsMp, escopo });
-  const { refs, fontesLidas } = await repo.carregarRefsProtegidas(db, { clienteSlugs: slugsDoEscopo(escopo), incluirAuditoriaSyncJobs });
+  const { refs, citacoes, fontesLidas } = await repo.carregarRefsProtegidas(db, { clienteSlugs: slugsDoEscopo(escopo), incluirAuditoriaSyncJobs });
   const plano = planejarRetencao({ imports, refsProtegidas: { imports: refs, runs: refsRuns }, runs, cfg });
   plano.fontesRefs = fontesLidas;
+  plano.citadosSoPorAuditoria = citadosSoPorAuditoria(plano, citacoes);
+  plano.politica.protegerAuditoriaSyncJobs = incluirAuditoriaSyncJobs;
   if (comEstimativa) plano.espaco = await repo.estimarEspaco(db, plano);
   return { plano, imports };
 }
@@ -127,7 +143,7 @@ async function aplicarLoteImports(client, lote, { cfg, incluirAuditoriaSyncJobs,
   const runIds = [...new Set(linhasTupla.filter((r) => r.sync_run_id != null).map((r) => Number(r.sync_run_id)))];
   const runs = await repo.carregarRuns(client, { runIds, escopo: { tupla: true } });
   const slugs = [...new Set(chaves.map((k) => lote.tuplas.get(k).cliente_slug))];
-  const { refs } = await repo.carregarRefsProtegidas(client, { clienteSlugs: slugs, incluirAuditoriaSyncJobs });
+  const { refs } = await repo.carregarRefsProtegidas(client, { clienteSlugs: slugs, incluirAuditoriaSyncJobs, lerInformativas: false });
   const replano = planejarRetencao({ imports: linhasTupla, refsProtegidas: { imports: refs }, runs, cfg });
   const elegiveisAgora = new Set(replano.elegiveis);
   const alvo = lote.ids.filter((id) => elegiveisAgora.has(id));
@@ -173,7 +189,7 @@ async function executarRetencao({
   host = null,
   confirmHost = null,
   env = process.env,
-  incluirAuditoriaSyncJobs = true,
+  incluirAuditoriaSyncJobs = false, // auditoria do job do Cliente 360 só protege com opt-in
   tamanhoLote = 20,
   limiteLotes = Infinity,
   limiteTempoMs = 15 * 60 * 1000,

@@ -47,7 +47,13 @@ Um run é elegível quando todas estas condições valem:
 
 O DELETE é por `sync_run_id` em `central_vendas_mp_payments` (usa o UNIQUE `(sync_run_id, payment_id)`). As charges saem por CASCADE de `mp_payment_row_id`. `sync_runs`, `sync_sources` e os settlement reports ficam, por serem auditoria e pequenos.
 
-Efeito colateral conhecido: a conciliação por run (`/sync-runs/:runId/mercado-pago/reconciliation`) de um run antigo limpo passa a mostrar 0 payments.
+### Efeito colateral: conciliação por run antigo mostra 0 payments
+
+A conciliação Mercado Pago por run (`GET /:slug/sync-runs/:runId/mercado-pago/reconciliation`) usa `getReconciliationForRun`, que lê `listMpPaymentsWithChargesTotalByRun(run.id)`.
+
+Num run antigo cujos `mp_payments` foram limpos (nenhum import retido aponta para ele), essa tela passa a mostrar **0 payments**. Os settlement reports e movements do run continuam, então os movimentos aparecem sem payment vinculado.
+
+A leitura da Central e do período (`/read/mercado-pago/reconciliation`, MP3) não muda, porque usa só os runs dos imports selecionados, e esses nunca são limpos. Para auditar um run antigo, rode o dry-run antes (`--json` lista `mp.elegiveis`) ou use `--sem-mp`.
 
 ### Referências protegidas
 
@@ -56,11 +62,21 @@ Busca feita com `grep -a` em `server/` e `Portal/` (out/2026). A extração é g
 | Fonte | Onde | Protege |
 |---|---|---|
 | `painel_contas_snapshot` | `cliente_360_resumos_mensais.payload_json.centralVendas.contas[].importId` (lido por `painelContasRepository` como `centralImportIds`) | sim |
-| `cliente360_sync_job` | `cliente_360_sync_jobs.payload_json.importIds[]`. Só auditoria: nenhum leitor do campo. | sim, por padrão; `--ignorar-auditoria-sync-jobs` desliga |
+| `cliente360_sync_job` | `cliente_360_sync_jobs.payload_json.importIds[]`. Só auditoria: nenhum leitor do campo. | **não**, por padrão; protege só com `--proteger-auditoria-sync-jobs` (opt-in) |
 | `entregas_cliente` | `payload_json`. Hoje nada grava importId ali; é varrido por garantia. | sim |
 | `margin_snapshot_*`, `sentinel_*`, `fechamento_incidentes`, `financeiro_ads_cache` | não têm coluna nem campo de import | n/a |
 
-A fonte `cliente360_sync_job` é **conservadora**: cada job do Cliente 360 cita os vigentes da época, então com o tempo ela pode proteger muitos dominados. O relatório mostra quantos ids são essenciais só por essa fonte (`protegidosSoPorAuditoria`). **Decisão pendente**: ignorar ou não essa fonte é decisão de produto.
+### Decisão: a auditoria do job do Cliente 360 não protege (29/10/2026)
+
+Medição em produção (somente leitura), feita pelo Maestro:
+
+- 1.248 jobs em `cliente_360_sync_jobs` citam 1.304 imports, com 614.340 pedidos.
+- Isso é ≈ 79% do que a retenção deve liberar.
+- Nenhum leitor usa `payload_json.importIds`: só `finalizeSyncJob` escreve o campo (grep em `server/` e `Portal/`).
+
+A linha do job continua existindo e continua sendo a auditoria. O import citado sair não quebra nenhuma leitura. Por isso essa fonte **não protege por padrão**; `--proteger-auditoria-sync-jobs` (opt-in) volta a proteger.
+
+O dry-run continua lendo essa fonte de forma informativa. Ele reporta `citadosSoPorAuditoria`, com o total, a contagem por classe e os ids dos imports do escopo citados só por ela. O snapshot do Painel (`centralImportIds`) e `entregas_cliente` continuam protegendo.
 
 ## Flags e política
 

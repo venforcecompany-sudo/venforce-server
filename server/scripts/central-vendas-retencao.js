@@ -5,7 +5,7 @@
 //
 //   DATABASE_URL=... node server/scripts/central-vendas-retencao.js [--json] [--conta=<id>|--conta=legado] [--cliente=<slug>]
 //       [--min-idade-horas=72] [--manter-ultimos=1] [--sem-legacy] [--sem-candidates] [--sem-mp]
-//       [--ignorar-auditoria-sync-jobs] [--sem-estimativa]
+//       [--proteger-auditoria-sync-jobs] [--sem-estimativa]
 //       [--apply --confirm-host=<host>] [--limite-lotes=N] [--tamanho-lote=20] [--limite-minutos=15] [--export-dir=<dir>]
 //
 // NÃO carrega server/.env: o banco é só o DATABASE_URL do shell. O host é
@@ -60,26 +60,16 @@ function cfgDosArgs(args) {
   return cfg;
 }
 
-// Ids que só são essenciais por estarem citados na auditoria do job do
-// Cliente 360 (payload nunca lido por ninguém) — mostra o custo dessa
-// proteção conservadora.
-function protegidosSoPorAuditoria(plano) {
-  return Object.entries(plano.motivos)
-    .filter(([, m]) => m.classe === "essencial")
-    .filter(([, m]) => {
-      const essenciais = m.motivos.filter((x) => ["selecionavel", "margem_rollback", "recente", "run_ativo"].includes(x) || x.startsWith("referenciado:"));
-      return essenciais.length && essenciais.every((x) => x === "referenciado:cliente360_sync_job");
-    })
-    .map(([id]) => Number(id));
-}
-
 function imprimirRelatorio(r) {
   const p = r.plano;
   console.log(`\nPolítica: ${JSON.stringify(p.politica)}`);
   console.log(`Fontes de referência: ${p.fontesRefs.map((f) => `${f.fonte}=${f.lida ? f.idsCitados : f.motivo}`).join(" · ")}`);
   console.log(`\nImports por classe: essencial=${p.essencial.length} substituído=${p.substituido.length} resíduo=${p.residuo.length} retido=${p.retido.length}`);
-  const soAud = protegidosSoPorAuditoria(p);
-  if (soAud.length) console.log(`  (${soAud.length} essenciais SÓ por citação em cliente_360_sync_jobs — ver --ignorar-auditoria-sync-jobs)`);
+  const aud = p.citadosSoPorAuditoria;
+  if (aud.total) {
+    console.log(`  (informativo) ${aud.total} imports citados SÓ pela auditoria cliente_360_sync_jobs — por classe ${JSON.stringify(aud.porClasse)}; `
+      + `${p.politica.protegerAuditoriaSyncJobs ? "PROTEGIDOS (--proteger-auditoria-sync-jobs)" : "não protegem (padrão; opt-in --proteger-auditoria-sync-jobs)"}`);
+  }
   console.log(`mp_payments: runs elegíveis=${p.mp.elegiveis.length} retidos=${p.mp.retidos.length}`);
   const comElegiveis = p.tuplas.filter((t) => t.substituido + t.residuo > 0);
   if (comElegiveis.length) {
@@ -150,7 +140,7 @@ async function main() {
       host,
       confirmHost: args["confirm-host"] || null,
       env: process.env,
-      incluirAuditoriaSyncJobs: !args["ignorar-auditoria-sync-jobs"],
+      incluirAuditoriaSyncJobs: args["proteger-auditoria-sync-jobs"] === true,
       tamanhoLote: args["tamanho-lote"] ? Number(args["tamanho-lote"]) : 20,
       limiteLotes: args["limite-lotes"] ? Number(args["limite-lotes"]) : Infinity,
       limiteTempoMs: (args["limite-minutos"] ? Number(args["limite-minutos"]) : 15) * 60 * 1000,
@@ -160,7 +150,7 @@ async function main() {
       logger,
     });
     if (args.json) {
-      process.stdout.write(`${JSON.stringify({ host, ...resultado, protegidosSoPorAuditoria: protegidosSoPorAuditoria(resultado.plano) }, null, 2)}\n`);
+      process.stdout.write(`${JSON.stringify({ host, ...resultado }, null, 2)}\n`);
     } else {
       imprimirRelatorio(resultado);
     }

@@ -83,6 +83,10 @@ async function selecoes(pool) {
     await q(`INSERT INTO cliente_360_resumos_mensais (cliente_id, cliente_slug, competencia, payload_json)
              VALUES (1, 'loja', '2026-09', $1)`, [JSON.stringify({ centralVendas: { contas: [{ clienteContaId: 5, importId: B }] } })]);
 
+    // Auditoria do job do Cliente 360 cita A (só ela) e B (também citado pelo Painel)
+    await q(`INSERT INTO cliente_360_sync_jobs (cliente_id, cliente_slug, competencia, payload_json)
+             VALUES (1, 'loja', '2026-09', $1)`, [JSON.stringify({ fonte: "central_vendas", importIds: [A, B] })]);
+
     const esperadoImports = [A, L, X, Y, I].sort((a, b) => a - b);
 
     // ── 1. dry-run não escreve ───────────────────────────────────────────
@@ -102,8 +106,14 @@ async function selecoes(pool) {
     assert.strictEqual(dry.plano.espaco.porClasse.substituido.linhas.pedidos, 6);
     assert.strictEqual(dry.plano.espaco.porClasse.mp_payments.linhas.mp_payments, 6);
     assert.ok(dry.plano.espaco.totalBytesEstimados > 0);
+    assert.deepStrictEqual(dry.plano.citadosSoPorAuditoria, { total: 1, porClasse: { substituido: 1 }, ids: [A] });
+    assert.strictEqual(dry.plano.politica.protegerAuditoriaSyncJobs, false);
+    const dryAud = await executarRetencao({ pool, env: ENV, incluirAuditoriaSyncJobs: true, logger: silencioso });
+    assert.deepStrictEqual(dryAud.plano.elegiveis, [L, X, Y, I].sort((a, b) => a - b));
+    assert.ok(dryAud.plano.motivos[A].motivos.includes("referenciado:cliente360_sync_job"));
+    assert.deepStrictEqual(dryAud.plano.citadosSoPorAuditoria.porClasse, { essencial: 1 });
     assert.deepStrictEqual(await contar(), antes);
-    ok("dry-run: plano esperado (substituído/resíduo/cobertura_vazia/ref/margem/mp) e contagem de linhas idêntica");
+    ok("dry-run: plano esperado (substituído/resíduo/cobertura_vazia/ref/margem/mp), auditoria do job só informa (opt-in protege) e contagem idêntica");
 
     // ── 2. apply sem env / sem confirm-host recusa (antes de qualquer query) ─
     await assert.rejects(executarRetencao({ pool, env: ENV, apply: true, host: "127.0.0.1", logger: silencioso }), { code: "APPLY_ENV_AUSENTE" });
@@ -121,11 +131,15 @@ async function selecoes(pool) {
     assert.strictEqual(cliDry.status, 0, cliDry.stderr);
     assert.ok(/host=127\.0\.0\.1/.test(cliDry.stderr));
     assert.deepStrictEqual(JSON.parse(cliDry.stdout).plano.elegiveis, esperadoImports);
+    assert.deepStrictEqual(JSON.parse(cliDry.stdout).plano.citadosSoPorAuditoria.ids, [A]);
+    const cliAud = spawnSync(process.execPath, [cli, "--json", "--sem-estimativa", "--proteger-auditoria-sync-jobs"], { env: envCli, encoding: "utf8" });
+    assert.strictEqual(cliAud.status, 0, cliAud.stderr);
+    assert.ok(!JSON.parse(cliAud.stdout).plano.elegiveis.includes(A));
     const cliApply = spawnSync(process.execPath, [cli, "--apply"], { env: envCli, encoding: "utf8" });
     assert.strictEqual(cliApply.status, 3, cliApply.stderr);
     assert.ok(/APPLY_ENV_AUSENTE/.test(cliApply.stderr));
     assert.deepStrictEqual(await contar(), antes);
-    ok("CLI: dry-run --json devolve o mesmo plano; --apply sem env sai com 3 sem escrever");
+    ok("CLI: dry-run --json devolve o mesmo plano; --proteger-auditoria-sync-jobs protege A; --apply sem env sai com 3 sem escrever");
 
     // ── 3. apply com re-avaliação concorrente ──────────────────────────
     const exportDir = fs.mkdtempSync(path.join(os.tmpdir(), "vf-retencao-export-"));

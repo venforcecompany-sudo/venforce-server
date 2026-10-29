@@ -100,6 +100,11 @@ async function carregarRunsReferenciadosForaDoEscopo(db, { runIds = [], escopo =
 //       centralImportIds; comparado em painelContasOperacional).
 //   cliente_360_sync_jobs.payload_json.importIds[] → auditoria do job do
 //     Cliente 360 (gravado por finalizeSyncJob; nenhum leitor do campo).
+//     NÃO protege por padrão (decisão do Maestro, 29/10/2026: em produção
+//     1.248 jobs citavam 1.304 imports / 614.340 pedidos ≈ 79% do que a
+//     retenção deve liberar; a linha do job continua sendo a auditoria). Só
+//     protege com incluirAuditoriaSyncJobs=true (--proteger-auditoria-sync-jobs);
+//     desligada, é lida como citação INFORMATIVA (relatório do dry-run).
 //   entregas_cliente.payload_json → nenhum gravador de importId hoje; varrido
 //     por garantia (o Financeiro exibe motor.importId e poderia salvá-lo).
 //   margin_snapshot_*, sentinel_*, fechamento_incidentes, financeiro_ads_cache
@@ -120,12 +125,17 @@ async function tabelaExiste(db, tabela) {
   return Boolean(rows[0]?.existe);
 }
 
-async function carregarRefsProtegidas(db, { clienteSlugs = null, incluirAuditoriaSyncJobs = true } = {}) {
+// refs = só as fontes que PROTEGEM; citacoes = tudo que foi lido (inclusive a
+// auditoria informativa) — o relatório usa citacoes para "citadosSoPorAuditoria".
+// lerInformativas=false pula a leitura de fonte que não protege (lote do apply).
+async function carregarRefsProtegidas(db, { clienteSlugs = null, incluirAuditoriaSyncJobs = false, lerInformativas = true } = {}) {
   const refs = new Map();
+  const citacoes = new Map();
   const fontesLidas = [];
   for (const f of FONTES_REFS) {
-    if (f.auditoria && !incluirAuditoriaSyncJobs) { fontesLidas.push({ fonte: f.fonte, lida: false, motivo: "desligada" }); continue; }
-    if (!(await tabelaExiste(db, f.tabela))) { fontesLidas.push({ fonte: f.fonte, lida: false, motivo: "tabela_ausente" }); continue; }
+    const protege = !f.auditoria || incluirAuditoriaSyncJobs;
+    if (!protege && !lerInformativas) { fontesLidas.push({ fonte: f.fonte, lida: false, protege, motivo: "nao_protege" }); continue; }
+    if (!(await tabelaExiste(db, f.tabela))) { fontesLidas.push({ fonte: f.fonte, lida: false, protege, motivo: "tabela_ausente" }); continue; }
     const params = [];
     let filtro = "";
     if (clienteSlugs && f.colunaSlug) {
@@ -144,13 +154,15 @@ async function carregarRefsProtegidas(db, { clienteSlugs = null, incluirAuditori
     for (const r of rows) {
       if (!/^\d+$/.test(String(r.ref || ""))) continue;
       const id = Number(r.ref);
-      if (!refs.has(id)) refs.set(id, []);
-      if (!refs.get(id).includes(f.fonte)) refs.get(id).push(f.fonte);
+      for (const mapa of protege ? [refs, citacoes] : [citacoes]) {
+        if (!mapa.has(id)) mapa.set(id, []);
+        if (!mapa.get(id).includes(f.fonte)) mapa.get(id).push(f.fonte);
+      }
       n += 1;
     }
-    fontesLidas.push({ fonte: f.fonte, lida: true, idsCitados: n });
+    fontesLidas.push({ fonte: f.fonte, lida: true, protege, idsCitados: n });
   }
-  return { refs, fontesLidas };
+  return { refs, citacoes, fontesLidas };
 }
 
 // ── Estimativa de espaço ──────────────────────────────────────────────────
