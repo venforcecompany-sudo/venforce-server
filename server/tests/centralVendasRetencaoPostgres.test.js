@@ -122,8 +122,23 @@ async function selecoes(pool) {
       { code: "CONFIRM_HOST_INVALIDO" }
     );
     await assert.rejects(executarRetencao({ pool, env: { CENTRAL_VENDAS_RETENCAO_APPLY: "true" }, apply: true, logger: silencioso }), { code: "HOST_DESCONHECIDO" });
+    // PISO: apply recusa minIdadeHoras < 24 (arg ou env); dry-run aceita qualquer valor
+    await assert.rejects(
+      executarRetencao({ pool, env: { CENTRAL_VENDAS_RETENCAO_APPLY: "true" }, apply: true, host: "127.0.0.1", cfg: { minIdadeHoras: 23 }, logger: silencioso }),
+      { code: "MIN_IDADE_ABAIXO_DO_PISO" }
+    );
+    await assert.rejects(
+      executarRetencao({ pool, env: { CENTRAL_VENDAS_RETENCAO_APPLY: "true", CENTRAL_VENDAS_RETENCAO_MIN_IDADE_HORAS: "0" }, apply: true, host: "127.0.0.1", logger: silencioso }),
+      { code: "MIN_IDADE_ABAIXO_DO_PISO" }
+    );
+    await assert.rejects(
+      executarRetencao({ pool, env: { CENTRAL_VENDAS_RETENCAO_AUTO: "true", CENTRAL_VENDAS_RETENCAO_MIN_IDADE_HORAS: "1" }, apply: true, autorizacao: "auto", logger: silencioso }),
+      { code: "MIN_IDADE_ABAIXO_DO_PISO" }
+    );
+    const dry0 = await executarRetencao({ pool, env: ENV, cfg: { minIdadeHoras: 0 }, logger: silencioso });
+    assert.strictEqual(dry0.modo, "dry-run");
     assert.deepStrictEqual(await contar(), antes);
-    ok("executor: apply sem env / host não confirmado / host desconhecido recusa e nada muda");
+    ok("executor: apply sem env / host não confirmado / host desconhecido / minIdadeHoras < 24 (arg, env, auto) recusa; dry-run com 0 simula; nada muda");
 
     const cli = path.join(__dirname, "..", "scripts", "central-vendas-retencao.js");
     const envCli = { PATH: process.env.PATH, DATABASE_URL: amb.url };
@@ -138,8 +153,13 @@ async function selecoes(pool) {
     const cliApply = spawnSync(process.execPath, [cli, "--apply"], { env: envCli, encoding: "utf8" });
     assert.strictEqual(cliApply.status, 3, cliApply.stderr);
     assert.ok(/APPLY_ENV_AUSENTE/.test(cliApply.stderr));
+    const cliPiso = spawnSync(process.execPath, [cli, "--apply", "--min-idade-horas=0"], { env: { ...envCli, CENTRAL_VENDAS_RETENCAO_APPLY: "true" }, encoding: "utf8" });
+    assert.strictEqual(cliPiso.status, 3, cliPiso.stderr);
+    assert.ok(/MIN_IDADE_ABAIXO_DO_PISO/.test(cliPiso.stderr));
+    const cliPisoEnv = spawnSync(process.execPath, [cli, "--apply"], { env: { ...envCli, CENTRAL_VENDAS_RETENCAO_APPLY: "true", CENTRAL_VENDAS_RETENCAO_MIN_IDADE_HORAS: "12" }, encoding: "utf8" });
+    assert.strictEqual(cliPisoEnv.status, 3, cliPisoEnv.stderr);
     assert.deepStrictEqual(await contar(), antes);
-    ok("CLI: dry-run --json devolve o mesmo plano; --proteger-auditoria-sync-jobs protege A; --apply sem env sai com 3 sem escrever");
+    ok("CLI: dry-run --json devolve o mesmo plano; --proteger-auditoria-sync-jobs protege A; --apply sem env ou com --min-idade-horas/env abaixo de 24 sai com 3 sem escrever");
 
     // ── 3. apply com re-avaliação concorrente ──────────────────────────
     const exportDir = fs.mkdtempSync(path.join(os.tmpdir(), "vf-retencao-export-"));

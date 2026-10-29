@@ -38,6 +38,21 @@ A retenção apaga só o que comprovadamente nunca mais será selecionado. **O c
 
    Cobertura vazia e candidate não têm carência, porque nunca foram selecionáveis; só a idade própria conta.
 
+### A garantia: invariante "referência JSON nunca é desreferenciada" + piso
+
+A carência é **margem**. A **prova** de que não há lock a fazer com os escritores de referência JSON é esta invariante, coberta pelo teste de contrato `tests/centralVendasRetencaoContratoPainel.test.js`:
+
+1. O Painel de Contas só usa o snapshot (`cliente_360_resumos_mensais`) quando `snapshot.centralImportIds` é exatamente o conjunto dos imports vigentes selecionados **ao vivo**. A comparação fica em `painelContasOperacional.consolidarCliente`, via `mesmoConjunto`, em `painelContasOperacional.js:423`. Se não casa, o consolidado vem da seleção ao vivo.
+2. Pedidos, semanas e composição são lidos sempre pelos ids de `importPorConta`, que vem de `escolherImportPorConta`, a mesma seleção canônica (`painelContasService.js:365/410`). Nunca são lidos pelos ids gravados no snapshot.
+3. `centralImportIds` só é extraído do JSON (`painelContasRepository.mapRow`) e comparado. O teste falha se surgir um terceiro uso.
+4. O ramo "nenhuma conta com dado" (`snapshot_cliente`) mostra os agregados gravados no próprio snapshot e não lê import nenhum.
+
+Consequência: um snapshot que cita um import dominado já apagado pela retenção é ignorado, e nada é lido a partir do id dele. A retenção nunca apaga um vigente; os vigentes são essenciais.
+
+**Piso**: o apply, tanto pelo CLI quanto pelo modo automático, recusa `minIdadeHoras` abaixo de **24** (`MIN_IDADE_ABAIXO_DO_PISO`), venha o valor de `CENTRAL_VENDAS_RETENCAO_MIN_IDADE_HORAS` ou de `--min-idade-horas`. O dry-run aceita qualquer valor, porque é só simulação. Assim, nem a carência nem a idade própria podem ser zeradas por configuração.
+
+Invariante e piso juntos são a garantia; a carência de 72 h é margem adicional.
+
 ### Por que a carência dispensa lock com os escritores de referência
 
 Alguns escritores gravam ids de import em JSON sem nenhum lock compartilhado com a retenção. Exemplos: o snapshot do Painel e do Cliente 360 (`upsertResumoMensal`, `cliente360Repository.js`) e qualquer leitura em voo que resolveu `importIds` e ainda vai carregar os pedidos.
@@ -103,7 +118,7 @@ O dry-run continua lendo essa fonte de forma informativa. Ele reporta `citadosSo
 | `CENTRAL_VENDAS_RETENCAO_APPLY` | ausente (recusa apply) | necessário junto com `--apply` |
 | `CENTRAL_VENDAS_RETENCAO_AUTO` | ausente (desligado) | n/a |
 
-Um valor inválido cai no padrão, nunca numa política mais agressiva.
+Um valor inválido cai no padrão, nunca numa política mais agressiva. **Piso do apply**: `minIdadeHoras` ≥ 24; abaixo disso o apply é recusado com `MIN_IDADE_ABAIXO_DO_PISO` (o dry-run aceita qualquer valor).
 
 ## Como rodar
 
@@ -174,6 +189,8 @@ O relatório estima, por classe e por (conta, competência): média de `pg_colum
 
 - `tests/centralVendasRetencaoPlanner.test.js`: regras e propriedade. Puro, sempre roda.
 - `tests/centralVendasRetencaoPostgres.test.js`: integração em PG real (dry-run não escreve, recusas, órfãos, re-avaliação concorrente, idempotência, lock, export, mp, hook).
+- `tests/centralVendasRetencaoContratoPainel.test.js`: contrato do Painel (snapshot só vale com os vigentes ao vivo; pedidos e composição só pela seleção ao vivo). Sem banco.
+- `tests/centralVendasRetencaoAuto.test.js`: fila single-flight, pool com espera e timeouts do modo automático. Sem banco.
 - `tests/centralVendasRetencaoVolume.test.js`: 30 syncs × 500 pedidos. Sem retenção a tupla vai a 30 imports e 15.000 pedidos; com retenção fica em 2 imports e 1.000 pedidos.
 
 Os dois testes de PG pulam sem `CENTRAL_VENDAS_RETENCAO_TEST_DATABASE_URL` e recusam host não local:

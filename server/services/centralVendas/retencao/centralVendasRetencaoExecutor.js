@@ -31,6 +31,12 @@ const repo = require("./centralVendasRetencaoRepository");
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
+// Piso de minIdadeHoras para APLICAR (CLI e auto). Junto com a invariante do
+// Painel (snapshot só vale se citar exatamente os vigentes selecionados ao
+// vivo — ver RETENCAO.md), é o que fecha a corrida com escritores de
+// referência JSON sem lock. Dry-run aceita qualquer valor (só simulação).
+const PISO_MIN_IDADE_HORAS_APPLY = 24;
+
 function hostDaUrl(url) {
   try { return new URL(url).hostname || null; } catch (_) { return null; }
 }
@@ -41,8 +47,12 @@ function erroComCodigo(code, message) {
   return err;
 }
 
-function verificarPermissaoApply({ apply, env = process.env, host, confirmHost, autorizacao = "cli" } = {}) {
+function verificarPermissaoApply({ apply, env = process.env, host, confirmHost, autorizacao = "cli", cfg = null } = {}) {
   if (apply !== true) return { permitido: false, motivo: "APPLY_NAO_SOLICITADO" };
+  const politica = cfg || lerPolitica(env);
+  if (!(Number(politica.minIdadeHoras) >= PISO_MIN_IDADE_HORAS_APPLY)) {
+    return { permitido: false, motivo: "MIN_IDADE_ABAIXO_DO_PISO" };
+  }
   if (autorizacao === "auto") {
     return env.CENTRAL_VENDAS_RETENCAO_AUTO === "true"
       ? { permitido: true, motivo: null }
@@ -206,7 +216,7 @@ async function executarRetencao({
 } = {}) {
   const cfg = { ...lerPolitica(env), ...(cfgEntrada || {}) };
   if (apply) {
-    const permissao = verificarPermissaoApply({ apply, env, host, confirmHost, autorizacao });
+    const permissao = verificarPermissaoApply({ apply, env, host, confirmHost, autorizacao, cfg });
     if (!permissao.permitido) throw erroComCodigo(permissao.motivo, `Retenção recusada: ${permissao.motivo}`);
   }
 
@@ -296,4 +306,5 @@ module.exports = {
   montarLotes,
   hostDaUrl,
   LOCAL_HOSTS,
+  PISO_MIN_IDADE_HORAS_APPLY,
 };

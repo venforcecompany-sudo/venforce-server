@@ -16,7 +16,8 @@
 
 const { Pool } = require("pg");
 const { protegerConexoesDoPool } = require("../config/databaseConexao");
-const { executarRetencao, verificarPermissaoApply, hostDaUrl, LOCAL_HOSTS } = require("../services/centralVendas/retencao/centralVendasRetencaoExecutor");
+const { executarRetencao, verificarPermissaoApply, hostDaUrl, LOCAL_HOSTS, PISO_MIN_IDADE_HORAS_APPLY } = require("../services/centralVendas/retencao/centralVendasRetencaoExecutor");
+const { lerPolitica } = require("../services/centralVendas/retencao/centralVendasRetencaoPlanner");
 
 function lerArgs(argv) {
   const args = {};
@@ -111,9 +112,11 @@ async function main() {
   }
   const apply = args.apply === true;
   if (apply) {
-    const permissao = verificarPermissaoApply({ apply, env: process.env, host, confirmHost: args["confirm-host"] || null });
+    const politica = { ...lerPolitica(process.env), ...cfg };
+    const permissao = verificarPermissaoApply({ apply, env: process.env, host, confirmHost: args["confirm-host"] || null, cfg: politica });
     if (!permissao.permitido) {
-      console.error(`[central-vendas-retencao] APLICAR recusado: ${permissao.motivo}. Exige --apply, CENTRAL_VENDAS_RETENCAO_APPLY=true e, fora de localhost, --confirm-host=${host}`);
+      console.error(`[central-vendas-retencao] APLICAR recusado: ${permissao.motivo}. Exige --apply, CENTRAL_VENDAS_RETENCAO_APPLY=true, `
+        + `minIdadeHoras >= ${PISO_MIN_IDADE_HORAS_APPLY} (atual ${politica.minIdadeHoras}) e, fora de localhost, --confirm-host=${host}`);
       process.exit(3);
     }
   }

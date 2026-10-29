@@ -37,7 +37,8 @@ async function simular(amb, { comRetencao }) {
     if (comRetencao) {
       const r = await executarRetencao({
         pool: amb.pool, env: { CENTRAL_VENDAS_RETENCAO_APPLY: "true" }, apply: true, host: "127.0.0.1",
-        escopo: { contaId: 5 }, cfg: { minIdadeHoras: 0, manterUltimosSubstituidos: 1 }, logger: silencioso,
+        // piso do apply = 24 h; o sync mais novo tem 1 dia (k = 29)
+        escopo: { contaId: 5 }, cfg: { minIdadeHoras: 24, manterUltimosSubstituidos: 1 }, logger: silencioso,
       });
       assert.ok(!r.erro, JSON.stringify(r.erro));
     }
