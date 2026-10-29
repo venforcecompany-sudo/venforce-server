@@ -4652,14 +4652,26 @@ body.vf-page-anuncios-meli.am-custos-savebar-on .vf-toast-stack {
   box-shadow: 0 6px 16px -6px rgba(29, 95, 184, 0.5);
 }
 
-/* Versão compacta: só ícone + título, para não alargar a barra. */
+/* Versão compacta: ícone + título + seta, sem alargar a barra — se ela passar
+   da largura, a busca e o "Ordenar por" empilham e os botões esticam na
+   vertical. */
 .am-transf-abrir {
-  gap: 10px;
-  padding: 0 16px;
+  gap: 8px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.am-transf-abrir .am-reb-abrir__ico {
+  width: 30px;
+  height: 30px;
 }
 
 .am-transf-abrir .am-reb-abrir__titulo {
   font-size: 0.9rem;
+}
+
+.am-transf-abrir .am-reb-abrir__seta {
+  margin-left: 0;
 }
 
 .am-transf-abrir:hover:not(:disabled) {
