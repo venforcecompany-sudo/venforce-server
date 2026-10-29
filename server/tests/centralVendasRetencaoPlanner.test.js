@@ -92,6 +92,30 @@ check("published com cobertura NULL não domina ninguém e não é eliminado", (
   assert.ok(plano.motivos[b.id].motivos.includes("published_sem_cobertura"));
 });
 
+check("cobertura INVERTIDA (2026-10-01→2026-09-30) é resíduo cobertura_vazia, mesmo sozinha na tupla", () => {
+  seq = 0;
+  const inv = imp({ coverage_date_from: "2026-10-01", coverage_date_to: "2026-09-30" });
+  let plano = planejarRetencao({ imports: [inv], cfg: cfgBase });
+  assert.strictEqual(classe(plano, inv.id), "residuo");
+  assert.ok(plano.motivos[inv.id].motivos.includes("cobertura_vazia"));
+  // não conta como "dominado" para a margem de rollback e não protege o legacy
+  const l = imp({ publication_status: "legacy", coverage_date_from: null, coverage_date_to: null, published_at: null });
+  const inv2 = imp({ coverage_date_from: "2026-10-01", coverage_date_to: "2026-09-30" });
+  plano = planejarRetencao({ imports: [l, inv2], cfg: { ...cfgBase, manterUltimosSubstituidos: 1 } });
+  assert.strictEqual(classe(plano, l.id), "essencial", "legacy segue sendo o fallback");
+  assert.strictEqual(classe(plano, inv2.id), "residuo");
+  // continua respeitando as proteções (recente / ref)
+  const recente = imp({ coverage_date_from: "2026-10-01", coverage_date_to: "2026-09-30", created_at: AGORA, published_at: AGORA });
+  plano = planejarRetencao({ imports: [recente], cfg: cfgBase });
+  assert.strictEqual(classe(plano, recente.id), "essencial");
+  // candidate de run terminal com cobertura invertida também
+  const runs = [{ id: 1, status: "completed", created_at: VELHO, finished_at: VELHO }];
+  const cand = imp({ publication_status: "candidate", published_at: null, sync_run_id: 1, coverage_date_from: "2026-10-01", coverage_date_to: "2026-09-30" });
+  plano = planejarRetencao({ imports: [cand], runs, cfg: cfgBase });
+  assert.strictEqual(classe(plano, cand.id), "residuo");
+  assert.ok(plano.motivos[cand.id].motivos.includes("cobertura_vazia"));
+});
+
 check("legacy: o mais recente fica, os anteriores são substituídos", () => {
   seq = 0;
   const l1 = imp({ publication_status: "legacy", coverage_date_from: null, coverage_date_to: null, published_at: null });
@@ -280,6 +304,7 @@ check("200 cenários × todos os segmentos × todas as variantes de conta", () =
       let to = 1 + Math.floor(rand() * 30);
       if (from > to) [from, to] = [to, from];
       if (rand() < 0.3) { from = 1; to = 30; }
+      const invertida = rand() < 0.08; // bug de fuso: from > to
       const semCobertura = rand() < 0.1;
       // published_at com empates para exercitar o desempate por id
       const pub = new Date(Date.parse(VELHO) + Math.floor(rand() * 6) * 86400000).toISOString();
@@ -293,8 +318,8 @@ check("200 cenários × todos os segmentos × todas as variantes de conta", () =
         competencia: "2026-09",
         cliente_conta_id: contas[Math.floor(rand() * contas.length)],
         publication_status: status,
-        coverage_date_from: semCobertura ? null : dia(from),
-        coverage_date_to: semCobertura ? null : dia(to),
+        coverage_date_from: semCobertura ? null : invertida ? "2026-10-01" : dia(from),
+        coverage_date_to: semCobertura ? null : invertida ? "2026-09-30" : dia(to),
         created_at: criado,
         published_at: status === "published" ? pub : null,
         sync_run_id: 100 + i,

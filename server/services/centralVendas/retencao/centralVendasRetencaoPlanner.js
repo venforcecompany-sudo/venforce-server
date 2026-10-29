@@ -16,6 +16,8 @@
 //     (cobertura do mês todo: legacy nunca mais é fallback).
 //   candidate C → resíduo ⟺ run terminal E (run failed OU existe published na
 //     tupla mais novo que C). Candidate de run queued/running nunca.
+//   published (ou candidate de run terminal) com cobertura INVERTIDA
+//     (from > to) → resíduo "cobertura_vazia": nunca selecionável.
 //
 // A tupla é EXATA (cliente_conta_id NULL comparado como valor). Dominância
 // dentro da tupla exata vale em qualquer variante de leitura de conta
@@ -103,6 +105,17 @@ function normalizarRefsImports(refs) {
   return out;
 }
 
+// Cobertura INVERTIDA (from > to, ex.: competência 2026-09 com 2026-10-01 →
+// 2026-09-30 — bug de fuso da busca de Orders): nenhum segmento real
+// (start ≤ end) cabe nela, então coberturaContemSegmento nunca a aceita. Sem
+// este caso explícito, a seleção sobre o "segmento" invertido da própria
+// cobertura devolveria o import e ele pareceria selecionável.
+function coberturaVazia(row) {
+  const from = asDate(row.coverage_date_from);
+  const to = asDate(row.coverage_date_to);
+  return Boolean(from && to && from > to);
+}
+
 function ordemPublicacaoDesc(a, b) {
   const pa = ms(a.published_at) || 0;
   const pb = ms(b.published_at) || 0;
@@ -125,7 +138,7 @@ function avaliarTupla(rows) {
     if (row.publication_status === "published") {
       const from = asDate(row.coverage_date_from);
       const to = asDate(row.coverage_date_to);
-      if (!from || !to) { dominancia.set(id, null); continue; }
+      if (!from || !to || coberturaVazia(row)) { dominancia.set(id, null); continue; }
       const sel = selecionarMelhorImportPorCompetencia(rows, { segmentStart: from, segmentEnd: to });
       dominancia.set(id, sel && Number(sel.id) !== id ? `dominado_por:${Number(sel.id)}` : null);
     } else if (row.publication_status === "legacy") {
@@ -183,7 +196,10 @@ function planejarRetencao({ imports = [], refsProtegidas = {}, runs = [], cfg = 
       let elegivel = null; // "substituido" | "residuo"
       const retidos = [];
 
-      if (status === "published" || status === "legacy") {
+      if (status === "published" && coberturaVazia(row)) {
+        elegivel = "residuo";
+        retidos.push("cobertura_vazia");
+      } else if (status === "published" || status === "legacy") {
         const dom = dominancia.get(id);
         if (!dom) {
           if (status === "published" && (!asDate(row.coverage_date_from) || !asDate(row.coverage_date_to))) {
@@ -208,7 +224,8 @@ function planejarRetencao({ imports = [], refsProtegidas = {}, runs = [], cfg = 
         } else {
           const criado = ms(row.created_at) || 0;
           const maisNovo = publicados.find((p) => Number(p.id) > id || (ms(p.published_at) || 0) > criado);
-          if (run.status === "failed") { elegivel = "residuo"; retidos.push("run_failed"); }
+          if (coberturaVazia(row)) { elegivel = "residuo"; retidos.push("cobertura_vazia"); }
+          else if (run.status === "failed") { elegivel = "residuo"; retidos.push("run_failed"); }
           else if (maisNovo) { elegivel = "residuo"; retidos.push(`published_mais_novo:${Number(maisNovo.id)}`); }
           else retidos.push("candidate_sem_published_mais_novo");
         }
