@@ -82,7 +82,7 @@ async function silencioso(fn) {
   try { return await fn(); } finally { console.log = log; console.warn = warn; }
 }
 
-// O ML devolve tudo o que está na janela pedida; o filtro do run é que decide.
+// O ML falso devolve só o que está na janela pedida (comparação por instante, como a API).
 const VIRADA = pedidoApi("VIRADA", "2026-09-30T23:30:00.000-04:00"); // 01/10 00:30 em Brasília
 const OUTUBRO = pedidoApi("OUT", "2026-10-15T10:00:00.000-04:00");
 const INICIO_SET = pedidoApi("INI_SET", "2026-08-31T23:30:00.000-04:00"); // 01/09 00:30 em Brasília
@@ -92,7 +92,13 @@ async function sincronizar(dateFrom, dateTo, resultados) {
   const capturas = [];
   const repo = fakeRepo();
   const svc = carregarComHandlers([
-    ["/orders/search", () => ({ ok: true, status: 200, data: { results: resultados, paging: { total: resultados.length } } })],
+    ["/orders/search", (path) => {
+      const qs = new URLSearchParams(path.split("?")[1]);
+      const de = Date.parse(qs.get("order.date_created.from"));
+      const ate = Date.parse(qs.get("order.date_created.to"));
+      const naJanela = resultados.filter((o) => Date.parse(o.date_created) >= de && Date.parse(o.date_created) <= ate);
+      return { ok: true, status: 200, data: { results: naJanela, paging: { total: naJanela.length } } };
+    }],
   ], capturas);
   const { sincronizarVendasMeli } = svc.createCentralVendasSyncService(repo, {});
   await silencioso(() => sincronizarVendasMeli({ clienteSlug: cliente.slug, marketplace: "meli", accountContext: ACCOUNT_CONTEXT, dateFrom, dateTo }));
@@ -139,6 +145,11 @@ async function run() {
     [set.repo.persistedCalls[0].coverageDateFrom, set.repo.persistedCalls[0].coverageDateTo], ["2026-09-01", "2026-09-30"]);
 
   // ── run vazio continua gravando o snapshot vazio de cada competência do intervalo (M4 §8) ──
+  // Sem a folga, a janela antiga (T00:00..T23:59 −03:00) não traria o pedido da virada:
+  const antiga = { de: Date.parse("2026-09-01T00:00:00.000-03:00"), ate: Date.parse("2026-09-30T23:59:59.999-03:00") };
+  eq("a janela antiga não alcançava o pedido de 30/09 23:30 −04:00",
+    Date.parse(VIRADA.date_created) <= antiga.ate, false);
+
   const vazio = await sincronizar("2026-09-01", "2026-09-30", []);
   eq("run sem pedidos ainda grava snapshot vazio de 2026-09", vazio.repo.persistedCalls.map((c) => c.competencia), ["2026-09"]);
 
