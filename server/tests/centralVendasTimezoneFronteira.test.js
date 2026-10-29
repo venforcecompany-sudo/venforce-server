@@ -19,7 +19,9 @@
 //     lê a string sem `new Date()`. 23:30 de 31/07 continua em 2026-07;
 //     00:30 de 01/08 continua em 2026-08, em qualquer offset.
 //
-// EDGE AINDA ABERTA (documentada, NÃO corrigida aqui — ver checkpoint §TIMEZONE):
+// EDGE FECHADA em 29/10/2026 (ver centralVendasJanelaDataLiteral.test.js): a busca
+// ganhou folga de ±3h e o run só mantém pedidos com dia literal no intervalo.
+// Texto original da edge, mantido como histórico:
 //   A JANELA de busca da Orders API é `${data}T00:00:00.000-03:00` /
 //   `...T23:59:59.999-03:00` (offset de Brasília fixo). Para um vendedor em
 //   fuso brasileiro diferente (Acre −05:00, Amazonas −04:00), ou se o ML
