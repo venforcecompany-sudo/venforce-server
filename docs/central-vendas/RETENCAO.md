@@ -32,6 +32,19 @@ A retenção apaga só o que comprovadamente nunca mais será selecionado. **O c
 3. De run queued ou running.
 4. Mais novo que `minIdadeHoras`, considerando o maior entre `created_at` e `published_at`.
 5. Os `manterUltimosSubstituidos` published dominados mais recentes da tupla, como margem de rollback.
+6. **Carência desde a substituição** (`carencia_substituicao`): o dominado só é elegível se o **dominador** foi publicado ou criado há mais de `minIdadeHoras`. Isso vale além da idade própria do dominado. O dominador é:
+   - para published, o published mais novo que cobre a cobertura dele, ou seja, o que a seleção devolve, usando `published_at`;
+   - para legacy, o legacy mais novo (`created_at`) ou, na falta dele, o published do mês inteiro (`published_at`).
+
+   Cobertura vazia e candidate não têm carência, porque nunca foram selecionáveis; só a idade própria conta.
+
+### Por que a carência dispensa lock com os escritores de referência
+
+Alguns escritores gravam ids de import em JSON sem nenhum lock compartilhado com a retenção. Exemplos: o snapshot do Painel e do Cliente 360 (`upsertResumoMensal`, `cliente360Repository.js`) e qualquer leitura em voo que resolveu `importIds` e ainda vai carregar os pedidos.
+
+Todos eles só pegam o import **vigente**, e um import só deixa de ser vigente quando o dominador aparece. Com a carência, quem viu o import como vigente fez isso antes do dominador existir, portanto há mais de `minIdadeHoras` (72 h por padrão). Nenhuma leitura ou escrita em voo usa ainda um import dominado há 72 h, e a próxima resolução já devolve o dominador.
+
+Uma referência gravada depois disso continua protegida pelas refs, relidas dentro do lote. A re-avaliação do lote usa o mesmo planner: um dominador publicado entre o plano e o lote faz o lote desistir do dominado (há teste).
 
 **Prova**: o teste de propriedade (`tests/centralVendasRetencaoPlanner.test.js`) roda 200 cenários aleatórios, todos os segmentos do mês e as variantes de conta (exata e `includeLegacy`). Em todos, a seleção é idêntica antes e depois da remoção. O teste em PostgreSQL faz a mesma verificação com `resolveImportsForRange` real.
 
@@ -131,9 +144,15 @@ CENTRAL_VENDAS_RETENCAO_APPLY=true DATABASE_URL=... node server/scripts/central-
 Com `CENTRAL_VENDAS_RETENCAO_AUTO=true`, o worker de sync roda o executor depois de um `publicarRun` bem-sucedido, só para as tuplas dos imports publicados:
 
 - Roda agendado (`setImmediate`), fora do caminho da publicação.
-- Usa a mesma política do env, então com 72 h saem só substituídos com mais de 3 dias.
-- Faz no máximo 10 lotes, em até 2 min.
+- Usa a mesma política do env, então com 72 h saem só substituídos há mais de 3 dias.
 - Nunca lança: erro vira log.
+
+Proteções do pool do servidor:
+
+- **Fila single-flight por processo**: no máximo uma retenção rodando. Uma publicação durante a execução só acrescenta seus imports ao conjunto pendente, que a mesma tarefa drena em seguida, com as tuplas deduplicadas.
+- **Pool com espera** (`pool.waitingCount > 0`): a rodada é pulada com o log `adiada: pool com espera`. Os pendentes ficam para a próxima publicação.
+- `statement_timeout` de 15 s e `lock_timeout` de 2 s, também no **planejamento** (o CLI usa 300 s e 5 s).
+- No máximo 10 lotes e 2 min por tupla, com `limiteTempoMs` checado entre as etapas (plano → lotes → mp).
 
 Sem a flag, nada acontece (há teste). Esse modo não exige `CENTRAL_VENDAS_RETENCAO_APPLY` nem `--confirm-host`: a própria flag é o opt-in.
 

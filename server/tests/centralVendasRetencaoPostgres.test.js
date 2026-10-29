@@ -243,11 +243,14 @@ async function selecoes(pool) {
     const limitado = await executarRetencao({ pool, env: envApply, apply: true, host: "127.0.0.1", escopo: { clienteSlug: "outra" }, cfg: cfg0, tamanhoLote: 2, limiteLotes: 1, logger: silencioso });
     assert.strictEqual(limitado.motivoParada, "LIMITE_LOTES");
     assert.strictEqual(limitado.totais.importsRemovidos, 2);
+    const semTempo = await executarRetencao({ pool, env: envApply, apply: true, host: "127.0.0.1", escopo: { clienteSlug: "outra" }, cfg: cfg0, limiteTempoMs: 0, logger: silencioso });
+    assert.strictEqual(semTempo.motivoParada, "LIMITE_TEMPO");
+    assert.strictEqual(semTempo.lotes.length, 0, "tempo checado entre plano e lotes");
     const sinal = { interrompido: true };
     const parado = await executarRetencao({ pool, env: envApply, apply: true, host: "127.0.0.1", escopo: { clienteSlug: "outra" }, cfg: cfg0, tamanhoLote: 2, sinal, logger: silencioso });
     assert.strictEqual(parado.motivoParada, "SIGINT");
     assert.strictEqual(parado.totais.importsRemovidos, 0);
-    ok("limiteLotes para após N lotes; sinal interrompido para antes do próximo lote");
+    ok("limiteLotes para após N lotes; limiteTempoMs checado entre plano e lotes; sinal interrompido para antes do próximo lote");
 
     // ── 7. hook automático ──────────────────────────────────────────────
     let agendou = false;

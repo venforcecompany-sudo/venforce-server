@@ -194,6 +194,10 @@ async function executarRetencao({
   limiteLotes = Infinity,
   limiteTempoMs = 15 * 60 * 1000,
   statementTimeoutMs = 60000,
+  // Planejamento: padrão folgado (CLI lê o escopo inteiro); o modo auto passa
+  // 15 s — nunca um plano pendurado no pool do servidor.
+  statementTimeoutPlanoMs = 300000,
+  lockTimeoutMs = 5000,
   exportDir = null,
   comEstimativa = false,
   sinal = { interrompido: false },
@@ -210,7 +214,7 @@ async function executarRetencao({
   const { plano, imports } = await comTransacao(
     pool,
     (db) => planejarEscopo(db, { escopo, cfg, incluirAuditoriaSyncJobs, comEstimativa }),
-    { readOnly: true, statementTimeoutMs: Math.max(statementTimeoutMs, 300000) }
+    { readOnly: true, statementTimeoutMs: statementTimeoutPlanoMs, lockTimeoutMs }
   );
   const resultado = {
     modo: apply ? "apply" : "dry-run",
@@ -223,6 +227,8 @@ async function executarRetencao({
   };
   if (!apply) return resultado;
   if (depoisDoPlano) await depoisDoPlano(plano);
+  // Etapa plano → lotes: o tempo do plano já conta para limiteTempoMs.
+  if (Date.now() - inicio >= limiteTempoMs) { resultado.motivoParada = "LIMITE_TEMPO"; return resultado; }
 
   const somar = (linhas) => { for (const [k, n] of Object.entries(linhas || {})) resultado.totais.linhas[k] += n; };
   const podeContinuar = () => {
@@ -238,7 +244,7 @@ async function executarRetencao({
     const numero = resultado.lotes.length + 1;
     const t0 = Date.now();
     try {
-      const r = await comTransacao(pool, (client) => aplicarLoteImports(client, lote, { cfg, incluirAuditoriaSyncJobs, exportDir, numero }), { statementTimeoutMs });
+      const r = await comTransacao(pool, (client) => aplicarLoteImports(client, lote, { cfg, incluirAuditoriaSyncJobs, exportDir, numero }), { statementTimeoutMs, lockTimeoutMs });
       somar(r.linhas);
       resultado.totais.importsRemovidos += r.removidos.length;
       resultado.lotes.push({ numero, tipo: "imports", ids: lote.ids, removidos: r.removidos, desistidos: r.desistidos, linhas: r.linhas, arquivos: r.arquivos, ms: Date.now() - t0 });
@@ -256,13 +262,14 @@ async function executarRetencao({
     }
   }
 
-  if (cfg.incluirMpPayments) {
+  // Etapa lotes de imports → mp_payments (podeContinuar também checa o tempo).
+  if (cfg.incluirMpPayments && podeContinuar()) {
     for (const runId of plano.mp.elegiveis) {
       if (!podeContinuar()) return resultado;
       const numero = resultado.lotes.length + 1;
       const t0 = Date.now();
       try {
-        const r = await comTransacao(pool, (client) => aplicarRunMp(client, runId, { cfg }), { statementTimeoutMs });
+        const r = await comTransacao(pool, (client) => aplicarRunMp(client, runId, { cfg }), { statementTimeoutMs, lockTimeoutMs });
         if (r.removido) { resultado.totais.mpRunsLimpos += 1; somar(r.linhas); }
         resultado.lotes.push({ numero, tipo: "mp_payments", runId, removido: r.removido, motivo: r.motivo, linhas: r.linhas, ms: Date.now() - t0 });
         logger.log(`[retencao] lote ${numero} mp run=${runId}: ${r.removido ? `payments=${r.linhas.mp_payments} charges=${r.linhas.mp_payment_charges}` : `mantido (${r.motivo})`}`);
@@ -278,7 +285,7 @@ async function executarRetencao({
       }
     }
   }
-  resultado.motivoParada = "CONCLUIDO";
+  if (!resultado.motivoParada) resultado.motivoParada = "CONCLUIDO";
   return resultado;
 }
 
