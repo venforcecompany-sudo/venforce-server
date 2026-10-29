@@ -397,15 +397,10 @@ CREATE TABLE IF NOT EXISTS central_vendas_mp_payments (
   UNIQUE (sync_run_id, payment_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_central_vendas_mp_payments_run
-  ON central_vendas_mp_payments (sync_run_id);
-
-CREATE INDEX IF NOT EXISTS idx_central_vendas_mp_payments_payment
-  ON central_vendas_mp_payments (payment_id);
-
-CREATE INDEX IF NOT EXISTS idx_central_vendas_mp_payments_order
-  ON central_vendas_mp_payments (order_id);
-
+-- 29/10/2026: idx_central_vendas_mp_payments_{run,payment,order} e
+-- idx_central_vendas_mp_payment_charges_run saíram (nenhuma consulta da aplicação
+-- usa; run é prefixo do UNIQUE (sync_run_id, payment_id)). Remoção em produção:
+-- migrations/20261029_central_vendas_mp_indices_sem_uso.sql.
 CREATE INDEX IF NOT EXISTS idx_central_vendas_mp_payments_cliente_conta
   ON central_vendas_mp_payments (cliente_conta_id);
 
@@ -438,9 +433,6 @@ CREATE TABLE IF NOT EXISTS central_vendas_mp_payment_charges (
 
 CREATE INDEX IF NOT EXISTS idx_central_vendas_mp_payment_charges_payment_row
   ON central_vendas_mp_payment_charges (mp_payment_row_id);
-
-CREATE INDEX IF NOT EXISTS idx_central_vendas_mp_payment_charges_run
-  ON central_vendas_mp_payment_charges (sync_run_id);
 
 -- =============================================================================
 -- MP2 — Settlement Report + conciliação Payment <-> Settlement.
