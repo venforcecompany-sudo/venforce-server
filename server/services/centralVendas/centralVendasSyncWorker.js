@@ -181,6 +181,12 @@ async function executarSyncRun({
           ? `[centralVendas] sync-run #${run.id} publicado — imports=${publicacao.importIds.join(",") || "nenhum"}`
           : `[centralVendas] sync-run #${run.id} nao publicado: ${publicacao.reason}`
       );
+      // Retenção automática das tuplas publicadas — desligada sem
+      // CENTRAL_VENDAS_RETENCAO_AUTO=true; agenda fora deste fluxo e nunca
+      // lança (ver centralVendasRetencaoAuto).
+      if (publicacao?.published && publicacao.importIds?.length) {
+        require("./retencao/centralVendasRetencaoAuto").agendarRetencaoAposPublicacao({ importIds: publicacao.importIds, db });
+      }
     } catch (publishErr) {
       console.error(`[centralVendas] sync-run #${run.id} erro ao tentar publicar:`, publishErr?.message);
     }
