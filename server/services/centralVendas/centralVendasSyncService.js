@@ -99,6 +99,46 @@ function competenciasNoIntervalo(from, to) {
   return result;
 }
 
+// Janela da Orders API × data LITERAL do pedido (BLOCO 13). A data e a competência
+// do pedido são a string do ML (`date_created.slice(0,10)`, normalmente −04:00),
+// mas a busca era só ${dia}T00:00−03:00..T23:59−03:00: um pedido às 23:30−04:00 do
+// último dia do mês (= 00:30−03:00 do dia seguinte) ficava FORA do run do mês dele
+// e DENTRO do run do mês seguinte, que o agrupava na competência anterior com
+// cobertura vazia (ex.: 2026-09 coberto por 2026-10-01..2026-09-30) — import nunca
+// selecionável e pedido ausente de todo fechamento vigente. Medido em produção em
+// 29/10/2026: 515 imports assim (449 published). Correção: buscar com folga de
+// ±3h (cobre offsets −00:00 a −06:00) e manter só os pedidos cuja data LITERAL
+// está no intervalo do run (filtrarPorDataLiteral). A regra da data não muda.
+const FOLGA_JANELA_HORAS = 3;
+
+function deslocarDiaIso(isoDate, dias) {
+  const [y, m, d] = String(isoDate).split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + dias));
+  return dt.toISOString().slice(0, 10);
+}
+
+function janelaBuscaOrders(dateFrom, dateTo) {
+  const inicio = String(24 - FOLGA_JANELA_HORAS).padStart(2, "0");
+  const fim = String(FOLGA_JANELA_HORAS - 1).padStart(2, "0");
+  return {
+    from: `${deslocarDiaIso(dateFrom, -1)}T${inicio}:00:00.000-03:00`,
+    to: `${deslocarDiaIso(dateTo, 1)}T${fim}:59:59.999-03:00`,
+  };
+}
+
+// Pedido sem data legível fica (comportamento anterior: cai na competência
+// corrente pelo agrupamento); com data, só entra se o dia literal está no run.
+function filtrarPorDataLiteral(orders, dateFrom, dateTo) {
+  const dentro = [];
+  let fora = 0;
+  for (const order of orders) {
+    const dia = String(order?.date_created || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || (dia >= dateFrom && dia <= dateTo)) dentro.push(order);
+    else fora += 1;
+  }
+  return { orders: dentro, foraDaJanelaLiteral: fora };
+}
+
 // M4, seção 5 — cobertura REAL de um snapshot: a interseção do intervalo do
 // run com o mês da competência, nunca o mês inteiro quando o run só cobriu
 // um pedaço dele (ex.: run 07-20..08-15 → competencia 2026-07 cobre só
@@ -217,12 +257,13 @@ async function fetchAllOrders(clienteId, sellerId, dateFrom, dateTo, {
   let earlyEmptyReason = null;
   let cappedBySafetyLimit = false;
   let offset = 0;
+  const janela = janelaBuscaOrders(dateFrom, dateTo);
 
   for (let page = 0; page < MAX_PAGINAS; page++) {
     const qs = new URLSearchParams({
       seller: String(sellerId),
-      "order.date_created.from": `${dateFrom}T00:00:00.000-03:00`,
-      "order.date_created.to": `${dateTo}T23:59:59.999-03:00`,
+      "order.date_created.from": janela.from,
+      "order.date_created.to": janela.to,
       limit: String(PAGE_LIMIT),
       offset: String(offset),
     });
@@ -922,7 +963,7 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
       }
       throw err;
     }
-    const orders = ordersResult.data;
+    const { orders, foraDaJanelaLiteral } = filtrarPorDataLiteral(ordersResult.data, from, to);
     const ordersCompleteness = ordersResult.completeness;
     if (sourceService) {
       const marcar = ordersCompleteness.complete
@@ -938,6 +979,7 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
         metadata: {
           receivedRaw: ordersCompleteness.receivedRaw,
           duplicateCount: ordersCompleteness.duplicateCount,
+          foraDaJanelaLiteral,
           ...ordersCompleteness.metadata,
         },
         db,
@@ -1334,6 +1376,13 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
       // intervalo do run com o mês desta competência — nunca o mês inteiro
       // quando o run só tocou um pedaço dele.
       const { coverageFrom, coverageTo } = coverageParaCompetencia(comp, from, to);
+      // Competência fora do intervalo do run (só sobra pedido sem data legível
+      // depois de filtrarPorDataLiteral): cobertura vazia nunca é selecionável
+      // — gravar só ocupava espaço e publicava um fechamento inútil.
+      if (coverageFrom > coverageTo) {
+        console.warn(`[centralVendas] sync ${slug} ${from}..${to}: competência ${comp} fora do intervalo (${groupOrders.length} pedido(s)) — import não gravado.`);
+        continue;
+      }
       assertNaoCancelado(signal, "gravar o import da competência");
       const persisted = await repository.persistCentralVendasImport({
         cliente,
@@ -1459,6 +1508,9 @@ module.exports = {
   getCost,
   buscarCustosPorBaseId,
   fetchAllOrders,
+  janelaBuscaOrders,
+  filtrarPorDataLiteral,
+  coverageParaCompetencia,
   isErroTransitorioDeRede,
   ordersBackoffDelayMs,
   ORDERS_MAX_ATTEMPTS,
