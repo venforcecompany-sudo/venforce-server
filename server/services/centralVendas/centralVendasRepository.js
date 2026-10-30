@@ -901,6 +901,7 @@ module.exports = {
   getPedidoDetailByRowId,
   promoverCandidatesDoRun,
   selecionarMelhorImportPorCompetencia,
+  coberturaContemSegmento,
   monthBounds,
   competenciasDoIntervalo,
   diagnosticarCompetencias,

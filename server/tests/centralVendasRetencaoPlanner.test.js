@@ -250,6 +250,43 @@ check("carência também para legacy (legacy novo / published do mês inteiro re
   assert.strictEqual(classe(plano, inv.id), "residuo");
 });
 
+check("mês aberto republicado todo dia: carência conta do PRIMEIRO dominador, não do vigente de hoje", () => {
+  seq = 0;
+  // agora = 2026-10-29T12:00Z (cfgBase). Um published por dia; o vigente tem 1h.
+  const dias = ["2026-10-20", "2026-10-22", "2026-10-24", "2026-10-25", "2026-10-27", "2026-10-28"];
+  const serie = dias.map((d) => imp({ created_at: `${d}T03:00:00Z`, published_at: `${d}T03:00:00Z`, coverage_date_to: "2026-10-31" }));
+  const vigente = imp({ created_at: "2026-10-29T11:00:00Z", published_at: "2026-10-29T11:00:00Z", coverage_date_to: "2026-10-31" });
+  const plano = planejarRetencao({ imports: [...serie, vigente], cfg: { ...cfgBase, manterUltimosSubstituidos: 1 } });
+  // 20/10 (vencido em 22/10), 22/10 (em 24/10) e 24/10 (em 25/10): dominados há > 72h ⇒ saem
+  for (const r of serie.slice(0, 3)) assert.strictEqual(classe(plano, r.id), "substituido", `id ${r.id}`);
+  // 25/10 foi vencido em 27/10 03:00 (< 72h) ⇒ carência; 27/10 vencido em 28/10 ⇒ carência
+  assert.ok(plano.motivos[serie[3].id].motivos.includes("carencia_substituicao"));
+  assert.ok(plano.motivos[serie[4].id].motivos.includes("carencia_substituicao"));
+  // 28/10 = margem de rollback; o de hoje = vigente
+  assert.ok(plano.motivos[serie[5].id].motivos.includes("margem_rollback"));
+  assert.strictEqual(classe(plano, vigente.id), "essencial");
+  assert.ok(plano.motivos[vigente.id].motivos.includes("selecionavel"));
+  // o motivo continua citando o dominador ATUAL
+  assert.ok(plano.motivos[serie[0].id].motivos.includes(`dominado_por:${vigente.id}`));
+});
+
+check("primeiro dominador com cobertura menor que P não conta; legacy usa o primeiro legacy mais novo", () => {
+  seq = 0;
+  const p = imp({ created_at: "2026-10-01T03:00:00Z", published_at: "2026-10-01T03:00:00Z", coverage_date_to: "2026-10-31" });
+  // publicado antes, mas não contém a cobertura de P: não venceu P
+  const parcial = imp({ created_at: "2026-10-10T03:00:00Z", published_at: "2026-10-10T03:00:00Z", coverage_date_from: "2026-10-05", coverage_date_to: "2026-10-31" });
+  const novo = imp({ created_at: "2026-10-29T11:00:00Z", published_at: "2026-10-29T11:00:00Z", coverage_date_to: "2026-10-31" });
+  const plano = planejarRetencao({ imports: [p, parcial, novo], cfg: { ...cfgBase, manterUltimosSubstituidos: 0 } });
+  assert.ok(plano.motivos[p.id].motivos.includes("carencia_substituicao"), "P só deixou de ser selecionável há 1h");
+  const semCob = { publication_status: "legacy", coverage_date_from: null, coverage_date_to: null, published_at: null };
+  const l1 = imp({ ...semCob, created_at: "2026-10-01T00:00:00Z" });
+  const l2 = imp({ ...semCob, created_at: "2026-10-20T00:00:00Z" });
+  const l3 = imp({ ...semCob, created_at: "2026-10-29T11:00:00Z" });
+  const pl = planejarRetencao({ imports: [l1, l2, l3], cfg: cfgBase });
+  assert.strictEqual(classe(pl, l1.id), "substituido", "l1 vencido por l2 em 20/10");
+  assert.ok(pl.motivos[l2.id].motivos.includes("carencia_substituicao"), "l2 vencido por l3 há 1h");
+});
+
 check("refs protegidas (Painel/outros) e run ativo tornam o dominado essencial", () => {
   seq = 0;
   const runs = [{ id: 9, status: "running", created_at: VELHO }];

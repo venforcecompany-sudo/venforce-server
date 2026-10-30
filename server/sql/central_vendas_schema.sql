@@ -132,6 +132,13 @@ CREATE INDEX IF NOT EXISTS idx_central_vendas_itens_pedido_row
 CREATE INDEX IF NOT EXISTS idx_central_vendas_componentes_pedido_row
   ON central_vendas_componentes (pedido_row_id);
 
+-- FK item_row_id (ON DELETE CASCADE) sem índice: cada item apagado fazia um seq
+-- scan em componentes (3,4 mi linhas, 2 GB). Derrubou por statement_timeout o
+-- 1º lote da retenção em produção (30/10/2026, 186 itens, nada removido).
+-- Em produção, criar ANTES pela migration 20261030 (CONCURRENTLY); aqui vira no-op.
+CREATE INDEX IF NOT EXISTS idx_central_vendas_componentes_item_row
+  ON central_vendas_componentes (item_row_id);
+
 -- ---------------------------------------------------------------------------
 -- M2 — Sync Run persistido (Central de Vendas V3)
 --

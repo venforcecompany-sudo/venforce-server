@@ -248,14 +248,13 @@ async function selecoes(pool) {
         G3 = await criarImport({ conta: 6, competencia: "2026-06", from: "2026-06-01", to: "2026-06-30", criadoHaDias: 0 });
       },
     });
-    assert.strictEqual(carencia.totais.importsRemovidos, 0);
-    const desist = carencia.lotes.flatMap((l) => l.desistidos || []);
-    assert.deepStrictEqual(desist.map((d) => d.id), [G1]);
-    assert.ok(desist[0].motivos.includes("carencia_substituicao"));
+    // G1 deixou de ser selecionável há 20 dias (G2): um dominador novo não o devolve à carência.
+    assert.deepStrictEqual(carencia.lotes.flatMap((l) => l.removidos || []), [G1]);
+    assert.deepStrictEqual(carencia.lotes.flatMap((l) => l.desistidos || []), []);
     const planoG = await executarRetencao({ pool, env: ENV, escopo: { contaId: 6 }, cfg: cfg0, logger: silencioso });
-    assert.ok(planoG.plano.motivos[G2].motivos.includes("carencia_substituicao"));
+    assert.ok(planoG.plano.motivos[G2].motivos.includes("carencia_substituicao"), "G2 vencido agora por G3");
     assert.strictEqual(planoG.plano.motivos[G3].classe, "essencial");
-    ok("carência: dominador publicado entre plano e lote ⇒ lote desiste (carencia_substituicao); dominado há 1h fica retido");
+    ok("carência conta do PRIMEIRO dominador: dominado há 20 dias sai mesmo com dominador novo entre plano e lote; dominado agora fica retido");
 
     // ── 6. limite de lotes e sinal de interrupção ───────────────────────
     const W = [];
