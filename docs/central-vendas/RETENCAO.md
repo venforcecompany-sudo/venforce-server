@@ -32,9 +32,11 @@ A retenção apaga só o que comprovadamente nunca mais será selecionado. **O c
 3. De run queued ou running.
 4. Mais novo que `minIdadeHoras`, considerando o maior entre `created_at` e `published_at`.
 5. Os `manterUltimosSubstituidos` published dominados mais recentes da tupla, como margem de rollback.
-6. **Carência desde a substituição** (`carencia_substituicao`): o dominado só é elegível se o **dominador** foi publicado ou criado há mais de `minIdadeHoras`. Isso vale além da idade própria do dominado. O dominador é:
-   - para published, o published mais novo que cobre a cobertura dele, ou seja, o que a seleção devolve, usando `published_at`;
-   - para legacy, o legacy mais novo (`created_at`) ou, na falta dele, o published do mês inteiro (`published_at`).
+6. **Carência desde a substituição** (`carencia_substituicao`): o dominado só é elegível se deixou de ser selecionável há mais de `minIdadeHoras`. Isso vale além da idade própria do dominado. O instante é o do **primeiro** import que passou a vencê-lo:
+   - para published, o menor `published_at` entre os published que contêm a cobertura dele e vêm antes na ordem da seleção;
+   - para legacy, o menor entre o `created_at` dos legacy mais novos e o `published_at` dos published do mês inteiro.
+
+   Até 30/10/2026 contava o dominador **atual**. No mês aberto, republicado todo dia, isso reiniciava a carência a cada sync, e nada do mês corrente ficava elegível: o crescimento do mês só era contido depois que o sync dele parava. Produção, dry-run de 30/10: 1.071 imports presos só por isso. Um dominador já removido só atrasa o instante, nunca o adianta.
 
    Cobertura vazia e candidate não têm carência, porque nunca foram selecionáveis; só a idade própria conta.
 

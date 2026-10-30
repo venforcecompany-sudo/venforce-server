@@ -31,7 +31,7 @@
 // nem a candidate, que nunca foram selecionáveis); os manterUltimosSubstituidos published mais recentes abaixo
 // do vigente, por tupla (margem de rollback).
 
-const { selecionarMelhorImportPorCompetencia, monthBounds, asDate } = require("../centralVendasRepository");
+const { selecionarMelhorImportPorCompetencia, coberturaContemSegmento, monthBounds, asDate } = require("../centralVendasRepository");
 
 const RUN_TERMINAIS = new Set(["completed", "failed", "cancelled"]);
 const RUN_ATIVOS = new Set(["queued", "running"]);
@@ -118,6 +118,19 @@ function coberturaVazia(row) {
   return Boolean(from && to && from > to);
 }
 
+function ordemCriacaoDesc(a, b) {
+  const ca = ms(a.created_at) || 0;
+  const cb = ms(b.created_at) || 0;
+  if (cb !== ca) return cb - ca;
+  return Number(b.id) - Number(a.id);
+}
+
+// Menor instante válido (ms) ou null — sem instante conhecido, a carência não vence.
+function menorMs(valores) {
+  const t = valores.map(ms).filter((v) => Number.isFinite(v) && v > 0);
+  return t.length ? Math.min(...t) : null;
+}
+
 function ordemPublicacaoDesc(a, b) {
   const pa = ms(a.published_at) || 0;
   const pb = ms(b.published_at) || 0;
@@ -126,11 +139,14 @@ function ordemPublicacaoDesc(a, b) {
 }
 
 // Avalia a dominância de cada import de UMA tupla. Devolve Map(id →
-// { motivo, desde } | null): `desde` é quando o DOMINADOR passou a valer
-// (published_at do published; created_at do legacy) — base da carência desde
-// a substituição. Para published, o dominador é o que a seleção devolve (o
-// published mais novo que cobre a cobertura de P): o mais recente possível,
-// então a carência nunca é contada a menor.
+// { motivo, desde } | null). `motivo` cita o dominador ATUAL (o que a seleção
+// devolve). `desde` é quando P deixou de ser selecionável: o published_at do
+// PRIMEIRO import que passou a vencê-lo (para legacy, o created_at do primeiro
+// legacy mais novo ou o published_at do primeiro published do mês inteiro).
+// Base da carência desde a substituição: quem leu P como vigente o fez antes
+// desse instante. Usar o dominador atual reiniciava a carência a cada sync do
+// mês aberto (republicado todo dia) e nada do mês corrente ficava elegível.
+// Um dominador já removido só atrasa `desde` (nunca o adianta).
 function avaliarTupla(rows) {
   const competencia = String(rows[0].competencia).trim();
   const mes = monthBounds(competencia);
@@ -146,14 +162,22 @@ function avaliarTupla(rows) {
       const to = asDate(row.coverage_date_to);
       if (!from || !to || coberturaVazia(row)) { dominancia.set(id, null); continue; }
       const sel = selecionarMelhorImportPorCompetencia(rows, { segmentStart: from, segmentEnd: to });
-      dominancia.set(id, sel && Number(sel.id) !== id
-        ? { motivo: `dominado_por:${Number(sel.id)}`, desde: ms(sel.published_at) }
-        : null);
+      if (!sel || Number(sel.id) === id) { dominancia.set(id, null); continue; }
+      // Quem vence P na cobertura de P: published que a contém e vem antes na ordem da seleção.
+      const vencedores = rows.filter((r) => r !== row && r.publication_status === "published"
+        && coberturaContemSegmento(r, from, to) && ordemPublicacaoDesc(r, row) < 0);
+      dominancia.set(id, { motivo: `dominado_por:${Number(sel.id)}`, desde: menorMs(vencedores.map((r) => r.published_at)) });
     } else if (row.publication_status === "legacy") {
+      // Legacy deixa de ser selecionável quando surge um legacy mais novo ou um published do mês inteiro.
+      const desde = menorMs([
+        ...legados.filter((r) => r !== row && ordemCriacaoDesc(r, row) < 0).map((r) => r.created_at),
+        ...rows.filter((r) => r.publication_status === "published" && coberturaContemSegmento(r, mes.inicio, mes.fim))
+          .map((r) => r.published_at),
+      ]);
       if (legacyMaisRecente && Number(legacyMaisRecente.id) !== id) {
-        dominancia.set(id, { motivo: `legacy_mais_recente:${Number(legacyMaisRecente.id)}`, desde: ms(legacyMaisRecente.created_at) });
+        dominancia.set(id, { motivo: `legacy_mais_recente:${Number(legacyMaisRecente.id)}`, desde });
       } else if (selMes && selMes.publication_status === "published") {
-        dominancia.set(id, { motivo: `published_mes_inteiro:${Number(selMes.id)}`, desde: ms(selMes.published_at) });
+        dominancia.set(id, { motivo: `published_mes_inteiro:${Number(selMes.id)}`, desde });
       } else {
         dominancia.set(id, null);
       }
