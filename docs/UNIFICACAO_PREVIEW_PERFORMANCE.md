@@ -83,7 +83,7 @@ anteriores seguem sujeitas às verificações de materialidade e catálogo.
 
 `CLIENTES_UNIFICACAO_PREVIEW_TIMEOUT_MS` configura somente o orçamento global
 das transações READ ONLY (preview e preflight/leituras do serviço). Aceita
-inteiros entre 15000 e 45000 ms; ausente ou inválido usa 30000. Não habilita
+inteiros entre 15000 e 300000 ms; ausente ou inválido usa 120000 (também é o statement_timeout do preview). Não habilita
 EXECUTE/ROLLBACK. Nenhuma variável de produção foi alterada nesta tarefa.
 
 Os 30 segundos são uma margem conservadora para catálogo frio e leituras
