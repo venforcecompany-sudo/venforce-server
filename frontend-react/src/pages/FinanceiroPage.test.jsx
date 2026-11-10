@@ -34,6 +34,25 @@ vi.mock("../services/apiClient.js", async (orig) => ({
   ...(await orig()),
   requisitar: mocks.requisitar,
 }));
+// Modo API (padrão em MELI): a competência tem pedidos sincronizados. Os testes
+// desta página exercitam a tela, não o sync — o status é fixo e completo.
+vi.mock("../services/fechamentoViaApiApi.js", async (orig) => ({
+  ...(await orig()),
+  obterStatusFechamentoApi: vi.fn(async () => ({
+    ok: true,
+    sync: { disponivel: true, importId: 7, publicadoEm: "2026-09-02T03:12:00Z", coberturaDe: "2026-08-01", coberturaAte: "2026-08-31", completo: true, motivoIncompleto: null },
+    runEmAndamento: null,
+  })),
+}));
+
+// Abre o preparo pela etapa "Base de custos" (sempre presente no painel) e
+// escolhe a origem planilha (o padrão é a API).
+async function escolherPlanilhaNoPreparo(usuario) {
+  await usuario.click(screen.getByRole("button", { name: /: Base de custos$/ }));
+  const drawer = screen.getByRole("dialog", { name: "Preparar fechamento" });
+  await usuario.click(within(within(drawer).getByRole("group", { name: "Origem das vendas" })).getByRole("button", { name: "Planilha de vendas" }));
+  return drawer;
+}
 
 export function estadoDeEntregas(overrides = {}) {
   return {
@@ -112,24 +131,34 @@ describe("FinanceiroPage · modelo B (mesa sem abas)", () => {
     expect(screen.getByRole("dialog", { name: "Histórico" })).toBeInTheDocument();
   });
 
-  it("o painel lateral lista as seis etapas do fechamento e o próximo passo", () => {
+  it("o painel lateral lista as seis etapas do fechamento e o próximo passo", async () => {
     mockarHooks({ dados: dadosBase(), entregas: estadoDeEntregas({ entregas: [] }) });
     render(<FinanceiroPage />);
     const painel = screen.getByRole("complementary", { name: "Etapas do fechamento" });
     const etapas = Array.from(painel.querySelectorAll("[data-etapa]")).map((e) => e.dataset.etapa);
     expect(etapas).toEqual(["base", "arquivos", "ajustes", "processar", "pendencias", "publicar"]);
-    expect(within(painel).getByRole("button", { name: /Enviar planilha de vendas/ })).toBeInTheDocument();
+    // Na API, com o sync do mês presente, o próximo passo é processar (a base não é exigida).
+    expect(await within(painel).findByRole("button", { name: /Processar fechamento/ })).toBeInTheDocument();
   });
 
-  it("Enviar planilha de vendas abre o drawer de preparo com base, arquivos e ajustes", async () => {
+  it("a etapa Base de custos abre o drawer com a origem (API por padrão), base e ajustes", async () => {
     const usuario = userEvent.setup();
     mockarHooks({ dados: dadosBase(), entregas: estadoDeEntregas({ entregas: [] }) });
     render(<FinanceiroPage />);
-    await usuario.click(screen.getByRole("button", { name: /Enviar planilha de vendas/ }));
+    await usuario.click(screen.getByRole("button", { name: /: Base de custos$/ }));
     const drawer = screen.getByRole("dialog", { name: "Preparar fechamento" });
-    expect(within(drawer).getByText("Base de custos")).toBeInTheDocument();
-    expect(within(drawer).getByLabelText(/Planilha de vendas/)).toBeInTheDocument();
+    const grupo = within(drawer).getByRole("group", { name: "Origem das vendas" });
+    expect(within(grupo).getByRole("button", { name: "API do Mercado Livre" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(drawer).getByText("Custos")).toBeInTheDocument();
     expect(within(drawer).getByText("Ajustes do período")).toBeInTheDocument();
+  });
+
+  it("na origem planilha, o drawer de preparo traz o card de vendas", async () => {
+    const usuario = userEvent.setup();
+    mockarHooks({ dados: dadosBase(), entregas: estadoDeEntregas({ entregas: [] }) });
+    render(<FinanceiroPage />);
+    const drawer = await escolherPlanilhaNoPreparo(usuario);
+    expect(within(drawer).getByLabelText(/Planilha de vendas/)).toBeInTheDocument();
   });
 });
 
@@ -289,7 +318,7 @@ describe("FinanceiroPage · competência do fechamento", () => {
     const usuario = userEvent.setup();
     mockarHooks({ dados: dadosBase(), entregas: estadoDeEntregas({ entregas: [] }) });
     render(<FinanceiroPage />);
-    await usuario.click(screen.getByRole("button", { name: /Enviar planilha de vendas/ }));
+    await escolherPlanilhaNoPreparo(usuario);
     await usuario.upload(screen.getByLabelText(/Planilha de vendas/), new File(["a"], "vendas.xlsx"));
     await usuario.click(screen.getByRole("button", { name: "Cancelar" }));
 
@@ -376,7 +405,7 @@ describe("FinanceiroPage · Relatórios e Histórico (drawers do cabeçalho)", (
     const usuario = userEvent.setup();
     mockarHooks({ dados: dadosBase(), entregas: estadoDeEntregas({ entregas: [] }) });
     render(<FinanceiroPage />);
-    await usuario.click(screen.getByRole("button", { name: /Enviar planilha de vendas/ }));
+    await escolherPlanilhaNoPreparo(usuario);
     await usuario.upload(screen.getByLabelText(/Planilha de vendas/), new File(["a"], "vendas-agosto.xlsx"));
     await usuario.click(screen.getByRole("button", { name: "Cancelar" }));
     await usuario.click(screen.getByRole("button", { name: "Histórico" }));

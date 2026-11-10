@@ -54,7 +54,7 @@ export function ConciliacaoTab({ conciliacao }) {
       </div>
 
       <p className="vf-field__hint">
-        <a href="fechamentos-api.html">Ver Central de Vendas →</a>
+        <a href="painel-contas.html">Ver sincronização no Painel de Contas →</a>
       </p>
     </div>
   );

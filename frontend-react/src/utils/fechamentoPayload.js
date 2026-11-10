@@ -68,12 +68,22 @@ export function montarPayloadFechamento({
   marketplace,
   ajustes = {},
   adsOrigem = null,
+  // "api" = pedidos sincronizados da API do ML; "planilha" = upload (padrão,
+  // para quem não informa — mantém o comportamento de antes do modo API).
+  fonteVendas = "planilha",
+  // Base de custos criada NESTA sessão a partir da planilha do modo API
+  // ({ id, slug, nome }) — auditoria: o fechamento também gerou uma base.
+  baseSalva = null,
 }) {
   const summary = processamento?.summary || {};
   const detailedRows = Array.isArray(processamento?.detailedRows)
     ? processamento.detailedRows.slice(0, 50)
     : [];
   const unmatchedIds = Array.isArray(processamento?.unmatchedIds) ? processamento.unmatchedIds : [];
+  const origemApi = fonteVendas === "api";
+  // Qual sync da Central o fechamento usou: para auditoria ("de que dados saiu
+  // este número?"). Só existe no modo API.
+  const sync = origemApi ? processamento?.sync || {} : null;
 
   const geradoEm = new Date().toISOString();
 
@@ -96,7 +106,17 @@ export function montarPayloadFechamento({
     competencia: processamento?.competencia || null,
     metadados: {
       geradoEm,
-      origem: "financeiro-v3-nativo",
+      origem: origemApi ? "financeiro-v3-api" : "financeiro-v3-nativo",
+      fonteVendas: origemApi ? "api" : "planilha",
+      // Sync da Central usado (só modo API): id do import e a cobertura do mês.
+      sync: origemApi
+        ? {
+            importId: sync.importId ?? null,
+            publicadoEm: sync.publicadoEm ?? null,
+            coberturaDe: sync.coberturaDe ?? null,
+            coberturaAte: sync.coberturaAte ?? null,
+          }
+        : null,
       marketplace: marketplace || null,
       ads: parseMoedaBR(ajustes.ads),
       // De onde veio o ADS: { origem: "mercado_ads", consultadoEm } quando o
@@ -107,16 +127,30 @@ export function montarPayloadFechamento({
       affiliates: parseMoedaBR(ajustes.affiliates),
       fullCost: parseMoedaBR(ajustes.fullCost),
       additionalCosts: parseMoedaBR(ajustes.additionalCosts),
-      // Origem dos custos DECLARADA pelo backend: "base" (base vinculada) ou
-      // "upload" (planilha enviada). Fica no metadado para o diagnóstico
-      // (Caixa-preta / incidente) saber de onde vieram os custos sem ter que
-      // reprocessar.
+      // Origem dos custos DECLARADA pelo backend: "base" (base vinculada),
+      // "upload" (planilha enviada) ou, no modo API, "sync" (custos gravados
+      // no sync da Central). Fica no metadado para o diagnóstico (Caixa-preta /
+      // incidente) saber de onde vieram os custos sem ter que reprocessar.
       costsSource: processamento?.costsSource || null,
-      costsBase: processamento?.costsSource === "base" && processamento?.costsBase
+      // A base usada — também no "sync" (a base que o sync aplicou). Upload
+      // não tem base.
+      costsBase: processamento?.costsSource !== "upload" && processamento?.costsBase
         ? {
             id: processamento.costsBase.id ?? null,
             slug: processamento.costsBase.slug ?? null,
             nome: processamento.costsBase.nome ?? null,
+          }
+        : null,
+      baseSalva: baseSalva
+        ? {
+            // O id vem do vínculo criado; se faltar, o da base que o
+            // processamento declarou usar (mesmo slug).
+            id:
+              baseSalva.id ??
+              (processamento?.costsBase && baseSalva.slug && processamento.costsBase.slug === baseSalva.slug
+                ? processamento.costsBase.id ?? null
+                : null),
+            nome: baseSalva.nome ?? null,
           }
         : null,
     },

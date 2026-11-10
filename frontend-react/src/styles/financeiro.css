@@ -1018,3 +1018,7 @@
 .vf-fin-pendencias__tabela td:last-child { min-width: 0; }
 .vf-fin-pendencias__tabela .vf-btn { white-space: nowrap; }
 .vf-fin-pendencias__tabela th, .vf-fin-pendencias__tabela td { padding-left: 8px; padding-right: 8px; }
+
+/* Modo API · custos: "Salvar como base de custos" logo abaixo do arquivo */
+.vf-fin-custos-api__salvar { padding: 0 var(--vf-sp-1, 4px); }
+.vf-fin-custos-api__salvar .vf-field { display: flex; flex-direction: column; gap: 4px; }
