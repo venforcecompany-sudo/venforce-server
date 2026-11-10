@@ -511,11 +511,69 @@ cenario("só leitura no ML: toda chamada é GET account-scoped (listing_prices +
   const r = await rodar(w, pedido([{ tipo: "preco", preco: 82 }]));
   assert.strictEqual(r.cenarios[0].cenario.comissao, 11.5);
   assert.strictEqual(r.cenarios[0].cenario.frete, 9.5);
-  assert.strictEqual(w.mlChamadas.length, 2);
+  // listing_prices + shipping_options/free (cotação em P') + sale_price (confere o preço do "hoje").
+  assert.strictEqual(w.mlChamadas.length, 3);
   for (const ch of w.mlChamadas) {
     assert.ok(!ch.opts || !ch.opts.method || String(ch.opts.method).toUpperCase() === "GET", JSON.stringify(ch));
-    assert.ok(/^\/sites\/MLB\/listing_prices\?|^\/users\/1001\/shipping_options\/free\?/.test(ch.caminho), ch.caminho);
+    assert.ok(/^\/sites\/MLB\/listing_prices\?|^\/users\/1001\/shipping_options\/free\?|^\/items\/MLB\d+\/sale_price\?context=channel_marketplace$/.test(ch.caminho), ch.caminho);
     assert.strictEqual(ch.opts.mlUserId, "1001", "token da conta do escopo");
+  }
+});
+
+// ── Coerência temporal do "hoje" (P0 10/11/2026, MLB7892951136) ──────────────
+
+function mlComSalePrice(w, salePrice) {
+  return async (clienteId, caminho, opts) => {
+    w.mlChamadas.push({ caminho, opts });
+    if (String(caminho).includes("/sale_price")) return salePrice;
+    return { ok: true, status: 200, data: {} };
+  };
+}
+
+cenario("preço de agora no ML ≠ preço do snapshot: nenhum veredito vs hoje é entregue; os dois preços e horários vão na resposta", async () => {
+  const w = mundo();
+  w.deps.mlFetch = mlComSalePrice(w, { ok: true, status: 200, data: { amount: 79.9, regular_amount: 94.9, metadata: { promotion_id: "OFFER-1" } } });
+  const r = await rodar(w, pedido([{ tipo: "promo", promotion_id: "P1" }, { tipo: "preco", preco: 99 }]));
+  assert.strictEqual(r.leituras.status, "divergente");
+  assert.strictEqual(r.leituras.preco_snapshot, 94.9);
+  assert.strictEqual(r.leituras.preco_vigente, 79.9);
+  assert.strictEqual(r.leituras.snapshot_em, "2026-10-13T06:00:00.000Z");
+  assert.ok(r.leituras.vigente_lido_em, "hora da leitura do preço de agora");
+  assert.strictEqual(r.leituras.promocoes_em, "2026-10-14T03:00:00.000Z");
+  for (const c of r.cenarios) {
+    assert.strictEqual(c.veredito, "bloqueado", JSON.stringify(c.veredito));
+    assert.strictEqual(c.motivo, "preco_hoje_desatualizado");
+    assert.ok(c.veredito_calculado, "o veredito calculado fica para auditoria");
+    assert.strictEqual(c.frase, null, "nenhuma frase de recomendação");
+  }
+  assert.strictEqual(r.cenarios[0].cenario.preco, 89.77, "os números do cenário continuam");
+  const sale = w.mlChamadas.find((ch) => ch.caminho.includes("/sale_price"));
+  assert.strictEqual(sale.opts.mlUserId, "1001", "conta do escopo");
+});
+
+cenario("preço de agora = preço do snapshot: coerente, vereditos intactos", async () => {
+  const w = mundo();
+  w.deps.mlFetch = mlComSalePrice(w, { ok: true, status: 200, data: { amount: 94.9 } });
+  const r = await rodar(w, pedido([{ tipo: "promo", promotion_id: "P1" }]));
+  assert.strictEqual(r.leituras.status, "coerente");
+  assert.strictEqual(r.cenarios[0].veredito, "entrar_se_girar");
+  assert.strictEqual(r.cenarios[0].veredito_calculado, undefined);
+});
+
+cenario("leitura do preço de agora falha (429/timeout): 'não verificado' e NADA bloqueado por isso", async () => {
+  for (const resposta of [{ ok: false, status: 429 }, null]) {
+    const w = mundo();
+    w.deps.mlFetch = resposta
+      ? mlComSalePrice(w, resposta)
+      : async (clienteId, caminho, opts) => {
+        w.mlChamadas.push({ caminho, opts });
+        if (String(caminho).includes("/sale_price")) { const e = new Error("timeout"); e.name = "MlTimeoutError"; throw e; }
+        return { ok: true, status: 200, data: {} };
+      };
+    const r = await rodar(w, pedido([{ tipo: "promo", promotion_id: "P1" }]));
+    assert.strictEqual(r.leituras.status, "nao_verificado");
+    assert.strictEqual(r.leituras.vigente_motivo, resposta ? "sale_price_http_429" : "sale_price_timeout");
+    assert.strictEqual(r.cenarios[0].veredito, "entrar_se_girar");
   }
 });
 

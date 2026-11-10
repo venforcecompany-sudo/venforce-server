@@ -1987,6 +1987,7 @@
     comissao_indisponivel: "tarifa do Mercado Livre indisponível",
     frete_indisponivel: "frete do Mercado Livre indisponível",
     limite_de_cotacoes_excedido: "limite de cotações atingido",
+    preco_hoje_desatualizado: "o preço de hoje mudou desde a leitura da margem (atualize a leitura)",
     sem_desconto_efetivo: "não baixa o preço",
     promocao_sem_preco: "promoção sem preço sugerido",
     rebate_ambiguo: "mais de uma promoção com retorno em andamento",
@@ -4899,7 +4900,7 @@
       var defasado = ap && (ap.status === "aplicado" || ap.status === "divergente") && ["atualizado", "nao_aplicavel"].indexOf(ap.snapshotStatus) === -1
         ? '<p class="cm-banc__nota" data-cm-bancada="atual-defasado">A coluna Hoje ainda é a de antes da alteração; ela é atualizada quando a margem for recalculada.</p>' : "";
       var avisoPromo = b.aviso ? '<p class="cm-banc__nota" role="status" data-cm-bancada="promo-nao-encontrada">' + escapeHtml(b.aviso) + "</p>" : "";
-      corpo = defasado + avisoPromo +
+      corpo = defasado + avisoPromo + leiturasAvisoHtml(b.data && b.data.leituras) +
         '<div class="cm-banc__grid">' +
           // Esquerda 480px: o cenário selecionado e, no fim, a Simulação avançada (fechada).
           '<div class="cm-banc__esq"><div class="cm-banc__resultado" id="cm-banc-resultado" aria-live="polite">' + bancadaResultadoHtml() + "</div>" + advancedSimulationHtml(item) + "</div>" +
@@ -4907,6 +4908,26 @@
         "</div>";
     }
     return '<section class="cm-banc" aria-labelledby="cm-banc-title" data-cm-bancada-status="' + escapeHtml(b.status) + '">' + corpo + "</section>";
+  }
+
+  // De quando é o "hoje" (backend `leituras`): preço do snapshot × preço de agora no ML × promoções.
+  // Divergente: os resultados não são recomendação (o backend já bloqueou os vereditos).
+  function leiturasAvisoHtml(l) {
+    if (!l || !l.status) return "";
+    var quando = function (v) { return v ? formatDateTime(v) : "horário desconhecido"; };
+    var promos = l.promocoes_em ? " Promoções lidas em " + quando(l.promocoes_em) + "." : "";
+    if (l.status === "divergente") {
+      return '<div class="vf-banner is-warning" role="alert" data-cm-bancada="hoje-divergente"><div class="vf-banner__content">' +
+        '<p class="vf-banner__title">O preço de hoje mudou desde a leitura da margem</p>' +
+        '<p class="vf-banner__description">A margem foi calculada com ' + escapeHtml(formatMoney(l.preco_snapshot)) + " (" + escapeHtml(quando(l.snapshot_em)) + "); o Mercado Livre mostra agora " +
+        escapeHtml(formatMoney(l.preco_vigente)) + " (" + escapeHtml(quando(l.vigente_lido_em)) + ")." + escapeHtml(promos) +
+        " Os resultados abaixo comparam com o preço antigo e não são recomendação. Use Atualizar leitura antes de decidir.</p></div></div>";
+    }
+    if (l.status === "nao_verificado") {
+      return '<p class="cm-banc__nota" role="status" data-cm-bancada="hoje-nao-verificado">Não foi possível conferir o preço de agora no Mercado Livre: a coluna Hoje é a leitura de ' +
+        escapeHtml(quando(l.snapshot_em)) + "." + escapeHtml(promos) + "</p>";
+    }
+    return "";
   }
 
   function selecionarCenario(novo) {

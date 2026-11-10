@@ -59,6 +59,65 @@ function iso(valor) {
   return Number.isFinite(d.getTime()) ? d.toISOString() : null;
 }
 
+// ── Coerência temporal do "hoje" (P0 10/11/2026, MLB7892951136 / conta 87) ──
+// O "hoje" da Bancada é a linha do Margin Snapshot (preço 278,14 lido às
+// 16:14Z); às 16:59Z o ML já cobrava 169,66 (DEAL em andamento). Todo veredito
+// compara o cenário com esse "hoje": com o preço de agora diferente, "vale
+// entrar" / "não vale" seria uma comparação entre momentos diferentes. Uma
+// leitura de `sale_price` (a mesma fonte do Motor) confere o preço antes de
+// responder. Falha na leitura NÃO bloqueia: diz "não verificado".
+const MOTIVO_PRECO_HOJE_DESATUALIZADO = "preco_hoje_desatualizado";
+
+async function lerPrecoVigente({ escopo, mlb, d, timeoutMs }) {
+  const lidoEm = d.now().toISOString();
+  try {
+    const r = await d.mlFetch(
+      escopo.clienteId,
+      `/items/${encodeURIComponent(mlb)}/sale_price?context=channel_marketplace`,
+      { ...(escopo.sellerId ? { mlUserId: escopo.sellerId } : {}), timeoutMs }
+    );
+    const amount = r && r.ok && r.data ? num(r.data.amount) : null;
+    if (amount === null || !(amount > 0)) {
+      return { preco: null, lido_em: lidoEm, motivo: r && r.status ? `sale_price_http_${r.status}` : "sale_price_indisponivel" };
+    }
+    const meta = r.data.metadata || {};
+    return { preco: amount, lido_em: lidoEm, promotion_id: meta.promotion_id ? String(meta.promotion_id) : null, motivo: null };
+  } catch (err) {
+    return { preco: null, lido_em: lidoEm, motivo: err && err.name === "MlTimeoutError" ? "sale_price_timeout" : "sale_price_indisponivel" };
+  }
+}
+
+function coerenciaDoHoje({ snapshot, vigente, promocoesEm }) {
+  const precoSnapshot = snapshot ? num(snapshot.price) : null;
+  const status = vigente.preco === null || precoSnapshot === null
+    ? "nao_verificado"
+    : Math.abs(vigente.preco - precoSnapshot) > core.TOLERANCIA_VALOR ? "divergente" : "coerente";
+  return {
+    status,
+    preco_snapshot: precoSnapshot,
+    snapshot_em: snapshot ? iso(snapshot.calculatedAt) : null,
+    preco_vigente: vigente.preco,
+    vigente_lido_em: vigente.lido_em,
+    vigente_promotion_id: vigente.promotion_id || null,
+    vigente_motivo: vigente.motivo,
+    promocoes_em: promocoesEm || null,
+  };
+}
+
+// Preço de agora ≠ preço do "hoje": nenhum veredito que compara com o "hoje" é
+// entregue. Os números do cenário (cotados em P') ficam; o veredito calculado
+// vai em `veredito_calculado` para auditoria, nunca como recomendação.
+function travarVereditosSemHoje(cenarios) {
+  for (const r of cenarios) {
+    if (!r || !r.veredito || r.veredito === "bloqueado") continue;
+    r.veredito_calculado = r.veredito;
+    r.veredito = "bloqueado";
+    r.motivo = MOTIVO_PRECO_HOJE_DESATUALIZADO;
+    r.motivos = [MOTIVO_PRECO_HOJE_DESATUALIZADO];
+    r.frase = null;
+  }
+}
+
 function defaults(deps = {}) {
   return {
     db: deps.db || pool,
@@ -593,6 +652,8 @@ async function simular({ user, body } = {}, deps = {}) {
     maxCotacoes: MAX_COTACOES_POR_REQUISICAO,
     timeoutMs: deps.mlTimeoutMs || 8000,
   });
+  // Em paralelo com o resto: o preço de AGORA no ML, para conferir o "hoje" do snapshot.
+  const vigenteP = semSnapshot ? null : lerPrecoVigente({ escopo, mlb: pedido.mlb, d, timeoutMs: deps.mlTimeoutMs || 8000 });
 
   const atual = semSnapshot
     ? { sem_snapshot: true }
@@ -660,6 +721,14 @@ async function simular({ user, body } = {}, deps = {}) {
     cenarios.push(r);
   }
 
+  const promocoesEm = precisaPromo
+    ? (promocoes.origem === "diagnostico_legado"
+      ? iso(promocoes.diagnostico.createdAt)
+      : promocoes.estado ? iso(promocoes.estado.snapshotAt) : null)
+    : null;
+  const leituras = semSnapshot ? null : coerenciaDoHoje({ snapshot, vigente: await vigenteP, promocoesEm });
+  if (leituras && leituras.status === "divergente") travarVereditosSemHoje(cenarios);
+
   const atualCalc = core.calcularAtual({ atual, frete_aplicavel: cotador.freteAplicavel });
   const estatisticas = cotador.estatisticas();
   // Topo da Bancada: preço cheio do ITEM (nunca o original_price de uma promoção) e a Base dos custos.
@@ -698,14 +767,14 @@ async function simular({ user, body } = {}, deps = {}) {
           },
     },
     meta,
+    // De quando é cada número: snapshot da margem × preço de agora no ML × leitura das promoções.
+    leituras,
     promocoes: precisaPromo
       ? {
           disponivel: promocoes.disponivel,
           motivo: promocoes.motivo,
           origem: promocoes.origem,
-          snapshot_em: promocoes.origem === "diagnostico_legado"
-            ? iso(promocoes.diagnostico.createdAt)
-            : promocoes.estado ? iso(promocoes.estado.snapshotAt) : null,
+          snapshot_em: promocoesEm,
           run_id: promocoes.estado ? promocoes.estado.snapshotRunId : null,
           parcial: promocoes.origem === "diagnostico_legado"
             ? promocoes.diagnostico.parcial === true
