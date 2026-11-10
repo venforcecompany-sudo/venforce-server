@@ -1966,4 +1966,6 @@ module.exports = {
   classifyMeliSaleStatus,
   processMeli,
   processMeliForCentralVendas,
+  buildCentralCostMap,
+  getCentralCostForAd,
 };
