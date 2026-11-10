@@ -73,7 +73,8 @@ async function lerMarginSnapshotPorItens({ clienteId, clienteContaId = null, ite
   const { rows } = await db.query(
     `-- LER_MARGIN_SNAPSHOT_PARA_ANUNCIOS
      SELECT DISTINCT ON (s.item_id) s.item_id, s.margin_percent, s.profit, s.status, s.calculated_at,
-            s.assumed_json, s.refresh_status, s.quality_json->>'freteAplicavel' AS frete_aplicavel
+            s.assumed_json, s.refresh_status, s.quality_json->>'freteAplicavel' AS frete_aplicavel,
+            s.quality_json->'freteQualidade'->>'nivel' AS frete_nivel
        FROM margin_projection_snapshots s${escopoConta}
         AND s.cliente_id = $1
         AND s.marketplace = $2
@@ -101,6 +102,8 @@ async function lerMarginSnapshotPorItens({ clienteId, clienteContaId = null, ite
       // (marginEngine.computeMargin) — A não tem coluna `computable` própria.
       computable: marginPercent != null && !custoMarketplaceAusente,
       margemIncompleta: custoMarketplaceAusente,
+      // 'estimado_dimensoes_historicas' | 'estimado_custo_cobrado' | 'cotado_ml' | null (sem avaliação).
+      ...(r.frete_nivel ? { freteNivel: r.frete_nivel } : {}),
       assumidos,
       // 'fresh' | 'stale' | 'failed' | … — valor de um run anterior não revalidado.
       refreshStatus: r.refresh_status || null,

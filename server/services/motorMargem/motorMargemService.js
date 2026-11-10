@@ -428,6 +428,8 @@ async function enrichBatch(prepared, { offset, limit, targetMargin, itemIds }, d
       faltantesMeliApi: observado.faltantes,
       // { comissao:{status,motivo}, frete:{aplicavel,status,motivo} } — por que faltou.
       cotacao: observado.cotacao || null,
+      // Nível/fonte/confiança do frete (estimado por dimensões/custo cobrado ou desconhecido).
+      freteQualidade: observado.freteQualidade || null,
       // Promoção que forma o preço agora (sale_price.metadata.promotion_id),
       // da MESMA leitura que deu o preço — Anúncios ML usa para achar o
       // rebate sem reler o sale_price. undefined = preço não veio do sale_price.
