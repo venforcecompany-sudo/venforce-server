@@ -1564,6 +1564,9 @@
       finishedAt: raw.finishedAt || null,
       errorCode: raw.errorCode || null,
       errorMessage: raw.errorMessage || null,
+      // Sem heartbeat (running) ou sem worker (queued) há N min: o backend avisa, a tela não finge progresso.
+      semProgressoMinutos: numberOrNull(raw.semProgressoMinutos),
+      parado: raw.parado === true,
     };
   }
 

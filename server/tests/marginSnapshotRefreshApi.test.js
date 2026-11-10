@@ -208,6 +208,24 @@ cenario("run concluído com falhas guardadas expõe podeRefazerFalhas; sem falha
   assert.strictEqual(api.runPublico(semFalhas).podeRefazerFalhas, false);
 });
 
+cenario("run 3808 (crash do PG): running sem heartbeat há 4+ min sai como parado; ativo normal e terminal não", async () => {
+  const agora = Date.parse("2026-11-10T18:15:00Z");
+  const base = { id: 3808, clienteContaId: 87, status: "running", startedAt: "2026-11-10T18:08:34Z", createdAt: "2026-11-10T18:08:34Z" };
+  const parado = api.runPublico({ ...base, heartbeatAt: "2026-11-10T18:09:08Z" }, agora);
+  assert.strictEqual(parado.parado, true);
+  assert.strictEqual(parado.semProgressoMinutos, 5);
+  assert.strictEqual(parado.status, "running", "o GET não muda o estado: quem encerra é o reconcile");
+  const vivo = api.runPublico({ ...base, heartbeatAt: "2026-11-10T18:14:30Z" }, agora);
+  assert.strictEqual(vivo.parado, false);
+  assert.strictEqual(vivo.semProgressoMinutos, 0);
+  // queued há muito tempo = nenhum worker pegou (ex.: MARGIN_SNAPSHOT_WORKER_ENABLED desligado).
+  const fila = api.runPublico({ id: 1, clienteContaId: 87, status: "queued", createdAt: "2026-11-10T18:00:00Z" }, agora);
+  assert.strictEqual(fila.parado, true);
+  const fim = api.runPublico({ ...base, status: "failed", finishedAt: "2026-11-10T18:19:30Z" }, agora);
+  assert.strictEqual(fim.parado, false);
+  assert.strictEqual(fim.semProgressoMinutos, null);
+});
+
 cenario("POST refresh com refazerFalhasDoRun: cria run com escopo = ids que falharam no run de origem", async () => {
   const db = makeMarginSnapshotFakeDb();
   const origem = await runConcluido(db, { falhas: ["MLB1", "MLB2"] });

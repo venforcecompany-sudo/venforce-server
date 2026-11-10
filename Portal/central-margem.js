@@ -1195,7 +1195,8 @@
           return;
         }
         renderPageState();
-        state.pollTimer = root.setTimeout(tick, SNAPSHOT_POLL_MS);
+        // Run parado: continua acompanhando (o reconcile encerra), mas sem martelar o servidor.
+        state.pollTimer = root.setTimeout(tick, result.run.parado ? SNAPSHOT_POLL_MS * 5 : SNAPSHOT_POLL_MS);
       });
     }
     state.pollTimer = root.setTimeout(tick, SNAPSHOT_POLL_MS);
@@ -1483,7 +1484,18 @@
     }
     var snap = state.snapshot || {};
     var run = state.refreshRun;
-    if (run && !contract.isRunTerminal(run.status)) {
+    if (run && !contract.isRunTerminal(run.status) && run.parado) {
+      // Sem progresso há minutos (servidor/banco reiniciou, ou nenhum worker pegou o run):
+      // nunca "Atualizando…" para um run que não anda. Valores = último snapshot válido.
+      var parado = progressoRun(run);
+      partes.push('<div class="vf-banner is-warning" data-cm-snapshot-state="parado" role="status"><div class="vf-banner__content"><p class="vf-banner__title">' +
+        escapeHtml(run.status === "queued"
+          ? "Atualização na fila há " + run.semProgressoMinutos + " min sem ser iniciada"
+          : "Atualização sem progresso há " + run.semProgressoMinutos + " min (" + parado.feitos + (parado.total !== null ? " / " + parado.total : "") + " itens)") +
+        '</p><p class="vf-banner__description">O processamento pode ter sido interrompido (reinício do servidor ou do banco). Ele é encerrado automaticamente em alguns minutos e então pode ser atualizado de novo. ' +
+        (snap.state === "ready" ? "Os valores exibidos são do último snapshot válido, não desta atualização." : "Esta conta ainda não tem leitura calculada.") +
+        "</p></div></div>");
+    } else if (run && !contract.isRunTerminal(run.status)) {
       var p = progressoRun(run);
       var texto = run.status === "queued"
         ? "Na fila para atualizar…"
