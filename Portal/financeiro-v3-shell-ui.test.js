@@ -284,6 +284,25 @@ let statusSyncFake = {
   runEmAndamento: null,
 };
 let corposFechamentoApi = [];
+// Fase 2 — custos no modo API: POST /importar-base (salvar a planilha como
+// base da conta) e o corpo multipart do fechamento com a planilha de custos.
+let corposImportarBase = [];
+
+// Campos de um corpo multipart (o que o CDP entrega em postData). Arquivo vira
+// { arquivo: nome }; texto vira o valor. Sem postData → null.
+function camposMultipart(postData) {
+  if (!postData) return null;
+  const campos = {};
+  const re = /Content-Disposition: form-data; name="([^"]+)"(?:; filename="([^"]*)")?[^\n]*\r?\n(?:Content-Type:[^\n]*\r?\n)?\r?\n([\s\S]*?)\r?\n--/g;
+  let m;
+  while ((m = re.exec(postData))) campos[m[1]] = m[2] !== undefined ? { arquivo: m[2] } : m[3];
+  return campos;
+}
+function corpoDoPedido(req) {
+  const tipo = Object.entries(req.headers || {}).find(([k]) => k.toLowerCase() === "content-type")?.[1] || "";
+  if (/multipart\/form-data/i.test(tipo)) return { multipart: true, campos: camposMultipart(req.postData) };
+  return JSON.parse(req.postData || "{}");
+}
 
 function resetEntregas() {
   entregasFalham = false;
@@ -399,12 +418,21 @@ function wireFetchInterception(cdp) {
       await json({ ok: true, acao: "criado" });
       return;
     }
+    // Salvar a planilha de custos como base (o mesmo comando da tela Bases):
+    // grava, vincula à conta — e a partir daí o status enxerga a base nova.
+    if (/\/importar-base(?:[?#]|$)/.test(url) && req.method === "POST") {
+      const corpo = corpoDoPedido(req);
+      corposImportarBase.push(corpo);
+      statusSyncFake = { ...statusSyncFake, base: { vinculada: true, id: 555, slug: "custos-n97-comercial-meli", nome: "Custos - N97 Comercial - MeLi", atualizadaEm: "2026-11-10T18:00:00Z", aplicadaNoSync: false } };
+      await json({ ok: true, mensagem: "Base criada e planilha importada com sucesso", base: "custos-n97-comercial-meli", total: 3, vinculo: { base_id: 555, cliente_conta_id: 42 } });
+      return;
+    }
     // Modo API: status do sync da competência e o processamento pelos dados
     // sincronizados (mesmo formato da planilha, + sync usado).
     if (/\/financeiro\/[^/]+\/fechamento-api\/status/.test(url) && req.method === "GET") { await json(statusSyncFake); return; }
     if (/\/financeiro\/[^/]+\/fechamento-api(?:[?#]|$)/.test(url) && req.method === "POST") {
       fechamentoRequestCount += 1;
-      corposFechamentoApi.push(JSON.parse(req.postData || "{}"));
+      corposFechamentoApi.push(corpoDoPedido(req));
       const base = processamentoFake || {
         ok: true,
         summary: { marketplace: "meli", grossRevenueTotal: 120000, paidRevenueTotal: 110000, contributionProfitTotal: 21000, averageContributionMargin: 0.19, finalResult: 15000, tacos: 0.04 },
@@ -828,6 +856,109 @@ async function run() {
     const png2 = await cdp.send("Page.captureScreenshot", { format: "png" });
     fs.writeFileSync(shot2, Buffer.from(png2.data, "base64"));
     console.log(`   screenshot: ${shot2}`);
+
+    // ═══ 2a. Fase 2 — custos no modo API. Conta SEM base: o card Custos
+    // destaca a planilha de custos; com ela o fechamento vai em multipart
+    // (custosOrigem=upload); "Salvar como base" grava pelo /importar-base e
+    // reprocessa com a base nova (custosOrigem=base). Conta COM base (que
+    // mudou depois do sync): salvar fica desabilitado, com link para Bases. ═══
+    const custosFake = path.join(SHOTS_DIR, "custos-fake.xlsx");
+    fs.writeFileSync(custosFake, "planilha-de-custos-fake");
+    const statusSyncOriginal = statusSyncFake;
+    statusSyncFake = { ...statusSyncOriginal, base: { vinculada: false, id: null, slug: null, nome: null, atualizadaEm: null, aplicadaNoSync: false } };
+    corposImportarBase = [];
+    entregasFake = [];
+    await navegar(`http://127.0.0.1:${serverPort}/financeiro-v3.html?cliente=n97&conta=42&periodo=2026-08&_r=api-custos`);
+    await waitFor(cdp, "window.VF && window.VF.context && window.VF.context.getState() === 'READY'", "reload não voltou a READY (custos API)");
+    await waitFor(cdp, ESPERA_MESA, "a mesa não renderizou (custos API)");
+    await sleep(200);
+
+    await check("Custos API — conta sem base: o card avisa que sem custos não há lucro e destaca a planilha de custos", async () => {
+      await abrirPreparo("API do Mercado Livre");
+      await waitFor(cdp, `document.querySelector('[data-testid="custos-modo-api"]') !== null`, "o card Custos do modo API não apareceu");
+      const card = await textoDe('[data-testid="custos-modo-api"]');
+      assert.ok(/Esta conta não tem base de custos vinculada/.test(card), `o card deveria dizer que não há base: ${card}`);
+      assert.ok(/lucro .* não é calculado/.test(card), `o card deveria avisar que sem custos o lucro não sai: ${card}`);
+      const destaque = await cdp.evaluate(`(function(){ var b = Array.prototype.find.call(document.querySelectorAll('[data-testid="custos-modo-api"] button'), function(x){ return x.textContent.trim() === "Usar planilha de custos"; }); return !!b && b.classList.contains("vf-btn--primary"); })()`);
+      assert.ok(destaque, "sem base, 'Usar planilha de custos' vem em destaque (primário)");
+    });
+
+    await check("Custos API — planilha de custos: processa em multipart com custosOrigem=upload e o arquivo em costs", async () => {
+      assert.ok(await clicarBotao('[data-testid="custos-modo-api"]', "Usar planilha de custos"), "botão Usar planilha de custos ausente");
+      await sleep(100);
+      await subirArquivo('input[aria-label="Planilha de custos"]', custosFake);
+      const antes = fechamentoRequestCount;
+      await processarNoPreparo();
+      assert.strictEqual(fechamentoRequestCount, antes + 1, "processar deveria chamar POST /fechamento-api uma vez");
+      const corpo = corposFechamentoApi.at(-1);
+      assert.ok(corpo.multipart, `com planilha de custos o corpo deveria ser multipart: ${JSON.stringify(corpo)}`);
+      assert.strictEqual(corpo.campos.custosOrigem, "upload", `custosOrigem deveria ser upload: ${JSON.stringify(corpo)}`);
+      assert.strictEqual(corpo.campos.clienteContaId, "42");
+      assert.strictEqual(corpo.campos.periodo, "2026-08");
+      assert.deepStrictEqual(corpo.campos.costs, { arquivo: "custos-fake.xlsx" }, `o arquivo deveria ir em costs: ${JSON.stringify(corpo)}`);
+      assert.strictEqual(corposImportarBase.length, 0, "sem marcar 'Salvar como base', nada é gravado em Bases");
+    });
+
+    await check("Custos API — salvar como base: grava pelo /importar-base (nome, conta, meli, confirmar) e reprocessa com custosOrigem=base", async () => {
+      await abrirPreparo("API do Mercado Livre");
+      const marcado = await cdp.evaluate(`(function(){ var c = document.querySelector('[data-testid="custos-modo-api"] input[type=checkbox]'); if (!c || c.disabled) return false; c.click(); return true; })()`);
+      assert.ok(marcado, "o checkbox 'Salvar como base de custos' deveria estar habilitado numa conta sem base");
+      await sleep(100);
+      const card = await textoDe('[data-testid="custos-modo-api"]');
+      assert.ok(/Salvar como base de custos de N97 Comercial/.test(card), `o checkbox deveria nomear cliente e conta: ${card}`);
+      const nome = await cdp.evaluate(`(document.querySelector('[data-testid="custos-modo-api"] input[type=text]') || {}).value`);
+      assert.strictEqual(nome, "Custos - N97 Comercial - MeLi", "nome padrão da base");
+      const shot = path.join(SHOTS_DIR, "financeiro-v3-custos-api-salvar-base.png");
+      const png = await cdp.send("Page.captureScreenshot", { format: "png" });
+      fs.writeFileSync(shot, Buffer.from(png.data, "base64"));
+      console.log(`   screenshot: ${shot}`);
+      const antes = fechamentoRequestCount;
+      assert.ok(await clicarBotao(DRAWER, "Reprocessar"), "botão Reprocessar ausente no preparo");
+      const ate = Date.now() + 8000;
+      while (fechamentoRequestCount === antes && Date.now() < ate) await sleep(50);
+      assert.strictEqual(corposImportarBase.length, 1, "deveria chamar /importar-base uma vez");
+      const imp = corposImportarBase[0];
+      assert.ok(imp.multipart, "importar-base é multipart");
+      assert.strictEqual(imp.campos.nomeBase, "Custos - N97 Comercial - MeLi");
+      assert.strictEqual(imp.campos.marketplace, "meli");
+      assert.strictEqual(imp.campos.confirmar, "true");
+      assert.strictEqual(imp.campos.cliente_conta_id, "42");
+      assert.deepStrictEqual(imp.campos.arquivo, { arquivo: "custos-fake.xlsx" });
+      assert.strictEqual(fechamentoRequestCount, antes + 1, "depois de salvar a base, processa uma vez");
+      const corpo = corposFechamentoApi.at(-1);
+      assert.ok(!corpo.multipart, "com a base salva, o fechamento volta a ser JSON (sem arquivo)");
+      assert.strictEqual(corpo.custosOrigem, "base", `com a base recém-salva, custosOrigem=base: ${JSON.stringify(corpo)}`);
+    });
+
+    // Conta COM base, que mudou depois do sync.
+    statusSyncFake = { ...statusSyncOriginal, base: { vinculada: true, id: 900, slug: "base-n97", nome: "Base N97", atualizadaEm: "2026-09-10T12:00:00Z", aplicadaNoSync: false } };
+    await navegar(`http://127.0.0.1:${serverPort}/financeiro-v3.html?cliente=n97&conta=42&periodo=2026-08&_r=api-custos-base`);
+    await waitFor(cdp, "window.VF && window.VF.context && window.VF.context.getState() === 'READY'", "reload não voltou a READY (custos API com base)");
+    await waitFor(cdp, ESPERA_MESA, "a mesa não renderizou (custos API com base)");
+    await sleep(200);
+
+    await check("Custos API — base mudou depois do sync: avisa e processa com custosOrigem=base; salvar como base fica desabilitado com link para Bases", async () => {
+      await abrirPreparo("API do Mercado Livre");
+      await waitFor(cdp, `document.querySelector('[data-testid="custos-modo-api"]') !== null`, "o card Custos do modo API não apareceu");
+      let card = await textoDe('[data-testid="custos-modo-api"]');
+      assert.ok(/Base N97/.test(card) && /atualizada em/.test(card), `o card deveria mostrar a base e quando foi atualizada: ${card}`);
+      assert.ok(/A base mudou depois da última sincronização/.test(card), `o card deveria avisar que a base mudou: ${card}`);
+      assert.ok(await clicarBotao('[data-testid="custos-modo-api"]', "Usar planilha de custos"), "botão Usar planilha de custos ausente");
+      await sleep(100);
+      await subirArquivo('input[aria-label="Planilha de custos"]', custosFake);
+      const desabilitado = await cdp.evaluate(`(function(){ var c = document.querySelector('[data-testid="custos-modo-api"] input[type=checkbox]'); return c ? c.disabled : null; })()`);
+      assert.strictEqual(desabilitado, true, "com base vinculada, salvar como base fica desabilitado");
+      card = await textoDe('[data-testid="custos-modo-api"]');
+      assert.ok(/Para atualizar a base existente, use a tela Bases/.test(card), `deveria orientar a usar a tela Bases: ${card}`);
+      const href = await cdp.evaluate(`(function(){ var a = document.querySelector('[data-testid="custos-modo-api"] a[href="bases.html"]'); return a ? a.getAttribute("href") : null; })()`);
+      assert.strictEqual(href, "bases.html");
+      // Volta para a base (sem planilha) e processa: o padrão é recalcular com a base atual.
+      assert.ok(await clicarBotao('[data-testid="custos-modo-api"]', "Voltar a usar a base vinculada"), "botão Voltar a usar a base vinculada ausente");
+      await sleep(100);
+      await processarNoPreparo();
+      assert.strictEqual(corposFechamentoApi.at(-1).custosOrigem, "base", `base alterada depois do sync: padrão custosOrigem=base: ${JSON.stringify(corposFechamentoApi.at(-1))}`);
+    });
+    statusSyncFake = statusSyncOriginal;
 
     // ═══ 2b. Conv#3 §25 — E2E do fluxo NATIVO: preparo → processar →
     // resultado na mesa → salvar, com a competência divergente pedindo

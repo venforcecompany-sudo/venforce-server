@@ -36,7 +36,7 @@ import { CompetenciaFechamento, AvisosCompetencia } from "../components/financei
 const SEM_TRABALHO = { temTrabalho: false, processadoNaoSalvo: false };
 
 export default function FinanceiroPage() {
-  const { snapshot, pronta, clienteSlug, clienteNome, clienteContaId, marketplace } = useOperacaoAtual();
+  const { snapshot, pronta, clienteId, clienteSlug, clienteNome, clienteContaId, marketplace } = useOperacaoAtual();
   const contaNome = snapshot?.meta?.nome ?? null;
   const contaRotuloExterno = snapshot?.meta?.externalAccountLabel ?? null;
   const { periodo, setPeriodo, dados, carregando, erro, recarregar: recarregarFinanceiro } = useFinanceiro({ clienteSlug, clienteContaId, pronta });
@@ -155,6 +155,7 @@ export default function FinanceiroPage() {
           <MesaFechamento
             clienteSlug={clienteSlug}
             clienteNome={clienteNome}
+            clienteId={clienteId}
             clienteContaId={clienteContaId}
             marketplace={marketplace}
             contaNome={contaNome}

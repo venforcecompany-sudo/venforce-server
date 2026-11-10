@@ -4,8 +4,9 @@
 // "Preparar fechamento":
 //   · OrigemVendas      — o controle "API do Mercado Livre | Planilha de vendas"
 //                         e a confirmação de troca quando há trabalho em andamento;
-//   · SincronizacaoVendas — o estado do sync do mês + "Sincronizar agora" (admin);
-//   · BaseDoModoApi     — a base de custos que o sync aplicou (sem upload).
+//   · SincronizacaoVendas — o estado do sync do mês + "Sincronizar agora" (admin).
+// Os custos do modo API (base do sync, base atual ou planilha) ficam em
+// CustosModoApi.jsx.
 //
 // Nenhum número é calculado aqui. A tela só mostra o que o backend devolveu.
 
@@ -123,43 +124,6 @@ export function SincronizacaoVendas({ statusApi, sincronizacao, periodoLabel, ad
       ) : (
         <p className="vf-field__hint">Só um administrador sincroniza a Central. Peça para sincronizar o mês.</p>
       )}
-    </div>
-  );
-}
-
-// Base de custos no modo API: os custos são os da base aplicada no sync. A
-// tela diz qual base é e não oferece upload (ele não existe neste modo).
-export function BaseDoModoApi({ base }) {
-  if (base.status === "encontrada") {
-    return (
-      <div className="vf-fin-base is-encontrada">
-        <div className="vf-fin-base__principal">
-          <span className="vf-fin-base__marca" aria-hidden="true">✓</span>
-          <div className="vf-fin-base__corpo">
-            <p className="vf-fin-base__titulo">Base vinculada</p>
-            <p className="vf-fin-base__detalhe">
-              <strong>{base.base?.nome || "Base de custos"}</strong>
-            </p>
-            <p className="vf-fin-base__nota">Os custos vêm da base aplicada no sync. Nenhum upload necessário.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  if (base.status === "ausente") {
-    return (
-      <p className="vf-field__hint">
-        Sem base vinculada para esta operação: os produtos ficam sem custo até vincular uma base e sincronizar de novo.
-      </p>
-    );
-  }
-  if (base.status === "erro" || base.status === "ambigua") {
-    return <p className="vf-field__hint">Não foi possível confirmar a base vinculada desta operação.</p>;
-  }
-  return (
-    <div className="vf-fin-base is-carregando">
-      <span className="vf-spinner vf-spinner--sm" aria-hidden="true" />
-      <span className="vf-fin-base__texto">Verificando base vinculada…</span>
     </div>
   );
 }

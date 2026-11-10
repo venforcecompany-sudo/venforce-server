@@ -42,7 +42,8 @@ import { VFDrawer } from "../ui/VFDrawer/index.js";
 import { BaseCustosStatus } from "./fechamento/BaseCustosStatus.jsx";
 import { FechamentoFileCard } from "./fechamento/FechamentoFileCard.jsx";
 import { FechamentoAjustes } from "./fechamento/FechamentoAjustes.jsx";
-import { OrigemVendas, SincronizacaoVendas, BaseDoModoApi } from "./fechamento/OrigemVendas.jsx";
+import { OrigemVendas, SincronizacaoVendas } from "./fechamento/OrigemVendas.jsx";
+import { CustosModoApi } from "./fechamento/CustosModoApi.jsx";
 import { PendenciasCusto } from "./pendencias/PendenciasCusto.jsx";
 import { EntregaPainel } from "./entrega/EntregaPainel.jsx";
 import { linkPublico } from "./EntregaAcoes.jsx";
@@ -98,6 +99,7 @@ function horaCurta(data) {
 export function MesaFechamento({
   clienteSlug,
   clienteNome,
+  clienteId = null,
   clienteContaId,
   marketplace,
   contaNome,
@@ -111,7 +113,7 @@ export function MesaFechamento({
   onSalvo,
   onTrabalho,
 }) {
-  const f = useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, marketplace, periodo, onSalvo });
+  const f = useFechamentoNativo({ clienteSlug, clienteNome, clienteId, clienteContaId, marketplace, periodo, onSalvo });
   const [drawer, setDrawer] = useState(null); // preparar | pendencias | detalhes | entrega
   const [confirmando, setConfirmando] = useState(null); // salvar_publicar | publicar
   const [apresentacaoAlterada, setApresentacaoAlterada] = useState(false);
@@ -136,6 +138,17 @@ export function MesaFechamento({
     setDrawer(null);
     setPedidoProdutos(null);
   }, [clienteSlug, clienteContaId, periodo]);
+
+  // Salvar a planilha de custos como base falhou (ex.: 409 nome já usado,
+  // 403): o erro mora no card Custos, então o drawer de preparo volta a abrir
+  // — com o arquivo ainda escolhido — em vez de a falha sumir com ele fechado.
+  // O mesmo vale para falhas do processamento sobre a planilha de custos
+  // (413 arquivo grande, 422 planilha sem custos reconhecidos…).
+  const erroAoSalvarBase = f.custosApi.salvamentoBase.estado === "erro";
+  const erroDeCustos = f.custosApi.erro;
+  useEffect(() => {
+    if (erroAoSalvarBase || erroDeCustos) setDrawer("preparar");
+  }, [erroAoSalvarBase, erroDeCustos]);
 
   const fecharDrawer = useCallback(() => setDrawer(null), []);
   const fecharEntrega = useCallback(() => {
@@ -238,8 +251,13 @@ export function MesaFechamento({
   // que o fechamento usa (sem processamento nesta sessão, a base vinculada
   // é a que o próximo processamento vai usar).
   const baseVinculada = f.base.status === "encontrada" ? f.base.base : null;
+  // No modo API, "sync" também é a base vinculada (a que o sync aplicou); o
+  // reprocessamento depois da correção recalcula com a base atual.
   const baseParaCustoRapido =
-    baseVinculada && (!p || (p.costsSource === "base" && p.costsBase?.slug === baseVinculada.slug)) ? baseVinculada : null;
+    baseVinculada &&
+    (!p || ((p.costsSource === "base" || p.costsSource === "sync") && p.costsBase?.slug === baseVinculada.slug))
+      ? baseVinculada
+      : null;
 
   function verPendencias() {
     if (p) {
@@ -252,13 +270,17 @@ export function MesaFechamento({
 
   // ── Etapas ──────────────────────────────────────────────────────────
   const ajustesPreenchidos = Object.entries(f.ajustes).filter(([, v]) => String(v ?? "").trim() !== "");
-  // No modo API a "base" é a aplicada no sync e as "vendas" são o sync do mês:
-  // não há upload para a etapa Arquivos/Base esperar.
+  // No modo API as "vendas" são o sync do mês; os custos, a base (do sync ou
+  // atual) ou a planilha de custos enviada.
+  const custosApi = f.custosApi;
   const etapas = etapasDoFechamento({
     base: modoApi
-      ? { status: f.base.status === "encontrada" ? "encontrada" : "ausente", override: false }
+      ? {
+          status: custosApi.temBase ? "encontrada" : custosApi.baseConhecida ? "ausente" : "carregando",
+          override: f.usarUploadDeCustos,
+        }
       : { status: f.base.status, override: f.usarUploadDeCustos },
-    arquivos: modoApi ? { sales: sincronizadoApi ? { name: "API do Mercado Livre" } : null, costs: null } : f.arquivos,
+    arquivos: modoApi ? { sales: sincronizadoApi ? { name: "API do Mercado Livre" } : null, costs: f.arquivos.costs } : f.arquivos,
     ajustes: ajustesPreenchidos.length,
     temResultado: !!p,
     salvoSemProcessar,
@@ -282,13 +304,17 @@ export function MesaFechamento({
 
   function detalheDaBase() {
     if (salvoSemProcessar) return "Usada no fechamento salvo";
+    if (p?.costsSource === "sync" && p.costsBase) return `${p.costsBase.nome || p.costsBase.slug} · custos do sync`;
     if (p?.costsSource === "base" && p.costsBase) return `${p.costsBase.nome || p.costsBase.slug} · vinculada`;
     if (p?.costsSource === "upload") return "Planilha de custos enviada";
     const s = f.base.status;
     if (modoApi) {
-      if (s === "encontrada") return `${f.base.base?.nome || "Base de custos"} · aplicada no sync`;
-      if (s === "ausente") return "Sem base vinculada";
-      return "Verificando a base vinculada…";
+      if (!custosApi.baseConhecida) return "Verificando a base vinculada…";
+      if (f.usarUploadDeCustos) return f.arquivos.costs ? `Planilha de custos: ${f.arquivos.costs.name}` : "Envie a planilha de custos";
+      const nome = custosApi.base?.nome || "Base de custos";
+      if (custosApi.origem === "base") return `${nome} · recalcula com a base atual`;
+      if (custosApi.temBase) return `${nome} · aplicada no sync`;
+      return "Sem base vinculada · lucro não calculado";
     }
     if (s === "carregando" || s === "inativo") return "Verificando a base vinculada…";
     if (s === "ambigua") return "Mais de uma conta possível";
@@ -375,7 +401,11 @@ export function MesaFechamento({
     rodape = (
       <AcaoPrincipal
         titulo="Processando…"
-        apoio={modoApi ? "Lendo os pedidos sincronizados" : "Lendo as planilhas do período"}
+        apoio={
+          custosApi.salvamentoBase.estado === "salvando"
+            ? "Salvando a base de custos"
+            : modoApi ? "Lendo os pedidos sincronizados" : "Lendo as planilhas do período"
+        }
         icone={ICONES.processar}
         disabled
         aria-busy="true"
@@ -478,7 +508,9 @@ export function MesaFechamento({
     ? [
         modoApi ? "vendas: API do Mercado Livre" : null,
         rotuloModo(p.summary),
-        p.costsSource === "base" && p.costsBase ? `custos: base ${p.costsBase.nome || p.costsBase.slug}` : p.costsSource === "upload" ? "custos: planilha enviada" : null,
+        (p.costsSource === "base" || p.costsSource === "sync") && p.costsBase
+          ? `custos: base ${p.costsBase.nome || p.costsBase.slug}${p.costsSource === "sync" ? " (do sync)" : ""}`
+          : p.costsSource === "upload" ? "custos: planilha enviada" : null,
       ].filter(Boolean).join(" · ") || null
     : salvoSemProcessar
       ? `Fechamento salvo em ${formatarDataHora(entrega.created_at)}${entrega.publicado ? ` · publicado em ${formatarDataHora(entrega.published_at)}` : ""}. Processe de novo para atualizar.`
@@ -540,6 +572,9 @@ export function MesaFechamento({
       texto = sincronizadoApi
         ? "As vendas do mês já estão sincronizadas da API do Mercado Livre: falta só processar."
         : "Sincronize as vendas do mês pela API do Mercado Livre e depois processe.";
+      if (custosApi.baseConhecida && !custosApi.temBase && !f.usarUploadDeCustos) {
+        texto += " Esta conta não tem base de custos: sem custos, o lucro não é calculado — envie a planilha de custos em Preparar fechamento.";
+      }
     } else {
       texto = baseCobre
         ? "A base de custos já está vinculada, então só falta a planilha de vendas do mês."
@@ -678,7 +713,7 @@ export function MesaFechamento({
           marketplace={f.marketplace}
           baseDeCustos={baseParaCustoRapido}
           onAbrirPendencias={p ? () => setDrawer("pendencias") : null}
-          onReprocessar={p ? f.reprocessar : null}
+          onReprocessar={p ? f.reprocessarComBaseAtual : null}
           reprocessando={processando}
         />}
 
@@ -713,9 +748,18 @@ export function MesaFechamento({
               />
             )}
             <section className="vf-stack vf-stack--sm">
-              <h4 className="vf-fin-mesa__rotulo-grupo">Base de custos</h4>
+              <h4 className="vf-fin-mesa__rotulo-grupo">{modoApi ? "Custos" : "Base de custos"}</h4>
               {modoApi ? (
-                <BaseDoModoApi base={f.base} />
+                <CustosModoApi
+                  custos={custosApi}
+                  usarUpload={f.usarUploadDeCustos}
+                  onAlternarUpload={f.alternarUploadDeCustos}
+                  arquivo={f.arquivos.costs}
+                  onArquivo={(file) => f.setArquivo("costs", file)}
+                  aviso={avisoDoCampo(f.validacao, "costs")}
+                  clienteNome={clienteNome || clienteSlug}
+                  contaNome={conta}
+                />
               ) : (
                 <BaseCustosStatus
                   base={f.base}
@@ -803,7 +847,7 @@ export function MesaFechamento({
             base={f.base.status === "encontrada" ? f.base.base : null}
             onReprocessar={() => {
               setDrawer(null);
-              f.reprocessar();
+              f.reprocessarComBaseAtual();
             }}
             reprocessando={processando}
           />

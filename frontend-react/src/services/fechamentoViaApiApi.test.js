@@ -64,7 +64,39 @@ describe("fechamentoViaApiApi", () => {
       affiliates: "0",
       fullCost: "0",
       additionalCosts: "300",
+      custosOrigem: "sync",
     });
+    expect(opcoes.headers["Content-Type"]).toBe("application/json");
+  });
+
+  it("processar com custosOrigem=base: continua JSON, sem arquivo", async () => {
+    fetchMock.mockResolvedValue(respostaJson({ ok: true, summary: {} }));
+    await processarFechamentoApi({ clienteSlug: "zenite", clienteContaId: 42, periodo: "2026-08", custosOrigem: "base" });
+    const [, opcoes] = fetchMock.mock.calls[0];
+    expect(JSON.parse(opcoes.body).custosOrigem).toBe("base");
+  });
+
+  it("processar com planilha de custos: multipart com os mesmos campos, custosOrigem=upload e o arquivo em costs", async () => {
+    fetchMock.mockResolvedValue(respostaJson({ ok: true, summary: {} }));
+    const arquivo = new File(["x"], "custos.xlsx");
+    await processarFechamentoApi({
+      clienteSlug: "zenite",
+      clienteContaId: 42,
+      periodo: "2026-08",
+      ajustes: { ads: "10" },
+      custosOrigem: "upload",
+      arquivoCustos: arquivo,
+    });
+    const [url, opcoes] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/\/financeiro\/zenite\/fechamento-api$/);
+    expect(opcoes.body).toBeInstanceOf(FormData);
+    // O navegador põe o Content-Type com o boundary; não pode vir fixo.
+    expect(opcoes.headers["Content-Type"]).toBeUndefined();
+    expect(opcoes.body.get("custosOrigem")).toBe("upload");
+    expect(opcoes.body.get("clienteContaId")).toBe("42");
+    expect(opcoes.body.get("periodo")).toBe("2026-08");
+    expect(opcoes.body.get("ads")).toBe("10");
+    expect(opcoes.body.get("costs").name).toBe("custos.xlsx");
   });
 
   it("CENTRAL_SEM_SYNC chega como FechamentoApiError com o código, para a tela orientar o usuário", async () => {

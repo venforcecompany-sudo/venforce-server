@@ -46,6 +46,13 @@ vi.mock("../../services/fechamentoViaApiApi.js", async (orig) => ({
   obterSyncRunCentral: viaApi.runSync,
 }));
 
+// Salvar a planilha de custos como base (POST /importar-base) — controlado por teste.
+const bases = vi.hoisted(() => ({ importar: vi.fn() }));
+vi.mock("../../services/basesCustoApi.js", async (orig) => ({
+  ...(await orig()),
+  importarBaseDeCustos: bases.importar,
+}));
+
 const STATUS_SINCRONIZADO = {
   ok: true,
   marketplace: "meli",
@@ -927,5 +934,236 @@ describe("fechamentoPayload · origem das vendas", () => {
     expect(p.metadados.origem).toBe("financeiro-v3-api");
     expect(p.metadados.fonteVendas).toBe("api");
     expect(p.metadados.sync).toEqual({ importId: 7, publicadoEm: "2026-09-02T03:12:00Z", coberturaDe: "2026-08-01", coberturaAte: "2026-08-31" });
+  });
+});
+
+// ── Modo API · custos (fase 2) ─────────────────────────────────────────
+// status.base: a base que o backend do fechamento enxerga para a conta.
+const BASE_DO_STATUS = { vinculada: true, id: 900, slug: "base-zenite", nome: "Base Zenite", atualizadaEm: "2026-08-15T12:00:00Z", aplicadaNoSync: true };
+const SEM_BASE_DO_STATUS = { vinculada: false, id: null, slug: null, nome: null, atualizadaEm: null, aplicadaNoSync: false };
+const statusComBase = (base) => ({ ...STATUS_SINCRONIZADO, base });
+
+async function escolherPlanilhaDeCustos(usuario, drawer) {
+  await usuario.click(within(drawer).getByRole("button", { name: "Usar planilha de custos" }));
+  const arquivo = new File(["a"], "custos-rikam.xlsx", { type: "application/vnd.ms-excel" });
+  await usuario.upload(within(drawer).getByLabelText("Planilha de custos"), arquivo);
+  return arquivo;
+}
+
+describe("Mesa · modo API · card Custos", () => {
+  it("conta sem base: o card avisa que sem custos o lucro não é calculado e destaca a planilha de custos", async () => {
+    viaApi.status.mockResolvedValue(statusComBase(SEM_BASE_DO_STATUS));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    expect(await within(painel()).findByText("Sem base vinculada · lucro não calculado")).toBeInTheDocument();
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    const card = within(drawer).getByTestId("custos-modo-api");
+    expect(within(card).getByText("Esta conta não tem base de custos vinculada")).toBeInTheDocument();
+    expect(within(card).getByText(/Sem custos, o lucro .* não é calculado/)).toBeInTheDocument();
+    // Em destaque: o botão primário do card.
+    expect(within(card).getByRole("button", { name: "Usar planilha de custos" })).toHaveClass("vf-btn--primary");
+    // Sem planilha, processa com os custos do sync (nenhum, aqui) — não bloqueia.
+    expect(within(drawer).getByRole("button", { name: "Processar fechamento" })).toBeEnabled();
+  });
+
+  it("padrão: processa com os custos do sync (custosOrigem=sync), sem arquivo", async () => {
+    viaApi.status.mockResolvedValue(statusComBase(BASE_DO_STATUS));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    await processarPelaApi(usuario);
+    expect(viaApi.processar).toHaveBeenCalledWith(
+      expect.objectContaining({ custosOrigem: "sync", arquivoCustos: null }),
+      expect.any(Object)
+    );
+  });
+
+  it("planilha de custos: sem arquivo não processa; com arquivo envia custosOrigem=upload e o arquivo", async () => {
+    viaApi.status.mockResolvedValue(statusComBase(SEM_BASE_DO_STATUS));
+    viaApi.processar.mockResolvedValue(respostaOk({ sync: STATUS_SINCRONIZADO.sync, costsSource: "upload", costsBase: null }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    await usuario.click(within(drawer).getByRole("button", { name: "Usar planilha de custos" }));
+    expect(within(drawer).getByRole("button", { name: "Processar fechamento" })).toBeDisabled();
+    expect(within(drawer).getByText("Planilha de custos necessária.", { selector: ".vf-fin-mesa-drawer__motivo" })).toBeInTheDocument();
+    const arquivo = new File(["a"], "custos-rikam.xlsx", { type: "application/vnd.ms-excel" });
+    await usuario.upload(within(drawer).getByLabelText("Planilha de custos"), arquivo);
+    await usuario.click(within(drawer).getByRole("button", { name: "Processar fechamento" }));
+    await waitFor(() => expect(viaApi.processar).toHaveBeenCalledTimes(1));
+    const [args] = viaApi.processar.mock.calls[0];
+    expect(args.custosOrigem).toBe("upload");
+    expect(args.arquivoCustos).toBe(arquivo);
+    expect(bases.importar).not.toHaveBeenCalled();
+  });
+
+  it("salvar como base: chama /importar-base com o arquivo, o nome, a conta e o cliente, e processa com custosOrigem=base", async () => {
+    viaApi.status.mockResolvedValue(statusComBase(SEM_BASE_DO_STATUS));
+    bases.importar.mockResolvedValue({ ok: true, base: "custos-zenite-comercial-meli", total: 120, vinculo: { base_id: 777, cliente_conta_id: 42 } });
+    viaApi.processar.mockResolvedValue(
+      respostaOk({ sync: STATUS_SINCRONIZADO.sync, costsSource: "base", costsBase: { id: 777, slug: "custos-zenite-comercial-meli", nome: "Custos - Zenite Comercial - MeLi" } })
+    );
+    api.salvar.mockResolvedValue({ id: 5, publicado: false, token_publico: null });
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} clienteId={31} />);
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    const arquivo = await escolherPlanilhaDeCustos(usuario, drawer);
+    const salvar = within(drawer).getByRole("checkbox", { name: "Salvar como base de custos de Zenite Comercial · Loja Principal" });
+    expect(salvar).toBeEnabled();
+    await usuario.click(salvar);
+    expect(within(drawer).getByLabelText("Nome da base")).toHaveValue("Custos - Zenite Comercial - MeLi");
+    await usuario.click(within(drawer).getByRole("button", { name: "Processar fechamento" }));
+
+    await waitFor(() => expect(viaApi.processar).toHaveBeenCalledTimes(1));
+    expect(bases.importar).toHaveBeenCalledWith(
+      { arquivo, nomeBase: "Custos - Zenite Comercial - MeLi", marketplace: "meli", clienteId: 31, clienteContaId: 42 },
+      expect.any(Object)
+    );
+    // A base é gravada ANTES do processamento, que já usa a base nova.
+    expect(bases.importar.mock.invocationCallOrder[0]).toBeLessThan(viaApi.processar.mock.invocationCallOrder[0]);
+    const [args] = viaApi.processar.mock.calls[0];
+    expect(args.custosOrigem).toBe("base");
+    expect(args.arquivoCustos).toBeNull();
+    // A base vinculada e o status são relidos (a conta agora tem base).
+    await waitFor(() => expect(viaApi.status.mock.calls.length).toBeGreaterThanOrEqual(2));
+
+    await usuario.click(await within(painel()).findByRole("button", { name: "Salvar como rascunho" }));
+    await waitFor(() => expect(api.salvar).toHaveBeenCalledTimes(1));
+    const meta = api.salvar.mock.calls[0][0].payload_json.metadados;
+    expect(meta.costsSource).toBe("base");
+    expect(meta.baseSalva).toEqual({ id: 777, nome: "Custos - Zenite Comercial - MeLi" });
+  });
+
+  it("erro ao salvar a base (409): aparece no card, o arquivo continua escolhido e nada é processado", async () => {
+    viaApi.status.mockResolvedValue(statusComBase(SEM_BASE_DO_STATUS));
+    bases.importar.mockRejectedValue(new Error("Já existe uma base com este nome. Escolha outro nome ou atualize a base existente na tela Bases."));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    await escolherPlanilhaDeCustos(usuario, drawer);
+    await usuario.click(within(drawer).getByRole("checkbox", { name: /Salvar como base de custos de/ }));
+    await usuario.click(within(drawer).getByRole("button", { name: "Processar fechamento" }));
+    // O drawer fecha ao processar e volta a abrir com o erro no card.
+    const reaberto = await screen.findByRole("dialog", { name: "Preparar fechamento" });
+    const card = await within(reaberto).findByTestId("custos-modo-api");
+    expect(await within(card).findByRole("alert")).toHaveTextContent(/Não foi possível salvar a base: Já existe uma base com este nome/);
+    expect(within(card).getByText("custos-rikam.xlsx")).toBeInTheDocument();
+    expect(viaApi.processar).not.toHaveBeenCalled();
+  });
+
+  it("conta com base: salvar como base fica desabilitado e aponta para a tela Bases", async () => {
+    viaApi.status.mockResolvedValue(statusComBase(BASE_DO_STATUS));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    const card = within(drawer).getByTestId("custos-modo-api");
+    expect(within(card).getByText("Base Zenite")).toBeInTheDocument();
+    expect(within(card).getByText(/atualizada em/)).toBeInTheDocument();
+    await escolherPlanilhaDeCustos(usuario, drawer);
+    expect(within(drawer).getByRole("checkbox", { name: /Salvar como base de custos de/ })).toBeDisabled();
+    expect(within(drawer).getByText(/Para atualizar a base existente, use a tela Bases/)).toBeInTheDocument();
+    expect(within(drawer).getByRole("link", { name: /Abrir Bases/ })).toHaveAttribute("href", "bases.html");
+  });
+
+  it("base mudou depois do sync: avisa e o padrão vira recalcular com a base atual (custosOrigem=base)", async () => {
+    viaApi.status.mockResolvedValue(statusComBase({ ...BASE_DO_STATUS, aplicadaNoSync: false }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    expect(await within(painel()).findByText("Base Zenite · recalcula com a base atual")).toBeInTheDocument();
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    expect(within(drawer).getByText("A base mudou depois da última sincronização")).toBeInTheDocument();
+    await usuario.click(within(drawer).getByRole("button", { name: "Processar fechamento" }));
+    await waitFor(() => expect(viaApi.processar).toHaveBeenCalledTimes(1));
+    expect(viaApi.processar.mock.calls[0][0].custosOrigem).toBe("base");
+  });
+
+  it("base mudou, mas a pessoa prefere os custos do sync: custosOrigem=sync", async () => {
+    viaApi.status.mockResolvedValue(statusComBase({ ...BASE_DO_STATUS, aplicadaNoSync: false }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    await usuario.click(await within(drawer).findByRole("button", { name: "Manter os custos do sync" }));
+    await usuario.click(within(drawer).getByRole("button", { name: "Processar fechamento" }));
+    await waitFor(() => expect(viaApi.processar).toHaveBeenCalledTimes(1));
+    expect(viaApi.processar.mock.calls[0][0].custosOrigem).toBe("sync");
+  });
+
+  it.each([
+    ["CUSTOS_PLANILHA_INVALIDA", 422, /Nenhuma linha de custo foi reconhecida na planilha/],
+    ["CUSTOS_ARQUIVO_GRANDE", 413, /passa do limite de 20 MB/],
+    ["UPLOAD_INVALIDO", 400, /chegou incompleto/],
+    ["CUSTOS_ORIGEM_INVALIDA", 400, /não aceitou a origem dos custos/],
+  ])("%s: o erro aparece no card Custos (o preparo reabre) e o arquivo continua escolhido", async (codigo, status, texto) => {
+    viaApi.status.mockResolvedValue(statusComBase(SEM_BASE_DO_STATUS));
+    viaApi.processar.mockRejectedValue(new FechamentoApiError("x", { status, codigo }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    await escolherPlanilhaDeCustos(usuario, drawer);
+    await usuario.click(within(drawer).getByRole("button", { name: "Processar fechamento" }));
+    const reaberto = await screen.findByRole("dialog", { name: "Preparar fechamento" });
+    const erro = await within(reaberto).findByTestId("custos-erro");
+    expect(erro).toHaveTextContent(texto);
+    expect(within(reaberto).getByText("custos-rikam.xlsx")).toBeInTheDocument();
+  });
+
+  it("planilha de custos acima de 20 MB não é enviada", async () => {
+    viaApi.status.mockResolvedValue(statusComBase(SEM_BASE_DO_STATUS));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    await usuario.click(within(drawer).getByRole("button", { name: "Usar planilha de custos" }));
+    const grande = new File(["a"], "custos-enorme.xlsx", { type: "application/vnd.ms-excel" });
+    Object.defineProperty(grande, "size", { value: 21 * 1024 * 1024 });
+    await usuario.upload(within(drawer).getByLabelText("Planilha de custos"), grande);
+    expect(within(drawer).getByRole("button", { name: "Processar fechamento" })).toBeDisabled();
+    expect(within(drawer).getByText("A planilha de custos passa do limite de 20 MB.", { selector: ".vf-fin-mesa-drawer__motivo" })).toBeInTheDocument();
+    expect(viaApi.processar).not.toHaveBeenCalled();
+  });
+
+  it("backend sem status.base: cai na base de /base-vinculos", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    const card = within(drawer).getByTestId("custos-modo-api");
+    expect(await within(card).findByText("Base Zenite")).toBeInTheDocument();
+    expect(within(card).getByText("Os custos vêm da base aplicada na última sincronização.")).toBeInTheDocument();
+  });
+});
+
+describe("fechamentoPayload · custos do modo API", () => {
+  it("costsSource=sync guarda a base que o sync aplicou; upload não tem base", () => {
+    const comSync = montarPayloadFechamento({
+      processamento: respostaOk({ costsSource: "sync", costsBase: { id: 900, slug: "base-zenite", nome: "Base Zenite" } }),
+      clienteSlug: "zenite",
+      periodo: "2026-08",
+      marketplace: "meli",
+      fonteVendas: "api",
+    });
+    expect(comSync.metadados.costsSource).toBe("sync");
+    expect(comSync.metadados.costsBase).toEqual({ id: 900, slug: "base-zenite", nome: "Base Zenite" });
+    expect(comSync.metadados.baseSalva).toBeNull();
+
+    const comUpload = montarPayloadFechamento({
+      processamento: respostaOk({ costsSource: "upload", costsBase: null }),
+      clienteSlug: "zenite",
+      periodo: "2026-08",
+      marketplace: "meli",
+      fonteVendas: "api",
+    });
+    expect(comUpload.metadados.costsSource).toBe("upload");
+    expect(comUpload.metadados.costsBase).toBeNull();
+  });
+
+  it("baseSalva sem id do vínculo usa o id da base declarada pelo processamento (mesmo slug)", () => {
+    const p = montarPayloadFechamento({
+      processamento: respostaOk({ costsSource: "base", costsBase: { id: 777, slug: "custos-x", nome: "Custos X" } }),
+      clienteSlug: "zenite",
+      periodo: "2026-08",
+      marketplace: "meli",
+      fonteVendas: "api",
+      baseSalva: { id: null, slug: "custos-x", nome: "Custos X" },
+    });
+    expect(p.metadados.baseSalva).toEqual({ id: 777, nome: "Custos X" });
   });
 });

@@ -5,6 +5,7 @@
 // Chamadas deste modo:
 //   GET  /financeiro/:cliente/fechamento-api/status   há dados sincronizados desta competência?
 //   POST /financeiro/:cliente/fechamento-api          gera o fechamento (mesmo formato da planilha)
+//                                                     JSON, ou multipart quando leva a planilha de custos
 //   POST /operacao/central-vendas/:slug/sync-runs     "Sincronizar agora" (só admin)
 //   GET  /operacao/central-vendas/:slug/sync-runs/:id acompanha o sync até um estado final
 //
@@ -20,6 +21,8 @@ import { API_BASE, getToken, irParaLogin } from "./apiClient.js";
 import { FechamentoApiError } from "./financeiroFechamentoApi.js";
 
 async function chamar(caminho, { metodo = "GET", corpo, signal } = {}) {
+  // FormData vai como multipart: o navegador põe o Content-Type com o boundary.
+  const multipart = typeof FormData !== "undefined" && corpo instanceof FormData;
   const token = getToken();
   if (!token) {
     irParaLogin();
@@ -33,9 +36,9 @@ async function chamar(caminho, { metodo = "GET", corpo, signal } = {}) {
       signal,
       headers: {
         Authorization: `Bearer ${token}`,
-        ...(corpo ? { "Content-Type": "application/json" } : {}),
+        ...(corpo && !multipart ? { "Content-Type": "application/json" } : {}),
       },
-      body: corpo ? JSON.stringify(corpo) : undefined,
+      body: corpo ? (multipart ? corpo : JSON.stringify(corpo)) : undefined,
     });
   } catch (err) {
     if (err?.name === "AbortError") throw err;
@@ -77,29 +80,49 @@ export function intervaloDoMes(periodo) {
 }
 
 // → { ok, marketplace, periodo, sync: { disponivel, importId, publicadoEm,
-//     coberturaDe, coberturaAte, completo, motivoIncompleto }, runEmAndamento }
+//     coberturaDe, coberturaAte, completo, motivoIncompleto }, runEmAndamento,
+//     base: { vinculada, id, slug, nome, atualizadaEm, aplicadaNoSync } }
+// `base.aplicadaNoSync=false`: a base mudou depois do sync (ou o sync rodou
+// sem base) — os custos gravados no sync não são os da base atual.
 export function obterStatusFechamentoApi({ clienteSlug, clienteContaId, periodo }, { signal } = {}) {
   const query = new URLSearchParams({ conta: String(clienteContaId), periodo: String(periodo) });
   return chamar(`/financeiro/${encodeURIComponent(clienteSlug)}/fechamento-api/status?${query}`, { signal });
 }
 
+export const CUSTOS_ORIGENS = ["sync", "base", "upload"];
+
 // Ajustes chegam como texto pt-BR ("1.234,56"); o backend faz o parse.
+// `custosOrigem`: de onde saem os custos dos itens —
+//   "sync"   os que o sync gravou (padrão);
+//   "base"   recalcula agora com a base vinculada ATUAL da conta;
+//   "upload" usa a planilha `arquivoCustos` (vai como multipart, campo "costs").
 // → mesmo formato da resposta de POST /fechamentos/financeiro, + fonteVendas,
-//   sync. Erros relevantes: CENTRAL_SEM_SYNC (409), FECHAMENTO_API_SO_MELI (400).
-export function processarFechamentoApi({ clienteSlug, clienteContaId, periodo, ajustes = {} }, { signal } = {}) {
-  return chamar(`/financeiro/${encodeURIComponent(clienteSlug)}/fechamento-api`, {
-    metodo: "POST",
-    signal,
-    corpo: {
-      clienteContaId,
-      periodo,
-      ads: String(ajustes.ads || "0"),
-      venforce: String(ajustes.venforce || "0"),
-      affiliates: String(ajustes.affiliates || "0"),
-      fullCost: String(ajustes.fullCost || "0"),
-      additionalCosts: String(ajustes.additionalCosts || "0"),
-    },
-  });
+//   sync, costsSource ("sync" | "base" | "upload") e costsBase (null em upload).
+// Erros relevantes: CENTRAL_SEM_SYNC (409), FECHAMENTO_API_SO_MELI (400),
+// CUSTOS_ARQUIVO_OBRIGATORIO (400), BASE_NAO_VINCULADA (409),
+// CUSTOS_PLANILHA_INVALIDA (422).
+export function processarFechamentoApi(
+  { clienteSlug, clienteContaId, periodo, ajustes = {}, custosOrigem = "sync", arquivoCustos = null },
+  { signal } = {}
+) {
+  const campos = {
+    clienteContaId,
+    periodo,
+    ads: String(ajustes.ads || "0"),
+    venforce: String(ajustes.venforce || "0"),
+    affiliates: String(ajustes.affiliates || "0"),
+    fullCost: String(ajustes.fullCost || "0"),
+    additionalCosts: String(ajustes.additionalCosts || "0"),
+    custosOrigem,
+  };
+  let corpo = campos;
+  if (custosOrigem === "upload") {
+    // Mesmos campos, mais o arquivo: o backend aceita JSON ou multipart.
+    corpo = new FormData();
+    for (const [k, v] of Object.entries(campos)) corpo.append(k, String(v ?? ""));
+    if (arquivoCustos) corpo.append("costs", arquivoCustos);
+  }
+  return chamar(`/financeiro/${encodeURIComponent(clienteSlug)}/fechamento-api`, { metodo: "POST", signal, corpo });
 }
 
 // → { ok, run, reaproveitado }. `reaproveitado` = já havia um run em andamento.

@@ -14,8 +14,14 @@
 //  · Origem das vendas (só MELI): "api" é o padrão — o fechamento sai dos
 //    pedidos que a Central já sincronizou da API do ML. "planilha" é o fluxo
 //    de sempre. Os dois geram o MESMO entregável (mesmo summary, mesma entrega).
-//  · No modo API os custos vêm da base aplicada no sync, então não há upload
-//    de custos nem de vendas; o que é obrigatório é o sync do mês existir.
+//  · No modo API não há upload de vendas; o obrigatório é o sync do mês
+//    existir. Os custos (custosOrigem) saem, por padrão, do que o sync gravou
+//    ("sync"); se a base vinculada mudou depois do sync, o padrão vira
+//    recalcular com a base ATUAL ("base"); e a pessoa pode enviar uma planilha
+//    de custos ("upload") — em destaque quando a conta não tem base. Essa
+//    planilha pode virar a base da conta (POST /importar-base, o mesmo comando
+//    da tela Bases) só quando a conta AINDA NÃO tem base: atualizar uma base
+//    existente é na tela Bases, com pré-visualização.
 //  · No modo planilha a origem dos custos segue a base vinculada: se a
 //    operação já tem base, o upload de custos NÃO é pedido; sem base, o upload
 //    passa a ser obrigatório. "Usar outra planilha de custos" é um override
@@ -29,6 +35,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { processarFechamento, salvarEntregaFechamento, FechamentoApiError } from "../services/financeiroFechamentoApi.js";
 import { processarFechamentoApi } from "../services/fechamentoViaApiApi.js";
+import { importarBaseDeCustos } from "../services/basesCustoApi.js";
 import { montarPayloadFechamento } from "../utils/fechamentoPayload.js";
 import { buscarEntrega } from "../services/entregasApi.js";
 import { useBaseVinculada } from "./useBaseVinculada.js";
@@ -38,6 +45,37 @@ import { useSyncCentral } from "./useSyncCentral.js";
 
 const AJUSTES_INICIAIS = { ads: "", venforce: "", affiliates: "", fullCost: "", additionalCosts: "" };
 const ARQUIVOS_INICIAIS = { sales: null, costs: null, ordersAll: null };
+const SALVAMENTO_INICIAL = { estado: "inativo", mensagem: null, base: null };
+
+// Nome sugerido para a base criada a partir da planilha do modo API. Editável.
+export function nomePadraoDaBase(clienteNome, clienteSlug) {
+  return `Custos - ${clienteNome || clienteSlug || "cliente"} - MeLi`;
+}
+
+// Erros do modo API que pedem uma ação da pessoa, não suporte.
+const MENSAGEM_POR_CODIGO = {
+  CENTRAL_SEM_SYNC: "Este mês ainda não foi sincronizado com a API do Mercado Livre. Use “Sincronizar agora” e processe de novo.",
+  CUSTOS_ARQUIVO_OBRIGATORIO: "Escolha a planilha de custos para processar com ela.",
+  BASE_NAO_VINCULADA: "Esta conta não tem base de custos vinculada. Envie uma planilha de custos.",
+  CUSTOS_PLANILHA_INVALIDA: "Nenhuma linha de custo foi reconhecida na planilha. Confira se ela tem a coluna do anúncio (MLB) e a de custo.",
+  CUSTOS_ARQUIVO_GRANDE: "A planilha de custos passa do limite de 20 MB. Envie uma versão menor (só anúncio, custo e imposto).",
+  UPLOAD_INVALIDO: "O envio da planilha de custos chegou incompleto. Escolha o arquivo de novo e processe.",
+  CUSTOS_ORIGEM_INVALIDA: "O servidor não aceitou a origem dos custos. Escolha de novo a planilha ou a base e processe.",
+};
+
+// Erros do processamento que são sobre os CUSTOS: aparecem no card Custos
+// (e o drawer de preparo reabre), não só no aviso geral.
+export const CODIGOS_ERRO_CUSTOS = new Set([
+  "CUSTOS_ARQUIVO_OBRIGATORIO",
+  "CUSTOS_ARQUIVO_GRANDE",
+  "UPLOAD_INVALIDO",
+  "CUSTOS_ORIGEM_INVALIDA",
+  "CUSTOS_PLANILHA_INVALIDA",
+  "BASE_NAO_VINCULADA",
+]);
+
+// Mesmo limite do backend (multer, 20 MB): barra antes de enviar.
+const LIMITE_PLANILHA_CUSTOS = 20 * 1024 * 1024;
 
 // TikTok Shop depende de uma Base TikTok escolhida à mão (o endpoint exige
 // `costsBaseId` e não aceita upload de custos) — um seletor de base que o V3
@@ -46,20 +84,16 @@ export const MARKETPLACES_NATIVOS = ["meli", "shopee"];
 
 function normalizarErro(err) {
   if (err instanceof FechamentoApiError) {
-    if (err.codigo === "CENTRAL_SEM_SYNC") {
-      // Não é falha técnica: o caminho é sincronizar o mês e processar de novo.
-      return {
-        mensagem: "Este mês ainda não foi sincronizado com a API do Mercado Livre. Use “Sincronizar agora” e processe de novo.",
-        codigo: err.codigo,
-        status: err.status,
-      };
+    // Não são falhas técnicas: sincronizar o mês, escolher/corrigir a planilha.
+    if (MENSAGEM_POR_CODIGO[err.codigo]) {
+      return { mensagem: MENSAGEM_POR_CODIGO[err.codigo], codigo: err.codigo, status: err.status };
     }
     return { mensagem: err.message, codigo: err.codigo, status: err.status };
   }
   return { mensagem: err?.message || "Erro inesperado.", codigo: "desconhecido", status: 0 };
 }
 
-export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, marketplace, periodo, onSalvo }) {
+export function useFechamentoNativo({ clienteSlug, clienteNome, clienteId = null, clienteContaId, marketplace, periodo, onSalvo }) {
   const [estado, setEstado] = useState("form"); // form | processando | preview | salvando | salvo
   const [arquivos, setArquivos] = useState(ARQUIVOS_INICIAIS);
   const [ajustes, setAjustes] = useState(AJUSTES_INICIAIS);
@@ -73,6 +107,14 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
   // "api" é o padrão; só vale para MELI (ver fonteVendas abaixo).
   const [fonte, setFonte] = useState("api");
   const [fonteTrocaPendente, setFonteTrocaPendente] = useState(null);
+  // Modo API · custos. `manterCustosDoSync`: com a base alterada depois do
+  // sync, a pessoa prefere mesmo assim os custos gravados no sync.
+  const [manterCustosDoSync, setManterCustosDoSync] = useState(false);
+  const [salvarComoBase, setSalvarComoBase] = useState(false);
+  const [nomeBaseNova, setNomeBaseNova] = useState(null); // null = nome padrão
+  const [salvamentoBase, setSalvamentoBase] = useState(SALVAMENTO_INICIAL);
+  // Base criada nesta sessão (vai para metadados.baseSalva do entregável).
+  const [baseSalva, setBaseSalva] = useState(null);
 
   const mkt = String(marketplace || "").trim().toLowerCase();
   const marketplaceSuportado = MARKETPLACES_NATIVOS.includes(mkt);
@@ -147,6 +189,11 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     setUsarUploadDeCustos(false);
     setArquivos(ARQUIVOS_INICIAIS);
     setFonteTrocaPendente(null);
+    setManterCustosDoSync(false);
+    setSalvarComoBase(false);
+    setNomeBaseNova(null);
+    setSalvamentoBase(SALVAMENTO_INICIAL);
+    setBaseSalva(null);
   }, [clienteSlug, clienteContaId, periodo, mkt]);
 
   const competencia = processamento?.competencia || null;
@@ -178,9 +225,43 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
   const alternarUploadDeCustos = useCallback((ligar) => {
     setUsarUploadDeCustos((atual) => {
       const proximo = typeof ligar === "boolean" ? ligar : !atual;
-      if (!proximo) setArquivos((a) => ({ ...a, costs: null }));
+      if (!proximo) {
+        setArquivos((a) => ({ ...a, costs: null }));
+        setSalvarComoBase(false);
+      }
       return proximo;
     });
+  }, []);
+
+  // ── Modo API · custos ───────────────────────────────────────────────
+  // A base, vista pelo backend do fechamento (status.base); sem ela (backend
+  // antigo), a leitura de /base-vinculos.
+  const baseDoStatus = statusApi.base;
+  const baseApiConhecida = baseDoStatus ? true : base.status === "encontrada" || base.status === "ausente";
+  const temBaseApi = baseDoStatus ? baseDoStatus.vinculada === true : base.status === "encontrada";
+  const baseApi = temBaseApi
+    ? baseDoStatus?.vinculada
+      ? { id: baseDoStatus.id ?? null, slug: baseDoStatus.slug ?? null, nome: baseDoStatus.nome ?? null, atualizadaEm: baseDoStatus.atualizadaEm ?? null }
+      : { ...base.base, atualizadaEm: null }
+    : null;
+  // A base mudou depois do sync (ou o sync rodou sem base): os custos gravados
+  // não são os da base atual.
+  const baseMudouDepoisDoSync = temBaseApi && baseDoStatus?.aplicadaNoSync === false;
+  const custosOrigemApi = usarUploadDeCustos
+    ? "upload"
+    : baseSalva || (baseMudouDepoisDoSync && !manterCustosDoSync)
+      ? "base"
+      : "sync";
+  // Salvar a planilha como base: só para conta SEM base. Com base, atualizar
+  // é na tela Bases (pré-visualização + upsert controlado).
+  const salvarBaseBloqueio = !baseApiConhecida ? "verificando" : temBaseApi || baseSalva ? "base_existente" : null;
+  const salvaBaseAoProcessar =
+    modoApi && usarUploadDeCustos && !!arquivos.costs && salvarComoBase && salvarBaseBloqueio === null;
+  const nomeBase = nomeBaseNova ?? nomePadraoDaBase(clienteNome, clienteSlug);
+  // Mexer na escolha apaga o erro da tentativa anterior (que fica à vista até lá).
+  const definirSalvarComoBase = useCallback((ligar) => {
+    setSalvarComoBase(!!ligar);
+    setSalvamentoBase((atual) => (atual.estado === "erro" ? SALVAMENTO_INICIAL : atual));
   }, []);
 
   // Validação em ITENS: cada pendência aponta um campo, para o card certo
@@ -203,6 +284,13 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
       }
       if (sincronizacao.emAndamento) {
         itens.push({ campo: "sync", mensagem: "Aguarde a sincronização terminar para processar." });
+      }
+      if (usarUploadDeCustos && !arquivos.costs) {
+        itens.push({ campo: "costs", mensagem: "Planilha de custos necessária." });
+      } else if (usarUploadDeCustos && arquivos.costs.size > LIMITE_PLANILHA_CUSTOS) {
+        itens.push({ campo: "costs", mensagem: "A planilha de custos passa do limite de 20 MB." });
+      } else if (salvaBaseAoProcessar && !String(nomeBase).trim()) {
+        itens.push({ campo: "costs", mensagem: "Dê um nome para a base de custos." });
       }
     } else {
       if (!arquivos.sales) {
@@ -230,6 +318,9 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     statusApi.status,
     statusApi.sincronizado,
     sincronizacao.emAndamento,
+    usarUploadDeCustos,
+    salvaBaseAoProcessar,
+    nomeBase,
     arquivos.sales,
     arquivos.costs,
     custosObrigatorios,
@@ -238,7 +329,12 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     base.status,
   ]);
 
-  const processar = useCallback(async () => {
+  // `opcoes.custosDaBaseAtual`: reprocessar depois de corrigir custos NA BASE
+  // (pendências, "+ Custo"). No modo API, os custos gravados no sync não têm
+  // essa correção — então recalcula com a base atual. (Também chamado direto
+  // como onClick: o evento não tem essa chave.)
+  const processar = useCallback(async (opcoes) => {
+    const custosDaBaseAtual = opcoes?.custosDaBaseAtual === true;
     if (!validacao.ok) {
       setErro({ mensagem: validacao.problemas[0], codigo: "validacao", status: 0 });
       return;
@@ -257,8 +353,47 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     try {
       let resposta;
       if (modoApi) {
+        let custosOrigem =
+          custosDaBaseAtual && temBaseApi && custosOrigemApi === "sync" ? "base" : custosOrigemApi;
+        if (salvaBaseAoProcessar) {
+          // 1º grava a planilha como base da conta (base + custos + vínculo,
+          // atômico). Falhou: nada foi gravado, o arquivo fica escolhido e o
+          // erro aparece no card de custos — sem processar com outra origem.
+          setSalvamentoBase({ estado: "salvando", mensagem: null, base: null });
+          const nome = String(nomeBase).trim();
+          try {
+            const r = await importarBaseDeCustos(
+              { arquivo: arquivos.costs, nomeBase: nome, marketplace: "meli", clienteId, clienteContaId },
+              { signal: controlador.signal }
+            );
+            const nova = { id: r?.vinculo?.base_id ?? null, slug: r?.base ?? null, nome };
+            setBaseSalva(nova);
+            setSalvamentoBase({ estado: "salvo", mensagem: null, base: { ...nova, total: r?.total ?? null } });
+            // A planilha agora É a base: processa com a base vinculada atual.
+            setUsarUploadDeCustos(false);
+            setSalvarComoBase(false);
+            setArquivos((a) => ({ ...a, costs: null }));
+            base.recarregar?.();
+            statusApi.recarregar?.();
+            custosOrigem = "base";
+          } catch (err) {
+            if (err?.name === "AbortError") return;
+            setSalvamentoBase({ estado: "erro", mensagem: err?.message || "Não foi possível salvar a base.", base: null });
+            setProcessamento(null);
+            setEstado("form");
+            return;
+          }
+          if (controlador.signal.aborted) return;
+        }
         resposta = await processarFechamentoApi(
-          { clienteSlug, clienteContaId, periodo, ajustes },
+          {
+            clienteSlug,
+            clienteContaId,
+            periodo,
+            ajustes,
+            custosOrigem,
+            arquivoCustos: custosOrigem === "upload" ? arquivos.costs : null,
+          },
           { signal: controlador.signal }
         );
       } else {
@@ -293,7 +428,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
       setErro(normalizarErro(err));
       setEstado("form");
     }
-  }, [validacao, arquivos, mkt, clienteSlug, clienteContaId, periodo, ajustes, modoApi, fonteVendas]);
+  }, [validacao, arquivos, mkt, clienteSlug, clienteId, clienteContaId, periodo, ajustes, modoApi, fonteVendas, custosOrigemApi, temBaseApi, salvaBaseAoProcessar, nomeBase, base, statusApi]);
 
   // Voltar aos arquivos/ajustes SEM perder o que foi escolhido (trocar a
   // planilha de custos, corrigir um ajuste). O resultado processado deixa de
@@ -348,6 +483,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
         marketplace: mkt,
         ajustes,
         fonteVendas,
+        baseSalva,
         adsOrigem: adsOrigem === "mercado_ads"
           ? { origem: "mercado_ads", consultadoEm: ads.dados?.consultadoEm || null }
           : adsOrigem === "manual" ? { origem: "manual" } : null,
@@ -399,7 +535,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
         setEstado("preview");
       }
     },
-    [processamento, divergente, confirmouDivergencia, syncIncompleto, confirmouSyncIncompleto, clienteSlug, clienteNome, clienteContaId, periodo, mkt, fonteVendas, ajustes, onSalvo, duplicidade, adsOrigem, ads.dados]
+    [processamento, divergente, confirmouDivergencia, syncIncompleto, confirmouSyncIncompleto, clienteSlug, clienteNome, clienteContaId, periodo, mkt, fonteVendas, baseSalva, ajustes, onSalvo, duplicidade, adsOrigem, ads.dados]
   );
 
   const substituir = useCallback(() => salvar({ substituir: true }), [salvar]);
@@ -438,6 +574,9 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     setEntregaSalva(null);
     setArquivos(ARQUIVOS_INICIAIS);
     setUsarUploadDeCustos(false);
+    setSalvarComoBase(false);
+    setSalvamentoBase(SALVAMENTO_INICIAL);
+    setManterCustosDoSync(false);
   }, []);
   const definirFonte = useCallback(
     (nova) => {
@@ -466,6 +605,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     setEntregaSalva(null);
     setArquivos(ARQUIVOS_INICIAIS);
     setUsarUploadDeCustos(false);
+    setSalvarComoBase(false);
   }, []);
 
   return {
@@ -489,6 +629,25 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     custosObrigatorios,
     usarUploadDeCustos,
     alternarUploadDeCustos,
+    // Modo API · custos
+    custosApi: {
+      origem: custosOrigemApi,
+      temBase: temBaseApi,
+      baseConhecida: baseApiConhecida,
+      base: baseApi,
+      baseMudouDepoisDoSync,
+      manterCustosDoSync,
+      definirManterCustosDoSync: setManterCustosDoSync,
+      salvarComoBase,
+      definirSalvarComoBase: definirSalvarComoBase,
+      salvarBaseBloqueio,
+      nomeBase,
+      definirNomeBase: setNomeBaseNova,
+      salvamentoBase,
+      baseSalva,
+      // Falha do processamento sobre os custos (planilha grande, inválida…).
+      erro: modoApi && erro && CODIGOS_ERRO_CUSTOS.has(erro.codigo) ? erro.mensagem : null,
+    },
     validacao,
     processamento,
     competencia,
@@ -506,6 +665,8 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     // Reprocessar = o MESMO processamento, com os arquivos/ajustes atuais
     // (ex.: depois de corrigir a base vinculada). Nenhum endpoint novo.
     reprocessar: processar,
+    // Depois de corrigir custos na base (pendências / "+ Custo").
+    reprocessarComBaseAtual: () => processar({ custosDaBaseAtual: true }),
     voltarAoFormulario,
     salvar,
     substituir,

@@ -52,6 +52,10 @@ export function useStatusFechamentoApi({ clienteSlug, clienteContaId, periodo, h
     sync,
     sincronizado: sync?.disponivel === true,
     runEmAndamento: atual.dados?.runEmAndamento ?? null,
+    // Base de custos da conta, vista pelo backend do fechamento: vinculada?
+    // qual? foi a que o sync aplicou? Ausente (backend antigo) → null, e a
+    // tela cai na leitura de /base-vinculos.
+    base: atual.dados?.base ?? null,
     erro: atual.erro,
     recarregar,
   };

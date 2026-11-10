@@ -149,7 +149,7 @@ describe("FinanceiroPage · modelo B (mesa sem abas)", () => {
     const drawer = screen.getByRole("dialog", { name: "Preparar fechamento" });
     const grupo = within(drawer).getByRole("group", { name: "Origem das vendas" });
     expect(within(grupo).getByRole("button", { name: "API do Mercado Livre" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(drawer).getByText("Base de custos")).toBeInTheDocument();
+    expect(within(drawer).getByText("Custos")).toBeInTheDocument();
     expect(within(drawer).getByText("Ajustes do período")).toBeInTheDocument();
   });
 

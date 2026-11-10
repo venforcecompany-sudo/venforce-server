@@ -74,3 +74,66 @@ export async function previewPlanilhaDeCustos(arquivo, { marketplace, signal } =
   }
   return dados; // { ok, dados_importacao, resumo, alertas, colunas… }
 }
+
+// Mensagens dos erros estruturados do comando atômico de importação
+// (server/services/bases/baseImportService.js) — as mesmas que a tela Bases
+// mostra (Portal/bases.js mensagemErroImportacao).
+function mensagemErroImportacao(dados, status) {
+  switch (dados?.code) {
+    case "BASE_SLUG_ALREADY_EXISTS":
+      return "Já existe uma base com este nome. Escolha outro nome ou atualize a base existente na tela Bases.";
+    case "ML_ACCOUNT_REQUIRED":
+      return "A conta Mercado Livre não foi identificada para vincular a base.";
+    case "MULTIPLE_MARKETPLACE_ACCOUNTS":
+      return "Este cliente tem mais de uma conta para este marketplace. Resolva a operação e tente de novo.";
+    case "BASE_MARKETPLACE_MISMATCH":
+      return "A conta em tela é de outro marketplace.";
+    default:
+      break;
+  }
+  if (status === 403) return dados?.erro || "Você não tem permissão para criar bases de custos.";
+  if (status === 413) return "A planilha passa do limite de tamanho do envio.";
+  return dados?.erro || `Não foi possível salvar a base (HTTP ${status}).`;
+}
+
+// POST /importar-base — o MESMO comando que "Importar nova base" da tela
+// Bases usa: cria a base, grava os custos e vincula à conta numa transação só
+// (se o vínculo falhar, nada fica gravado). Sempre CRIA: nome já usado é 409,
+// nunca sobrescreve uma base existente.
+// → { ok, mensagem, base: <slug>, total, vinculo: { base_id, cliente_conta_id, … } }
+export async function importarBaseDeCustos({ arquivo, nomeBase, marketplace, clienteId, clienteContaId }, { signal } = {}) {
+  const token = getToken();
+  if (!token) {
+    irParaLogin();
+    throw new ApiError("Sessão expirada.", { status: 401, codigo: "nao_autenticado" });
+  }
+  const form = new FormData();
+  form.append("arquivo", arquivo);
+  form.append("nomeBase", nomeBase);
+  form.append("marketplace", marketplace);
+  form.append("confirmar", "true");
+  if (clienteId != null && clienteId !== "") form.append("cliente_id", String(clienteId));
+  if (clienteContaId != null && clienteContaId !== "") form.append("cliente_conta_id", String(clienteContaId));
+
+  let resposta;
+  try {
+    resposta = await fetch(`${API_BASE}/importar-base`, { method: "POST", signal, headers: { Authorization: `Bearer ${token}` }, body: form });
+  } catch (err) {
+    if (err?.name === "AbortError") throw err;
+    throw new ApiError("Não foi possível falar com o servidor. Verifique a conexão.", { status: 0, codigo: "rede" });
+  }
+  if (resposta.status === 401) {
+    irParaLogin();
+    throw new ApiError("Sessão expirada. Faça login novamente.", { status: 401, codigo: "nao_autenticado" });
+  }
+  let dados = null;
+  try {
+    dados = await resposta.json();
+  } catch {
+    dados = null;
+  }
+  if (!resposta.ok || dados?.ok === false) {
+    throw new ApiError(mensagemErroImportacao(dados, resposta.status), { status: resposta.status, codigo: dados?.code || "erro_api" });
+  }
+  return dados;
+}
