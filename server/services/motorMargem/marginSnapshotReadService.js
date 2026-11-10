@@ -382,7 +382,7 @@ function comporItem(row, realizada, deps = {}, rebateInfo = null, rebateIndispon
   const custoMarketplaceAssumido = margemConfiavel.custoMarketplaceAusente({
     assumed: row.assumed || [],
     freteAplicavel: row.quality && typeof row.quality.freteAplicavel === "boolean" ? row.quality.freteAplicavel : null,
-  });
+  }) || margemConfiavel.freteLegadoNaoVerificado({ clienteContaId: row.clienteContaId, freteQualidade: quality.freteQualidade });
   const projected = {
     profit: custoMarketplaceAssumido ? null : atual.profit,
     margin: custoMarketplaceAssumido ? null : atual.margin,

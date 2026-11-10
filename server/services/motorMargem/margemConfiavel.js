@@ -18,6 +18,25 @@
 const { LOGISTICA_SEM_FRETE_PREVISTO } = require("./margemCotacaoEmP");
 const { FIELDS } = require("./core/marginEvidence");
 
+// P0 10/11/2026 — linhas ANTIGAS de uma conta liberada para a correção do frete
+// `proximity` (Alianza Jeans 2: conta 87 = seller 2433262404). Uma linha sem
+// `quality_json.freteQualidade` (objeto) foi gravada ANTES da avaliação e pode ter
+// frete subestimado: enquanto não for recalculada, a margem dela não é confiável.
+// Recalculada com frete válido, a linha ganha `freteQualidade` e volta sozinha.
+// Escopo EXCLUSIVO: contas listadas em FRETE_LEGADO_BLOQUEAR_CONTAS (ids; sem
+// curinga; ausente = nenhuma). Lido na carga do processo (mudar exige restart).
+function contasFreteLegadoBloqueado(env = process.env) {
+  return String(env.FRETE_LEGADO_BLOQUEAR_CONTAS || "").split(",")
+    .map((x) => x.trim()).filter((x) => /^[0-9]+$/.test(x)).map(Number);
+}
+const CONTAS_FRETE_LEGADO = contasFreteLegadoBloqueado();
+
+/** Linha de conta liberada, gravada antes da avaliação do frete (sem freteQualidade objeto). */
+function freteLegadoNaoVerificado({ clienteContaId, freteQualidade }, contas = CONTAS_FRETE_LEGADO) {
+  if (!contas.includes(Number(clienteContaId))) return false;
+  return !(freteQualidade && typeof freteQualidade === "object");
+}
+
 /** true/false pela logística do anúncio; null quando a logística é desconhecida. */
 function freteAplicavelDaLogistica(logisticType) {
   if (logisticType === undefined) return null;
@@ -90,7 +109,10 @@ function neutralizarMargemIncompleta(item) {
 // A mesma regra em SQL, sobre margin_projection_snapshots (assumed_json é
 // sempre um array JSONB; quality_json.freteAplicavel gravado pelo processor).
 const SQL_CUSTO_MARKETPLACE_AUSENTE =
-  "(assumed_json ? 'commission' OR (assumed_json ? 'freight' AND COALESCE(quality_json->>'freteAplicavel' = 'true', false)))";
+  "(assumed_json ? 'commission' OR (assumed_json ? 'freight' AND COALESCE(quality_json->>'freteAplicavel' = 'true', false))" +
+  (CONTAS_FRETE_LEGADO.length
+    ? ` OR (cliente_conta_id IN (${CONTAS_FRETE_LEGADO.join(",")}) AND COALESCE(jsonb_typeof(quality_json->'freteQualidade'), '') <> 'object')`
+    : "") + ")";
 
 const MOTIVO_MARGEM_INCOMPLETA = "comissao_ou_frete_ausente";
 const NOTA_MARGEM_INCOMPLETA =
@@ -98,6 +120,8 @@ const NOTA_MARGEM_INCOMPLETA =
 
 module.exports = {
   freteAplicavelDaLogistica,
+  freteLegadoNaoVerificado,
+  contasFreteLegadoBloqueado,
   custoMarketplaceAusente,
   custoMarketplaceAusenteNosValores,
   margemProjetadaIncompleta,
