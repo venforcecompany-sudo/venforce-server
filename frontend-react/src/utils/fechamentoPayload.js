@@ -68,12 +68,19 @@ export function montarPayloadFechamento({
   marketplace,
   ajustes = {},
   adsOrigem = null,
+  // "api" = pedidos sincronizados da API do ML; "planilha" = upload (padrão,
+  // para quem não informa — mantém o comportamento de antes do modo API).
+  fonteVendas = "planilha",
 }) {
   const summary = processamento?.summary || {};
   const detailedRows = Array.isArray(processamento?.detailedRows)
     ? processamento.detailedRows.slice(0, 50)
     : [];
   const unmatchedIds = Array.isArray(processamento?.unmatchedIds) ? processamento.unmatchedIds : [];
+  const origemApi = fonteVendas === "api";
+  // Qual sync da Central o fechamento usou: para auditoria ("de que dados saiu
+  // este número?"). Só existe no modo API.
+  const sync = origemApi ? processamento?.sync || {} : null;
 
   const geradoEm = new Date().toISOString();
 
@@ -96,7 +103,17 @@ export function montarPayloadFechamento({
     competencia: processamento?.competencia || null,
     metadados: {
       geradoEm,
-      origem: "financeiro-v3-nativo",
+      origem: origemApi ? "financeiro-v3-api" : "financeiro-v3-nativo",
+      fonteVendas: origemApi ? "api" : "planilha",
+      // Sync da Central usado (só modo API): id do import e a cobertura do mês.
+      sync: origemApi
+        ? {
+            importId: sync.importId ?? null,
+            publicadoEm: sync.publicadoEm ?? null,
+            coberturaDe: sync.coberturaDe ?? null,
+            coberturaAte: sync.coberturaAte ?? null,
+          }
+        : null,
       marketplace: marketplace || null,
       ads: parseMoedaBR(ajustes.ads),
       // De onde veio o ADS: { origem: "mercado_ads", consultadoEm } quando o

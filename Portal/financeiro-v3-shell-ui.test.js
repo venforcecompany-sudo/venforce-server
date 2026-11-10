@@ -276,6 +276,14 @@ let entregasRequestCount = 0;
 // Conv#3 — processamento nativo
 let fechamentoRequestCount = 0;
 let competenciaFake = { periodoSolicitado: "2026-08", periodoDetectado: "2026-08", divergente: false };
+// Modo API (padrão em MELI): GET .../fechamento-api/status e POST .../fechamento-api.
+// `statusSyncFake` é mutável: o cenário sem sincronização troca `disponivel`.
+let statusSyncFake = {
+  ok: true, marketplace: "meli", periodo: "2026-08",
+  sync: { disponivel: true, importId: 7, publicadoEm: "2026-09-02T03:12:00Z", coberturaDe: "2026-08-01", coberturaAte: "2026-08-31", completo: true, motivoIncompleto: null },
+  runEmAndamento: null,
+};
+let corposFechamentoApi = [];
 
 function resetEntregas() {
   entregasFalham = false;
@@ -391,6 +399,22 @@ function wireFetchInterception(cdp) {
       await json({ ok: true, acao: "criado" });
       return;
     }
+    // Modo API: status do sync da competência e o processamento pelos dados
+    // sincronizados (mesmo formato da planilha, + sync usado).
+    if (/\/financeiro\/[^/]+\/fechamento-api\/status/.test(url) && req.method === "GET") { await json(statusSyncFake); return; }
+    if (/\/financeiro\/[^/]+\/fechamento-api(?:[?#]|$)/.test(url) && req.method === "POST") {
+      fechamentoRequestCount += 1;
+      corposFechamentoApi.push(JSON.parse(req.postData || "{}"));
+      const base = processamentoFake || {
+        ok: true,
+        summary: { marketplace: "meli", grossRevenueTotal: 120000, paidRevenueTotal: 110000, contributionProfitTotal: 21000, averageContributionMargin: 0.19, finalResult: 15000, tacos: 0.04 },
+        competencia: competenciaFake,
+        detailedRows: [{ id: "MLB1", mc: 0.19 }],
+        unmatchedIds: [],
+      };
+      await json({ ...base, fonteVendas: "api", sync: statusSyncFake.sync });
+      return;
+    }
     if (url.includes("/financeiro/")) { await json(financeiroPayload); return; }
 
     await respond("Fetch.failRequest", { requestId: params.requestId, errorReason: "ConnectionRefused" });
@@ -503,10 +527,20 @@ async function run() {
       assert.ok(await clicarBotao(".vf-fin-cabecalho-b__acoes", rotulo), `botão "${rotulo}" ausente no cabeçalho`);
       await esperarDrawer(rotulo);
     }
-    async function abrirPreparo() {
+    // `origem`: rótulo do botão do seletor — "Planilha de vendas" (padrão
+    // deste helper, para os fluxos de upload) ou "API do Mercado Livre". Só MELI
+    // tem o seletor; Shopee segue sem ele.
+    async function abrirPreparo(origem = "Planilha de vendas") {
       const ok = await cdp.evaluate(`(function(){ var b = document.querySelector(${JSON.stringify(`${ETAPAS} button[aria-label$=": Base de custos"]`)}); if (!b) return false; b.click(); return true; })()`);
       assert.ok(ok, "a etapa Base de custos deveria abrir o preparo");
       await esperarDrawer("Preparar fechamento");
+      const escolhida = await cdp.evaluate(`(function(){
+        var g = document.querySelector(${JSON.stringify(`${DRAWER} [role="group"][aria-label="Origem das vendas"]`)});
+        if (!g) return null;
+        var b = Array.prototype.find.call(g.querySelectorAll('button'), function(x){ return x.textContent.trim() === ${JSON.stringify(origem)}; });
+        if (!b) return false; b.click(); return true; })()`);
+      if (escolhida === false) throw new Error(`origem "${origem}" ausente no preparo`);
+      if (escolhida) await sleep(120);
     }
     async function subirArquivo(seletor, arquivo) {
       const doc = await cdp.send("DOM.getDocument", { depth: -1 });
@@ -761,16 +795,33 @@ async function run() {
     await waitFor(cdp, ESPERA_MESA, "a mesa não renderizou após reload");
     await sleep(200);
 
-    await check("Conv#3 §10 — sem fechamento no período: 'Sem fechamento', mesa vazia honesta e o próximo passo é a planilha", async () => {
+    await check("Conv#3 §10 — sem fechamento no período: 'Sem fechamento', mesa vazia honesta e o próximo passo é processar as vendas sincronizadas", async () => {
       await waitFor(cdp, `(document.querySelector('[data-testid="status-competencia"]') || {}).innerText === 'Sem fechamento'`, "o status da competência deveria ser 'Sem fechamento'");
       const vazio = await textoDe(`${MESA} .vf-fin-mesa-vazio`);
       assert.ok(/Agosto\/2026 ainda não foi fechado/.test(vazio || ""), `estado vazio ausente: ${vazio}`);
-      assert.ok(!/R\$ 0,00/.test(await textoDe(MESA)), "sem fechamento não é R$ 0,00");
+      assert.ok(!/R\$ 0,00/.test(await textoDe(MESA)), "sem fechamento não é R\$ 0,00");
       const painel = await textoDe(ETAPAS);
-      assert.ok(/Enviar planilha de vendas/.test(painel), `o painel deveria levar à planilha de vendas: ${painel}`);
+      assert.ok(/Processar fechamento/.test(painel), `com as vendas sincronizadas, o painel deveria levar a processar: ${painel}`);
       assert.ok(!/Apresentação/.test(painel), "sem entrega desta conta, não existe atalho para a apresentação");
       const temFallback = await cdp.evaluate(`document.querySelector('.vf-page-header__description a[href*="financeiro.html"]') !== null`);
       assert.ok(temFallback, "o Financeiro legado deve continuar acessível como fallback");
+    });
+
+    await check("Modo API — MELI processa pelos dados sincronizados: sem upload de vendas nem de custos, o preparo mostra a API e o resultado nasce na mesa", async () => {
+      const antes = fechamentoRequestCount;
+      assert.ok(await clicarBotaoQueComeca(ETAPAS, "Processar fechamento"), "o próximo passo deveria ser processar pela API");
+      await waitFor(cdp, `document.querySelector('[data-testid="kpis-processamento"]') !== null`, "o resultado do processamento pela API não apareceu na mesa");
+      await semAnimacao();
+      assert.strictEqual(fechamentoRequestCount, antes + 1, "processar deveria chamar POST /fechamento-api uma vez");
+      const corpo = corposFechamentoApi.at(-1);
+      assert.strictEqual(corpo.periodo, "2026-08", `o período enviado deveria ser o da tela: ${JSON.stringify(corpo)}`);
+      assert.strictEqual(corpo.clienteContaId, 42, "a conta enviada deveria ser a da tela");
+      await abrirPreparo("API do Mercado Livre");
+      const apiAtiva = await cdp.evaluate(`(function(){ var g = document.querySelector(${JSON.stringify(`${DRAWER} [role="group"][aria-label="Origem das vendas"]`)}); var b = g && Array.prototype.find.call(g.querySelectorAll('button'), function(x){ return x.textContent.trim() === "API do Mercado Livre"; }); return !!b && b.getAttribute("aria-pressed") === "true"; })()`);
+      assert.ok(apiAtiva, "o preparo deveria mostrar a API do Mercado Livre como origem");
+      const temUpload = await cdp.evaluate(`!!document.querySelector(${JSON.stringify(`${DRAWER} input[type="file"]`)})`);
+      assert.ok(!temUpload, "no modo API não existe campo de upload");
+      await fecharDrawer();
     });
 
     const shot2 = path.join(SHOTS_DIR, "financeiro-v3-sem-fechamento.png");

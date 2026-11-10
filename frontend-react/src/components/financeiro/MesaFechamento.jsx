@@ -42,6 +42,7 @@ import { VFDrawer } from "../ui/VFDrawer/index.js";
 import { BaseCustosStatus } from "./fechamento/BaseCustosStatus.jsx";
 import { FechamentoFileCard } from "./fechamento/FechamentoFileCard.jsx";
 import { FechamentoAjustes } from "./fechamento/FechamentoAjustes.jsx";
+import { OrigemVendas, SincronizacaoVendas, BaseDoModoApi } from "./fechamento/OrigemVendas.jsx";
 import { PendenciasCusto } from "./pendencias/PendenciasCusto.jsx";
 import { EntregaPainel } from "./entrega/EntregaPainel.jsx";
 import { linkPublico } from "./EntregaAcoes.jsx";
@@ -167,6 +168,8 @@ export function MesaFechamento({
   const legado = `financeiro.html?cliente=${encodeURIComponent(clienteSlug || "")}`;
   const conta = contaNome || (clienteContaId ? `Operação #${clienteContaId}` : null);
   const canal = MK_LABEL[f.marketplace] || f.marketplace || null;
+  const modoApi = f.modoApi;
+  const sincronizadoApi = f.statusApi.sincronizado;
 
   if (!f.marketplaceSuportado) {
     return (
@@ -249,9 +252,13 @@ export function MesaFechamento({
 
   // ── Etapas ──────────────────────────────────────────────────────────
   const ajustesPreenchidos = Object.entries(f.ajustes).filter(([, v]) => String(v ?? "").trim() !== "");
+  // No modo API a "base" é a aplicada no sync e as "vendas" são o sync do mês:
+  // não há upload para a etapa Arquivos/Base esperar.
   const etapas = etapasDoFechamento({
-    base: { status: f.base.status, override: f.usarUploadDeCustos },
-    arquivos: f.arquivos,
+    base: modoApi
+      ? { status: f.base.status === "encontrada" ? "encontrada" : "ausente", override: false }
+      : { status: f.base.status, override: f.usarUploadDeCustos },
+    arquivos: modoApi ? { sales: sincronizadoApi ? { name: "API do Mercado Livre" } : null, costs: null } : f.arquivos,
     ajustes: ajustesPreenchidos.length,
     temResultado: !!p,
     salvoSemProcessar,
@@ -262,11 +269,27 @@ export function MesaFechamento({
   const nomesDosArquivos = [f.arquivos.sales, f.arquivos.costs, f.arquivos.ordersAll].filter(Boolean).map((a) => a.name);
   const competenciaConfere = p ? (f.divergente ? "competência diverge" : "competência confere") : null;
 
+  function detalheDaFonteApi() {
+    if (salvoSemProcessar) return "Usada no fechamento salvo";
+    const s = f.statusApi.status;
+    if (s === "carregando" || s === "inativo") return "Verificando o sync do mês…";
+    if (s === "erro") return "Não foi possível verificar o sync";
+    if (!sincronizadoApi) return "Mês não sincronizado · use Sincronizar agora";
+    const ate = f.statusApi.sync?.coberturaAte;
+    const dia = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(ate || ""));
+    return `API do Mercado Livre · dados até ${dia ? `${dia[3]}/${dia[2]}` : "—"}${f.statusApi.sync?.completo === false ? " · incompleto" : ""}`;
+  }
+
   function detalheDaBase() {
     if (salvoSemProcessar) return "Usada no fechamento salvo";
     if (p?.costsSource === "base" && p.costsBase) return `${p.costsBase.nome || p.costsBase.slug} · vinculada`;
     if (p?.costsSource === "upload") return "Planilha de custos enviada";
     const s = f.base.status;
+    if (modoApi) {
+      if (s === "encontrada") return `${f.base.base?.nome || "Base de custos"} · aplicada no sync`;
+      if (s === "ausente") return "Sem base vinculada";
+      return "Verificando a base vinculada…";
+    }
     if (s === "carregando" || s === "inativo") return "Verificando a base vinculada…";
     if (s === "ambigua") return "Mais de uma conta possível";
     if (s === "erro") return "Não foi possível verificar a base";
@@ -277,9 +300,11 @@ export function MesaFechamento({
 
   const detalhes = {
     base: detalheDaBase(),
-    arquivos: salvoSemProcessar && !nomesDosArquivos.length
-      ? "Usados no fechamento salvo"
-      : nomesDosArquivos.length ? nomesDosArquivos.join(" · ") : "Falta a planilha de vendas",
+    arquivos: modoApi
+      ? detalheDaFonteApi()
+      : salvoSemProcessar && !nomesDosArquivos.length
+        ? "Usados no fechamento salvo"
+        : nomesDosArquivos.length ? nomesDosArquivos.join(" · ") : "Falta a planilha de vendas",
     ajustes: ajustesPreenchidos.length
       ? ajustesPreenchidos.map(([k]) => ROTULO_AJUSTE[k] || k).join(", ")
       : salvoSemProcessar ? "Gravados no fechamento salvo" : "Opcional",
@@ -307,7 +332,9 @@ export function MesaFechamento({
   const abrirPreparar = () => setDrawer("preparar");
   const acoes = {
     base: { rotulo: "Ver", onClick: abrirPreparar },
-    arquivos: { rotulo: nomesDosArquivos.length || p ? "Trocar" : "Enviar", onClick: abrirPreparar },
+    arquivos: modoApi
+      ? { rotulo: "Ver", onClick: abrirPreparar }
+      : { rotulo: nomesDosArquivos.length || p ? "Trocar" : "Enviar", onClick: abrirPreparar },
     ajustes: { rotulo: "Editar", onClick: abrirPreparar },
     processar: p
       ? { rotulo: "Refazer", onClick: f.reprocessar, disabled: processando || salvando }
@@ -320,19 +347,40 @@ export function MesaFechamento({
     publicar: entrega ? { rotulo: "Apresentação", onClick: () => setDrawer("entrega") } : null,
   };
 
-  const etapasDoPainel = etapas.map((e) => ({ ...e, titulo: TITULO_ETAPA[e.id], detalhe: detalhes[e.id], acao: acoes[e.id] }));
+  const etapasDoPainel = etapas.map((e) => ({
+    ...e,
+    titulo: e.id === "arquivos" && modoApi ? "Vendas" : TITULO_ETAPA[e.id],
+    detalhe: detalhes[e.id],
+    acao: acoes[e.id],
+  }));
   const feitas = etapas.filter((e) => e.estado === "feita").length;
 
   // ── Rodapé do painel: a ação do próximo passo ───────────────────────
   const ocupadaEntrega = entregas?.acaoEmCurso != null;
   const erroEntrega = entrega && entregas?.erroDeAcao?.id === entrega.id ? entregas.erroDeAcao.mensagem : null;
-  const bloqueadoPorDivergencia = f.divergente && !f.confirmouDivergencia;
+  // Salvar espera a confirmação de duas coisas que o backend pode apontar: a
+  // competência dos dados não bater com o período, ou o sync do mês não cobrir
+  // o mês inteiro (modo API). Cada uma tem o seu aviso no topo da mesa.
+  const aguardaDivergencia = f.divergente && !f.confirmouDivergencia;
+  const aguardaSyncIncompleto = f.syncIncompleto && !f.confirmouSyncIncompleto;
+  const bloqueadoPorConfirmacao = aguardaDivergencia || aguardaSyncIncompleto;
+  const motivoBloqueio = aguardaDivergencia
+    ? "Confirme a divergência de competência para salvar."
+    : "Confirme a cobertura incompleta dos dados para salvar.";
 
   const cancelarConfirmacao = () => setConfirmando(null);
 
   let rodape;
   if (processando) {
-    rodape = <AcaoPrincipal titulo="Processando…" apoio="Lendo as planilhas do período" icone={ICONES.processar} disabled aria-busy="true" />;
+    rodape = (
+      <AcaoPrincipal
+        titulo="Processando…"
+        apoio={modoApi ? "Lendo os pedidos sincronizados" : "Lendo as planilhas do período"}
+        icone={ICONES.processar}
+        disabled
+        aria-busy="true"
+      />
+    );
   } else if (p && f.estado !== "salvo") {
     rodape = f.duplicidade ? (
       <p className="vf-fin-mesa-painel__nota">Decida no aviso ao lado se substitui o fechamento salvo.</p>
@@ -345,16 +393,16 @@ export function MesaFechamento({
           titulo={salvando ? "Salvando…" : "Salvar e publicar"}
           apoio="Gera o link do cliente"
           icone={ICONES.enviar}
-          disabled={salvando || bloqueadoPorDivergencia || ocupadaEntrega}
+          disabled={salvando || bloqueadoPorConfirmacao || ocupadaEntrega}
           aria-busy={salvando ? "true" : undefined}
           onClick={() => setConfirmando("salvar_publicar")}
         />
-        <VFButton disabled={salvando || bloqueadoPorDivergencia} onClick={() => f.salvar()}>
+        <VFButton disabled={salvando || bloqueadoPorConfirmacao} onClick={() => f.salvar()}>
           Salvar como rascunho
         </VFButton>
         <p className="vf-fin-mesa-painel__nota">
-          {bloqueadoPorDivergencia
-            ? "Confirme a divergência de competência para salvar."
+          {bloqueadoPorConfirmacao
+            ? motivoBloqueio
             : "Publicar gera um link público sem senha e sem validade."}
         </p>
       </>
@@ -396,7 +444,23 @@ export function MesaFechamento({
       </>
     );
   } else if (f.validacao.ok) {
-    rodape = <AcaoPrincipal titulo="Processar fechamento" apoio="Base e planilhas prontas" icone={ICONES.processar} onClick={f.processar} />;
+    rodape = (
+      <AcaoPrincipal
+        titulo="Processar fechamento"
+        apoio={modoApi ? "Vendas sincronizadas e pronta para processar" : "Base e planilhas prontas"}
+        icone={ICONES.processar}
+        onClick={f.processar}
+      />
+    );
+  } else if (modoApi) {
+    rodape = (
+      <>
+        <AcaoPrincipal titulo="Preparar vendas" apoio="Sincronize o mês pela API do Mercado Livre" icone={ICONES.arquivo} onClick={abrirPreparar} />
+        <p className="vf-fin-mesa-painel__nota">
+          Falta {qtd(f.validacao.itens.length, "item obrigatório", "itens obrigatórios")} para processar.
+        </p>
+      </>
+    );
   } else {
     rodape = (
       <>
@@ -411,7 +475,11 @@ export function MesaFechamento({
   // ── Coluna da esquerda ──────────────────────────────────────────────
   const comp = f.competencia || {};
   const origemDestaque = p
-    ? [rotuloModo(p.summary), p.costsSource === "base" && p.costsBase ? `custos: base ${p.costsBase.nome || p.costsBase.slug}` : p.costsSource === "upload" ? "custos: planilha enviada" : null].filter(Boolean).join(" · ") || null
+    ? [
+        modoApi ? "vendas: API do Mercado Livre" : null,
+        rotuloModo(p.summary),
+        p.costsSource === "base" && p.costsBase ? `custos: base ${p.costsBase.nome || p.costsBase.slug}` : p.costsSource === "upload" ? "custos: planilha enviada" : null,
+      ].filter(Boolean).join(" · ") || null
     : salvoSemProcessar
       ? `Fechamento salvo em ${formatarDataHora(entrega.created_at)}${entrega.publicado ? ` · publicado em ${formatarDataHora(entrega.published_at)}` : ""}. Processe de novo para atualizar.`
       : null;
@@ -467,15 +535,20 @@ export function MesaFechamento({
     );
   } else {
     const baseCobre = f.base.status === "encontrada" && !f.usarUploadDeCustos;
+    let texto;
+    if (modoApi) {
+      texto = sincronizadoApi
+        ? "As vendas do mês já estão sincronizadas da API do Mercado Livre: falta só processar."
+        : "Sincronize as vendas do mês pela API do Mercado Livre e depois processe.";
+    } else {
+      texto = baseCobre
+        ? "A base de custos já está vinculada, então só falta a planilha de vendas do mês."
+        : "Envie a planilha de vendas e a de custos do mês para processar.";
+    }
     conteudo = (
       <div className="vf-card vf-fin-mesa-vazio">
         <h3 className="vf-fin-mesa-vazio__titulo">{periodoLabel} ainda não foi fechado</h3>
-        <p className="vf-fin-mesa-vazio__texto">
-          Siga as etapas do painel.{" "}
-          {baseCobre
-            ? "A base de custos já está vinculada, então só falta a planilha de vendas do mês."
-            : "Envie a planilha de vendas e a de custos do mês para processar."}
-        </p>
+        <p className="vf-fin-mesa-vazio__texto">Siga as etapas do painel. {texto}</p>
       </div>
     );
   }
@@ -513,6 +586,23 @@ export function MesaFechamento({
                 <label className="vf-cluster vf-fin-mesa-checagem">
                   <input type="checkbox" checked={f.confirmouDivergencia} onChange={f.confirmarDivergencia} />
                   <span className="vf-field__hint">Entendo a divergência e quero salvar este fechamento em {periodoLabel} mesmo assim.</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {p && f.syncIncompleto && (
+            <div className="vf-banner is-warning" role="alert">
+              <div className="vf-banner__content">
+                <p className="vf-banner__title">Os dados sincronizados não cobrem o mês inteiro</p>
+                <p className="vf-banner__description">
+                  {p.sync?.coberturaAte ? `A cobertura vai até ${p.sync.coberturaAte.slice(8, 10)}/${p.sync.coberturaAte.slice(5, 7)}. ` : ""}
+                  {p.sync?.motivoIncompleto ? `${p.sync.motivoIncompleto} ` : ""}
+                  Os números valem só para o período coberto.
+                </p>
+                <label className="vf-cluster vf-fin-mesa-checagem">
+                  <input type="checkbox" checked={f.confirmouSyncIncompleto} onChange={f.confirmarSyncIncompleto} />
+                  <span className="vf-field__hint">Entendo que o fechamento está incompleto e quero salvar mesmo assim.</span>
                 </label>
               </div>
             </div>
@@ -613,16 +703,43 @@ export function MesaFechamento({
           }
         >
           <div className="vf-stack">
+            {f.marketplace === "meli" && (
+              <OrigemVendas
+                valor={f.fonteVendas}
+                onChange={f.definirFonte}
+                pendente={f.fonteTrocaPendente}
+                onConfirmar={f.confirmarTrocaFonte}
+                onCancelar={f.cancelarTrocaFonte}
+              />
+            )}
             <section className="vf-stack vf-stack--sm">
               <h4 className="vf-fin-mesa__rotulo-grupo">Base de custos</h4>
-              <BaseCustosStatus
-                base={f.base}
-                marketplace={f.marketplace}
-                clienteNome={clienteNome}
-                usarUploadDeCustos={f.usarUploadDeCustos}
-                onAlternarUpload={f.alternarUploadDeCustos}
-              />
+              {modoApi ? (
+                <BaseDoModoApi base={f.base} />
+              ) : (
+                <BaseCustosStatus
+                  base={f.base}
+                  marketplace={f.marketplace}
+                  clienteNome={clienteNome}
+                  usarUploadDeCustos={f.usarUploadDeCustos}
+                  onAlternarUpload={f.alternarUploadDeCustos}
+                />
+              )}
             </section>
+            {modoApi ? (
+              <section className="vf-stack vf-stack--sm">
+                <h4 className="vf-fin-mesa__rotulo-grupo">Vendas do período</h4>
+                <SincronizacaoVendas
+                  statusApi={f.statusApi}
+                  sincronizacao={f.sincronizacao}
+                  periodoLabel={periodoLabel}
+                  admin={ehAdmin()}
+                />
+                {avisoDoCampo(f.validacao, "sync") && (
+                  <p className="vf-field__hint" role="status">{avisoDoCampo(f.validacao, "sync")}</p>
+                )}
+              </section>
+            ) : (
             <section className="vf-stack vf-stack--sm">
               <h4 className="vf-fin-mesa__rotulo-grupo">Arquivos</h4>
               <FechamentoFileCard
@@ -657,6 +774,7 @@ export function MesaFechamento({
                 />
               )}
             </section>
+            )}
             <section className="vf-stack vf-stack--sm">
               <h4 className="vf-fin-mesa__rotulo-grupo">Ajustes do período</h4>
               <FechamentoAjustes

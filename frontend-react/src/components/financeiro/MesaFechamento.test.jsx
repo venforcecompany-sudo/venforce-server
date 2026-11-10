@@ -30,6 +30,39 @@ vi.mock("../../services/apiClient.js", async (orig) => ({
   ehAdmin: rede.ehAdmin,
 }));
 
+// Modo API: status do sync da competência, processamento pelos dados
+// sincronizados e o "Sincronizar agora" (sync-runs da Central).
+const viaApi = vi.hoisted(() => ({
+  status: vi.fn(),
+  processar: vi.fn(),
+  iniciarSync: vi.fn(),
+  runSync: vi.fn(),
+}));
+vi.mock("../../services/fechamentoViaApiApi.js", async (orig) => ({
+  ...(await orig()),
+  obterStatusFechamentoApi: viaApi.status,
+  processarFechamentoApi: viaApi.processar,
+  iniciarSyncCentral: viaApi.iniciarSync,
+  obterSyncRunCentral: viaApi.runSync,
+}));
+
+const STATUS_SINCRONIZADO = {
+  ok: true,
+  marketplace: "meli",
+  periodo: "2026-08",
+  sync: {
+    disponivel: true,
+    importId: 7,
+    publicadoEm: "2026-09-02T03:12:00Z",
+    coberturaDe: "2026-08-01",
+    coberturaAte: "2026-08-31",
+    completo: true,
+    motivoIncompleto: null,
+  },
+  runEmAndamento: null,
+};
+const STATUS_SEM_SYNC = { ...STATUS_SINCRONIZADO, sync: { disponivel: false, importId: null, publicadoEm: null, coberturaDe: null, coberturaAte: null, completo: false, motivoIncompleto: "Mês ainda não sincronizado." } };
+
 const SUMMARY = {
   marketplace: "meli",
   grossRevenueTotal: 100000,
@@ -84,12 +117,38 @@ beforeEach(() => {
   vi.clearAllMocks();
   rede.requisitar.mockResolvedValue(semVinculos);
   rede.ehAdmin.mockReturnValue(false);
+  viaApi.status.mockResolvedValue(STATUS_SINCRONIZADO);
+  viaApi.processar.mockResolvedValue(respostaOk({ sync: STATUS_SINCRONIZADO.sync }));
+  viaApi.iniciarSync.mockResolvedValue({ ok: true, reaproveitado: false, run: { id: 301, status: "queued" } });
+  viaApi.runSync.mockResolvedValue({ ok: true, run: { id: 301, status: "completed", completenessStatus: "complete" } });
 });
 
-// O drawer de preparo abre pela etapa "Base de custos" do painel.
-async function abrirPreparo(usuario) {
+// O drawer de preparo abre pela etapa "Base de custos" do painel. Em MELI a
+// origem das vendas (API | planilha) é escolhida no próprio drawer; `origem`
+// seleciona a que o teste quer (o padrão é a planilha: são os testes do fluxo de
+// planilha; os de API escolhem "api" explicitamente ou ficam com o padrão).
+async function abrirPreparo(usuario, { origem = "planilha" } = {}) {
   await usuario.click(screen.getByRole("button", { name: /: Base de custos$/ }));
-  return screen.getByRole("dialog", { name: "Preparar fechamento" });
+  const drawer = screen.getByRole("dialog", { name: "Preparar fechamento" });
+  const grupo = within(drawer).queryByRole("group", { name: "Origem das vendas" });
+  if (grupo && origem) {
+    const rotulo = origem === "api" ? "API do Mercado Livre" : "Planilha de vendas";
+    await usuario.click(within(grupo).getByRole("button", { name: rotulo }));
+  }
+  return drawer;
+}
+// Fecha o drawer depois de trocar a origem, como quem configura e sai.
+async function preferirPlanilha() {
+  const usuario = userEvent.setup();
+  const drawer = await abrirPreparo(usuario);
+  await usuario.click(within(drawer).getByRole("button", { name: "Cancelar" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Preparar fechamento" })).not.toBeInTheDocument());
+}
+// A mesa já na origem planilha (a origem padrão é a API).
+async function renderPlanilha(ui) {
+  const resultado = render(ui);
+  await preferirPlanilha();
+  return resultado;
 }
 async function subirVendas(usuario, nome = "vendas.xlsx") {
   const arquivo = new File(["a"], nome, { type: "application/vnd.ms-excel" });
@@ -155,7 +214,7 @@ describe("Mesa · base vinculada decide o upload de custos", () => {
   it("MELI com base vinculada: não pede planilha de custos e mostra a base", async () => {
     rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "meli", contaId: 42 }));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     expect(await within(painel()).findByText("Base Zenite · vinculada")).toBeInTheDocument();
     await abrirPreparo(usuario);
     expect(screen.getByText("Base vinculada")).toBeInTheDocument();
@@ -165,7 +224,7 @@ describe("Mesa · base vinculada decide o upload de custos", () => {
   it("MELI sem base vinculada: planilha de custos vira obrigatória", async () => {
     rede.requisitar.mockResolvedValue(semVinculos);
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     expect(await within(painel()).findByText(/Sem base vinculada/)).toBeInTheDocument();
     await abrirPreparo(usuario);
     expect(screen.getByText(/Nenhuma base vinculada para esta operação/)).toBeInTheDocument();
@@ -175,7 +234,7 @@ describe("Mesa · base vinculada decide o upload de custos", () => {
   it("Shopee com base vinculada: não pede custos; Order.all é recomendado", async () => {
     rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "shopee", contaId: 42 }));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} marketplace="shopee" />);
+    await renderPlanilha(<MesaFechamento {...props} marketplace="shopee" />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await abrirPreparo(usuario);
     expect(screen.queryByLabelText("Planilha de custos")).not.toBeInTheDocument();
@@ -184,13 +243,13 @@ describe("Mesa · base vinculada decide o upload de custos", () => {
 
   it("base de OUTRA conta não conta como base desta operação (pede upload)", async () => {
     rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "meli", contaId: 99 }));
-    render(<MesaFechamento {...props} clienteContaId={42} />);
+    await renderPlanilha(<MesaFechamento {...props} clienteContaId={42} />);
     expect(await within(painel()).findByText(/Sem base vinculada/)).toBeInTheDocument();
   });
 
   it("trocar de operação re-verifica a base", async () => {
     rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
-    const { rerender } = render(<MesaFechamento {...props} clienteContaId={42} />);
+    const { rerender } = await renderPlanilha(<MesaFechamento {...props} clienteContaId={42} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     rerender(<MesaFechamento {...props} clienteContaId={77} />);
     expect(await within(painel()).findByText(/Sem base vinculada/)).toBeInTheDocument();
@@ -199,7 +258,7 @@ describe("Mesa · base vinculada decide o upload de custos", () => {
   it("override: 'Usar outra planilha de custos' reabre o card de upload", async () => {
     rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "meli", contaId: 42 }));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await abrirPreparo(usuario);
     await usuario.click(screen.getByRole("button", { name: "Usar outra planilha de custos" }));
@@ -228,7 +287,7 @@ describe("Mesa · marketplace vem da operação", () => {
 describe("Mesa · antes de processar", () => {
   it("o mês ainda não foi fechado: sem destaque nem produtos; o painel aponta o próximo passo", async () => {
     rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     expect(screen.getByText("Agosto/2026 ainda não foi fechado")).toBeInTheDocument();
     expect(screen.getByText(/só falta a planilha de vendas do mês/)).toBeInTheDocument();
@@ -241,7 +300,7 @@ describe("Mesa · antes de processar", () => {
   it("o preparo diz o motivo do bloqueio e não deixa processar", async () => {
     rede.requisitar.mockResolvedValue(semVinculos);
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText(/Sem base vinculada/);
     expect(within(painel()).getByText(/Falta 2 itens obrigatórios para processar\./)).toBeInTheDocument();
     const drawer = await abrirPreparo(usuario);
@@ -251,7 +310,7 @@ describe("Mesa · antes de processar", () => {
 
   it("com base vinculada, só a planilha de vendas falta", async () => {
     rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     expect(within(painel()).getByText(/Falta 1 item obrigatório para processar\./)).toBeInTheDocument();
   });
@@ -259,7 +318,7 @@ describe("Mesa · antes de processar", () => {
   it("trocar e remover arquivo de vendas", async () => {
     rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     const drawer = await abrirPreparo(usuario);
     await subirVendas(usuario, "Performance_Agosto.xlsx");
@@ -276,7 +335,7 @@ describe("Mesa · processar", () => {
     rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "meli", contaId: 42 }));
     api.processar.mockResolvedValue(respostaOk({ costsSource: "base", costsBase: { id: 900, nome: "Base Zenite" } }));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await processarPeloPreparo(usuario);
 
@@ -295,7 +354,7 @@ describe("Mesa · processar", () => {
     rede.requisitar.mockResolvedValue(semVinculos);
     api.processar.mockResolvedValue(respostaOk());
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} marketplace="shopee" />);
+    await renderPlanilha(<MesaFechamento {...props} marketplace="shopee" />);
     await within(painel()).findByText(/Sem base vinculada/);
     await processarPeloPreparo(usuario, { custos: true });
     await waitFor(() => expect(api.processar).toHaveBeenCalled());
@@ -306,7 +365,7 @@ describe("Mesa · processar", () => {
     rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "meli", contaId: 42 }));
     api.processar.mockResolvedValue(respostaOk({ costsSource: "base", costsBase: { id: 900, slug: "base-zenite", nome: "Base Zenite" } }));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await processarPeloPreparo(usuario, { nome: "vendas-out.xlsx" });
     await screen.findByTestId("kpis-processamento");
@@ -322,7 +381,7 @@ describe("Mesa · processar", () => {
   it("reprocessamento que falha não deixa o resultado anterior na tela", async () => {
     api.processar.mockResolvedValueOnce(respostaOk()).mockRejectedValueOnce(new FechamentoApiError("Planilha inválida.", { status: 400 }));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText(/Sem base vinculada/);
     await processarPeloPreparo(usuario, { custos: true });
     await screen.findByTestId("kpis-processamento");
@@ -339,7 +398,7 @@ describe("Mesa · processar", () => {
     globalThis.URL.revokeObjectURL = vi.fn();
     const clique = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} marketplace="shopee" />);
+    await renderPlanilha(<MesaFechamento {...props} marketplace="shopee" />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await processarPeloPreparo(usuario);
     await usuario.click(await screen.findByRole("button", { name: "Baixar planilha" }));
@@ -361,7 +420,7 @@ describe("Mesa · caixa-preta (incidente FIN-xxx) + base vinculada", () => {
       })
     );
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} marketplace="shopee" />);
+    await renderPlanilha(<MesaFechamento {...props} marketplace="shopee" />);
     await within(painel()).findByText("Comprou_chegou_shopee1 · vinculada");
     await processarPeloPreparo(usuario);
 
@@ -376,7 +435,7 @@ describe("Mesa · caixa-preta (incidente FIN-xxx) + base vinculada", () => {
     rede.requisitar.mockResolvedValue(semVinculos);
     api.processar.mockResolvedValue(respostaOk({ incidente: { codigo: "FIN-42" } }));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText(/Sem base vinculada/);
     await processarPeloPreparo(usuario, { custos: true });
     const link = await screen.findByRole("link", { name: "Abrir diagnóstico" });
@@ -387,7 +446,7 @@ describe("Mesa · caixa-preta (incidente FIN-xxx) + base vinculada", () => {
     rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
     api.processar.mockResolvedValue(respostaOk());
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await processarPeloPreparo(usuario);
     await within(painel()).findByText(/competência confere/);
@@ -404,7 +463,7 @@ describe("Mesa · competência divergente", () => {
       })
     );
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await processarPeloPreparo(usuario);
 
@@ -445,7 +504,7 @@ describe("Mesa · ADS do Mercado Ads (modelo B)", () => {
   it("MELI: o campo já vem com o valor do Mercado Ads da conta e da competência", async () => {
     redeComAds(ADS_OK);
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await abrirPreparo(usuario);
     await waitFor(() => expect(campoAds()).toHaveValue("4.812,40"));
@@ -459,7 +518,7 @@ describe("Mesa · ADS do Mercado Ads (modelo B)", () => {
   it("editar vira Manual; 'Usar o da API' volta ao valor do Mercado Ads", async () => {
     redeComAds(ADS_OK);
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await abrirPreparo(usuario);
     await waitFor(() => expect(campoAds()).toHaveValue("4.812,40"));
     await usuario.clear(campoAds());
@@ -474,7 +533,7 @@ describe("Mesa · ADS do Mercado Ads (modelo B)", () => {
   it("↻ consulta ao vivo e troca o valor que veio da API", async () => {
     redeComAds((opcoes) => (opcoes.params?.atualizar ? { ...ADS_OK, fonte: "ao_vivo", investimentoAds: 4907.15 } : ADS_OK));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await abrirPreparo(usuario);
     await waitFor(() => expect(campoAds()).toHaveValue("4.812,40"));
     await usuario.click(screen.getByRole("button", { name: "Atualizar do Mercado Ads agora" }));
@@ -486,7 +545,7 @@ describe("Mesa · ADS do Mercado Ads (modelo B)", () => {
   it("↻ não passa por cima de um valor digitado", async () => {
     redeComAds((opcoes) => (opcoes.params?.atualizar ? { ...ADS_OK, investimentoAds: 4907.15 } : ADS_OK));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await abrirPreparo(usuario);
     await waitFor(() => expect(campoAds()).toHaveValue("4.812,40"));
     await usuario.clear(campoAds());
@@ -499,7 +558,7 @@ describe("Mesa · ADS do Mercado Ads (modelo B)", () => {
   it("sem permissão de Ads: campo vazio e manual, a legenda diz como resolver", async () => {
     redeComAds({ ok: true, disponivel: false, codigo: "NO_ADS_PERMISSION", motivo: "x" });
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await abrirPreparo(usuario);
     expect(await screen.findByText(/não tem acesso ao Mercado Ads/)).toBeInTheDocument();
     expect(campoAds()).toHaveValue("");
@@ -509,7 +568,7 @@ describe("Mesa · ADS do Mercado Ads (modelo B)", () => {
   it("Shopee: ADS segue manual e nem consulta o Mercado Ads", async () => {
     redeComAds(ADS_OK, vinculosCom({ marketplace: "shopee", contaId: 42 }));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} marketplace="shopee" />);
+    await renderPlanilha(<MesaFechamento {...props} marketplace="shopee" />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await abrirPreparo(usuario);
     expect(screen.getByLabelText(/^ADS/)).toHaveValue("");
@@ -523,7 +582,7 @@ describe("Mesa · ADS do Mercado Ads (modelo B)", () => {
     api.processar.mockResolvedValue(respostaOk());
     api.salvar.mockResolvedValue({ id: 5, publicado: false, token_publico: null });
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     const drawer = await abrirPreparo(usuario);
     await waitFor(() => expect(campoAds()).toHaveValue("4.812,40"));
@@ -546,7 +605,7 @@ describe("Mesa · salvar e publicar", () => {
     api.processar.mockResolvedValue(respostaOk());
     api.salvar.mockResolvedValue({ id: 5, publicado: false, token_publico: null });
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await processarPeloPreparo(usuario);
     await within(painel()).findByText(/competência confere/);
@@ -561,7 +620,7 @@ describe("Mesa · salvar e publicar", () => {
     api.processar.mockResolvedValue(respostaOk());
     api.salvar.mockResolvedValue({ id: 91, publicado: false, token_publico: null });
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await processarPeloPreparo(usuario);
     await usuario.click(await within(painel()).findByRole("button", { name: /Salvar e publicar/ }));
@@ -586,7 +645,7 @@ describe("Mesa · duplicidade 409", () => {
       .mockRejectedValueOnce(new FechamentoApiError("Já existe.", { status: 409, codigo: "ENTREGA_JA_EXISTE", entregaId: 78, publicado: true }))
       .mockResolvedValueOnce({ id: 78, token_publico: "tok-x", publicado: true });
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} marketplace="shopee" />);
+    await renderPlanilha(<MesaFechamento {...props} marketplace="shopee" />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await processarPeloPreparo(usuario);
     await usuario.click(await within(painel()).findByRole("button", { name: "Salvar como rascunho" }));
@@ -611,7 +670,7 @@ describe("Mesa · duplicidade 409", () => {
       .mockRejectedValueOnce(new FechamentoApiError("Já existe.", { status: 409, codigo: "ENTREGA_JA_EXISTE", entregaId: 78, publicado: false }))
       .mockResolvedValueOnce({ id: 78 });
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText(/Sem base vinculada/);
     await processarPeloPreparo(usuario, { custos: true });
     await usuario.click(await within(painel()).findByRole("button", { name: "Salvar como rascunho" }));
@@ -629,7 +688,7 @@ describe("Mesa · disposição (modelo B)", () => {
   it("topo: destaque, aviso de pendências e cascata à esquerda; painel à direita; produtos depois, em largura total", async () => {
     api.processar.mockResolvedValue(respostaOk({ detailedRows: rows, summary: { ...SUMMARY, calculatedCoveragePercent: 98, revenueWithoutCost: 10 }, unmatchedIds: ["MLB0"] }));
     const usuario = userEvent.setup();
-    const { container } = render(<MesaFechamento {...props} />);
+    const { container } = await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText(/Sem base vinculada/);
     await processarPeloPreparo(usuario, { custos: true });
     await screen.findByTestId("kpis-processamento");
@@ -648,7 +707,7 @@ describe("Mesa · disposição (modelo B)", () => {
   it("a lista de produtos é paginada (25 por vez), nunca as 60 linhas", async () => {
     api.processar.mockResolvedValue(respostaOk({ detailedRows: rows }));
     const usuario = userEvent.setup();
-    const { container } = render(<MesaFechamento {...props} />);
+    const { container } = await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText(/Sem base vinculada/);
     await processarPeloPreparo(usuario, { custos: true });
     await screen.findByTestId("kpis-processamento");
@@ -660,7 +719,7 @@ describe("Mesa · disposição (modelo B)", () => {
     rede.requisitar.mockImplementation(async (url) => (String(url).includes("base-vinculos") ? vinculosCom({ marketplace: "meli", contaId: 42 }) : { ok: true, padrao: { imposto_percentual: 8, taxa_fixa: 0 } }));
     api.processar.mockResolvedValue(respostaOk({ detailedRows: rows, unmatchedIds: ["MLB0"], costsSource: "base", costsBase: { id: 900, slug: "base-zenite", nome: "Base Zenite" } }));
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await processarPeloPreparo(usuario);
     await usuario.click(await screen.findByRole("button", { name: "Ver e corrigir" }));
@@ -672,7 +731,7 @@ describe("Mesa · disposição (modelo B)", () => {
   it("Detalhes abre o detalhamento completo (composição, cobertura) num drawer", async () => {
     api.processar.mockResolvedValue(respostaOk());
     const usuario = userEvent.setup();
-    render(<MesaFechamento {...props} />);
+    await renderPlanilha(<MesaFechamento {...props} />);
     await within(painel()).findByText(/Sem base vinculada/);
     await processarPeloPreparo(usuario, { custos: true });
     await usuario.click(await screen.findByRole("button", { name: "Detalhes" }));
@@ -696,5 +755,177 @@ describe("Mesa · fechamento salvo (sem processar)", () => {
     expect(screen.getByText(/Amostra de 1 linhas gravadas no fechamento salvo/)).toBeInTheDocument();
     expect(painel().querySelector('[data-etapa="publicar"]')).toHaveAttribute("data-estado", "atual");
     expect(within(painel()).getByRole("button", { name: /^Publicar/ })).toBeInTheDocument();
+  });
+});
+
+// ── Origem API do Mercado Livre (padrão em MELI) ──────────────────────────
+// Processa pelo drawer, esperando o botão habilitar (o status do sync chega
+// de forma assíncrona).
+async function processarPelaApi(usuario) {
+  const drawer = await abrirPreparo(usuario, { origem: null });
+  await waitFor(() => expect(within(drawer).getByRole("button", { name: "Processar fechamento" })).toBeEnabled());
+  await usuario.click(within(drawer).getByRole("button", { name: "Processar fechamento" }));
+  await waitFor(() => expect(viaApi.processar).toHaveBeenCalled());
+  return drawer;
+}
+
+describe("Mesa · origem API do Mercado Livre (padrão em MELI)", () => {
+  it("MELI abre pela API: o controle mostra a API ativa, sem upload de vendas nem de custos", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    expect(await within(painel()).findByText(/API do Mercado Livre · dados até 31\/08/)).toBeInTheDocument();
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    const grupo = within(drawer).getByRole("group", { name: "Origem das vendas" });
+    expect(within(grupo).getByRole("button", { name: "API do Mercado Livre" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(drawer).queryByLabelText(/Planilha de vendas/)).not.toBeInTheDocument();
+    expect(within(drawer).queryByLabelText("Planilha de custos")).not.toBeInTheDocument();
+    expect(viaApi.status).toHaveBeenCalledWith({ clienteSlug: "zenite", clienteContaId: 42, periodo: "2026-08" }, expect.any(Object));
+  });
+
+  it("Shopee não tem seletor de origem e não consulta o sync da API", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ marketplace: "shopee", contaId: 42 }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} marketplace="shopee" />);
+    await within(painel()).findByText("Base Zenite · vinculada");
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    expect(within(drawer).queryByRole("group", { name: "Origem das vendas" })).not.toBeInTheDocument();
+    expect(within(drawer).getByLabelText(/Planilha de vendas/)).toBeInTheDocument();
+    expect(viaApi.status).not.toHaveBeenCalled();
+  });
+
+  it("mês sem sync: a mesa diz que falta sincronizar, não deixa processar e não chama o processamento", async () => {
+    viaApi.status.mockResolvedValue(STATUS_SEM_SYNC);
+    rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    expect(await within(painel()).findByText(/Mês não sincronizado/)).toBeInTheDocument();
+    expect(within(painel()).getByRole("button", { name: /Preparar vendas/ })).toBeInTheDocument();
+    expect(screen.getByText("Agosto/2026 ainda não foi fechado")).toBeInTheDocument();
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    expect(within(drawer).getByText("Mês ainda não sincronizado")).toBeInTheDocument();
+    expect(within(drawer).getByText("Este mês ainda não foi sincronizado. Use “Sincronizar agora”.", { selector: ".vf-fin-mesa-drawer__motivo" })).toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: "Processar fechamento" })).toBeDisabled();
+    expect(viaApi.processar).not.toHaveBeenCalled();
+  });
+
+  it("não admin não vê 'Sincronizar agora': a Central é só do admin", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    expect(await within(drawer).findByText(/Só um administrador sincroniza/)).toBeInTheDocument();
+    expect(within(drawer).queryByRole("button", { name: "Sincronizar agora" })).not.toBeInTheDocument();
+  });
+
+  it("admin sincroniza o mês: dispara o sync da competência, acompanha até o fim e relê o status", async () => {
+    rede.ehAdmin.mockReturnValue(true);
+    rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
+    viaApi.status.mockResolvedValueOnce(STATUS_SEM_SYNC).mockResolvedValueOnce(STATUS_SINCRONIZADO);
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    const drawer = await abrirPreparo(usuario, { origem: null });
+    await usuario.click(await within(drawer).findByRole("button", { name: "Sincronizar agora" }));
+    await waitFor(() => expect(viaApi.status).toHaveBeenCalledTimes(2));
+    expect(viaApi.iniciarSync).toHaveBeenCalledWith({ clienteSlug: "zenite", clienteContaId: 42, periodo: "2026-08" });
+    expect(viaApi.runSync).toHaveBeenCalledWith({ clienteSlug: "zenite", runId: 301 }, expect.any(Object));
+    expect(await within(drawer).findByText("Vendas sincronizadas da API do Mercado Livre")).toBeInTheDocument();
+    expect(within(drawer).getByText("Sincronização concluída.")).toBeInTheDocument();
+  });
+
+  it("sync incompleto: processa, mas não salva sem confirmar a cobertura parcial", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
+    viaApi.processar.mockResolvedValue(
+      respostaOk({
+        sync: { ...STATUS_SINCRONIZADO.sync, completo: false, coberturaAte: "2026-08-20", motivoIncompleto: "Pedidos depois de 20/08 ainda não sincronizados." },
+      })
+    );
+    api.salvar.mockResolvedValue({ id: 5, publicado: false, token_publico: null });
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    await processarPelaApi(usuario);
+    expect(await within(painel()).findByText(/competência confere/)).toBeInTheDocument();
+    expect(await screen.findByText(/Os dados sincronizados não cobrem o mês inteiro/)).toBeInTheDocument();
+    const rascunho = within(painel()).getByRole("button", { name: "Salvar como rascunho" });
+    expect(rascunho).toBeDisabled();
+    expect(within(painel()).getByText("Confirme a cobertura incompleta dos dados para salvar.")).toBeInTheDocument();
+    await usuario.click(screen.getByRole("checkbox", { name: /Entendo que o fechamento está incompleto/ }));
+    expect(rascunho).toBeEnabled();
+  });
+
+  it("processar pela API manda o período, a conta e os ajustes; a mesa mostra o resultado como na planilha", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    await processarPelaApi(usuario);
+    expect(viaApi.processar).toHaveBeenCalledWith(
+      expect.objectContaining({ clienteSlug: "zenite", clienteContaId: 42, periodo: "2026-08" }),
+      expect.any(Object)
+    );
+    expect(api.processar).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("kpis-processamento")).toHaveTextContent("R$ 12.000,00");
+  });
+
+  it("salvar grava a origem API no metadado: fonteVendas, origem e o sync usado", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
+    api.salvar.mockResolvedValue({ id: 5, publicado: false, token_publico: null });
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    await processarPelaApi(usuario);
+    await usuario.click(await within(painel()).findByRole("button", { name: "Salvar como rascunho" }));
+    await waitFor(() => expect(api.salvar).toHaveBeenCalledTimes(1));
+    const meta = api.salvar.mock.calls[0][0].payload_json.metadados;
+    expect(meta.fonteVendas).toBe("api");
+    expect(meta.origem).toBe("financeiro-v3-api");
+    expect(meta.sync).toEqual({ importId: 7, publicadoEm: "2026-09-02T03:12:00Z", coberturaDe: "2026-08-01", coberturaAte: "2026-08-31" });
+  });
+
+  it("CENTRAL_SEM_SYNC vira orientação para sincronizar, não erro técnico", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
+    viaApi.processar.mockRejectedValue(new FechamentoApiError("Sem sync.", { status: 409, codigo: "CENTRAL_SEM_SYNC" }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    await processarPelaApi(usuario);
+    expect(await screen.findByText(/Este mês ainda não foi sincronizado com a API do Mercado Livre/)).toBeInTheDocument();
+  });
+
+  it("trocar a origem com arquivo escolhido pede confirmação e só troca depois", async () => {
+    rede.requisitar.mockResolvedValue(vinculosCom({ contaId: 42 }));
+    const usuario = userEvent.setup();
+    render(<MesaFechamento {...props} />);
+    const drawer = await abrirPreparo(usuario, { origem: "planilha" });
+    await subirVendas(usuario, "vendas.xlsx");
+    await usuario.click(within(within(drawer).getByRole("group", { name: "Origem das vendas" })).getByRole("button", { name: "API do Mercado Livre" }));
+    const alerta = within(drawer).getByRole("alertdialog", { name: "Confirmar troca de origem" });
+    expect(alerta).toHaveTextContent("descarta o arquivo escolhido");
+    await usuario.click(within(alerta).getByRole("button", { name: "Manter Planilha de vendas" }));
+    expect(within(drawer).getByText("vendas.xlsx")).toBeInTheDocument();
+    await usuario.click(within(within(drawer).getByRole("group", { name: "Origem das vendas" })).getByRole("button", { name: "API do Mercado Livre" }));
+    await usuario.click(within(within(drawer).getByRole("alertdialog", { name: "Confirmar troca de origem" })).getByRole("button", { name: "Trocar e limpar" }));
+    expect(within(within(drawer).getByRole("group", { name: "Origem das vendas" })).getByRole("button", { name: "API do Mercado Livre" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(drawer).queryByText("vendas.xlsx")).not.toBeInTheDocument();
+  });
+});
+
+describe("fechamentoPayload · origem das vendas", () => {
+  it("sem origem informada, grava a planilha de sempre e não inventa sync", () => {
+    const p = montarPayloadFechamento({ processamento: respostaOk(), clienteSlug: "zenite", periodo: "2026-08", marketplace: "meli", ajustes: {} });
+    expect(p.metadados.origem).toBe("financeiro-v3-nativo");
+    expect(p.metadados.fonteVendas).toBe("planilha");
+    expect(p.metadados.sync).toBeNull();
+  });
+
+  it("origem API: origem financeiro-v3-api e o sync do mês que o processamento usou", () => {
+    const p = montarPayloadFechamento({
+      processamento: respostaOk({ sync: STATUS_SINCRONIZADO.sync }),
+      clienteSlug: "zenite",
+      periodo: "2026-08",
+      marketplace: "meli",
+      ajustes: {},
+      fonteVendas: "api",
+    });
+    expect(p.metadados.origem).toBe("financeiro-v3-api");
+    expect(p.metadados.fonteVendas).toBe("api");
+    expect(p.metadados.sync).toEqual({ importId: 7, publicadoEm: "2026-09-02T03:12:00Z", coberturaDe: "2026-08-01", coberturaAte: "2026-08-31" });
   });
 });

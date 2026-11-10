@@ -2,29 +2,39 @@
 //
 // A máquina de estados de GERAR + SALVAR um fechamento dentro do Financeiro
 // V3. O que o legado (Portal/financeiro.js) fazia em ~600 linhas de DOM,
-// aqui em estado React: origem dos custos (base vinculada × upload), envio
-// multipart, competência declarada pelo backend, divergência de período,
-// salvamento da entrega e o 409 de duplicidade.
+// aqui em estado React: origem das vendas (API do ML × planilha), origem dos
+// custos (base vinculada × upload), envio, competência declarada pelo
+// backend, divergência de período, salvamento da entrega e o 409 de
+// duplicidade.
 //
 // REGRAS QUE ESTE HOOK EXISTE PARA GARANTIR:
 //  · Cliente/Conta/Período/Marketplace NÃO são escolhidos aqui — vêm do VF
 //    Context (o marketplace é o da OPERAÇÃO, 1 conta = 1 marketplace). O que
 //    for para o backend é exatamente o que a tela mostra no cabeçalho.
-//  · A origem dos custos segue a base vinculada: se a operação já tem base,
-//    o fechamento usa ela e o upload de custos NÃO é pedido; sem base, o
-//    upload passa a ser obrigatório. "Usar outra planilha de custos" é um
-//    override explícito, nunca o caminho principal.
-//  · Competência divergente NUNCA é salva em silêncio.
+//  · Origem das vendas (só MELI): "api" é o padrão — o fechamento sai dos
+//    pedidos que a Central já sincronizou da API do ML. "planilha" é o fluxo
+//    de sempre. Os dois geram o MESMO entregável (mesmo summary, mesma entrega).
+//  · No modo API os custos vêm da base aplicada no sync, então não há upload
+//    de custos nem de vendas; o que é obrigatório é o sync do mês existir.
+//  · No modo planilha a origem dos custos segue a base vinculada: se a
+//    operação já tem base, o upload de custos NÃO é pedido; sem base, o upload
+//    passa a ser obrigatório. "Usar outra planilha de custos" é um override
+//    explícito, nunca o caminho principal.
+//  · Competência divergente NUNCA é salva em silêncio. Sync incompleto também
+//    não: exige confirmação explícita (cobertura parcial do mês).
 //  · 409 ENTREGA_JA_EXISTE vira a escolha "cancelar × substituir", e
 //    substituir preserva o token público.
 //  · Uma ação por vez; abort em troca de contexto / unmount.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { processarFechamento, salvarEntregaFechamento, FechamentoApiError } from "../services/financeiroFechamentoApi.js";
+import { processarFechamentoApi } from "../services/fechamentoViaApiApi.js";
 import { montarPayloadFechamento } from "../utils/fechamentoPayload.js";
 import { buscarEntrega } from "../services/entregasApi.js";
 import { useBaseVinculada } from "./useBaseVinculada.js";
 import { useAdsMercadoAds, origemDoAds } from "./useAdsMercadoAds.js";
+import { useStatusFechamentoApi } from "./useStatusFechamentoApi.js";
+import { useSyncCentral } from "./useSyncCentral.js";
 
 const AJUSTES_INICIAIS = { ads: "", venforce: "", affiliates: "", fullCost: "", additionalCosts: "" };
 const ARQUIVOS_INICIAIS = { sales: null, costs: null, ordersAll: null };
@@ -36,6 +46,14 @@ export const MARKETPLACES_NATIVOS = ["meli", "shopee"];
 
 function normalizarErro(err) {
   if (err instanceof FechamentoApiError) {
+    if (err.codigo === "CENTRAL_SEM_SYNC") {
+      // Não é falha técnica: o caminho é sincronizar o mês e processar de novo.
+      return {
+        mensagem: "Este mês ainda não foi sincronizado com a API do Mercado Livre. Use “Sincronizar agora” e processe de novo.",
+        codigo: err.codigo,
+        status: err.status,
+      };
+    }
     return { mensagem: err.message, codigo: err.codigo, status: err.status };
   }
   return { mensagem: err?.message || "Erro inesperado.", codigo: "desconhecido", status: 0 };
@@ -50,10 +68,16 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
   const [erro, setErro] = useState(null);
   const [duplicidade, setDuplicidade] = useState(null); // { entregaId, publicado }
   const [confirmouDivergencia, setConfirmouDivergencia] = useState(false);
+  const [confirmouSyncIncompleto, setConfirmouSyncIncompleto] = useState(false);
   const [entregaSalva, setEntregaSalva] = useState(null);
+  // "api" é o padrão; só vale para MELI (ver fonteVendas abaixo).
+  const [fonte, setFonte] = useState("api");
+  const [fonteTrocaPendente, setFonteTrocaPendente] = useState(null);
 
   const mkt = String(marketplace || "").trim().toLowerCase();
   const marketplaceSuportado = MARKETPLACES_NATIVOS.includes(mkt);
+  const fonteVendas = mkt === "meli" && fonte === "api" ? "api" : "planilha";
+  const modoApi = fonteVendas === "api";
 
   const base = useBaseVinculada({
     clienteSlug,
@@ -63,6 +87,18 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     // qual é a base vinculada desta conta para oferecer a correção rápida.
     // Os deps do hook não mudam com o `estado`, então não há nova leitura.
     habilitado: marketplaceSuportado,
+  });
+
+  // Modo API: o status do sync da competência (sincronizado? completo?) e o
+  // "Sincronizar agora" (admin). Só leem/disparam quando o modo API está ativo.
+  const statusApi = useStatusFechamentoApi({ clienteSlug, clienteContaId, periodo, habilitado: modoApi });
+  const sincronizacao = useSyncCentral({
+    clienteSlug,
+    clienteContaId,
+    periodo,
+    runEmAndamento: statusApi.runEmAndamento,
+    onConcluido: statusApi.recarregar,
+    habilitado: modoApi,
   });
 
   // Campo ADS (modelo B): o investimento do Mercado Ads entra sozinho no
@@ -106,13 +142,18 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     setErro(null);
     setDuplicidade(null);
     setConfirmouDivergencia(false);
+    setConfirmouSyncIncompleto(false);
     setEntregaSalva(null);
     setUsarUploadDeCustos(false);
     setArquivos(ARQUIVOS_INICIAIS);
+    setFonteTrocaPendente(null);
   }, [clienteSlug, clienteContaId, periodo, mkt]);
 
   const competencia = processamento?.competencia || null;
   const divergente = competencia?.divergente === true;
+  // Modo API: o backend diz se o sync cobre o mês inteiro. Incompleto não
+  // impede gerar, mas exige confirmação antes de salvar.
+  const syncIncompleto = modoApi && processamento?.sync?.completo === false;
 
   const setArquivo = useCallback((campo, file) => {
     setArquivos((a) => ({ ...a, [campo]: file || null }));
@@ -127,11 +168,12 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
   const baseAindaResolvendo = base.status === "inativo" || base.status === "carregando";
   // Enquanto a base não resolve (ou resolve com erro/ambiguidade) o
   // processamento fica bloqueado e o card de custos NÃO aparece — não faz
-  // sentido pedir upload sem saber se a base cobre.
+  // sentido pedir upload sem saber se a base cobre. No modo API não há
+  // upload de custos: a base já foi aplicada no sync.
   const custosBloqueiaVerificacao =
-    baseAindaResolvendo || base.status === "erro" || base.status === "ambigua";
+    !modoApi && (baseAindaResolvendo || base.status === "erro" || base.status === "ambigua");
   // Upload de custos obrigatório: sem base (ou com o override ligado).
-  const custosObrigatorios = !custosBloqueiaVerificacao && !baseCobreCustos;
+  const custosObrigatorios = !modoApi && !custosBloqueiaVerificacao && !baseCobreCustos;
 
   const alternarUploadDeCustos = useCallback((ligar) => {
     setUsarUploadDeCustos((atual) => {
@@ -151,26 +193,43 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     if (!clienteContaId) {
       itens.push({ campo: "contexto", mensagem: "Operação (conta) não resolvida no contexto." });
     }
-    if (!arquivos.sales) {
-      itens.push({ campo: "sales", mensagem: "Planilha de vendas necessária." });
-    }
-    if (custosBloqueiaVerificacao) {
-      itens.push({
-        campo: "costs",
-        mensagem:
-          baseAindaResolvendo
-            ? "Aguardando a verificação da base de custos."
-            : base.status === "ambigua"
-              ? "Há mais de uma conta possível — resolva a operação para continuar."
-              : "Não foi possível verificar a base de custos.",
-      });
-    } else if (custosObrigatorios && !arquivos.costs) {
-      itens.push({ campo: "costs", mensagem: "Planilha de custos necessária." });
+    if (modoApi) {
+      if (statusApi.status === "carregando" || statusApi.status === "inativo") {
+        itens.push({ campo: "sync", mensagem: "Verificando os dados sincronizados da Central." });
+      } else if (statusApi.status === "erro") {
+        itens.push({ campo: "sync", mensagem: "Não foi possível verificar os dados sincronizados." });
+      } else if (!statusApi.sincronizado) {
+        itens.push({ campo: "sync", mensagem: "Este mês ainda não foi sincronizado. Use “Sincronizar agora”." });
+      }
+      if (sincronizacao.emAndamento) {
+        itens.push({ campo: "sync", mensagem: "Aguarde a sincronização terminar para processar." });
+      }
+    } else {
+      if (!arquivos.sales) {
+        itens.push({ campo: "sales", mensagem: "Planilha de vendas necessária." });
+      }
+      if (custosBloqueiaVerificacao) {
+        itens.push({
+          campo: "costs",
+          mensagem:
+            baseAindaResolvendo
+              ? "Aguardando a verificação da base de custos."
+              : base.status === "ambigua"
+                ? "Há mais de uma conta possível — resolva a operação para continuar."
+                : "Não foi possível verificar a base de custos.",
+        });
+      } else if (custosObrigatorios && !arquivos.costs) {
+        itens.push({ campo: "costs", mensagem: "Planilha de custos necessária." });
+      }
     }
     return { ok: itens.length === 0, itens, problemas: itens.map((i) => i.mensagem) };
   }, [
     marketplaceSuportado,
     clienteContaId,
+    modoApi,
+    statusApi.status,
+    statusApi.sincronizado,
+    sincronizacao.emAndamento,
     arquivos.sales,
     arquivos.costs,
     custosObrigatorios,
@@ -192,30 +251,38 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     setErro(null);
     setDuplicidade(null);
     setConfirmouDivergencia(false);
+    setConfirmouSyncIncompleto(false);
     setEntregaSalva(null);
 
-    const form = new FormData();
-    form.append("sales", arquivos.sales);
-    form.append("marketplace", mkt);
-    if (clienteSlug) form.append("cliente_slug", clienteSlug);
-    if (clienteContaId) form.append("clienteContaId", String(clienteContaId));
-    if (periodo) form.append("periodo", periodo);
-    // Custos: só sobe arquivo quando NÃO é a base vinculada que cobre. Sem
-    // arquivo e com base disponível, o backend resolve os custos da base.
-    if (arquivos.costs) form.append("costs", arquivos.costs);
-    if (mkt === "shopee" && arquivos.ordersAll) form.append("ordersAll", arquivos.ordersAll);
-    form.append("ads", String(ajustes.ads || "0"));
-    form.append("venforce", String(ajustes.venforce || "0"));
-    form.append("affiliates", String(ajustes.affiliates || "0"));
-    if (mkt === "meli") {
-      form.append("fullCost", String(ajustes.fullCost || "0"));
-      form.append("additionalCosts", String(ajustes.additionalCosts || "0"));
-    }
-
     try {
-      const resposta = await processarFechamento(form, { signal: controlador.signal });
+      let resposta;
+      if (modoApi) {
+        resposta = await processarFechamentoApi(
+          { clienteSlug, clienteContaId, periodo, ajustes },
+          { signal: controlador.signal }
+        );
+      } else {
+        const form = new FormData();
+        form.append("sales", arquivos.sales);
+        form.append("marketplace", mkt);
+        if (clienteSlug) form.append("cliente_slug", clienteSlug);
+        if (clienteContaId) form.append("clienteContaId", String(clienteContaId));
+        if (periodo) form.append("periodo", periodo);
+        // Custos: só sobe arquivo quando NÃO é a base vinculada que cobre. Sem
+        // arquivo e com base disponível, o backend resolve os custos da base.
+        if (arquivos.costs) form.append("costs", arquivos.costs);
+        if (mkt === "shopee" && arquivos.ordersAll) form.append("ordersAll", arquivos.ordersAll);
+        form.append("ads", String(ajustes.ads || "0"));
+        form.append("venforce", String(ajustes.venforce || "0"));
+        form.append("affiliates", String(ajustes.affiliates || "0"));
+        if (mkt === "meli") {
+          form.append("fullCost", String(ajustes.fullCost || "0"));
+          form.append("additionalCosts", String(ajustes.additionalCosts || "0"));
+        }
+        resposta = await processarFechamento(form, { signal: controlador.signal });
+      }
       if (controlador.signal.aborted) return;
-      contextoDoProcessamentoRef.current = { clienteSlug, clienteContaId, periodo, marketplace: mkt };
+      contextoDoProcessamentoRef.current = { clienteSlug, clienteContaId, periodo, marketplace: mkt, fonteVendas };
       setProcessamento(resposta);
       setEstado("preview");
     } catch (err) {
@@ -226,7 +293,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
       setErro(normalizarErro(err));
       setEstado("form");
     }
-  }, [validacao, arquivos, mkt, clienteSlug, clienteContaId, periodo, ajustes]);
+  }, [validacao, arquivos, mkt, clienteSlug, clienteContaId, periodo, ajustes, modoApi, fonteVendas]);
 
   // Voltar aos arquivos/ajustes SEM perder o que foi escolhido (trocar a
   // planilha de custos, corrigir um ajuste). O resultado processado deixa de
@@ -237,6 +304,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     setErro(null);
     setDuplicidade(null);
     setConfirmouDivergencia(false);
+    setConfirmouSyncIncompleto(false);
     setEntregaSalva(null);
     setEstado("form");
   }, []);
@@ -248,8 +316,19 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
         setErro({ mensagem: "Confirme a divergência de competência antes de salvar.", codigo: "divergencia", status: 0 });
         return;
       }
+      if (syncIncompleto && !confirmouSyncIncompleto && !substituir) {
+        setErro({ mensagem: "Confirme que o fechamento usa dados sincronizados incompletos antes de salvar.", codigo: "sync_incompleto", status: 0 });
+        return;
+      }
       const ctx = contextoDoProcessamentoRef.current;
-      if (!ctx || ctx.clienteSlug !== clienteSlug || ctx.clienteContaId !== clienteContaId || ctx.periodo !== periodo || ctx.marketplace !== mkt) {
+      if (
+        !ctx ||
+        ctx.clienteSlug !== clienteSlug ||
+        ctx.clienteContaId !== clienteContaId ||
+        ctx.periodo !== periodo ||
+        ctx.marketplace !== mkt ||
+        ctx.fonteVendas !== fonteVendas
+      ) {
         setErro({ mensagem: "O contexto mudou desde o processamento. Processe novamente.", codigo: "contexto", status: 0 });
         setEstado("form");
         return;
@@ -268,6 +347,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
         periodo,
         marketplace: mkt,
         ajustes,
+        fonteVendas,
         adsOrigem: adsOrigem === "mercado_ads"
           ? { origem: "mercado_ads", consultadoEm: ads.dados?.consultadoEm || null }
           : adsOrigem === "manual" ? { origem: "manual" } : null,
@@ -319,7 +399,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
         setEstado("preview");
       }
     },
-    [processamento, divergente, confirmouDivergencia, clienteSlug, clienteNome, clienteContaId, periodo, mkt, ajustes, onSalvo, duplicidade, adsOrigem, ads.dados]
+    [processamento, divergente, confirmouDivergencia, syncIncompleto, confirmouSyncIncompleto, clienteSlug, clienteNome, clienteContaId, periodo, mkt, fonteVendas, ajustes, onSalvo, duplicidade, adsOrigem, ads.dados]
   );
 
   const substituir = useCallback(() => salvar({ substituir: true }), [salvar]);
@@ -342,6 +422,39 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     [temArquivo, temAjuste, processamento, estado, temResultado]
   );
 
+  // Trocar a origem descarta arquivo escolhido e resultado (o que cada origem
+  // gera não se aproveita da outra). Os ajustes digitados ficam.
+  const trocaDescartaTrabalho = temArquivo || estado === "processando" || trabalho.processadoNaoSalvo;
+  const aplicarFonte = useCallback((nova) => {
+    abortRef.current?.abort();
+    setFonte(nova);
+    setFonteTrocaPendente(null);
+    setEstado("form");
+    setProcessamento(null);
+    setErro(null);
+    setDuplicidade(null);
+    setConfirmouDivergencia(false);
+    setConfirmouSyncIncompleto(false);
+    setEntregaSalva(null);
+    setArquivos(ARQUIVOS_INICIAIS);
+    setUsarUploadDeCustos(false);
+  }, []);
+  const definirFonte = useCallback(
+    (nova) => {
+      if (mkt !== "meli" || nova === fonte) return;
+      if (trocaDescartaTrabalho) {
+        setFonteTrocaPendente(nova);
+        return;
+      }
+      aplicarFonte(nova);
+    },
+    [mkt, fonte, trocaDescartaTrabalho, aplicarFonte]
+  );
+  const confirmarTrocaFonte = useCallback(() => {
+    if (fonteTrocaPendente) aplicarFonte(fonteTrocaPendente);
+  }, [fonteTrocaPendente, aplicarFonte]);
+  const cancelarTrocaFonte = useCallback(() => setFonteTrocaPendente(null), []);
+
   const resetar = useCallback(() => {
     abortRef.current?.abort();
     setEstado("form");
@@ -349,6 +462,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     setErro(null);
     setDuplicidade(null);
     setConfirmouDivergencia(false);
+    setConfirmouSyncIncompleto(false);
     setEntregaSalva(null);
     setArquivos(ARQUIVOS_INICIAIS);
     setUsarUploadDeCustos(false);
@@ -359,6 +473,14 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     trabalho,
     marketplace: mkt,
     marketplaceSuportado,
+    fonteVendas,
+    modoApi,
+    definirFonte,
+    fonteTrocaPendente,
+    confirmarTrocaFonte,
+    cancelarTrocaFonte,
+    statusApi,
+    sincronizacao,
     arquivos, setArquivo,
     ajustes, setAjuste,
     ads, adsOrigem, usarAdsDaApi,
@@ -373,6 +495,9 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteContaId, 
     divergente,
     confirmouDivergencia,
     confirmarDivergencia: () => setConfirmouDivergencia(true),
+    syncIncompleto,
+    confirmouSyncIncompleto,
+    confirmarSyncIncompleto: () => setConfirmouSyncIncompleto(true),
     erro,
     limparErro: () => setErro(null),
     duplicidade,
