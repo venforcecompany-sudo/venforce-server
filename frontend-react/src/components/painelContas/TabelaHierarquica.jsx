@@ -670,7 +670,7 @@ export function LinhaDetalheConta({ cliente, conta, colSpan, onLancar, children 
                 <a className="vf-btn vf-btn--ghost vf-btn--sm" href="clientes.html">Conectar em Clientes e Contas ↗</a>
               )}
               {(codigo === "erro_sync" || codigo === "nao_publicado") && (
-                <a className="vf-btn vf-btn--ghost vf-btn--sm" href="fechamentos-api.html">Ver sincronização na Central de Vendas ↗</a>
+                <a className="vf-btn vf-btn--ghost vf-btn--sm" href="financeiro-v3.html">Ver sincronização no Financeiro ↗</a>
               )}
             </div>
           )}

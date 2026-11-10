@@ -49,7 +49,7 @@ function boot() {
   let user = {};
   try { user = JSON.parse(localStorage.getItem("vf-user") || "{}"); } catch { user = {}; }
   // Mesmo padrão de callbacks.js; o backend (requireAdmin) segue sendo a autoridade.
-  if (user.role !== "admin") { window.location.replace("carteira.html"); return; }
+  if (user.role !== "admin") { window.location.replace("painel-contas.html"); return; }
 
   const $ = (id) => document.getElementById(id);
   $("shopee-capacidades").innerHTML = renderCapacidades(SHOPEE_CAPACIDADES);
@@ -65,7 +65,7 @@ function boot() {
       $("shopee-summary").innerHTML = renderSummary(buildStatusModel(status));
       $("cards").hidden = false;
     } catch (err) {
-      if (err && err.status === 403) { window.location.replace("carteira.html"); return; }
+      if (err && err.status === 403) { window.location.replace("painel-contas.html"); return; }
       $("state-error-msg").textContent = (err && err.message) || "Erro desconhecido.";
       $("state-error").hidden = false;
     } finally {

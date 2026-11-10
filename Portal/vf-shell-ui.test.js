@@ -122,7 +122,7 @@ function startServer() {
 
     if (u.pathname === "/harness.html") {
       res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-store" });
-      res.end(harnessHtml(u.searchParams.get("scope") || "account", u.searchParams.get("module") || "central-vendas"));
+      res.end(harnessHtml(u.searchParams.get("scope") || "account", u.searchParams.get("module") || "visao"));
       return;
     }
 
@@ -316,7 +316,7 @@ async function run() {
 
     /* ══════════════════════ NAV MAIN — scope=account, usuário comum ═══ */
     currentFixture = { portfolio: PORTFOLIO_MAIN, contas: CONTAS_MAIN, failPortfolio: false };
-    await goto("scope=account&module=central-vendas");
+    await goto("scope=account&module=visao");
 
     await check("S11 — scope=account sem contexto: conteúdo não renderiza, painel de estado aparece", async () => {
       assert.strictEqual(await cdp.evaluate("window.VF.context.getState()"), "NO_CLIENT");
@@ -435,7 +435,7 @@ async function run() {
       assert.ok(href && href.startsWith("financeiro-v3.html"), `esperado financeiro-v3.html com MELI em tela, achei: ${href}`);
       const outrosItens = await cdp.evaluate(`
         (function(){
-          var mods = ['visao', 'central-vendas', 'ads', 'anuncios', 'margem', 'diagnosticos', 'automacoes'];
+          var mods = ['visao', 'ads', 'anuncios', 'margem', 'diagnosticos', 'automacoes'];
           return mods.map(function(id){
             var a = document.querySelector('.vf-shell__item[data-module=' + id + ']');
             return a ? a.getAttribute('href') : 'AUSENTE';
@@ -554,7 +554,7 @@ async function run() {
     currentFixture = { portfolio: PORTFOLIO_MAIN, contas: CONTAS_MAIN, failPortfolio: false, meContext: ME_CONTEXT };
     meContextRequestCount = 0;
     legadoPortfolioRequestCount = 0;
-    await goto("scope=account&module=central-vendas");
+    await goto("scope=account&module=visao");
     await waitFor(cdp, "window.VF.context.getPortfolio().length === 9", "shell não resolveu a carteira por /me/context");
 
     await check("C1 — com /me/context disponível, o shell NÃO chama mais /operacao/cliente-360/clientes", async () => {
@@ -584,7 +584,7 @@ async function run() {
     currentFixture = { portfolio: PORTFOLIO_SMALL, contas: CONTAS_MAIN, failPortfolio: false };
     meContextRequestCount = 0;
     legadoPortfolioRequestCount = 0;
-    await goto("scope=account&module=central-vendas");
+    await goto("scope=account&module=visao");
     await waitFor(cdp, "window.VF.context.getPortfolio().length === 2", "queda não resolveu a carteira pelo endpoint legado");
 
     await check("C1 — servidor sem /me (404): o shell cai para o endpoint legado e a carteira continua funcionando", async () => {

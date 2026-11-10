@@ -28,7 +28,7 @@ const canAccessAutomacoes =
 // F5/Bloco F — sem permissão volta para a CARTEIRA, não para dashboard.html
 // (tela legada, fora da navegação V3, ainda no layout.js): quem esbarra num
 // 403 dentro do Shell V3 não pode ser jogado num lugar de onde não sabe voltar.
-if (!canAccessAutomacoes) window.location.replace("carteira.html");
+if (!canAccessAutomacoes) window.location.replace("painel-contas.html");
 // F5 — initLayout() saiu com o layout.js; vf-shell.js monta a navegação e
 // cuida de token ausente e do desvio de `seller`.
 
@@ -539,7 +539,7 @@ async function carregarClientesParaFiltro() {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json().catch(() => ({}));
     CLIENTES_CACHE = Array.isArray(json.clientes) ? json.clientes : [];
@@ -614,7 +614,7 @@ async function carregarPastas() {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
 
@@ -640,7 +640,7 @@ async function carregarRelatorios() {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
 
@@ -1039,7 +1039,7 @@ async function baixarRelatorio(id, formato) {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     if (!res.ok) {
       const json = await res.json().catch(() => ({}));
       throw new Error(json?.erro || `HTTP ${res.status}`);
@@ -1092,7 +1092,7 @@ async function confirmarExcluirRelatorio() {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
 
@@ -1153,7 +1153,7 @@ async function moverRelatorioParaPasta(relatorioId, pastaId) {
     body: JSON.stringify({ pastaId: pastaId == null ? null : pastaId }),
   });
   if (res.status === 401) { clearSession(); return; }
-  if (res.status === 403) { window.location.replace("carteira.html"); return; }
+  if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
   const json = await res.json().catch(() => ({}));
   if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
 }
@@ -1265,7 +1265,7 @@ async function salvarPastaModal() {
       });
     }
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
 
@@ -1316,7 +1316,7 @@ async function confirmarExcluirPasta() {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.ok) {
       const msg = String(json?.erro || `HTTP ${res.status}`);
@@ -2034,7 +2034,7 @@ async function abrirDetalheRelatorio(id) {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
 
@@ -2109,7 +2109,7 @@ async function carregarPadraoCustoBase(baseSlug) {
     headers: { Authorization: "Bearer " + TOKEN },
   });
   if (res.status === 401) { clearSession(); return { imposto_percentual: 0, taxa_fixa: 0 }; }
-  if (res.status === 403) { window.location.replace("carteira.html"); return { imposto_percentual: 0, taxa_fixa: 0 }; }
+  if (res.status === 403) { window.location.replace("painel-contas.html"); return { imposto_percentual: 0, taxa_fixa: 0 }; }
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
@@ -2228,7 +2228,7 @@ async function salvarCustoBaseRapido() {
       body: JSON.stringify(payload),
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
 

@@ -175,14 +175,14 @@ async function run() {
       `);
     }
 
-    /* ═══════ 1. login interno → carteira.html ═══════ */
+    /* ═══════ 1. login interno → painel-contas.html ═══════ */
     loginResponse = { ok: true, status: 200, body: { token: "tok-1", user: { id: 12, nome: "Pedro Gomes", role: "user" } } };
     await gotoLoginLimpo();
     await submeter();
-    await waitFor(cdp, "window.location.href.indexOf('carteira.html') >= 0", "papel interno não redirecionou para carteira.html");
-    await check("1. login interno (role=user) → carteira.html", async () => {
+    await waitFor(cdp, "window.location.href.indexOf('painel-contas.html') >= 0", "papel interno não redirecionou para painel-contas.html");
+    await check("1. login interno (role=user) → painel-contas.html", async () => {
       const href = await cdp.evaluate("window.location.href");
-      assert.ok(href.endsWith("/carteira.html"), `destino inesperado: ${href}`);
+      assert.ok(href.endsWith("/painel-contas.html"), `destino inesperado: ${href}`);
     });
 
     /* ═══════ 2. seller preservado ═══════ */
@@ -210,7 +210,7 @@ async function run() {
       sessionStorage.setItem("vf-ctx", JSON.stringify({ v: 1, userId: 999, clienteId: 87, clienteSlug: "n97", clienteContaId: 42 }));
     `);
     await submeter();
-    await waitFor(cdp, "window.location.href.indexOf('carteira.html') >= 0", "login novo não chegou à carteira");
+    await waitFor(cdp, "window.location.href.indexOf('painel-contas.html') >= 0", "login novo não chegou ao painel");
     await check("4. contexto do usuário anterior (userId=999) é eliminado ANTES da Carteira", async () => {
       const raw = await cdp.evaluate("sessionStorage.getItem('vf-ctx')");
       assert.strictEqual(raw, null, `vf-ctx deveria ter sido limpo, veio: ${raw}`);
@@ -222,7 +222,7 @@ async function run() {
     loginResponse = { ok: true, status: 200, body: { token: "tok-5", user: { id: 12, nome: "Pedro Gomes", role: "user" } } };
     await gotoLoginLimpo();
     await submeter();
-    await waitFor(cdp, "window.location.href.indexOf('carteira.html') >= 0", "login normal (sem contexto prévio) falhou");
+    await waitFor(cdp, "window.location.href.indexOf('painel-contas.html') >= 0", "login normal (sem contexto prévio) falhou");
     await check("5. login sem contexto anterior: fluxo normal, sem erro", async () => {
       assert.strictEqual(await cdp.evaluate("sessionStorage.getItem('vf-ctx')"), null);
     });
@@ -261,7 +261,7 @@ async function run() {
       assert.strictEqual(relevantes.length, 0, `erros de console: ${JSON.stringify(relevantes)}`);
     });
 
-    console.log(`\n✓ ${checks} verificações de F1.3 (login → Carteira)`);
+    console.log(`\n✓ ${checks} verificações de F1.3 (login → Painel de Contas)`);
   } finally {
     if (cdp) { try { await cdp.send("Fetch.disable"); } catch (_) { /* já pode estar fechado */ } cdp.close(); }
     chrome.kill("SIGTERM");

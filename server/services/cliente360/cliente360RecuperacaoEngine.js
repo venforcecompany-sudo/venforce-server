@@ -25,11 +25,11 @@ const { round2 } = require("./cliente360PonteEngine");
 const DESTINO = {
   custo: "bases.html",
   preco: "automacoes.html",
-  frete: "fechamentos-api.html",
-  comissao: "fechamentos-api.html",
+  frete: "financeiro-v3.html",
+  comissao: "financeiro-v3.html",
   imposto: "bases.html",
   produto: "bases.html",
-  fechamento: "fechamentos-api.html",
+  fechamento: "financeiro-v3.html",
 };
 
 function op(tipo, severidade, titulo, extra = {}) {

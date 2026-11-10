@@ -2,17 +2,16 @@
  * E2E — jornada completa através de NAVEGAÇÃO REAL (clicar, não deep
  * link) entre as páginas migradas até F3.2:
  *
- *   Carteira → N97 → ML2 → Visão → Central de Vendas → Margem →
- *   Diagnósticos → Carteira (global, contexto preservado) → Extra
- *   Máquinas → Visão (contexto novo)
+ *   Visão (N97/ML2) → Financeiro → Margem → Diagnósticos → … → Visão
+ *   (N97, contexto preservado) → Visão (Extra Máquinas, contexto novo)
  *
- * F3.2 muda o destino padrão da Carteira de fechamentos-api.html para
- * visao.html (MASTER_SPEC §11 — Visão é a home operacional agora). A Visão
+ * A Carteira saiu do Portal: a jornada entra direto na Visão (MASTER_SPEC §11;
+ * a Visão é a home operacional). A Visão
  * é a primeira ilha React sobre o Shell V3; sua própria chamada de dado
  * (GET /operacao/visao/:cliente) fica FALHADA de propósito aqui, mesmo
  * tratamento dos outros "motores" desta suíte.
  *
- * Cada teste anterior (vf-shell-ui, carteira-ui, fechamentos-api-shell-ui,
+ * Cada teste anterior (vf-shell-ui, financeiro-v3-shell-ui,
  * central-margem-ui, diagnostico-inicial-shell-ui) já prova que CADA
  * página, isoladamente, lê o contexto certo do Shell. O que só um teste
  * cross-page prova é que sessionStorage["vf-ctx"] carrega o contexto
@@ -199,7 +198,7 @@ function wireFetchInterception(cdp) {
       await json({ ok: true, cliente: { id: 1, nome: slug, slug, ativo: true }, contas: CONTAS[slug] || [] });
       return;
     }
-    // Todo o resto (motor de cada tela: central-vendas, margem, diagnósticos)
+    // Todo o resto (motor de cada tela: financeiro, margem, diagnósticos)
     // fica fora do ar de propósito — este teste mede continuidade de
     // CONTEXTO entre navegações reais, não a renderização de cada motor
     // (já coberta nos testes específicos de cada página).
@@ -249,30 +248,20 @@ async function run() {
     }
 
     // ═══ 1. Login (simulado: seed direto de vf-token, já coberto em
-    //         login-ui.test.js) → Carteira ═══
-    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${serverPort}/carteira.html` });
+    //         login-ui.test.js) → Visão com N97/ML2 pela URL ═══
+    // A Carteira saiu do Portal: a jornada entra direto na Visão, com o
+    // contexto no contrato ?cliente=&conta= que o Shell já lê da URL.
+    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${serverPort}/visao.html` });
     await sleep(60);
     await cdp.evaluate(`
       localStorage.setItem("vf-token", "ui-test-token");
       localStorage.setItem("vf-user", JSON.stringify({ id: 12, nome: "Pedro Gomes", role: "admin" }));
     `);
-    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${serverPort}/carteira.html` });
-    await waitFor(cdp, "window.VF && window.VF.context", "Carteira não montou o Shell");
-    await waitFor(cdp, "document.querySelectorAll('.vf-portfolio-row').length === 2", "Carteira não renderizou os 2 clientes");
+    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${serverPort}/visao.html?cliente=n97&conta=43` });
+    await waitFor(cdp, "window.VF && window.VF.context && window.VF.context.getState() === 'READY'", "Visão não chegou a READY com N97/ML2 pela URL");
     await sleep(200);
 
-    await check("1. Carteira: sem contexto ainda (login limpo)", async () => {
-      assert.strictEqual(await ctx(), null);
-    });
-
-    // ═══ 2. N97 → chip ML2 → Visão (destino padrão da Carteira, F3.3) ═══
-    await cdp.evaluate(`
-      Array.prototype.find.call(document.querySelectorAll('.vf-portfolio-row[data-slug=n97] [data-conta]'), function(b){ return b.dataset.conta === "43"; }).click()
-    `);
-    await waitFor(cdp, "window.location.href.indexOf('visao.html') >= 0", "clique no chip ML2 não navegou para a Visão");
-    await waitFor(cdp, "window.VF && window.VF.context && window.VF.context.getState() === 'READY'", "Visão não chegou a READY vindo da Carteira");
-
-    await check("2. Visão: chegou com o contexto exato do clique (n97/43)", async () => {
+    await check("1. Visão: chegou com o contexto exato da URL (n97/43)", async () => {
       const c = await ctx();
       assert.strictEqual(c.clienteSlug, "n97");
       assert.strictEqual(c.clienteContaId, 43);
@@ -280,11 +269,11 @@ async function run() {
       assert.strictEqual(await cdp.evaluate("document.body.dataset.vfScope"), "account");
     });
 
-    // ═══ 3. Sidebar → Central de Vendas (navegação real, não deep link) ═══
-    await clicarModulo("central-vendas", "fechamentos-api.html");
+    // ═══ 2. Sidebar → Financeiro (navegação real, não deep link) ═══
+    await clicarModulo("financeiro", "financeiro-v3.html");
     await sleep(200);
 
-    await check("3. Central de Vendas: contexto sobrevive à navegação real vinda da Visão", async () => {
+    await check("2. Financeiro: contexto sobrevive à navegação real vinda da Visão", async () => {
       const c = await ctx();
       assert.strictEqual(c.clienteSlug, "n97");
       assert.strictEqual(c.clienteContaId, 43);
@@ -392,37 +381,34 @@ async function run() {
       assert.ok((await cdp.evaluate("document.querySelector('.vf-shell__context').innerText")).includes("contexto ativo"));
     });
 
-    // ═══ 6. Sidebar → Carteira (global): contexto PRESERVADO, nunca "pausado" ═══
-    await cdp.evaluate("document.querySelector('.vf-shell__item[data-module=carteira]')?.click() || document.querySelector('a[href=\"carteira.html\"]')?.click()");
-    await waitFor(cdp, "window.location.href.indexOf('carteira.html') >= 0", "navegação de volta à Carteira não ocorreu");
-    await waitFor(cdp, "window.VF && window.VF.context", "Carteira (retorno) não montou o Shell");
+    // ═══ 6. Sidebar → Visão (volta): contexto PRESERVADO, nunca "pausado" ═══
+    await clicarModulo("visao", "visao.html");
     await sleep(300);
 
-    await check("6. De volta à Carteira: contexto de N97 preservado (D15 — nunca 'pausado')", async () => {
+    await check("6. De volta à Visão: contexto de N97 preservado (D15 — nunca 'pausado')", async () => {
       const c = await ctx();
       assert.ok(c, "contexto deveria sobreviver à ida a uma página global");
       assert.strictEqual(c.clienteSlug, "n97");
       assert.ok(!(await cdp.evaluate("document.body.innerText")).toLowerCase().includes("pausado"), "termo 'pausado' proibido (D15)");
     });
 
-    // ═══ 7. Trocar de cliente: Extra Máquinas (1 conta, entra em 1 clique) → Visão ═══
-    await cdp.evaluate(`
-      document.querySelector('.vf-portfolio-row[data-slug=extra] [data-entrar]').click();
-    `);
-    await waitFor(cdp, "window.location.href.indexOf('visao.html') >= 0", "clique em Extra Máquinas não navegou para a Visão");
+    // ═══ 7. Trocar de cliente: Extra Máquinas (1 conta) → Visão ═══
+    // Troca de cliente é contexto NOVO: entra pela URL, como o seletor de
+    // cliente do Shell faria.
+    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${serverPort}/visao.html?cliente=extra&conta=51` });
+    await waitFor(cdp, "window.location.href.indexOf('visao.html') >= 0", "troca para Extra Máquinas não chegou à Visão");
     await waitFor(cdp, "window.VF && window.VF.context && window.VF.context.getState() === 'READY'", "Extra Máquinas não chegou a READY");
 
-    await check("7. Troca de cliente pela Carteira: contexto novo é Extra/51, não mistura com N97, e o período ZERA (§8.5)", async () => {
+    await check("7. Troca de cliente: contexto novo é Extra/51, não mistura com N97, e o período ZERA (§8.5)", async () => {
       const c = await ctx();
       assert.strictEqual(c.clienteSlug, "extra");
       assert.strictEqual(c.clienteContaId, 51);
       assert.strictEqual(await cdp.evaluate("document.body.dataset.vfModule"), "visao");
       // O mês de trabalho de um cliente não é o mês de trabalho de outro:
-      // setCliente() zera o período (§8.5), e o destino montado pela Carteira
-      // não o carrega. O que se vê aqui depois disso é a competência PADRÃO
-      // que a própria Visão escreve na URL ao montar (useVisao →
-      // escreverPeriodoNaUrl) — legítimo. O que não pode acontecer é julho,
-      // escolhido para N97, reaparecer trabalhando em Extra Máquinas.
+      // setCliente() zera o período (§8.5). O que se vê aqui depois disso é a
+      // competência PADRÃO que a própria Visão escreve na URL ao montar
+      // (useVisao → escreverPeriodoNaUrl) — legítimo. O que não pode acontecer
+      // é julho, escolhido para N97, reaparecer trabalhando em Extra Máquinas.
       const periodoAgora = await cdp.evaluate("window.VF.context.getPeriodoParam()");
       assert.notStrictEqual(periodoAgora, "2026-07", "o período do cliente anterior atravessou a troca de cliente");
     });
@@ -431,7 +417,7 @@ async function run() {
       assert.strictEqual(consoleErrors.length, 0, `erros: ${JSON.stringify(consoleErrors)}`);
     });
 
-    console.log(`\n✓ ${checks} verificações da jornada completa (Login→Carteira→N97→ML2→Visão→CentralDeVendas→Margem→Diagnóstico→Ads→Anúncios→Automações→Relatórios→ClientesEContas→Carteira→Extra→Visão)`);
+    console.log(`\n✓ ${checks} verificações da jornada completa (Login→Visão(N97/ML2)→Financeiro→Margem→Diagnóstico→Ads→Anúncios→Automações→Relatórios→ClientesEContas→Visão→Extra→Visão)`);
   } finally {
     if (cdp) { try { await cdp.send("Fetch.disable"); } catch (_) { /* já pode estar fechado */ } cdp.close(); }
     chrome.kill("SIGTERM");

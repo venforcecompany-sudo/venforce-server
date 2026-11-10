@@ -43,7 +43,7 @@
       // Shell V3 troca a sidebar debaixo do usuário e o deixa num lugar de
       // onde ele não sabe voltar. A Carteira é a home operacional do V3 e
       // trata carteira vazia honestamente (NO_PORTFOLIO).
-      window.location.replace("carteira.html");
+      window.location.replace("painel-contas.html");
       return false;
     }
     return true;

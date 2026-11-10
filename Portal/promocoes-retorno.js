@@ -20,7 +20,7 @@ const TOKEN = getToken();
 const user = JSON.parse(localStorage.getItem("vf-user") || "{}");
 const role = String(user.role || "").toLowerCase();
 const canAccess = role === "admin" || role === "user" || role === "membro";
-if (!canAccess) window.location.replace("carteira.html");
+if (!canAccess) window.location.replace("painel-contas.html");
 initLayout();
 
 // ─── Fronteira arquitetural para futura ação PUT (não implementada) ────────
@@ -279,7 +279,7 @@ async function loadClientes() {
   try {
     const res = await fetch(`${API_BASE}/automacoes/clientes`, { headers: { Authorization: "Bearer " + TOKEN } });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json().catch(() => ({}));
     PromoState.clientes = Array.isArray(data.clientes) ? data.clientes : [];
@@ -971,7 +971,7 @@ async function analisar() {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.ok) {
@@ -1022,7 +1022,7 @@ async function iniciarDiagnosticoJob() {
       body: JSON.stringify({ clienteSlug, margemAlvo: margem, tolerancia }),
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     const data = await res.json().catch(() => ({}));
 
     if (res.status === 429 && data?.cooldown) {
@@ -1066,7 +1066,7 @@ async function pollDiagnosticoStatus(clienteSlugNoInicio) {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     const data = await res.json().catch(() => ({}));
 
     // Cliente trocado ou outro job assumiu enquanto a resposta chegava — ignora.
@@ -1134,7 +1134,7 @@ async function carregarSnapshotComoResultado(origemLabel) {
     headers: { Authorization: "Bearer " + TOKEN },
   });
   if (res.status === 401) { clearSession(); return false; }
-  if (res.status === 403) { window.location.replace("carteira.html"); return false; }
+  if (res.status === 403) { window.location.replace("painel-contas.html"); return false; }
   const data = await res.json().catch(() => ({}));
   if (PromoState.clienteSlug !== clienteSlug) return false; // resposta obsoleta
   if (!res.ok || !data?.ok || !data.existe) return false;

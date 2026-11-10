@@ -61,7 +61,6 @@ export const MODULOS = [
   // não suportado por V3 (TikTok legado) ou sem conta resolvida cai em
   // `rota` (o legado) — nunca fica sem destino algum. Ver resolverRota().
   { id: "financeiro", label: "Financeiro", rota: "financeiro.html", rotaPorMarketplace: { meli: "financeiro-v3.html", shopee: "financeiro-v3.html" } },
-  { id: "central-vendas", label: "Central de Vendas", rota: "fechamentos-api.html" },
   { id: "ads", label: "Ads", rota: "ads.html", marketplaces: ["meli"] },
   { id: "anuncios", label: "Anúncios", rota: "anuncios-meli.html", marketplaces: ["meli"] },
   // Central do Full (modelo C): ilha React que lê Cliente+Operação do
@@ -81,7 +80,6 @@ export const MODULOS = [
 export const PAPEIS_SENTINEL = Object.freeze(["admin", "user", "membro", "interno"]);
 
 export const GLOBAIS = [
-  { id: "carteira", label: "Carteira", rota: "carteira.html" },
   // Painel de Controle de Contas por Squad — carteira agrupada por Squad,
   // hierarquia Cliente → Mês → Semana (lazy). GLOBAL como Carteira: tem
   // seletor próprio (ano/squad/busca), nunca exige Cliente+Operação
@@ -97,7 +95,7 @@ export const GLOBAIS = [
   // entrada de menu quando o Shell V3 chegou. Nenhuma delas lê `cliente`/
   // `conta`/`periodo` da URL (cada uma tem seletor de cliente próprio, na
   // própria página) — por isso GLOBAIS, não MODULOS: exigir cliente+operação
-  // escolhidos na Carteira antes de abri-las seria uma trava nova que essas
+  // escolhidos na barra lateral antes de abri-las seria uma trava nova que essas
   // páginas nunca tiveram.
   { id: "cliente-operacao", label: "Cliente Operação", rota: "cliente-operacao.html" },
   { id: "cliente-360", label: "Cliente 360", rota: "cliente-360.html" },
@@ -163,7 +161,6 @@ function requerContexto(id) {
 // não desabilita nem esconde nenhum item (itemNav() cai para o texto puro).
 const ICONS = {
   visao: '<path d="M3 3v18h18"></path><path d="M7 15l4-4 3 3 6-6"></path>',
-  carteira: '<rect x="2" y="7" width="20" height="13" rx="2"></rect><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"></path><path d="M2 13h20"></path>',
   "painel-contas": '<rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="9" x2="9" y2="21"></line>',
   "cliente-360-v2": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
   // Mesmo ícone das outras superfícies de Cliente 360 (v2, Operação, V1) —
@@ -171,7 +168,6 @@ const ICONS = {
   "cliente-360-v3": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
   "cliente-operacao": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
   "cliente-360": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
-  "central-vendas": '<circle cx="9" cy="21" r="1"></circle><circle cx="19" cy="21" r="1"></circle><path d="M2.5 3h2l2.4 12.4a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L21 8H6"></path>',
   financeiro: '<path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-8"></path><path d="M3 20h18"></path>',
   margem: '<line x1="18" y1="6" x2="6" y2="18"></line><circle cx="7.5" cy="7.5" r="2"></circle><circle cx="16.5" cy="16.5" r="2"></circle>',
   ads: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline>',
@@ -200,8 +196,8 @@ const ICONS = {
 
 // V1 e V2 permanecem registradas para acesso direto por URL, fora da sidebar para todos os perfis.
 export const GRUPOS_NAV = [
-  { titulo: "Operação", ids: ["visao", "carteira", "painel-contas", "sentinel", "cliente-360-v3", "cliente-operacao"] },
-  { titulo: "Performance", ids: ["central-vendas", "financeiro", "margem", "ads", "anuncios", "central-full", "curva-abc"] },
+  { titulo: "Operação", ids: ["visao", "painel-contas", "sentinel", "cliente-360-v3", "cliente-operacao"] },
+  { titulo: "Performance", ids: ["financeiro", "margem", "ads", "anuncios", "central-full", "curva-abc"] },
   { titulo: "Execução", ids: ["automacoes", "diagnosticos", "promocoes-ml"] },
   { titulo: "Gestão", ids: ["pessoas", "clientes-contas", "relatorios", "bases"] },
   { titulo: "Ferramentas", ids: ["ferramentas", "guia"] },
@@ -247,21 +243,23 @@ const ESTADOS = {
   NO_CLIENT: {
     tom: "info",
     titulo: "Selecione um cliente",
-    texto: "Este módulo trabalha dentro de uma operação. Escolha o cliente e a operação na Carteira.",
-    acao: { label: "Ir para a Carteira", cmd: "carteira" },
+    // A Carteira saiu da navegação: o cliente e a operação se escolhem no
+    // seletor da própria barra lateral, então o botão abre esse seletor.
+    texto: "Este módulo trabalha dentro de uma operação. Escolha o cliente e a operação na barra lateral.",
+    acao: { label: "Escolher cliente", cmd: "abrir-cliente" },
   },
   RESOLVING_CLIENT: { tom: "info", titulo: "Validando o cliente…", texto: "Conferindo se ele está na sua carteira." },
   INVALID_CLIENT: {
     tom: "warning",
     titulo: "Cliente indisponível",
     texto: "O cliente pedido não está disponível na sua carteira.",
-    acao: { label: "Ver Carteira", cmd: "carteira" },
+    acao: { label: "Ir para o Painel de Contas", cmd: "painel-contas" },
   },
   FORBIDDEN: {
     tom: "danger",
     titulo: "Você não tem acesso a este cliente",
     texto: "O contexto foi descartado. Isto é uma falha de autorização — diferente de uma integração caída.",
-    acao: { label: "Voltar à Carteira", cmd: "carteira" },
+    acao: { label: "Ir para o Painel de Contas", cmd: "painel-contas" },
     alerta: true,
   },
   RESOLVING_ACCOUNTS: { tom: "info", titulo: "Carregando operações…", texto: "Buscando as contas deste cliente." },
@@ -1001,8 +999,9 @@ export function createVfShell(options = {}) {
     if (btn) {
       btn.addEventListener("click", () => {
         const cmd = btn.dataset.cmd;
-        if (cmd === "carteira") onNavigate("carteira.html");
+        if (cmd === "painel-contas") onNavigate("painel-contas.html");
         else if (cmd === "clientes-contas") onNavigate("clientes.html");
+        else if (cmd === "abrir-cliente") abrirDropdown("cliente");
         else if (cmd === "abrir-operacao") abrirDropdown("operacao");
         else onCommand(cmd);
       });
