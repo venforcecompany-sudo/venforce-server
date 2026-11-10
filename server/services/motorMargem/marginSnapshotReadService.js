@@ -382,7 +382,7 @@ function comporItem(row, realizada, deps = {}, rebateInfo = null, rebateIndispon
   const custoMarketplaceAssumido = margemConfiavel.custoMarketplaceAusente({
     assumed: row.assumed || [],
     freteAplicavel: row.quality && typeof row.quality.freteAplicavel === "boolean" ? row.quality.freteAplicavel : null,
-  });
+  }) || margemConfiavel.freteLegadoNaoVerificado({ clienteContaId: row.clienteContaId, freteQualidade: quality.freteQualidade });
   const projected = {
     profit: custoMarketplaceAssumido ? null : atual.profit,
     margin: custoMarketplaceAssumido ? null : atual.margin,
@@ -487,6 +487,8 @@ function comporItem(row, realizada, deps = {}, rebateInfo = null, rebateIndispon
       temCustoNaBase: quality.temCustoNaBase ?? null,
       faltantesMeliApi: quality.faltantesMeliApi || [],
       statusAnuncio: quality.statusAnuncio || null,
+      // Nível do frete: estimado (dimensões/custo cobrado) nunca é "confirmado". null = cotação direta do ML.
+      freteQualidade: quality.freteQualidade || null,
     },
 
     // Aliases planos que o frontend da Central já lê (mesmos de

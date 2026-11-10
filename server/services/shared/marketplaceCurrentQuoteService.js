@@ -22,6 +22,7 @@
 
 const { mlFetch } = require("../../utils/mlClient");
 const { resolverPrecosItem } = require("../automacoes/precoItemService");
+const { freteConfiavelHabilitado, avaliarFrete } = require("./freteCotacaoConfiavel");
 // Motivos por componente: a MESMA tabela da cotação em P' (Simular/Promoções).
 const {
   MOTIVOS_COTACAO, motivoDaResposta, LOGISTICA_SEM_FRETE_PREVISTO,
@@ -55,7 +56,7 @@ function numOrNull(value) {
  * de 429 para o racional completo.
  */
 async function buscarComissaoEFrete(
-  { clienteId, itemId, precoEfetivo, listingTypeId, categoryId, sellerId, logisticType, mlUserId = null },
+  { clienteId, itemId, precoEfetivo, listingTypeId, categoryId, sellerId, logisticType, mlUserId = null, shippingTags = null, memoFrete = null },
   fetchFn = mlFetch
 ) {
   // P0 04/11/2026 (Alianza Jeans 2): o resultado de cada GET fica registrado
@@ -126,10 +127,27 @@ async function buscarComissaoEFrete(
   const comissaoValor = numOrNull(root?.sale_fee_amount);
   const comissaoPercentualBruta = numOrNull(root?.sale_fee_details?.percentage_fee);
 
-  const fretePrevisto =
+  let fretePrevisto =
     shippingResp && shippingResp.ok
       ? numOrNull(shippingResp.data?.coverage?.all_country?.list_cost)
       : null;
+
+  // P0 10/11/2026: cotação por item_id comprovadamente subestimada (tag
+  // `proximity` + desconto não obrigatório). Liberação gradual por seller
+  // (FRETE_COTACAO_CONFIAVEL_SELLERS); fora dela este bloco não existe.
+  let freteQualidade = null;
+  let motivoFreteNaoConfiavel = null;
+  if (fretePrevisto !== null && freteConfiavelHabilitado(sellerId)) {
+    const av = await avaliarFrete({
+      fetchFn, clienteId, sellerId, itemId, listingTypeId, precoEfetivo, logisticType,
+      respostaMl: shippingResp, tags: shippingTags, opcoes: opcoesConta, memo: memoFrete,
+    });
+    if (av.qualidade) {
+      freteQualidade = av.qualidade;
+      fretePrevisto = av.fretePrevisto;
+      motivoFreteNaoConfiavel = av.motivo;
+    }
+  }
 
   const motivoEntradaAusente = precoEfetivo === null ? "preco_ausente" : MOTIVOS_COTACAO.ANUNCIO_SEM_TIPO_OU_CATEGORIA;
   const diagnostico = {
@@ -144,6 +162,7 @@ async function buscarComissaoEFrete(
       status: registros.frete ? registros.frete.status : null,
       motivo: !freteAplicavel || fretePrevisto !== null
         ? null
+        : motivoFreteNaoConfiavel ? motivoFreteNaoConfiavel
         : !freteConsultavel
           ? (precoEfetivo !== null && !sellerId ? MOTIVOS_COTACAO.CONTA_SEM_SELLER : motivoEntradaAusente)
           : motivoDaResposta(registros.frete, MOTIVOS_COTACAO.ML_SEM_FRETE),
@@ -156,6 +175,7 @@ async function buscarComissaoEFrete(
     // em decimal (0.12 = 12%) — mesma convenção de `custos.imposto_percentual`.
     comissaoPercentual: comissaoPercentualBruta === null ? null : comissaoPercentualBruta / 100,
     fretePrevisto,
+    freteQualidade,
     diagnostico,
   };
 }
@@ -174,7 +194,7 @@ async function buscarComissaoEFrete(
  * @returns {Promise<object>}
  */
 async function obterCotacaoAtual(
-  { clienteId, itemId, precoListaFallback = null, listingTypeId, categoryId, sellerId, logisticType, mlUserId = null },
+  { clienteId, itemId, precoListaFallback = null, listingTypeId, categoryId, sellerId, logisticType, mlUserId = null, shippingTags = null },
   deps = {}
 ) {
   const fetchFn = deps.mlFetchFn || mlFetch;
@@ -187,8 +207,8 @@ async function obterCotacaoAtual(
     mlUserId,
   });
 
-  const { comissaoValor, comissaoPercentual, fretePrevisto, diagnostico } = await buscarComissaoEFrete(
-    { clienteId, itemId, precoEfetivo, listingTypeId, categoryId, sellerId, logisticType, mlUserId },
+  const { comissaoValor, comissaoPercentual, fretePrevisto, freteQualidade, diagnostico } = await buscarComissaoEFrete(
+    { clienteId, itemId, precoEfetivo, listingTypeId, categoryId, sellerId, logisticType, mlUserId, shippingTags },
     fetchFn
   );
 
@@ -210,6 +230,7 @@ async function obterCotacaoAtual(
     comissaoValor,
     comissaoPercentual,
     fretePrevisto,
+    freteQualidade: freteQualidade || null,
     listingType: listingTypeId || null,
     logisticType: logisticType || null,
     faltantes,

@@ -30,6 +30,9 @@ const MOTIVOS_COTACAO = Object.freeze({
   ML_SEM_TARIFA: "ml_sem_tarifa",
   ML_SEM_FRETE: "ml_sem_frete",
   LIMITE_DE_COTACOES: "limite_de_cotacoes_excedido",
+  // Cotação por item_id comprovadamente subestimada e sem como recuperar
+  // (ver shared/freteCotacaoConfiavel): frete DESCONHECIDO, nunca um número.
+  FRETE_COTACAO_NAO_CONFIAVEL: "frete_cotacao_nao_confiavel",
 });
 
 function motivoDaResposta(registro, semValor) {
@@ -81,6 +84,8 @@ function criarCotadorEmP({
   now = () => new Date(), maxCotacoes = 40, concorrencia = 4, timeoutMs = 8000,
 }) {
   const cache = new Map(); // "89.77" → Promise<cotação>
+  const memoFrete = {}; // tags/envios históricos do MLB: independem do preço P'
+  const tagsDoAnuncio = anuncio && Array.isArray(anuncio.shipping_tags) ? anuncio.shipping_tags : null;
   const stats = { chamadas: 0, listing_prices: 0, shipping_options: 0, precos_distintos: 0, limite_excedido: 0 };
   const logistica = anuncio ? String(anuncio.logistic_type || "") : "";
   const freteAplicavel = !LOGISTICA_SEM_FRETE_PREVISTO.has(logistica);
@@ -113,7 +118,11 @@ function criarCotadorEmP({
     // motivo dizer "rate limit" em vez de um genérico "indisponível".
     const registros = { listing: null, frete: null };
     const fetchRegistrando = async (cId, caminho, opts = {}) => {
-      const chave = String(caminho).includes("/listing_prices") ? "listing" : "frete";
+      const texto = String(caminho);
+      const chave = texto.includes("/listing_prices") ? "listing" : texto.includes("/shipping_options/free") ? "frete" : null;
+      // Leituras auxiliares do frete confiável (items/orders/shipments) não
+      // sobrescrevem o status da cotação de frete.
+      if (chave === null) return mlFetch(cId, caminho, { ...opts, ...(mlUserId ? { mlUserId } : {}), timeoutMs });
       if (chave === "listing") stats.listing_prices += 1; else stats.shipping_options += 1;
       try {
         const resp = await mlFetch(cId, caminho, { ...opts, ...(mlUserId ? { mlUserId } : {}), timeoutMs });
@@ -137,6 +146,8 @@ function criarCotadorEmP({
         sellerId: sellerId || null,
         logisticType: logistica,
         mlUserId: mlUserId || null,
+        shippingTags: tagsDoAnuncio,
+        memoFrete,
       }, fetchRegistrando);
     } catch (_) {
       bruta = { comissaoValor: null, fretePrevisto: null };
@@ -149,8 +160,10 @@ function criarCotadorEmP({
     if (freteAplicavel) {
       resultado.frete = numOuNull(bruta && bruta.fretePrevisto);
       if (resultado.frete === null && !resultado.motivos.frete) {
-        resultado.motivos.frete = motivoDaResposta(registros.frete, MOTIVOS_COTACAO.ML_SEM_FRETE);
+        const motivoBruto = bruta && bruta.diagnostico && bruta.diagnostico.frete && bruta.diagnostico.frete.motivo;
+        resultado.motivos.frete = motivoBruto || motivoDaResposta(registros.frete, MOTIVOS_COTACAO.ML_SEM_FRETE);
       }
+      if (bruta && bruta.freteQualidade) resultado.frete_qualidade = bruta.freteQualidade;
     }
     return resultado;
   }
@@ -207,6 +220,7 @@ function evidenciaDaCotacao(cotacao) {
       consultado_em: cotacao.frete_aplicavel ? cotacao.consultado_em : null,
       motivo: cotacao.frete === null && cotacao.frete_aplicavel ? cotacao.motivos.frete : null,
       aplicavel: cotacao.frete_aplicavel,
+      ...(cotacao.frete_qualidade ? { qualidade: cotacao.frete_qualidade } : {}),
     },
   };
 }

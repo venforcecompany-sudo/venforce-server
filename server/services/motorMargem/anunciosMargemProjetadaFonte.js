@@ -73,7 +73,9 @@ async function lerMarginSnapshotPorItens({ clienteId, clienteContaId = null, ite
   const { rows } = await db.query(
     `-- LER_MARGIN_SNAPSHOT_PARA_ANUNCIOS
      SELECT DISTINCT ON (s.item_id) s.item_id, s.margin_percent, s.profit, s.status, s.calculated_at,
-            s.assumed_json, s.refresh_status, s.quality_json->>'freteAplicavel' AS frete_aplicavel
+            s.assumed_json, s.refresh_status, s.quality_json->>'freteAplicavel' AS frete_aplicavel,
+            s.quality_json->'freteQualidade'->>'nivel' AS frete_nivel,
+            s.cliente_conta_id, jsonb_typeof(s.quality_json->'freteQualidade') AS frete_qualidade_tipo
        FROM margin_projection_snapshots s${escopoConta}
         AND s.cliente_id = $1
         AND s.marketplace = $2
@@ -90,9 +92,12 @@ async function lerMarginSnapshotPorItens({ clienteId, clienteContaId = null, ite
     // gravadas antes da trava de cotação incompleta) é inflada — ex.: R$ 50 com
     // 45%. Não entra como computável: fora da ordenação, da faixa e da média da
     // família, e a célula não mostra o número como se fosse margem.
-    const custoMarketplaceAusente = margemConfiavel.custoMarketplaceAusente({
+    const custoAusenteBase = margemConfiavel.custoMarketplaceAusente({
       assumed: assumidos,
       freteAplicavel: r.frete_aplicavel === "true" ? true : r.frete_aplicavel === "false" ? false : null,
+    });
+    const custoMarketplaceAusente = custoAusenteBase || margemConfiavel.freteLegadoNaoVerificado({
+      clienteContaId: r.cliente_conta_id, freteQualidade: r.frete_qualidade_tipo === "object" ? {} : null,
     });
     porItem.set(r.item_id, {
       marginPercent: custoMarketplaceAusente ? null : marginPercent,
@@ -101,6 +106,8 @@ async function lerMarginSnapshotPorItens({ clienteId, clienteContaId = null, ite
       // (marginEngine.computeMargin) — A não tem coluna `computable` própria.
       computable: marginPercent != null && !custoMarketplaceAusente,
       margemIncompleta: custoMarketplaceAusente,
+      // 'estimado_dimensoes_historicas' | 'estimado_custo_cobrado' | 'cotado_ml' | null (sem avaliação).
+      ...(r.frete_nivel ? { freteNivel: r.frete_nivel } : {}),
       assumidos,
       // 'fresh' | 'stale' | 'failed' | … — valor de um run anterior não revalidado.
       refreshStatus: r.refresh_status || null,

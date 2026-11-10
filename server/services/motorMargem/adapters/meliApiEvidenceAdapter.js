@@ -285,13 +285,14 @@ async function aplicarEvidenciasProjetadas(
   const categoryId = body?.category_id || null;
   const sellerId = body?.seller_id || null;
   const logisticType = body?.shipping?.logistic_type || "";
+  const shippingTags = Array.isArray(body?.shipping?.tags) ? body.shipping.tags : null;
 
   const precoListaFallback =
     numOrNull(body?.price) !== null && numOrNull(body.price) > 0 ? numOrNull(body.price) : null;
 
   const cotarFn = deps.obterCotacaoAtualFn || obterCotacaoAtual;
   const cotacao = await cotarFn(
-    { clienteId, itemId, precoListaFallback, listingTypeId, categoryId, sellerId, logisticType, mlUserId },
+    { clienteId, itemId, precoListaFallback, listingTypeId, categoryId, sellerId, logisticType, mlUserId, shippingTags },
     { mlFetchFn: deps.mlFetchFn, resolverPrecosItemFn: deps.resolverPrecosItemFn }
   );
 
@@ -341,6 +342,8 @@ async function aplicarEvidenciasProjetadas(
     commission: cotacao.comissaoValor,
     commissionRate: cotacao.comissaoPercentual,
     freight: cotacao.fretePrevisto,
+    // Nível/fonte/confiança do frete (null = cotação direta do ML sem avaliação).
+    freteQualidade: cotacao.freteQualidade || null,
     // Sinaliza para a Central por que uma variável ficou sem valor.
     faltantes: cotacao.faltantes,
     // Status HTTP + motivo por componente (comissão/frete) da cotação.
