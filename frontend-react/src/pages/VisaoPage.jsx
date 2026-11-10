@@ -89,7 +89,7 @@ export default function VisaoPage() {
             <Bloco
               envelope={dados.resultado}
               titulo="Resultado do período"
-              linkHref={`fechamentos-api.html?${qs}`}
+              linkHref={`financeiro-v3.html?${qs}`}
               linkLabel="Ver detalhes"
               className="vf-visao-principal"
               render={(d) => <ResultadoPeriodo dados={d.filteredSummary} />}

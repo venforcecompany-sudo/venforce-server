@@ -23,7 +23,7 @@ const self = JSON.parse(localStorage.getItem("vf-user") || "{}");
 // Shell V3 troca a sidebar debaixo do usuário e o deixa num lugar de
 // onde ele não sabe voltar. A Carteira é a home operacional do V3 e
 // trata carteira vazia honestamente (NO_PORTFOLIO).
-if (self.role !== "admin") window.location.replace("carteira.html");
+if (self.role !== "admin") window.location.replace("painel-contas.html");
 initLayout();
 
 /* ── ESC ─────────────────────────────────────────────────── */

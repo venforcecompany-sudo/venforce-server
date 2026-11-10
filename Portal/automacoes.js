@@ -52,7 +52,7 @@ const canAccessAutomacoes =
 // Shell V3 troca a sidebar debaixo do usuário e o deixa num lugar de
 // onde ele não sabe voltar. A Carteira é a home operacional do V3 e
 // trata carteira vazia honestamente (NO_PORTFOLIO).
-if (!canAccessAutomacoes) window.location.replace("carteira.html");
+if (!canAccessAutomacoes) window.location.replace("painel-contas.html");
 // F5 — initLayout() saiu junto com o layout.js: quem monta a navegação
 // agora é vf-shell.js (que também cuida de token ausente e do desvio de
 // `seller`). Sem shim aqui porque este arquivo foi migrado de verdade — o
@@ -167,7 +167,7 @@ async function loadClientes() {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json().catch(() => ({}));
@@ -237,7 +237,7 @@ async function loadProntidaoConta() {
     const json = await res.json().catch(() => ({}));
     if (seq !== prontidaoContaSeq) return;
     if (!res.ok) {
-      if (res.status === 403 && json?.code !== "CONTA_NAO_PERTENCE_AO_CLIENTE") { window.location.replace("carteira.html"); return; }
+      if (res.status === 403 && json?.code !== "CONTA_NAO_PERTENCE_AO_CLIENTE") { window.location.replace("painel-contas.html"); return; }
       if (json?.code && ["CONTA_AMBIGUA", "CONTA_NAO_PERTENCE_AO_CLIENTE", "MARKETPLACE_INCOMPATIVEL", "CONTA_INATIVA"].includes(json.code)) {
         window.VF?.context?.signalContextError?.({ code: json.code });
       }
@@ -431,7 +431,7 @@ async function analisarLoja() {
     // CONTA_NAO_PERTENCE_AO_CLIENTE (Fundação de Contas) é outra coisa —
     // tratado no bloco de erro estrutural de conta, abaixo.
     if (res.status === 403 && json?.code !== "CONTA_NAO_PERTENCE_AO_CLIENTE") {
-      window.location.replace("carteira.html");
+      window.location.replace("painel-contas.html");
       return;
     }
 
@@ -498,7 +498,7 @@ async function pollOnce(relatorioId) {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
 
@@ -602,7 +602,7 @@ async function buscarItensRelatorio(id) {
     headers: { Authorization: "Bearer " + TOKEN },
   });
   if (res.status === 401) { clearSession(); return []; }
-  if (res.status === 403) { window.location.replace("carteira.html"); return []; }
+  if (res.status === 403) { window.location.replace("painel-contas.html"); return []; }
   const json = await res.json().catch(() => ({}));
   if (!res.ok || !json?.ok) throw new Error(json?.erro || `HTTP ${res.status}`);
   return Array.isArray(json.itens) ? json.itens : [];
@@ -672,7 +672,7 @@ async function baixarXlsx(relatorioId) {
       headers: { Authorization: "Bearer " + TOKEN },
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     if (!res.ok) {
       const json = await res.json().catch(() => ({}));
       throw new Error(json?.erro || `HTTP ${res.status}`);
@@ -716,7 +716,7 @@ async function baixarPlanilhaPrecificacao() {
     if (res.status === 401) { clearSession(); return; }
     if (!res.ok) {
       const json = await res.json().catch(() => ({}));
-      if (res.status === 403 && json?.code !== "CONTA_NAO_PERTENCE_AO_CLIENTE") { window.location.replace("carteira.html"); return; }
+      if (res.status === 403 && json?.code !== "CONTA_NAO_PERTENCE_AO_CLIENTE") { window.location.replace("painel-contas.html"); return; }
       if (json?.code && ["CONTA_AMBIGUA", "CONTA_NAO_PERTENCE_AO_CLIENTE", "MARKETPLACE_INCOMPATIVEL", "CONTA_INATIVA"].includes(json.code)) {
         window.VF?.context?.signalContextError?.({ code: json.code });
       }
@@ -769,7 +769,7 @@ async function gerarModeloBaseCustos() {
     if (res.status === 401) { clearSession(); return; }
     if (!res.ok) {
       const json = await res.json().catch(() => ({}));
-      if (res.status === 403 && json?.code !== "CONTA_NAO_PERTENCE_AO_CLIENTE") { window.location.replace("carteira.html"); return; }
+      if (res.status === 403 && json?.code !== "CONTA_NAO_PERTENCE_AO_CLIENTE") { window.location.replace("painel-contas.html"); return; }
       if (json?.code && ["CONTA_AMBIGUA", "CONTA_NAO_PERTENCE_AO_CLIENTE", "MARKETPLACE_INCOMPATIVEL", "CONTA_INATIVA"].includes(json.code)) {
         window.VF?.context?.signalContextError?.({ code: json.code });
       }

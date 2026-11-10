@@ -93,7 +93,7 @@ export default function Cliente360Page() {
                   <p className="vf-banner__description">{dados.estado.mensagem}</p>
                 </div>
                 <div className="vf-banner__actions">
-                  <a className="vf-btn vf-btn--secondary vf-btn--sm" href="fechamentos-api.html">
+                  <a className="vf-btn vf-btn--secondary vf-btn--sm" href="financeiro-v3.html">
                     Abrir Fechamento — API
                   </a>
                 </div>

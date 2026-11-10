@@ -409,7 +409,7 @@ async function main() {
         ),
         true,
       );
-      await goto("carteira.html");
+      await goto("clientes.html");
       await c.wait("window.VF?.shell");
       assert.equal(
         await c.eval(

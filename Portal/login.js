@@ -2,13 +2,16 @@ const STORAGE_KEY = "vf-token";
 const API_BASE = "https://venforce-server.onrender.com";
 
 // ─── Destino pós-login por role ───
-// F1.3 — Carteira vira a home dos papéis internos (MASTER_SPEC D2/§20.3).
+// F1.3 — a home dos papéis internos era a Carteira (MASTER_SPEC D2/§20.3).
+// A Carteira saiu do Portal; o Painel de Contas é a carteira agrupada por
+// Squad, global, e acessível a admin e aos papéis internos (user/membro/interno,
+// ver server/services/painelContas/painelContasAcesso.js).
 // seller e shopee_reviewer têm telas próprias e NÃO mudam.
 function destinoPorRole(user) {
   const role = String(user?.role || "").toLowerCase();
   if (role === "seller") return "seller.html";
   if (role === "shopee_reviewer") return "cliente-operacao.html";
-  return "carteira.html";
+  return "painel-contas.html";
 }
 
 // ─── Redirect se já logado ───

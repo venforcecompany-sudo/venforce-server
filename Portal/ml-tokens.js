@@ -9,7 +9,7 @@ function getToken() {
 const TOKEN = getToken();
 
 const user = JSON.parse(localStorage.getItem("vf-user") || "{}");
-if (user.role !== "admin") window.location.replace("carteira.html");
+if (user.role !== "admin") window.location.replace("painel-contas.html");
 initLayout();
 
 function clearSession() {
@@ -291,7 +291,7 @@ async function loadMlTokens() {
       headers: { Authorization: "Bearer " + TOKEN }
     });
     if (res.status === 401) { clearSession(); return; }
-    if (res.status === 403) { window.location.replace("carteira.html"); return; }
+    if (res.status === 403) { window.location.replace("painel-contas.html"); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json().catch(() => ({}));
     const tokens = Array.isArray(data.tokens) ? data.tokens : [];

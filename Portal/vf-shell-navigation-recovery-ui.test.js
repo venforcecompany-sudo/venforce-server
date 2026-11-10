@@ -285,7 +285,7 @@ async function run() {
     });
 
     /* ═══════ Contextualização mínima: Cliente 360 V2 e Central Full ══════ */
-    await goto("scope=account&module=central-vendas&role=user");
+    await goto("scope=account&module=visao&role=user");
     await cdp.evaluate("document.getElementById('vf-cliente-trigger').click()");
     await waitFor(cdp, "document.querySelector('.vf-shell__dropdown')", "dropdown de cliente não abriu");
     await cdp.evaluate("document.querySelector('.vf-menu__item').click()");

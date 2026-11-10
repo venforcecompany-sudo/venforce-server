@@ -72,7 +72,7 @@ async function initSeller() {
   if (me.status === 401) { window.location.replace("index.html"); return; }
   if (me.status === 403) {
     // Role interna comum caiu aqui por engano → manda para o portal.
-    window.location.replace("carteira.html");
+    window.location.replace("painel-contas.html");
     return;
   }
   if (!me.ok || !me.data?.ok) {

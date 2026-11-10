@@ -29,12 +29,12 @@ const path = require("path");
   console.log("  ✓ modelo/render da bancada");
 
   // standalone: fora do Shell V3
-  for (const f of ["vf-shell.js", "vf-context.js", "carteira.js"]) {
+  for (const f of ["vf-shell.js", "vf-context.js"]) {
     const src = fs.readFileSync(path.join(__dirname, f), "utf8");
     assert.ok(!src.includes("integracoes-externas"), `${f} não pode referenciar a bancada`);
   }
   const page = fs.readFileSync(path.join(__dirname, "integracoes-externas.html"), "utf8");
   assert.ok(!page.includes("vf-shell"), "página não carrega o Shell");
-  console.log("  ✓ standalone: Shell/Contexto/Carteira intactos");
+  console.log("  ✓ standalone: Shell/Contexto intactos");
   console.log("\n✓ integracoes-externas.test.js");
 })().catch((e) => { console.error(e); process.exit(1); });
