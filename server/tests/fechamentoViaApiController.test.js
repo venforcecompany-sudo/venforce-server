@@ -4,7 +4,9 @@
 //   - rotas registradas com os mesmos middlewares das demais de /financeiro;
 //   - controller repassa cliente/conta/período/ajustes ao service;
 //   - envelope de erro { ok:false, error, code } com o status do service;
-//   - sucesso devolve o JSON do service com ok:true (status) ou direto (POST).
+//   - sucesso devolve o JSON do service com ok:true (status) ou direto (POST);
+//   - POST aceita JSON e multipart (planilha de custos em `costs`, 20 MB),
+//     testado por HTTP de verdade com o multer da rota.
 //
 // O service é trocado por um stub no require.cache antes de carregar o
 // controller: nenhum banco, nenhuma chamada real.
@@ -87,9 +89,9 @@ function resposta() {
 
   // authMiddleware, requireAutomacoesAccess, requireClienteNaCarteira(...) e o handler
   eq("GET status tem 4 etapas (3 middlewares + controller)", statusRota.route.stack.length, 4);
-  eq("POST tem 4 etapas (3 middlewares + controller)", postRota.route.stack.length, 4);
+  eq("POST tem 5 etapas (3 middlewares + upload de custos + controller)", postRota.route.stack.length, 5);
   eq("GET status termina no controller fechamentoApiStatus", statusRota.route.stack[3].handle, controller.fechamentoApiStatus);
-  eq("POST termina no controller fechamentoApi", postRota.route.stack[3].handle, controller.fechamentoApi);
+  eq("POST termina no controller fechamentoApi", postRota.route.stack[4].handle, controller.fechamentoApi);
 
   console.log("\n▸ Status: repasse e envelope");
 
@@ -123,6 +125,67 @@ function resposta() {
   eq("POST: conta do body", ultimo.clienteContaIdRaw, 48);
   eq("POST: período do body", ultimo.periodoRaw, "2026-10");
   eq("POST: ajustes vão crus (parse fica no service)", ultimo.ajustesRaw.ads, "1.234,56");
+  eq("POST JSON: custosOrigem ausente vai como undefined (padrão sync no service)", ultimo.custosOrigemRaw, undefined);
+  eq("POST JSON: sem arquivo de custos", ultimo.custosArquivo, null);
+
+  console.log("\n▸ POST por HTTP: JSON e multipart");
+
+  const express = require("express");
+  const app = express();
+  app.use(express.json());
+  // Só o upload de custos + controller da rota real (auth/carteira ficam de fora).
+  app.post("/financeiro/:cliente/fechamento-api", postRota.route.stack[3].handle, controller.fechamentoApi);
+  const servidor = await new Promise((resolve) => {
+    const srv = app.listen(0, "127.0.0.1", () => resolve(srv));
+  });
+  const url = `http://127.0.0.1:${servidor.address().port}/financeiro/dual/fechamento-api`;
+  try {
+    let http = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clienteContaId: 48, periodo: "2026-10", custosOrigem: "base" }),
+    });
+    eq("HTTP JSON: 200", http.status, 200);
+    eq("HTTP JSON: custosOrigem repassado", chamadas.gerar.at(-1).custosOrigemRaw, "base");
+    eq("HTTP JSON: sem arquivo", chamadas.gerar.at(-1).custosArquivo, null);
+
+    const conteudo = Buffer.from("planilha de custos fake");
+    const form = new FormData();
+    form.append("clienteContaId", "48");
+    form.append("periodo", "2026-10");
+    form.append("ads", "10,50");
+    form.append("custosOrigem", "upload");
+    form.append("costs", new Blob([conteudo]), "Custos - RIKAM - MeLi.xlsx");
+    http = await fetch(url, { method: "POST", body: form });
+    eq("HTTP multipart: 200", http.status, 200);
+    const viaForm = chamadas.gerar.at(-1);
+    eq("HTTP multipart: conta e período do form", [viaForm.clienteContaIdRaw, viaForm.periodoRaw], ["48", "2026-10"]);
+    eq("HTTP multipart: ajuste do form", viaForm.ajustesRaw.ads, "10,50");
+    eq("HTTP multipart: custosOrigem upload", viaForm.custosOrigemRaw, "upload");
+    eq("HTTP multipart: buffer do arquivo chega inteiro", Buffer.compare(viaForm.custosArquivo.buffer, conteudo), 0);
+    eq("HTTP multipart: nome do arquivo", viaForm.custosArquivo.originalname, "Custos - RIKAM - MeLi.xlsx");
+
+    const antes = chamadas.gerar.length;
+    const grande = new FormData();
+    grande.append("custosOrigem", "upload");
+    grande.append("costs", new Blob([Buffer.alloc(20 * 1024 * 1024 + 1)]), "grande.xlsx");
+    http = await fetch(url, { method: "POST", body: grande });
+    eq("HTTP multipart > 20 MB: 413", http.status, 413);
+    eq("HTTP multipart > 20 MB: envelope do fechamento", await http.json(), {
+      ok: false,
+      error: "A planilha de custos passa de 20 MB.",
+      code: "CUSTOS_ARQUIVO_GRANDE",
+    });
+    eq("HTTP multipart > 20 MB: service não é chamado", chamadas.gerar.length, antes);
+
+    const outroCampo = new FormData();
+    outroCampo.append("sales", new Blob([conteudo]), "vendas.xlsx");
+    http = await fetch(url, { method: "POST", body: outroCampo });
+    eq("HTTP multipart com campo de arquivo desconhecido: 400", http.status, 400);
+    eq("HTTP multipart com campo desconhecido: código", (await http.json()).code, "UPLOAD_INVALIDO");
+  } finally {
+    await new Promise((resolve) => servidor.close(resolve));
+  }
 
   console.log("\n▸ Erros: envelope { ok, error, code }");
 

@@ -8,13 +8,18 @@
 //   - as maiores divergências de LC por MLB.
 //
 // SOMENTE LEITURA: nenhum INSERT/UPDATE/DELETE. O caminho da API só faz SELECT
-// (ver fechamentoViaApiService). Os custos da planilha vêm da base vinculada,
-// igual ao fluxo real. Não rodar contra produção sem autorização.
+// (ver fechamentoViaApiService). Custos:
+//   - com --custos <xlsx>: o MESMO arquivo vai para os dois caminhos — upload de
+//     custos na planilha e custosOrigem=upload na API;
+//   - sem --custos: a planilha usa a base vinculada (como o fluxo real) e a API
+//     usa --custos-origem (padrão "sync": os custos gravados pelo sync; "base":
+//     recalcula com a base vinculada atual).
+// Não rodar contra produção sem autorização.
 //
 // Uso:
 //   node server/scripts/comparar-fechamento-api-vs-planilha.js \
 //     --cliente <slug> --conta <clienteContaId> --periodo YYYY-MM --planilha <vendas.xlsx> \
-//     [--ads 0] [--venforce 0] [--affiliates 0] [--fullCost 0] [--additionalCosts 0] [--top 10]
+//     [--custos <custos.xlsx> | --custos-origem sync|base] [--ads 0] [--venforce 0] [--affiliates 0] [--fullCost 0] [--additionalCosts 0] [--top 10]
 //
 // Requer DATABASE_URL no ambiente do shell (não é lido do .env).
 
@@ -76,7 +81,7 @@ function formatar(valor) {
   return typeof valor === "number" ? valor.toFixed(4) : String(valor);
 }
 
-async function caminhoPlanilha({ buffer, clienteSlug, clienteContaId, ajustes }) {
+async function caminhoPlanilha({ buffer, custosBuffer, clienteSlug, clienteContaId, ajustes }) {
   const { detectMeliHeader, validateMeliHeaderAtRow, parseSpreadsheet } = require("../utils/excelUtils");
   const { buildCostRowsFromBase } = require("../services/bases/baseCustosService");
   const { processFechamentoFinanceiro } = require("../services/fechamentoFinanceiro");
@@ -88,17 +93,22 @@ async function caminhoPlanilha({ buffer, clienteSlug, clienteContaId, ajustes })
   }
   const salesRowsRaw = parseSpreadsheet(buffer, cabecalho.rowIndex);
 
-  const custos = await buildCostRowsFromBase({
-    baseId: null,
-    clienteSlug,
-    marketplace: "meli",
-    clienteContaId,
-  });
+  // --custos: mesmo caminho do upload de custos no controller (parseSpreadsheet
+  // do arquivo inteiro). Sem ele, custos da base vinculada, como no fluxo real
+  // quando a conta tem base.
+  const costRowsRaw = custosBuffer
+    ? parseSpreadsheet(custosBuffer)
+    : (await buildCostRowsFromBase({
+        baseId: null,
+        clienteSlug,
+        marketplace: "meli",
+        clienteContaId,
+      })).costRows;
 
   return processFechamentoFinanceiro({
     marketplace: "meli",
     salesRowsRaw,
-    costRowsRaw: custos.costRows,
+    costRowsRaw,
     ...ajustes,
     ordersAllRowsRaw: null,
     salesBufferRaw: null,
@@ -107,13 +117,15 @@ async function caminhoPlanilha({ buffer, clienteSlug, clienteContaId, ajustes })
   });
 }
 
-async function caminhoApi({ clienteSlug, clienteContaId, periodo, ajustes }) {
+async function caminhoApi({ clienteSlug, clienteContaId, periodo, ajustes, custosOrigem, custosArquivo }) {
   const { gerarFechamentoViaApi } = require("../services/fechamentoFinanceiro/fechamentoViaApiService");
   return gerarFechamentoViaApi({
     clienteSlugRaw: clienteSlug,
     clienteContaIdRaw: clienteContaId,
     periodoRaw: periodo,
     ajustesRaw: ajustes,
+    custosOrigemRaw: custosOrigem,
+    custosArquivo,
   });
 }
 
@@ -178,11 +190,22 @@ async function main() {
   };
 
   const buffer = fs.readFileSync(arquivo);
+  const arquivoCustos = args.custos ? path.resolve(args.custos) : null;
+  if (arquivoCustos && !fs.existsSync(arquivoCustos)) throw new Error(`Planilha de custos não encontrada: ${arquivoCustos}`);
+  const custosBuffer = arquivoCustos ? fs.readFileSync(arquivoCustos) : null;
+  if (arquivoCustos && args["custos-origem"] && args["custos-origem"] !== "upload") {
+    throw new Error("--custos já usa custosOrigem=upload na API; não combine com --custos-origem.");
+  }
+  const custosOrigem = arquivoCustos ? "upload" : args["custos-origem"] || "sync";
+  const custosArquivo = custosBuffer ? { buffer: custosBuffer, originalname: path.basename(arquivoCustos) } : null;
   const pool = require("../config/database");
   try {
-    console.log(`Comparando ${clienteSlug} · conta ${clienteContaId} · ${periodo} · ${path.basename(arquivo)}`);
-    const planilha = await caminhoPlanilha({ buffer, clienteSlug, clienteContaId, ajustes: ajustesNumericos });
-    const api = await caminhoApi({ clienteSlug, clienteContaId, periodo, ajustes });
+    console.log(`Comparando ${clienteSlug} · conta ${clienteContaId} · ${periodo} · ${path.basename(arquivo)}`
+      + ` · custos: ${arquivoCustos ? path.basename(arquivoCustos) : "base vinculada"}`);
+    const planilha = await caminhoPlanilha({ buffer, custosBuffer, clienteSlug, clienteContaId, ajustes: ajustesNumericos });
+    const api = await caminhoApi({ clienteSlug, clienteContaId, periodo, ajustes, custosOrigem, custosArquivo });
+    console.log(`API: costsSource=${api.costsSource} · costsBase=${api.costsBase ? api.costsBase.nome || api.costsBase.id : "—"}`
+      + ` · sem custo: planilha ${(planilha.unmatchedIds || []).length} MLB(s), API ${(api.unmatchedIds || []).length} MLB(s)`);
 
     if (api.sync && !api.sync.completo) {
       console.log(`\nAviso: sync incompleto — ${api.sync.motivoIncompleto}`);

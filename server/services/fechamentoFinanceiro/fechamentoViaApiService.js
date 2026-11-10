@@ -17,7 +17,13 @@
 //   (computeTacos/computeTacox), com os mesmos helpers da planilha.
 // - Quando a API não traz a fonte de uma chave do summary da planilha, a chave
 //   vai como null. Nunca 0 inventado (Master Spec M6).
-// - Somente leitura: nada é gravado aqui. Salvar a entrega continua sendo do front.
+// - Custos (custosOrigem): "sync" usa os custos que o sync gravou; "base"
+//   reaplica AGORA a base vinculada atual da conta; "upload" reaplica a
+//   planilha enviada. A reaplicação usa as MESMAS funções do sync
+//   (calcularResultadoItem & cia.) sobre receita/tarifa/frete persistidos:
+//   só custo, imposto e o que deriva deles mudam.
+// - Somente leitura: nada é gravado aqui (nem a base de custos — salvar a
+//   planilha como base é o POST /importar-base). Salvar a entrega é do front.
 // - Sync incompleto NÃO é erro: responde com sync.completo=false e o front pede
 //   confirmação. Só a falta total de sync publicado vira 409 CENTRAL_SEM_SYNC.
 
@@ -25,11 +31,21 @@ const pool = require("../../config/database");
 const {
   resolverClientePorIdOuSlug,
   obterConta,
-  sanitizarConta,
+  obterBaseDaConta,
 } = require("../clienteContas/clienteContaService");
 const centralVendasRepository = require("../centralVendas/centralVendasRepository");
 const { buildResumoCentralVendas } = require("../centralVendas/centralVendasImportService");
 const { pedidoEntraNoResultado } = require("../centralVendas/centralVendasService");
+const {
+  calcularResultadoItem,
+  acumularItemNoPedido,
+  finalizarResultadoPedido,
+  buildCostMap,
+  getCost,
+  buscarCustosPorBaseId,
+} = require("../centralVendas/centralVendasSyncService");
+const { buildCentralCostMap, getCentralCostForAd } = require("./meliFinanceiroService");
+const { parseSpreadsheet } = require("../../utils/excelUtils");
 const {
   buildCoverage,
   safeRatio,
@@ -286,19 +302,283 @@ const SYNC_INDISPONIVEL = Object.freeze({
   motivoIncompleto: "Mês ainda não sincronizado.",
 });
 
-// Base de custos que o sync usou (central_vendas_sync_runs.base_id). Só
-// documenta: se a base mudou depois, não recalcula — o usuário re-sincroniza.
-async function buscarCostsBase(imp, deps) {
-  if (!imp.sync_run_id) return null;
+// Base de custos que o sync usou (central_vendas_sync_runs.base_id, ou a do
+// próprio import) e o instante em que os custos foram lidos: o início do run.
+// Uso o início, não o publicadoEm, porque o sync lê a base no começo — uma
+// alteração durante o run já não entrou.
+async function buscarBaseDoSync(imp, deps) {
   const { rows } = await deps.db.query(
-    `SELECT b.id, b.slug, b.nome
-       FROM central_vendas_sync_runs r
-       JOIN bases b ON b.id = r.base_id
-      WHERE r.id = $1`,
-    [imp.sync_run_id]
+    `SELECT b.id, b.slug, b.nome,
+            COALESCE(r.started_at, r.created_at, i.published_at) AS aplicada_em
+       FROM central_vendas_imports i
+       LEFT JOIN central_vendas_sync_runs r ON r.id = i.sync_run_id
+       JOIN bases b ON b.id = COALESCE(r.base_id, i.base_id)
+      WHERE i.id = $1`,
+    [imp.id]
   );
   const base = rows[0];
-  return base ? { id: Number(base.id), slug: base.slug ?? null, nome: base.nome ?? null } : null;
+  if (!base) return null;
+  return {
+    id: Number(base.id),
+    slug: base.slug ?? null,
+    nome: base.nome ?? null,
+    aplicadaEm: isoTimestamp(base.aplicada_em),
+  };
+}
+
+// Base vinculada ATUAL da conta (mesma resolução do sync: obterBaseDaConta) e
+// quando ela mudou pela última vez: o maior entre bases.updated_at e o
+// updated_at dos custos dela (as telas de custo nem sempre tocam a base).
+// As colunas são TIMESTAMP sem fuso; o cast para timestamptz no banco usa o
+// mesmo fuso de sessão que gravou o CURRENT_TIMESTAMP.
+async function buscarBaseAtual(ctx, deps) {
+  const vinculo = await deps.obterBaseDaConta(ctx.conta.id, deps.db);
+  if (!vinculo?.base_id) return null;
+  const { rows } = await deps.db.query(
+    `SELECT b.id, b.slug, b.nome,
+            GREATEST(b.updated_at, (SELECT MAX(c.updated_at) FROM custos c WHERE c.base_id = b.id))::timestamptz
+              AS atualizada_em
+       FROM bases b
+      WHERE b.id = $1`,
+    [vinculo.base_id]
+  );
+  const base = rows[0];
+  return {
+    id: Number(vinculo.base_id),
+    slug: base?.slug ?? vinculo.slug ?? null,
+    nome: base?.nome ?? vinculo.nome ?? null,
+    atualizadaEm: isoTimestamp(base?.atualizada_em),
+  };
+}
+
+// status.base: a base que vale HOJE e se foi ela (sem alteração posterior) que
+// o sync aplicou. Sem import, sem base no run, base trocada ou base alterada
+// depois do sync ⇒ aplicadaNoSync=false (o front oferece custosOrigem=base).
+// Sem data de alteração conhecida não dá para provar que mudou: conta como
+// aplicada se for a mesma base.
+function montarBaseStatus(baseAtual, baseDoSync) {
+  if (!baseAtual) {
+    return { vinculada: false, id: null, slug: null, nome: null, atualizadaEm: null, aplicadaNoSync: false };
+  }
+  const mesmaBase = !!baseDoSync && baseDoSync.id === baseAtual.id;
+  const mudouDepois =
+    !!baseAtual.atualizadaEm &&
+    !!baseDoSync?.aplicadaEm &&
+    new Date(baseAtual.atualizadaEm).getTime() > new Date(baseDoSync.aplicadaEm).getTime();
+  return {
+    vinculada: true,
+    id: baseAtual.id,
+    slug: baseAtual.slug,
+    nome: baseAtual.nome,
+    atualizadaEm: baseAtual.atualizadaEm,
+    aplicadaNoSync: mesmaBase && !mudouDepois,
+  };
+}
+
+function baseResumo(base) {
+  return base ? { id: base.id, slug: base.slug ?? null, nome: base.nome ?? null } : null;
+}
+
+// ─── origem dos custos ──────────────────────────────────────────────────────
+
+const CUSTOS_ORIGENS = ["sync", "base", "upload"];
+
+function parseCustosOrigem(raw, arquivo) {
+  const texto = raw === undefined || raw === null ? "" : String(raw).trim().toLowerCase();
+  const origem = texto || "sync";
+  if (!CUSTOS_ORIGENS.includes(origem)) {
+    throw criarErro(400, `custosOrigem inválido: use ${CUSTOS_ORIGENS.join(", ")}.`, {
+      code: "CUSTOS_ORIGEM_INVALIDA",
+    });
+  }
+  if (origem === "upload" && !arquivo?.buffer?.length) {
+    throw criarErro(400, "Envie a planilha de custos (campo costs) para usar custosOrigem=upload.", {
+      code: "CUSTOS_ARQUIVO_OBRIGATORIO",
+    });
+  }
+  // Arquivo com outra origem seria ignorado em silêncio — e a pessoa acharia
+  // que o fechamento usou a planilha dela.
+  if (origem !== "upload" && arquivo?.buffer?.length) {
+    throw criarErro(400, "A planilha de custos só é usada com custosOrigem=upload.", {
+      code: "CUSTOS_ORIGEM_INVALIDA",
+    });
+  }
+  return origem;
+}
+
+// Planilha de custos enviada: o MESMO parser do upload de custos ML do
+// fechamento por planilha (parseSpreadsheet do arquivo inteiro) e o mesmo
+// mapa de custos que o motor de planilha da Central usa (buildCentralCostMap,
+// que entende as mesmas colunas de parseMeliCostRows).
+function lerPlanilhaCustos(arquivo) {
+  let linhas;
+  try {
+    linhas = parseSpreadsheet(arquivo.buffer);
+  } catch (_) {
+    linhas = null;
+  }
+  const mapa = Array.isArray(linhas) ? buildCentralCostMap(linhas) : new Map();
+  // O mapa guarda 3 chaves por MLB; conto entradas distintas com custo.
+  const comCusto = new Set([...mapa.values()].filter((e) => e.hasCost)).size;
+  if (comCusto === 0) {
+    throw criarErro(
+      422,
+      "Nenhuma linha de custo reconhecida na planilha. Ela precisa de uma coluna de anúncio (ex.: \"# de anúncio\" ou \"MLB\") e uma de custo (ex.: \"Preço de custo\").",
+      { code: "CUSTOS_PLANILHA_INVALIDA" }
+    );
+  }
+  return {
+    obterCusto: (mlb) => getCentralCostForAd(mapa, mlb),
+    fonte: "planilha_custos",
+    custosReconhecidos: comCusto,
+  };
+}
+
+async function lerCustosDaBase(base, deps) {
+  const custos = await deps.buscarCustosPorBaseId(base.id, deps.db);
+  const mapa = buildCostMap(custos);
+  return {
+    obterCusto: (mlb) => getCost(mapa, mlb),
+    fonte: "base_vinculada",
+    custosReconhecidos: new Set([...mapa.values()].filter((e) => e.hasCost)).size,
+  };
+}
+
+// ─── reaplicação de custos sobre os itens sincronizados ─────────────────────
+
+// Pendências que calcularResultadoItem decide. Qualquer outra persistida no
+// item é preservada como veio.
+const PENDENCIAS_DO_MOTOR = new Set([
+  "produto_ausente",
+  "custo_produto_ausente",
+  "tarifa_venda_ausente",
+  "imposto_interno_ausente",
+  "frete_seller_ausente",
+  "frete_pack_incompleto",
+]);
+
+function valorPositivoDoComponente(componente) {
+  if (!componente || componente.valor === null || componente.valor === undefined) return null;
+  const n = Number(componente.valor);
+  return Number.isFinite(n) ? -n : null;
+}
+
+// Troca custo_produto/imposto_interno dos itens pelos de `obterCusto` e
+// recalcula o que deriva deles (LC, margem, confiança, pendências), item e
+// pedido, com as MESMAS funções do sync (calcularResultadoItem,
+// acumularItemNoPedido, finalizarResultadoPedido). Receita, tarifa, frete e
+// reembolso continuam os persistidos (vieram da API). Função pura: devolve
+// novas linhas no formato do banco, não grava nada.
+function reaplicarCustos({ pedidos, itens, componentes, obterCusto, fonte = "base_vinculada" }) {
+  const chaveItem = (pedidoRowId, itemId) => `${pedidoRowId}|${itemId}`;
+  const porItem = new Map();
+  for (const c of componentes) {
+    if (c.tipo !== "tarifa_venda" && c.tipo !== "frete_seller") continue;
+    const chaves = [];
+    if (c.item_row_id != null) chaves.push(`row:${c.item_row_id}`);
+    if (c.item_id != null) chaves.push(chaveItem(c.pedido_row_id, c.item_id));
+    for (const k of chaves) {
+      if (!porItem.has(k)) porItem.set(k, {});
+      porItem.get(k)[c.tipo] = c;
+    }
+  }
+  const componentesDoItem = (item) =>
+    (item.id != null && porItem.get(`row:${item.id}`)) || porItem.get(chaveItem(item.pedido_row_id, item.item_id)) || {};
+
+  const acumuladores = new Map();
+  for (const p of pedidos) {
+    acumuladores.set(String(p.id), {
+      quantidadeItens: 0,
+      faturamento: 0,
+      lucroContribuicao: 0,
+      resultado: 0,
+      margemContribuicaoPercentual: null,
+      confianca: "confiavel",
+      pendencias: [],
+      _temResultado: false,
+    });
+  }
+
+  const recalculadoPorItem = new Map();
+  const novosItens = itens.map((item) => {
+    const quantidade = Number(item.quantidade || 0);
+    const receitaProduto = numOrNull(item.receita_produto);
+    const pendenciasPersistidas = asArray(item.pendencias_json);
+    const comps = componentesDoItem(item);
+    const r = calcularResultadoItem({
+      // Mesma regra de "produto presente" do motor.
+      hasProduct: !!item.mlb && quantidade > 0 && receitaProduto != null,
+      quantidade,
+      receitaProduto,
+      tarifaVendaTotal: valorPositivoDoComponente(comps.tarifa_venda),
+      freteItem: valorPositivoDoComponente(comps.frete_seller),
+      costEntry: item.mlb ? obterCusto(item.mlb) : null,
+      packIncompleto: pendenciasPersistidas.includes("frete_pack_incompleto"),
+    });
+    const pendencias = [
+      ...r.pendencias,
+      ...pendenciasPersistidas.filter((p) => !PENDENCIAS_DO_MOTOR.has(p) && !r.pendencias.includes(p)),
+    ];
+
+    const acc = acumuladores.get(String(item.pedido_row_id));
+    if (acc) {
+      acumularItemNoPedido(acc, {
+        quantidade,
+        receitaProduto,
+        lucroContribuicao: r.lucroContribuicao,
+        pendencias,
+        confianca: r.confianca,
+      });
+    }
+    if (item.id != null) recalculadoPorItem.set(String(item.id), r);
+    recalculadoPorItem.set(chaveItem(item.pedido_row_id, item.item_id), r);
+
+    return {
+      ...item,
+      custo_produto: r.custoProduto,
+      imposto_interno: r.impostoInterno,
+      lucro_contribuicao: r.lucroContribuicao,
+      resultado: r.lucroContribuicao,
+      margem_contribuicao_percentual: r.margemContribuicaoPercentual,
+      confianca: r.confianca,
+      pendencias_json: pendencias,
+    };
+  });
+
+  const novosPedidos = pedidos.map((p) => {
+    const acc = acumuladores.get(String(p.id));
+    finalizarResultadoPedido(acc);
+    const extras = asArray(p.pendencias_json).filter((x) => !PENDENCIAS_DO_MOTOR.has(x) && !acc.pendencias.includes(x));
+    return {
+      ...p,
+      // Faturamento é da API e não depende de custo: fica o persistido.
+      confianca: acc.confianca,
+      lucro_contribuicao: acc.lucroContribuicao,
+      resultado: acc.resultado,
+      margem_contribuicao_percentual: acc.margemContribuicaoPercentual,
+      pendencias_json: [...acc.pendencias, ...extras],
+    };
+  });
+
+  // Componentes de custo/imposto acompanham o item (consistência do payload);
+  // os demais ficam como vieram.
+  const novosComponentes = componentes.map((c) => {
+    if (c.tipo !== "custo_produto" && c.tipo !== "imposto_interno") return c;
+    const r =
+      (c.item_row_id != null && recalculadoPorItem.get(String(c.item_row_id))) ||
+      recalculadoPorItem.get(chaveItem(c.pedido_row_id, c.item_id));
+    if (!r) return c;
+    const temValor = c.tipo === "custo_produto" ? r.hasCost : r.hasTax;
+    const valor = c.tipo === "custo_produto" ? r.custoProduto : r.impostoInterno;
+    return {
+      ...c,
+      valor: temValor && valor !== null ? round2(-valor) : null,
+      fonte: temValor ? fonte : "ausente",
+      confianca: temValor ? "real" : c.tipo === "custo_produto" ? "bloqueado" : "ausente",
+    };
+  });
+
+  return { pedidos: novosPedidos, itens: novosItens, componentes: novosComponentes };
 }
 
 async function buscarRunEmAndamento(ctx, deps) {
@@ -548,6 +828,8 @@ function defaultDeps() {
     obterConta,
     resolveImportsForRange: centralVendasRepository.resolveImportsForRange,
     loadPedidosByImportIds: centralVendasRepository.loadPedidosByImportIds,
+    obterBaseDaConta,
+    buscarCustosPorBaseId,
     hojeIso: null,
   };
 }
@@ -559,20 +841,69 @@ async function obterStatusFechamentoViaApi({ clienteSlugRaw, clienteContaIdRaw, 
   const ctx = await resolverContextoFechamentoApi({ clienteSlugRaw, clienteContaIdRaw, periodoRaw }, deps);
   const imp = await selecionarImportVigente(ctx, deps);
   const runEmAndamento = await buscarRunEmAndamento(ctx, deps);
+  const baseAtual = await buscarBaseAtual(ctx, deps);
+  const baseDoSync = imp ? await buscarBaseDoSync(imp, deps) : null;
   return {
     marketplace: "meli",
     periodo: ctx.competencia,
     sync: imp ? montarSync(imp, ctx) : { ...SYNC_INDISPONIVEL },
     runEmAndamento,
+    base: montarBaseStatus(baseAtual, baseDoSync),
+  };
+}
+
+// Custos que valem para este fechamento, conforme custosOrigem:
+// - sync: os gravados pelo sync (nada é recalculado);
+// - base: a base vinculada ATUAL da conta, reaplicada agora;
+// - upload: a planilha enviada, reaplicada agora.
+// Devolve as linhas (talvez recalculadas), a base declarada e uma nota.
+async function resolverCustos({ origem, arquivo, planilhaCustos, imp, ctx, linhas, deps }) {
+  if (origem === "sync") {
+    return { linhas, costsBase: baseResumo(await buscarBaseDoSync(imp, deps)), nota: null };
+  }
+
+  if (origem === "base") {
+    const baseAtual = await buscarBaseAtual(ctx, deps);
+    if (!baseAtual) {
+      throw criarErro(
+        409,
+        "Esta conta não tem base de custos vinculada. Envie uma planilha de custos ou vincule uma base.",
+        { code: "BASE_NAO_VINCULADA" }
+      );
+    }
+    const custos = await lerCustosDaBase(baseAtual, deps);
+    const nomeBase = baseAtual.nome || baseAtual.slug || `#${baseAtual.id}`;
+    return {
+      linhas: reaplicarCustos({ ...linhas, obterCusto: custos.obterCusto, fonte: custos.fonte }),
+      costsBase: baseResumo(baseAtual),
+      nota:
+        custos.custosReconhecidos > 0
+          ? `Custos recalculados agora com a base vinculada atual "${nomeBase}".`
+          : `A base vinculada "${nomeBase}" não tem custos cadastrados: as vendas ficam sem custo.`,
+    };
+  }
+
+  const custos = planilhaCustos || lerPlanilhaCustos(arquivo);
+  const nomeArquivo = arquivo?.originalname ? ` (${arquivo.originalname})` : "";
+  return {
+    linhas: reaplicarCustos({ ...linhas, obterCusto: custos.obterCusto, fonte: custos.fonte }),
+    costsBase: null,
+    nota: `Custos da planilha enviada${nomeArquivo}: ${custos.custosReconhecidos} anúncio(s) com custo.`,
   };
 }
 
 // POST /financeiro/:cliente/fechamento-api — gera o resultado a partir do
 // import publicado. Leitura pura: o front salva a entrega pelo fluxo atual.
-async function gerarFechamentoViaApi({ clienteSlugRaw, clienteContaIdRaw, periodoRaw, ajustesRaw }, depsOverride = {}) {
+async function gerarFechamentoViaApi(
+  { clienteSlugRaw, clienteContaIdRaw, periodoRaw, ajustesRaw, custosOrigemRaw, custosArquivo = null },
+  depsOverride = {}
+) {
   const deps = { ...defaultDeps(), ...depsOverride };
   const ctx = await resolverContextoFechamentoApi({ clienteSlugRaw, clienteContaIdRaw, periodoRaw }, deps);
   const ajustes = parseAjustesFechamentoApi(ajustesRaw);
+  const custosOrigem = parseCustosOrigem(custosOrigemRaw, custosArquivo);
+  // Planilha inválida falha antes de qualquer leitura pesada.
+  const planilhaCustos = custosOrigem === "upload" ? lerPlanilhaCustos(custosArquivo) : null;
 
   const imp = await selecionarImportVigente(ctx, deps);
   if (!imp) {
@@ -583,17 +914,28 @@ async function gerarFechamentoViaApi({ clienteSlugRaw, clienteContaIdRaw, period
     );
   }
 
-  const { pedidos, itens, componentes } = await deps.loadPedidosByImportIds(
+  const persistidas = await deps.loadPedidosByImportIds(
     { importIds: [imp.id], dateFrom: ctx.inicio, dateTo: ctx.fim },
     deps.db
   );
 
+  const custos = await resolverCustos({
+    origem: custosOrigem,
+    arquivo: custosArquivo,
+    planilhaCustos,
+    imp,
+    ctx,
+    linhas: persistidas,
+    deps,
+  });
+
   const consolidado = consolidarFechamentoApi({
-    pedidos,
-    itens,
-    componentes,
+    pedidos: custos.linhas.pedidos,
+    itens: custos.linhas.itens,
+    componentes: custos.linhas.componentes,
     ajustes,
   });
+  if (custos.nota) consolidado.summary.executiveNotes.push(custos.nota);
 
   const sync = montarSync(imp, ctx);
   if (!sync.completo) consolidado.summary.executiveNotes.push(`Sincronização incompleta: ${sync.motivoIncompleto}`);
@@ -613,8 +955,8 @@ async function gerarFechamentoViaApi({ clienteSlugRaw, clienteContaIdRaw, period
     ignoredRevenue: consolidado.ignoredRevenue,
     emptySales: consolidado.emptySales,
     message: consolidado.message,
-    costsSource: "base",
-    costsBase: await buscarCostsBase(imp, deps),
+    costsSource: custosOrigem,
+    costsBase: custos.costsBase,
     sync,
     runEmAndamento: await buscarRunEmAndamento(ctx, deps),
     // Planilha em Excel não é gerada pela API; o front monta o que precisar.
@@ -626,6 +968,10 @@ module.exports = {
   obterStatusFechamentoViaApi,
   gerarFechamentoViaApi,
   consolidarFechamentoApi,
+  reaplicarCustos,
+  montarBaseStatus,
+  parseCustosOrigem,
+  lerPlanilhaCustos,
   parseAjustesFechamentoApi,
   resolverContextoFechamentoApi,
   selecionarImportVigente,

@@ -90,16 +90,20 @@ async function fechamentoApiStatus(req, res) {
   }
 }
 
-// POST /financeiro/:cliente/fechamento-api — body JSON:
-// { clienteContaId, periodo, ads, venforce, affiliates, fullCost, additionalCosts }
+// POST /financeiro/:cliente/fechamento-api — body JSON ou multipart:
+// { clienteContaId, periodo, ads, venforce, affiliates, fullCost, additionalCosts,
+//   custosOrigem: "sync" | "base" | "upload" } + arquivo `costs` (só com upload).
 async function fechamentoApi(req, res) {
   try {
     const body = req.body || {};
+    const arquivo = req.files?.costs?.[0] || null;
     const dados = await gerarFechamentoViaApi({
       clienteSlugRaw: req.params.cliente,
       clienteContaIdRaw: body.clienteContaId,
       periodoRaw: body.periodo,
       ajustesRaw: body,
+      custosOrigemRaw: body.custosOrigem,
+      custosArquivo: arquivo ? { buffer: arquivo.buffer, originalname: arquivo.originalname || null } : null,
     });
     return res.json(dados);
   } catch (err) {

@@ -308,14 +308,18 @@ function fakeDeps({
   publicado = null,
   runs = [],
   base = null,
+  baseAtual = null,
+  custosBase = [],
   conta = { id: 48, cliente_id: 7, nome: "Conta A", ativo: true, marketplace: "meli" },
   hojeIso = "2026-11-10",
 } = {}) {
   return {
     db: {
       async query(sql) {
+        // Base do sync (import + run) antes do import publicado: as duas SQL citam central_vendas_imports.
+        if (sql.includes("JOIN bases b ON b.id = COALESCE")) return { rows: base ? [base] : [] };
+        if (sql.includes("FROM bases b")) return { rows: baseAtual ? [baseAtual] : [] };
         if (sql.includes("FROM central_vendas_imports")) return { rows: publicado ? [publicado] : [] };
-        if (sql.includes("JOIN bases b")) return { rows: base ? [base] : [] };
         if (sql.includes("status IN ('queued','running')")) return { rows: runs };
         throw new Error(`SQL inesperado no teste: ${sql.slice(0, 60)}`);
       },
@@ -331,6 +335,12 @@ function fakeDeps({
     },
     async loadPedidosByImportIds() {
       return { pedidos, itens, componentes };
+    },
+    async obterBaseDaConta() {
+      return baseAtual ? { base_id: baseAtual.id, slug: baseAtual.slug, nome: baseAtual.nome } : { base_id: null };
+    },
+    async buscarCustosPorBaseId() {
+      return custosBase;
     },
     hojeIso,
   };
@@ -352,7 +362,7 @@ const respCompleta = await gerarFechamentoViaApi(
 );
 eq("resposta marca fonteVendas api", respCompleta.fonteVendas, "api");
 eq("resposta ok", respCompleta.ok, true);
-eq("custos vêm da base do sync", respCompleta.costsSource, "base");
+eq("padrão: custos aplicados no sync", respCompleta.costsSource, "sync");
 eq("base do sync documentada", respCompleta.costsBase, { id: 2, slug: "base-cli", nome: "Base Cliente" });
 eq("sync completo na resposta", respCompleta.sync.completo, true);
 eq("summary Resultado Final com ajustes (LC da base 100, não o 120 do resumo_json)", respCompleta.summary.finalResult, -50);

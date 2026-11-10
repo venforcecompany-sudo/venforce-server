@@ -11,7 +11,9 @@ salvamento de entrega, e para o relatório público (`Portal/relatorio-publico.j
 Código: `server/services/fechamentoFinanceiro/fechamentoViaApiService.js`
 (serviço), `server/controllers/financeiroVisaoController.js` (controller fino),
 `server/routes/financeiroVisaoRoutes.js` (rotas). Testes:
-`server/tests/fechamentoViaApiService.test.js`.
+`server/tests/fechamentoViaApiService.test.js`, `server/tests/fechamentoViaApiCustos.test.js`
+(custos: sync/base/upload) e `server/tests/fechamentoViaApiController.test.js` (contrato
+HTTP, JSON e multipart).
 
 ## Endpoints
 
@@ -36,7 +38,15 @@ Diz o que a API tem para a competência, sem calcular nada.
     "completo": true,
     "motivoIncompleto": null
   },
-  "runEmAndamento": null
+  "runEmAndamento": null,
+  "base": {
+    "vinculada": true,
+    "id": 3,
+    "slug": "custos-rikam-meli",
+    "nome": "Custos - RIKAM - MeLi",
+    "atualizadaEm": "2026-11-10T14:00:00.000Z",
+    "aplicadaNoSync": false
+  }
 }
 ```
 
@@ -44,15 +54,53 @@ Diz o que a API tem para a competência, sem calcular nada.
   (exceto `completo:false`) e `motivoIncompleto:"Mês ainda não sincronizado."`.
 - `runEmAndamento` = `{ id, status, criadoEm }` quando há sync `queued`/`running`
   da conta, senão `null`. É informativo; não bloqueia o fechamento.
+- `base` = a base de custos vinculada **atual** da conta (mesma resolução do sync,
+  `obterBaseDaConta`). Sem base: `vinculada:false` e os demais campos `null`/`false`.
+  - `atualizadaEm` = o maior entre `bases.updated_at` e o `updated_at` dos custos da
+    base (nem toda tela de custo toca a base).
+  - `aplicadaNoSync` = o sync do import vigente usou **esta** base e ela não mudou
+    depois. É `false` quando: não há import; o run não tinha base; a base do run é
+    outra; ou `atualizadaEm` é posterior ao **início** do run que gerou o import
+    (`started_at`, ou `created_at`/`publicadoEm` na falta dele). Usamos o início, e não o
+    `publicadoEm`, porque o sync lê a base no começo: uma alteração durante o run já
+    não entrou. Sem data de alteração conhecida, a mesma base conta como aplicada.
+  - Com `aplicadaNoSync=false` o front usa `custosOrigem=base` por padrão.
 
 ### `POST /financeiro/:cliente/fechamento-api`
 
-Body JSON:
+Body **JSON** ou **multipart/form-data**, com os mesmos campos:
 
 ```json
 { "clienteContaId": 48, "periodo": "2026-10", "ads": "1234,56", "venforce": "0",
-  "affiliates": "0", "fullCost": "0", "additionalCosts": "0" }
+  "affiliates": "0", "fullCost": "0", "additionalCosts": "0", "custosOrigem": "sync" }
 ```
+
+`custosOrigem` diz de onde vêm os custos:
+
+| Valor | Custos usados |
+|---|---|
+| `sync` (padrão) | os que o sync gravou no import (comportamento original; nada é recalculado) |
+| `base` | a base vinculada **atual** da conta, reaplicada agora. Resolve base alterada depois do sync e base recém-salva |
+| `upload` | a planilha enviada no campo de arquivo `costs` (só multipart), reaplicada agora |
+
+A planilha de custos usa o mesmo upload do fechamento por planilha: `multer`
+`memoryStorage`, limite de 20 MB, `parseSpreadsheet` do arquivo inteiro e as mesmas
+colunas de `parseMeliCostRows` (`# de anúncio`/`MLB`/`ID`, `Preço de custo`/`Custo`,
+`Imposto`), via `buildCentralCostMap`/`getCentralCostForAd`. Este endpoint **não grava**
+a planilha: salvar como base de custos é o `POST /importar-base` existente (o front
+chama antes e depois processa com `custosOrigem=base`).
+
+**Recálculo sem segunda matemática.** Em `base` e `upload`, os itens persistidos
+passam de novo pela MESMA função do sync, `calcularResultadoItem`
+(`centralVendasSyncService.js`, extraída de `buildMotorFromOrders`), e o pedido por
+`acumularItemNoPedido` + `finalizarResultadoPedido`. Ficam os valores persistidos de
+receita (`receita_produto`), tarifa (componente `tarifa_venda`), frete (componente
+`frete_seller`, já rateado) e reembolso (vieram da API). Mudam só `custo_produto`,
+`imposto_interno` e o que deriva deles: LC e MC do item e do pedido, confiança
+(`bloqueado` sem custo), pendências de custo/imposto, `unmatchedIds` e cobertura. As
+regras de financeiro pendente (tarifa/frete fora do LC) continuam. O teste
+`fechamentoViaApiCustos.test.js` prova isso: pedidos gerados pelo motor real com a
+base A e reaplicados com a base B ficam iguais ao motor rodado direto com a base B.
 
 Ajustes em texto pt-BR ou número (`parseMoneyValue`). Campo vazio ou ausente vale
 zero. Valor ambíguo é `400 AJUSTE_INVALIDO`.
@@ -72,7 +120,7 @@ Resposta `200`:
   "ignoredRevenue": 50,
   "emptySales": false,
   "message": "Alguns anúncios do MELI não possuem custo cadastrado. ...",
-  "costsSource": "base",
+  "costsSource": "sync",
   "costsBase": { "id": 2, "slug": "base-cliente", "nome": "Base Cliente" },
   "sync": { "...igual ao status..." },
   "runEmAndamento": null,
@@ -87,6 +135,9 @@ Diferenças em relação à planilha no envelope:
 - `excelBase64` é `null`. A API não gera planilha.
 - `unmatchedCosts` é sempre `[]`. A API não tem custo órfão (custo sem venda).
 - `runEmAndamento` é acrescentado à resposta do POST, além do `sync`.
+- `costsSource` é `"sync" | "base" | "upload"` (o `custosOrigem` usado). `costsBase` é a
+  base usada: a do run em `sync`, a atual em `base`, `null` em `upload`.
+  `summary.executiveNotes` diz de onde vieram os custos quando não são os do sync.
 
 Sync incompleto **não é erro**: responde `200` com `sync.completo=false` e
 `summary.executiveNotes` traz `"Sincronização incompleta: …"`. O front exige
@@ -103,6 +154,15 @@ confirmação antes de salvar.
 | 403 | `CONTA_NAO_PERTENCE_AO_CLIENTE` | conta de outro cliente (`CODIGOS_CANONICOS`) |
 | 409 | `CONTA_INATIVA` | conta desativada (`CODIGOS_CANONICOS`) |
 | 409 | `CENTRAL_SEM_SYNC` | nenhum import publicado para a competência (só no POST) |
+| 400 | `CUSTOS_ORIGEM_INVALIDA` | `custosOrigem` fora de `sync`/`base`/`upload`, ou arquivo `costs` enviado com origem que não é `upload` (seria ignorado em silêncio) |
+| 400 | `CUSTOS_ARQUIVO_OBRIGATORIO` | `custosOrigem=upload` sem o arquivo `costs` |
+| 409 | `BASE_NAO_VINCULADA` | `custosOrigem=base` e a conta não tem base vinculada |
+| 422 | `CUSTOS_PLANILHA_INVALIDA` | nenhuma linha de custo reconhecida (arquivo ilegível, sem coluna de anúncio/custo ou só custo zero) |
+| 413 | `CUSTOS_ARQUIVO_GRANDE` | planilha de custos acima de 20 MB |
+| 400 | `UPLOAD_INVALIDO` | outro erro do multipart (ex.: campo de arquivo que não é `costs`) |
+
+Base vinculada sem nenhum custo cadastrado com `custosOrigem=base` não é erro (igual
+ao sync): as vendas ficam sem custo e a nota do `summary` avisa.
 
 ## Seleção do import (fonte canônica)
 
@@ -185,7 +245,8 @@ com `null` (sem fonte na API). Só entram itens de pedidos que contam no resulta
 
 ### `unmatchedIds`
 
-MLBs de itens sem custo cadastrado na base do sync (`custo_produto_ausente`).
+MLBs de itens sem custo (`custo_produto_ausente`) na fonte de custos usada: base do
+sync, base atual ou planilha enviada.
 Anúncio sem MLB aparece como `SEM_ID`.
 
 ## Diferenças conhecidas em relação à planilha
@@ -210,15 +271,27 @@ Anúncio sem MLB aparece como `SEM_ID`.
 5. **Chaves sem fonte na API** voltam `null`: `paidRevenueTotal`,
    `platformAdjustmentTotal`, `platformAdjustmentRowsCount`, `costConflicts`,
    `costConflictWarnings`, `ambiguousCostIds`.
-6. **Custos.** Os custos são os da base vinculada, aplicados no sync (`custo_produto`).
-   `costsBase` é a base usada pelo run (`central_vendas_sync_runs.base_id`). Se a
-   base mudou depois do sync, o resultado **não é recalculado**. O usuário
-   re-sincroniza.
+6. **Custos.** Por padrão (`custosOrigem=sync`) são os da base vinculada, aplicados
+   no sync (`custo_produto`), e `costsBase` é a base do run. Se a base mudou depois
+   do sync (`status.base.aplicadaNoSync=false`) ou a conta não tem base, o front usa
+   `custosOrigem=base` ou `upload`, que reaplicam os custos sem re-sincronizar (ver
+   POST acima). Imposto: `parseMeliCostRows` converte fração em percentual (0,06 →
+   6) e o motor divide por 100 o que for maior que 1, como no sync.
 7. **Cancelados e devolvidos** seguem `pedidoEntraNoResultado` /
    `normalizePedidoStatus`, as regras da Central. Pedido de devolução parcial
    continua no resultado (`posVendaParcial`).
 8. **Frete ausente** (`frete_seller_ausente`) é pendência de financeiro, igual à tarifa
    de venda: o pedido fica fora da base do LC (ver item 1).
+9. **Ajuste de plataforma não vem da API.** A planilha calcula o LC a partir do
+   `Total (BRL)`. Em parte das vendas, o `Total (BRL)` traz um desconto que não está
+   em nenhuma coluna (receita − tarifa − frete ≠ Total). A `sale_fee` da Orders API
+   e o custo do envio não incluem esse valor, então o LC da API fica maior nessas
+   vendas. Ver o caso real abaixo.
+10. **Venda devolvida.** A planilha mostra a venda devolvida pelo número do pack, com
+    a receita no faturamento, `Total (BRL)` 0 e o reembolso na coluna de
+    cancelamentos. A API grava o pedido como `cancelled`: ele sai do faturamento e
+    vai para `excludedStatusRevenue`. O reembolso é o `transaction_amount_refunded`
+    do pagamento, o valor inteiro devolvido ao comprador.
 
 ## Validação contra a planilha
 
@@ -227,10 +300,51 @@ a mesma competência e imprime a diferença por chave do `summary` e as maiores
 divergências por MLB.
 
 ```
-node server/scripts/comparar-fechamento-api-vs-planilha.js --cliente <slug> --conta <clienteContaId> --periodo YYYY-MM --planilha <vendas.xlsx>
+node server/scripts/comparar-fechamento-api-vs-planilha.js --cliente <slug> --conta <clienteContaId> --periodo YYYY-MM --planilha <vendas.xlsx> [--custos <custos.xlsx> | --custos-origem sync|base]
 ```
 
 - Usa `DATABASE_URL` do shell e faz **somente leitura** (nenhum `INSERT`/`UPDATE`).
 - Exige que a planilha seja a do mesmo período e da mesma conta.
-- **Não rodar contra produção sem autorização.** Esta entrega só deixa o script
-  pronto e documentado.
+- `--custos`: o mesmo arquivo vai para os dois caminhos (upload de custos na planilha
+  e `custosOrigem=upload` na API). Sem ele, a planilha usa a base vinculada e a API
+  usa `--custos-origem` (padrão `sync`).
+- **Não rodar contra produção sem autorização.**
+
+### Caso real: Rikam (`rikam_loja`, conta 48), set/2026 — rodado em 10/11/2026
+
+A conta não tem base de custos vinculada. Por isso o sync gravou tudo sem custo, e
+com `custosOrigem=sync` a API dava LC `null` e cobertura 0%. Com a planilha de vendas
+e a planilha de custos, o fechamento por planilha dava LC R$ 892,04 (cobertura 98,67%).
+
+Resultado com a mesma planilha de custos enviada à API (`custosOrigem=upload`):
+
+| Chave | Planilha | API | Δ |
+|---|---|---|---|
+| `grossRevenueTotal` | 2.632,08 | 2.570,18 | −61,90 |
+| `contributionProfitTotal` (LC) | 892,04 | 906,24 | +14,20 |
+| `calculatedCoveragePercent` | 98,67 | 98,64 | −0,03 |
+| `revenueWithoutCost` | 34,90 | 34,90 | 0 |
+| `revenuePendingFinancial` | 0 | 0 | 0 |
+| `refundsTotal` | −43,44 | −61,90 | −18,46 |
+| `excludedStatusRevenue` | 0 | 61,90 | +61,90 |
+
+Nos dois caminhos fica 1 MLB sem custo, o mesmo.
+
+- **Faturamento, −61,90:** é a venda devolvida. Na planilha ela aparece como o pack
+  2000015086373729; na API é o pedido 2000018516534370, `cancelled`, do
+  MLB6250826876. A planilha soma a receita dela no faturamento; a API tira o pedido
+  do resultado (diferença 10). Essa venda **não muda o LC**: na planilha, o `Total
+  (BRL)` dela é 0 (receita − tarifa − frete − reembolso de 43,44), então não soma LC;
+  na API, ela está fora do resultado.
+- **LC, +14,20:** vem do ajuste de plataforma (diferença 9). Em 16 linhas da
+  planilha, o `Total (BRL)` é menor que a soma das colunas, e essas diferenças somam
+  −15,20:
+  - 14 vendas com tarifa de 10,05: −1,00 cada;
+  - 1 venda com tarifa de 10,18: −0,20;
+  - 1 venda de um MLB sem custo: −1,00. Esta fica fora do LC nos dois caminhos.
+
+  Sobram 14,00 + 0,20 = **14,20**, exatamente a diferença do LC: MLB6250826876
+  +11,20, MLB7692121774 +2,00 e MLB5277206959 +1,00. A API não tem fonte para esse
+  desconto.
+- **Reembolso:** a planilha mostra 43,44, que é o `Total` da venda antes do
+  reembolso. A API mostra 61,90, o valor devolvido ao comprador.

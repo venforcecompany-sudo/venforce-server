@@ -497,6 +497,113 @@ function allocateFrete(total, unitsArr) {
   return repartirCentavos(total, unitsArr.map((u) => u || 0));
 }
 
+// ---------------------------------------------------------------------------
+// Custo, imposto e resultado de UM item — a única matemática de custo do motor
+// API-first. Exportada porque o fechamento pela API (fechamentoViaApiService)
+// reaplica custos de outra base/planilha sobre os itens já sincronizados: ele
+// tem que chegar EXATAMENTE no que o sync gravaria com aquela base, então usa
+// esta mesma função (nada de segunda matemática).
+//
+// `costEntry`: entrada de buildCostMap/getCost (base vinculada) ou de
+// buildCentralCostMap/getCentralCostForAd (planilha) — os dois têm
+// { cost, taxPercent, hasCost, hasTax }. null = MLB sem custo.
+// ---------------------------------------------------------------------------
+function calcularResultadoItem({
+  hasProduct,
+  quantidade,
+  receitaProduto,
+  tarifaVendaTotal,
+  freteItem,
+  costEntry,
+  packIncompleto = false,
+}) {
+  const hasCost = !!costEntry && costEntry.hasCost;
+  const hasTax = !!costEntry && costEntry.hasTax;
+  const hasTarifa = tarifaVendaTotal != null;
+  const hasFrete = freteItem != null;
+
+  const custoProduto = hasCost ? round2(costEntry.cost * quantidade) : null;
+  const impostoDec = hasTax
+    ? costEntry.taxPercent > 1
+      ? costEntry.taxPercent / 100
+      : costEntry.taxPercent
+    : 0;
+  const impostoInterno =
+    hasTax && receitaProduto != null ? round2(receitaProduto * impostoDec) : null;
+
+  const pendencias = [];
+  if (!hasProduct) pendencias.push("produto_ausente");
+  if (!hasCost) pendencias.push("custo_produto_ausente");
+  if (!hasTarifa) pendencias.push("tarifa_venda_ausente");
+  if (!hasTax) pendencias.push("imposto_interno_ausente");
+  if (!hasFrete) pendencias.push("frete_seller_ausente");
+  if (!hasFrete && packIncompleto) pendencias.push("frete_pack_incompleto");
+
+  const bloqueado = !hasProduct || !hasCost;
+  const parcial = !bloqueado && (!hasTax || !hasTarifa || !hasFrete);
+  const confianca = bloqueado ? "bloqueado" : parcial ? "parcial" : "confiavel";
+
+  let lucroContribuicao = null;
+  let margemContribuicaoPercentual = null;
+  if (!bloqueado) {
+    // Resultado/LC só desconta frete quando ele for real.
+    lucroContribuicao = round2(
+      receitaProduto - (tarifaVendaTotal || 0) - (custoProduto || 0) - (impostoInterno || 0) - (hasFrete ? freteItem : 0)
+    );
+    margemContribuicaoPercentual =
+      receitaProduto > 0 ? round2((lucroContribuicao / receitaProduto) * 100) : 0;
+  }
+
+  return {
+    hasCost,
+    hasTax,
+    hasTarifa,
+    hasFrete,
+    custoProduto,
+    impostoInterno,
+    lucroContribuicao,
+    margemContribuicaoPercentual,
+    confianca,
+    pendencias,
+  };
+}
+
+// Soma um item no pedido (camelCase do motor). O pedido começa com
+// faturamento/quantidadeItens/lucroContribuicao 0, confianca "confiavel",
+// pendencias [] e _temResultado false.
+function acumularItemNoPedido(pedido, { quantidade, receitaProduto, lucroContribuicao, pendencias, confianca }) {
+  pedido.quantidadeItens = round2(pedido.quantidadeItens + quantidade);
+  pedido.faturamento = round2(pedido.faturamento + (receitaProduto || 0));
+  if (lucroContribuicao !== null) {
+    pedido.lucroContribuicao = round2(pedido.lucroContribuicao + lucroContribuicao);
+    pedido.resultado = pedido.lucroContribuicao;
+    pedido._temResultado = true;
+  }
+  for (const pend of pendencias) {
+    if (!pedido.pendencias.includes(pend)) pedido.pendencias.push(pend);
+  }
+  if (confianca === "bloqueado") pedido.confianca = "bloqueado";
+  else if (confianca === "parcial" && pedido.confianca !== "bloqueado") pedido.confianca = "parcial";
+}
+
+// finishPedido: ausencia nunca vira 0 — sem resultado confiavel ⇒ null.
+function finalizarResultadoPedido(pedido) {
+  if (pedido.confianca === "bloqueado" || !pedido._temResultado) {
+    pedido.lucroContribuicao = null;
+    pedido.resultado = null;
+    pedido.margemContribuicaoPercentual = null;
+  } else {
+    pedido.lucroContribuicao = round2(pedido.lucroContribuicao);
+    pedido.resultado = pedido.lucroContribuicao;
+    pedido.margemContribuicaoPercentual =
+      pedido.faturamento > 0
+        ? round2((pedido.lucroContribuicao / pedido.faturamento) * 100)
+        : 0;
+  }
+  delete pedido._temResultado;
+  return pedido;
+}
+
 function buildMotorFromOrders({
   orders,
   costMap,
@@ -598,47 +705,29 @@ function buildMotorFromOrders({
       const tarifaVendaTotal =
         saleFeeUnit != null && quantidade > 0 ? round2(saleFeeUnit * quantidade) : null;
 
-      const costEntry = getCost(costMap, mlb);
       const hasProduct = !!mlb && quantidade > 0 && receitaProduto != null;
-      const hasCost = !!costEntry && costEntry.hasCost;
-      const hasTax = !!costEntry && costEntry.hasTax;
-      const hasTarifa = tarifaVendaTotal != null;
-
-      const custoProduto = hasCost ? round2(costEntry.cost * quantidade) : null;
-      const impostoDec = hasTax
-        ? costEntry.taxPercent > 1
-          ? costEntry.taxPercent / 100
-          : costEntry.taxPercent
-        : 0;
-      const impostoInterno =
-        hasTax && receitaProduto != null ? round2(receitaProduto * impostoDec) : null;
-
       // Frete real do item (rateado do pedido). null = ausente; usa no LC só se real.
       const freteItem = freteAlloc[idx];
-      const hasFrete = freteItem != null;
-
-      const pendencias = [];
-      if (!hasProduct) pendencias.push("produto_ausente");
-      if (!hasCost) pendencias.push("custo_produto_ausente");
-      if (!hasTarifa) pendencias.push("tarifa_venda_ausente");
-      if (!hasTax) pendencias.push("imposto_interno_ausente");
-      if (!hasFrete) pendencias.push("frete_seller_ausente");
-      if (!hasFrete && packIncompleto) pendencias.push("frete_pack_incompleto");
-
-      const bloqueado = !hasProduct || !hasCost;
-      const parcial = !bloqueado && (!hasTax || !hasTarifa || !hasFrete);
-      const confianca = bloqueado ? "bloqueado" : parcial ? "parcial" : "confiavel";
-
-      let lucroContribuicao = null;
-      let margemContribuicaoPercentual = null;
-      if (!bloqueado) {
-        // Resultado/LC só desconta frete quando ele for real.
-        lucroContribuicao = round2(
-          receitaProduto - (tarifaVendaTotal || 0) - (custoProduto || 0) - (impostoInterno || 0) - (hasFrete ? freteItem : 0)
-        );
-        margemContribuicaoPercentual =
-          receitaProduto > 0 ? round2((lucroContribuicao / receitaProduto) * 100) : 0;
-      }
+      const {
+        hasCost,
+        hasTax,
+        hasTarifa,
+        hasFrete,
+        custoProduto,
+        impostoInterno,
+        lucroContribuicao,
+        margemContribuicaoPercentual,
+        confianca,
+        pendencias,
+      } = calcularResultadoItem({
+        hasProduct,
+        quantidade,
+        receitaProduto,
+        tarifaVendaTotal,
+        freteItem,
+        costEntry: getCost(costMap, mlb),
+        packIncompleto,
+      });
 
       const itemId = `${pedidoId}:${mlb || "SEM_ID"}:${idx}`;
       itens.push({
@@ -711,18 +800,7 @@ function buildMotorFromOrders({
         })
       );
 
-      pedido.quantidadeItens = round2(pedido.quantidadeItens + quantidade);
-      pedido.faturamento = round2(pedido.faturamento + (receitaProduto || 0));
-      if (lucroContribuicao !== null) {
-        pedido.lucroContribuicao = round2(pedido.lucroContribuicao + lucroContribuicao);
-        pedido.resultado = pedido.lucroContribuicao;
-        pedido._temResultado = true;
-      }
-      for (const pend of pendencias) {
-        if (!pedido.pendencias.includes(pend)) pedido.pendencias.push(pend);
-      }
-      if (confianca === "bloqueado") pedido.confianca = "bloqueado";
-      else if (confianca === "parcial" && pedido.confianca !== "bloqueado") pedido.confianca = "parcial";
+      acumularItemNoPedido(pedido, { quantidade, receitaProduto, lucroContribuicao, pendencias, confianca });
     });
 
     // ── Componentes de PEDIDO (sem item, não entram no rateio) ─────────────
@@ -774,20 +852,7 @@ function buildMotorFromOrders({
       );
     }
 
-    // finishPedido: ausencia nunca vira 0 — sem resultado confiavel ⇒ null.
-    if (pedido.confianca === "bloqueado" || !pedido._temResultado) {
-      pedido.lucroContribuicao = null;
-      pedido.resultado = null;
-      pedido.margemContribuicaoPercentual = null;
-    } else {
-      pedido.lucroContribuicao = round2(pedido.lucroContribuicao);
-      pedido.resultado = pedido.lucroContribuicao;
-      pedido.margemContribuicaoPercentual =
-        pedido.faturamento > 0
-          ? round2((pedido.lucroContribuicao / pedido.faturamento) * 100)
-          : 0;
-    }
-    delete pedido._temResultado;
+    finalizarResultadoPedido(pedido);
     pedidos.push(pedido);
   }
 
@@ -1503,6 +1568,9 @@ module.exports = {
   sincronizarVendasMeli: (params) => createCentralVendasSyncService().sincronizarVendasMeli(params),
   createCentralVendasSyncService,
   buildMotorFromOrders,
+  calcularResultadoItem,
+  acumularItemNoPedido,
+  finalizarResultadoPedido,
   extrairReembolso,
   buildCostMap,
   getCost,
