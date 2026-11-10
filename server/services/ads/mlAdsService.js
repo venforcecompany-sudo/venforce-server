@@ -169,6 +169,7 @@ async function buscarTodosAnunciosComMetricas(clienteId, siteId, advertiserId, f
   let totalApi = null;
   let paginas = 0;
   let primeiroErro = null;
+  let resumoApi = null;
 
   while (paginas < MAX_PAGES) {
     const params = new URLSearchParams({
@@ -212,6 +213,10 @@ async function buscarTodosAnunciosComMetricas(clienteId, siteId, advertiserId, f
       Array.isArray(data)          ? data          :
       [];
 
+    if (resumoApi === null && data?.metrics_summary && typeof data.metrics_summary === "object") {
+      resumoApi = data.metrics_summary;
+    }
+
     if (totalApi === null && data?.paging?.total != null) {
       totalApi = Number(data.paging.total);
     }
@@ -233,6 +238,7 @@ async function buscarTodosAnunciosComMetricas(clienteId, siteId, advertiserId, f
     totalApi: totalApi ?? todos.length,
     paginas,
     primeiroErro,
+    resumoApi,
   };
 }
 
@@ -246,6 +252,7 @@ async function buscarTodasCampanhasComMetricas(clienteId, siteId, advertiserId, 
   let totalApi = null;
   let paginas = 0;
   let primeiroErro = null;
+  let resumoApi = null;
 
   while (paginas < MAX_PAGES) {
     const params = new URLSearchParams({
@@ -295,6 +302,10 @@ async function buscarTodasCampanhasComMetricas(clienteId, siteId, advertiserId, 
       Array.isArray(data)            ? data :
       [];
 
+    if (resumoApi === null && data?.metrics_summary && typeof data.metrics_summary === "object") {
+      resumoApi = data.metrics_summary;
+    }
+
     if (totalApi === null && data?.paging?.total != null) {
       totalApi = Number(data.paging.total);
     }
@@ -316,6 +327,7 @@ async function buscarTodasCampanhasComMetricas(clienteId, siteId, advertiserId, 
     totalApi: totalApi ?? todas.length,
     paginas,
     primeiroErro,
+    resumoApi,
   };
 }
 
@@ -344,9 +356,26 @@ function somarMetricas(registros) {
   return totais;
 }
 
-function calcularResumoMetricas(itens, campanhas, mesRef) {
-  // Campanhas são a fonte principal dos totais; anúncios são fallback.
-  const fonteTotais = campanhas.length ? campanhas : itens;
+// O painel do Mercado Ads inclui as campanhas EXCLUÍDAS no total do período,
+// mas a listagem de campanhas não devolve as excluídas. Cada fonte abaixo é um
+// subconjunto do total real, então vale a de maior investimento:
+//  · metrics_summary das respostas da API (total do anunciante);
+//  · soma das campanhas listadas;
+//  · soma dos anúncios (cobre anúncios de campanhas já excluídas).
+function escolherTotais(itens, campanhas, resumosApi = []) {
+  const candidatas = [];
+  for (const r of resumosApi) {
+    if (!r || typeof r !== "object") continue;
+    candidatas.push({ fonte: "metrics_summary", ...somarMetricas([{ metrics: r }]) });
+  }
+  if (campanhas.length) candidatas.push({ fonte: "campaigns_search", ...somarMetricas(campanhas) });
+  if (itens.length) candidatas.push({ fonte: "ads_search", ...somarMetricas(itens) });
+  if (!candidatas.length) return { fonte: "campaigns_search", ...somarMetricas([]), candidatas: [] };
+  const melhor = candidatas.reduce((a, b) => (b.cost > a.cost ? b : a));
+  return { ...melhor, candidatas: candidatas.map((c) => ({ fonte: c.fonte, cost: round2(c.cost) })) };
+}
+
+function calcularResumoMetricas(itens, campanhas, mesRef, resumosApi = []) {
   const {
     cost,
     totalAmount,
@@ -354,7 +383,9 @@ function calcularResumoMetricas(itens, campanhas, mesRef) {
     indirectAmount,
     clicks,
     prints,
-  } = somarMetricas(fonteTotais);
+    fonte: fonteTotal,
+    candidatas,
+  } = escolherTotais(itens, campanhas, resumosApi);
 
   let vendas = 0;
   let anunciosAtivos = 0;
@@ -374,6 +405,8 @@ function calcularResumoMetricas(itens, campanhas, mesRef) {
 
   return {
     mesRef,
+    fonteTotal,
+    candidatasTotal:    candidatas,
     investimentoAds:    round2(cost),
     gmvAds:             round2(totalAmount),
     gmvDireto:          round2(directAmount),
@@ -622,7 +655,7 @@ async function buscarPerformanceML(clienteSlug, mesRef, janela = null, clienteCo
   }
 
   // 4. Calcular agregados e normalizar
-  const resumo = calcularResumoMetricas(itens, campanhasApi, mesRef);
+  const resumo = calcularResumoMetricas(itens, campanhasApi, mesRef, [campanhasResp.resumoApi, itensResp.resumoApi]);
   const anuncios = normalizarAnuncios(itens);
   const campanhas = normalizarCampanhas(campanhasApi, itens);
   const avisos = [];
@@ -635,7 +668,7 @@ async function buscarPerformanceML(clienteSlug, mesRef, janela = null, clienteCo
   }
 
   console.log(
-    `[mlAds] OK — advertiser=${advertiserId} mes=${mesRef} anuncios=${anuncios.length} invest=${resumo.investimentoAds} gmv=${resumo.gmvAds} roas=${resumo.roas}`
+    `[mlAds] OK — advertiser=${advertiserId} mes=${mesRef} anuncios=${anuncios.length} invest=${resumo.investimentoAds} gmv=${resumo.gmvAds} roas=${resumo.roas} fonte=${resumo.fonteTotal} candidatas=${JSON.stringify(resumo.candidatasTotal)}`
   );
 
   return {
@@ -649,7 +682,7 @@ async function buscarPerformanceML(clienteSlug, mesRef, janela = null, clienteCo
     ...resumo,
     anuncios,
     campanhas,
-    fonteInvestimento: campanhasApi.length ? "campaigns_search" : "ads_search_fallback",
+    fonteInvestimento: resumo.fonteTotal,
     avisos,
     paginas:   itensResp.paginas,
     totalApi:  itensResp.totalApi,
@@ -659,4 +692,4 @@ async function buscarPerformanceML(clienteSlug, mesRef, janela = null, clienteCo
   };
 }
 
-module.exports = { buscarPerformanceML };
+module.exports = { buscarPerformanceML, calcularResumoMetricas };
