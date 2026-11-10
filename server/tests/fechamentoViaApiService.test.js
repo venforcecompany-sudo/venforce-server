@@ -4,7 +4,9 @@
 // services/fechamentoFinanceiro/fechamentoViaApiService.js. Cobre:
 //   - paridade de chaves do summary com processMeli (rodado de verdade sobre
 //     uma planilha real, não sobre lista escrita à mão);
-//   - FAT/LC/cobertura = cálculo oficial da Central (LC do resumo_json do import);
+//   - FAT/cobertura = cálculo oficial da Central; LC = soma do LC dos pedidos
+//     com financeiro completo e custo (como na planilha). Pendente fica fora do
+//     LC, e LC sem nenhum pedido na base é null, nunca zero;
 //   - pedido cancelado fora do resultado; item sem custo em unmatchedIds;
 //   - financeiro pendente (tarifa/frete ausentes) e aviso correspondente;
 //   - ADS/Venforce entram só no Resultado Final e nos índices; LC null → null;
@@ -117,7 +119,6 @@ const salesRowsRaw = parseSpreadsheet(bufferPlanilha, 0);
 const referencia = processMeli(salesRowsRaw, CUSTOS_PLANILHA, 10, 20, 5).summary;
 
 const consolidadoParidade = consolidarFechamentoApi({
-  lucroContribuicaoImport: 120,
   pedidos: PEDIDOS,
   itens: ITENS,
   componentes: COMPONENTES,
@@ -134,7 +135,6 @@ eq(
 console.log("\n▸ Consolidação do mês completo");
 
 const c = consolidarFechamentoApi({
-  lucroContribuicaoImport: 120,
   pedidos: PEDIDOS,
   itens: ITENS,
   componentes: COMPONENTES,
@@ -146,11 +146,15 @@ eq("receita com custo = confiavel+parcial", s.revenueWithCost, 400);
 eq("receita sem custo = bloqueada", s.revenueWithoutCost, 50);
 eq("cobertura da base (%)", s.calculatedCoveragePercent, 88.89);
 eq("confiança parcial (há receita sem custo)", s.financialConfidence, "parcial");
-eq("LC = LC oficial do import (não recalcula)", s.contributionProfitTotal, 120);
-eq("base do LC = pedidos com LC", s.revenueCalculable, 400);
-eq("MC = LC / base do LC (fração)", s.averageContributionMargin, 0.3);
-eq("Resultado Final = LC - ADS - Venforce", s.finalResult, -30);
-eq("MC final = Resultado / base do LC", s.finalMarginCalculated, -0.075);
+// Base do LC = pedidos com financeiro completo e custo. P2 (tarifa pendente) e
+// P3 (sem custo) ficam fora: só P1 entra. Não é o LC do resumo_json (120).
+eq("LC = soma do LC dos pedidos com financeiro completo e custo", s.contributionProfitTotal, 100);
+eq("base do LC = FAT dos pedidos da base (P1)", s.revenueCalculable, 300);
+eq("MC = LC / base do LC (fração)", s.averageContributionMargin, 100 / 300);
+eq("Resultado Final = LC - ADS - Venforce", s.finalResult, -50);
+eq("MC final = Resultado / base do LC", s.finalMarginCalculated, -50 / 300);
+eq("MC de contribuição usa a mesma base", s.contributionMarginCalculated, 100 / 300);
+eq("profitCoversRevenue = base do LC", s.profitCoversRevenue, 300);
 eq("TACoS = ADS / FAT total", s.tacos, 100 / 450);
 eq("TACoX = (ADS+Venforce) / FAT total", s.tacox, 150 / 450);
 eq("ADS registrado no summary", s.adsTotal, 100);
@@ -176,6 +180,11 @@ eq("detalhe: 3 anúncios válidos (cancelado fora)", c.detailedRows.length, 3);
 eq("detalhe: anúncio sem custo fica 'sem custo'", porMlb.MLB333["Cobertura de custo"], "sem custo");
 eq("detalhe: custo do anúncio sem custo é null (não 0)", porMlb.MLB333["Preço de custo total"], null);
 eq("detalhe: tarifa pendente vira 'financeiro pendente'", porMlb.MLB222["Cobertura de custo"], "financeiro pendente");
+eq("detalhe: anúncio com financeiro pendente fica fora do LC (null, não 20)", porMlb.MLB222.LC, null);
+eq("detalhe: anúncio com financeiro pendente sem MC", porMlb.MLB222.MC, null);
+eq("detalhe: receita pendente continua em Venda Total", porMlb.MLB222["Venda Total"], 100);
+eq("detalhe: único anúncio com LC é o da base (MLB111); soma = LC do summary", porMlb.MLB111.LC, s.contributionProfitTotal);
+eq("detalhe: cancelado (MLB444) não aparece no detalhamento", porMlb.MLB444, undefined);
 eq("detalhe: anúncio completo fica 'com custo'", porMlb.MLB111["Cobertura de custo"], "com custo");
 eq("detalhe: MC em percentual como na planilha", porMlb.MLB111.MC, 33.33);
 
@@ -187,7 +196,6 @@ ok("nota da fonte API presente", s.executiveNotes.some((n) => n.includes("API do
 console.log("\n▸ Sem LC: nada vira 0 inventado");
 
 const semLc = consolidarFechamentoApi({
-  lucroContribuicaoImport: null,
   pedidos: [PEDIDOS[2]],
   itens: [ITENS[2]],
   componentes: [],
@@ -198,6 +206,34 @@ eq("Resultado Final null (não -30)", semLc.summary.finalResult, null);
 eq("MC null", semLc.summary.averageContributionMargin, null);
 eq("MC final null", semLc.summary.finalMarginCalculated, null);
 eq("TACoS ainda calculável (usa FAT)", semLc.summary.tacos, 30 / 50);
+
+console.log("\n▸ Todos os pedidos com financeiro pendente: LC null, nunca zero");
+
+const tudoPendente = consolidarFechamentoApi({
+  pedidos: [PEDIDOS[1]], // P2: com custo, mas tarifa de venda pendente
+  itens: [ITENS[1]],
+  componentes: [],
+  ajustes: { ...AJUSTES_ZERO, ads: 10 },
+});
+eq("LC null quando nenhum pedido tem financeiro completo", tudoPendente.summary.contributionProfitTotal, null);
+eq("base do LC zero (nada calculável)", tudoPendente.summary.revenueCalculable, 0);
+eq("Resultado Final null", tudoPendente.summary.finalResult, null);
+eq("MC null", tudoPendente.summary.averageContributionMargin, null);
+eq("faturamento continua incluindo o pendente", tudoPendente.summary.grossRevenueTotal, 100);
+eq("pendente aparece como receita pendente", tudoPendente.summary.revenuePendingFinancial, 100);
+ok("aviso de financeiro pendente presente", tudoPendente.summary.pendingFinancialWarning !== null);
+
+console.log("\n▸ Pedido com tarifa pendente não entra no LC mesmo com custo e LC calculado");
+
+const mistoPendente = consolidarFechamentoApi({
+  pedidos: [PEDIDOS[0], PEDIDOS[1]], // P1 completo (LC 100) + P2 pendente (LC 20 não entra)
+  itens: [ITENS[0], ITENS[1]],
+  componentes: [],
+  ajustes: AJUSTES_ZERO,
+});
+eq("LC só do pedido completo (100, não 120)", mistoPendente.summary.contributionProfitTotal, 100);
+eq("base do LC só do completo (300)", mistoPendente.summary.revenueCalculable, 300);
+eq("pendente contado à parte (100)", mistoPendente.summary.revenuePendingFinancial, 100);
 
 // ─── 4. financeiroCompleto e parse de ajustes ───────────────────────────────
 
@@ -319,7 +355,8 @@ eq("resposta ok", respCompleta.ok, true);
 eq("custos vêm da base do sync", respCompleta.costsSource, "base");
 eq("base do sync documentada", respCompleta.costsBase, { id: 2, slug: "base-cli", nome: "Base Cliente" });
 eq("sync completo na resposta", respCompleta.sync.completo, true);
-eq("summary Resultado Final com ajustes", respCompleta.summary.finalResult, -30);
+eq("summary Resultado Final com ajustes (LC da base 100, não o 120 do resumo_json)", respCompleta.summary.finalResult, -50);
+eq("LC não usa o resumo_json do import", respCompleta.summary.contributionProfitTotal, 100);
 eq("unmatchedCosts vazio (API não tem custo órfão)", respCompleta.unmatchedCosts, []);
 eq("excelBase64 nulo (sem planilha)", respCompleta.excelBase64, null);
 eq("competência declarada", respCompleta.competencia.periodoSolicitado, "2026-10");

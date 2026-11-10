@@ -125,8 +125,9 @@ pelo menos o trecho esperado. `motivoIncompleto` diz o que falta.
 
 Fonte dos números: `central_vendas_pedidos`, `_pedido_itens`, `_componentes` e o
 `resumo_json` do import, tudo lido por `loadPedidosByImportIds`. O cálculo oficial
-é `buildResumoCentralVendas` (o mesmo que gravou `resumo_json`). Nenhuma fórmula
-de LC/FAT/MC foi reimplementada.
+é `buildResumoCentralVendas` para o faturamento (o mesmo cálculo que gravou
+`resumo_json`). O **LC segue a planilha**: é a soma, pedido a pedido, do LC dos pedidos
+com financeiro completo e custo. Não se usa o `lucroContribuicao` do `resumo_json`.
 
 Legenda da coluna **Fonte**: `oficial` = cálculo da Central sem alteração;
 `derivado` = agregação simples dos pedidos/itens/componentes persistidos;
@@ -141,8 +142,8 @@ Legenda da coluna **Fonte**: `oficial` = cálculo da Central sem alteração;
 | `refundsCount` | derivado | pedidos com reembolso (planilha conta linhas) |
 | `lostRevenueTotal` | derivado | receita dos itens de pedidos com reembolso (planilha mede por linha) |
 | `paidRevenueTotal` | **null** | "Total (BRL)" do relatório de vendas não é gravado pelo motor da API |
-| `contributionProfitTotal` | oficial | `resumo_json.lucroContribuicao` do import. `null` se não há LC |
-| `averageContributionMargin` | derivado | LC / base do LC (fração). `null` sem LC ou sem base |
+| `contributionProfitTotal` | derivado | soma do LC dos pedidos da **base do LC** (financeiro completo e com custo). `null` se a base estiver vazia, nunca 0 |
+| `averageContributionMargin` | derivado | LC / `revenueCalculable` (fração). `null` sem LC ou sem base |
 | `finalResult` | ajuste | LC − ADS − Venforce − afiliados − FULL − custos adicionais. `null` sem LC |
 | `fullCostTotal`, `additionalCostsTotal` | ajuste | valores informados |
 | `tacos` | ajuste | `computeTacos(ads, FAT)` (`financeiroShared`) |
@@ -155,14 +156,14 @@ Legenda da coluna **Fonte**: `oficial` = cálculo da Central sem alteração;
 | `financialConfidence` | derivado | `buildCoverage`; vira `parcial` se há financeiro pendente |
 | `revenueWithFinancialData` | derivado | FAT dos pedidos sem pendência de tarifa de venda nem frete |
 | `revenuePendingFinancial` | derivado | FAT dos pedidos com tarifa ou frete pendente |
-| `revenueCalculable` | derivado | FAT dos pedidos válidos com LC calculado (base do MC) |
+| `revenueCalculable` | derivado | FAT dos pedidos da **base do LC** (financeiro completo e com custo). Base do LC, MC e Resultado Final |
 | `financialDataCoveragePercent` | derivado | `revenueWithFinancialData / grossRevenueTotal` |
 | `salesWithFinancialDataCount` | derivado | pedidos com financeiro completo (planilha conta linhas) |
 | `salesPendingFinancialCount` | derivado | pedidos com financeiro pendente |
 | `pendingFinancialWarning` | derivado | texto do aviso, ou `null` sem pendência |
 | `costConflicts`, `costConflictWarnings`, `ambiguousCostIds` | **null** | conflito de custo por MLB não é gravado pelo sync |
-| `contributionMarginCalculated` | derivado | LC / `revenueCalculable`. `null` sem LC |
-| `finalMarginCalculated` | derivado | `finalResult` / `revenueCalculable`. `null` sem LC |
+| `contributionMarginCalculated` | derivado | LC / `revenueCalculable` (mesma base). `null` sem LC |
+| `finalMarginCalculated` | derivado | `finalResult` / `revenueCalculable` (mesma base). `null` sem LC |
 | `profitCoversRevenue` | derivado | igual a `revenueCalculable` |
 | `excludedStatusRevenue` | derivado | FAT dos pedidos fora do resultado (cancelado, devolvido, reembolsado, mediação) |
 | `excludedStatusCount` | derivado | pedidos fora do resultado (planilha conta itens) |
@@ -177,7 +178,7 @@ Chaves de nível superior: `emptySales` (sem pedidos no resultado), `message`,
 Uma linha por anúncio (MLB), com as mesmas chaves da planilha:
 `"# de anúncio"`, `"Título do anúncio"`, `Unidades`,
 `"Preço unitário de venda do anúncio (BRL)"`, `"Venda Total"`,
-`"Preço de custo total"`, `LC`, `MC` (em percentual, como na planilha),
+`"Preço de custo total"`, `LC`, `MC` (em percentual, como na planilha). `LC` e `MC` somam só os itens da base do LC; a receita de itens com financeiro pendente continua em `"Venda Total"`, mas fica fora da margem. Anúncio sem nenhum item na base tem `LC` e `MC` `null`.
 `"Cobertura de custo"` (`com custo`, `sem custo`, `financeiro pendente` ou
 `parcial`). Acrescentam-se `SKU` e `"Total (BRL)"`/`"Ajuste plataforma (BRL)"`
 com `null` (sem fonte na API). Só entram itens de pedidos que contam no resultado.
@@ -189,14 +190,16 @@ Anúncio sem MLB aparece como `SEM_ID`.
 
 ## Diferenças conhecidas em relação à planilha
 
-1. **Tarifa de venda ou frete ausentes contam como zero no LC.** O LC da Central
-   (`resumo_json.lucroContribuicao`) é o número oficial e é usado sem alteração.
-   Quando a tarifa de venda ou o frete de um pedido não vieram da API, o motor
-   não os desconta. A planilha, por outro lado, deixa essas vendas fora do LC
-   (LC `null`). O aviso `pendingFinancialWarning` diz isso ao usuário. Antes de
-   publicar, vale conferir os pedidos com `revenuePendingFinancial > 0`. Mudar
-   essa regra no motor da Central exige decisão de produto e está fora do escopo
-   desta entrega.
+1. **Financeiro pendente fica fora do LC, como na planilha.** Pedido com tarifa de
+   venda ou frete pendentes (não vieram da API) entra no faturamento
+   (`grossRevenueTotal`), mas não entra no LC, no MC nem no Resultado Final. Não se
+   desconta zero no lugar do componente ausente. O aviso `pendingFinancialWarning`
+   e `revenuePendingFinancial` informam o valor. Se todos os pedidos estiverem
+   pendentes, o LC é `null`, nunca zero.
+   **Diferença para a Central:** o LC do motor da Central (usado no Painel de
+   Contas e na Central de Margem) não exclui o financeiro pendente: a tarifa e o
+   frete ausentes contam como zero. Por isso o LC do fechamento pode ser diferente
+   do LC mostrado nessas telas. Essa regra do motor não foi alterada aqui.
 2. **Granularidade.** A planilha conta linhas (item de venda). A API conta pedidos
    (`salesPendingFinancialCount`, `salesWithFinancialDataCount`, `refundsCount`,
    `excludedStatusCount`).
@@ -214,8 +217,8 @@ Anúncio sem MLB aparece como `SEM_ID`.
 7. **Cancelados e devolvidos** seguem `pedidoEntraNoResultado` /
    `normalizePedidoStatus`, as regras da Central. Pedido de devolução parcial
    continua no resultado (`posVendaParcial`).
-8. **Frete ausente** (`frete_seller_ausente`) é pendência de financeiro. O LC não
-   desconta o frete que não veio da API.
+8. **Frete ausente** (`frete_seller_ausente`) é pendência de financeiro, igual à tarifa
+   de venda: o pedido fica fora da base do LC (ver item 1).
 
 ## Validação contra a planilha
 

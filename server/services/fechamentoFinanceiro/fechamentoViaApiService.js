@@ -8,10 +8,13 @@
 // igual. Ver docs/FECHAMENTO_VIA_API.md para o mapeamento chave a chave.
 //
 // Regras deste serviço:
-// - Nenhum cálculo novo de faturamento/LC/MC: tudo sai de buildResumoCentralVendas
-//   (o mesmo cálculo que gravou resumo_json do import) e de buildCoverage. ADS,
-//   Venforce, afiliados e custos fixos entram só na fórmula do Resultado Final e
-//   nos índices (computeTacos/computeTacox), com os mesmos helpers da planilha.
+// - Nenhum cálculo novo de faturamento: FAT e cobertura saem de
+//   buildResumoCentralVendas e buildCoverage. O LC segue a planilha: é a soma
+//   do LC dos pedidos com financeiro completo (tarifa de venda e frete
+//   sincronizados) e com custo. Pedido com financeiro pendente fica FORA do LC
+//   (nunca descontado como zero) e continua no faturamento. ADS, Venforce,
+//   afiliados e custos fixos entram só no Resultado Final e nos índices
+//   (computeTacos/computeTacox), com os mesmos helpers da planilha.
 // - Quando a API não traz a fonte de uma chave do summary da planilha, a chave
 //   vai como null. Nunca 0 inventado (Master Spec M6).
 // - Somente leitura: nada é gravado aqui. Salvar a entrega continua sendo do front.
@@ -38,13 +41,12 @@ const { compararCompetencias } = require("../../utils/competenciaDetectada");
 const { parseMoneyValue } = require("../../utils/numberUtils");
 const { CODIGOS_CANONICOS } = require("../../utils/erroContextoCanonico");
 
-// Mesmo texto de aviso da planilha, mas com a regra REAL da API: sem tarifa de
-// venda ou frete sincronizados, o LC não desconta esse componente (o motor da
-// Central não inventa o valor). Por isso o aviso diz isso, e não "LC usa só
-// vendas completas" como na planilha.
+// Mesma regra da planilha: venda com tarifa de venda ou frete pendentes entra
+// no faturamento, mas fica fora do LC, do MC e do Resultado Final.
 const AVISO_FINANCEIRO_PENDENTE =
   "Parte das vendas ainda não possui tarifa de venda ou frete sincronizados da API do " +
-  "Mercado Livre. Nessas vendas o LC não desconta o componente ausente — confira antes de publicar.";
+  "Mercado Livre. Essas vendas entram no faturamento, mas ficam fora do LC, do MC e do " +
+  "Resultado Final até os dados completarem.";
 
 const AVISO_FONTE_API =
   "Fechamento calculado a partir da API do Mercado Livre (Central de Vendas). " +
@@ -68,14 +70,6 @@ function numOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
-}
-
-function asObject(value) {
-  if (!value) return {};
-  if (typeof value === "string") {
-    try { return JSON.parse(value); } catch (_) { return {}; }
-  }
-  return value;
 }
 
 function asArray(value) {
@@ -340,7 +334,10 @@ function coberturaDoGrupo(coberturas) {
   return "parcial";
 }
 
-function agregarDetalhamento(itensValidos) {
+// `pedidoRowIdsBaseLc`: pedidos que entram na base do LC (financeiro completo e
+// com custo). LC e MC do anúncio só somam esses itens; a receita fora da base
+// continua em "Venda Total".
+function agregarDetalhamento(itensValidos, pedidoRowIdsBaseLc) {
   const porAnuncio = new Map();
   for (const item of itensValidos) {
     const id = item.mlb || "SEM_ID";
@@ -356,6 +353,7 @@ function agregarDetalhamento(itensValidos) {
         "Preço de custo total": null,
         "Ajuste plataforma (BRL)": null,
         LC: null,
+        _receitaBaseLc: 0,
         _coberturas: [],
       });
     }
@@ -368,36 +366,36 @@ function agregarDetalhamento(itensValidos) {
     const custo = numOrNull(item.custo_produto);
     if (custo !== null) acc["Preço de custo total"] = round2((acc["Preço de custo total"] || 0) + custo);
 
-    const lc = numOrNull(item.lucro_contribuicao);
-    if (lc !== null) acc.LC = round2((acc.LC || 0) + lc);
+    if (pedidoRowIdsBaseLc.has(String(item.pedido_row_id))) {
+      const lc = numOrNull(item.lucro_contribuicao);
+      if (lc !== null) acc.LC = round2((acc.LC || 0) + lc);
+      acc._receitaBaseLc = round2(acc._receitaBaseLc + Number(item.receita_produto || 0));
+    }
 
     acc._coberturas.push(coberturaDoItem(item));
   }
 
-  return [...porAnuncio.values()].map(({ _coberturas, ...row }) => ({
+  return [...porAnuncio.values()].map(({ _coberturas, _receitaBaseLc, ...row }) => ({
     ...row,
     "Cobertura de custo": coberturaDoGrupo(_coberturas),
     MC:
       row.LC === null
         ? null
-        : row["Venda Total"] > 0
-          ? round2((row.LC / row["Venda Total"]) * 100)
+        : _receitaBaseLc > 0
+          ? round2((row.LC / _receitaBaseLc) * 100)
           : 0,
   }));
 }
 
 // Consolida o summary com as MESMAS chaves de processMeli (planilha). Função
 // pura: recebe pedidos/itens/componentes já lidos do banco (linhas snake_case).
-function consolidarFechamentoApi({ lucroContribuicaoImport, pedidos, itens, componentes, ajustes }) {
+function consolidarFechamentoApi({ pedidos, itens, componentes, ajustes }) {
   const validos = pedidos.filter(pedidoEntraNoResultado);
   const foraDoResultado = pedidos.filter((p) => !pedidoEntraNoResultado(p));
 
-  // FAT, com/sem custo, bloqueada e LC: o cálculo oficial da Central.
-  const resumo = buildResumoCentralVendas({
-    pedidos,
-    resumo: { lucroContribuicao: numOrNull(lucroContribuicaoImport) },
-  });
-  const LC = resumo.lucroContribuicao;
+  // FAT, com/sem custo e bloqueada: o cálculo oficial da Central (o LC do
+  // resumo não é usado — ver base do LC abaixo).
+  const resumo = buildResumoCentralVendas({ pedidos });
   const grossRevenueTotal = resumo.faturamento;
   const revenueWithCost = resumo.faturamentoComCusto;
   const revenueWithoutCost = resumo.receitaBloqueada;
@@ -411,10 +409,17 @@ function consolidarFechamentoApi({ lucroContribuicaoImport, pedidos, itens, comp
   const financialDataCoveragePercent =
     grossRevenueTotal > 0 ? round2((revenueWithFinancialData / grossRevenueTotal) * 100) : null;
 
-  // Base do LC: pedidos válidos com LC calculado (sem custo, o LC é null).
-  const revenueCalculable = somaFaturamento(
-    validos.filter((p) => p.lucro_contribuicao !== null && p.lucro_contribuicao !== undefined)
+  // Base do LC, como na planilha: pedidos válidos com financeiro completo E com
+  // custo (LC calculado). Pendente fica fora, nunca descontado como zero. Sem
+  // nenhum pedido na base, o LC é null (não zero).
+  const baseLc = validos.filter(
+    (p) => financeiroCompleto(p) && p.lucro_contribuicao !== null && p.lucro_contribuicao !== undefined
   );
+  const pedidoRowIdsBaseLc = new Set(baseLc.map((p) => String(p.id)));
+  const LC = baseLc.length
+    ? round2(baseLc.reduce((s, p) => s + Number(p.lucro_contribuicao || 0), 0))
+    : null;
+  const revenueCalculable = somaFaturamento(baseLc);
 
   const ads = round2(ajustes.ads);
   const venforce = round2(ajustes.venforce);
@@ -439,7 +444,7 @@ function consolidarFechamentoApi({ lucroContribuicaoImport, pedidos, itens, comp
 
   const validosRowIds = new Set(validos.map((p) => String(p.id)));
   const itensValidos = itens.filter((i) => validosRowIds.has(String(i.pedido_row_id)));
-  const detailedRows = agregarDetalhamento(itensValidos);
+  const detailedRows = agregarDetalhamento(itensValidos, pedidoRowIdsBaseLc);
 
   const unmatchedIds = [
     ...new Set(
@@ -460,7 +465,7 @@ function consolidarFechamentoApi({ lucroContribuicaoImport, pedidos, itens, comp
   if (unmatchedIds.length > 0) {
     executiveNotes.push(
       `Fechamento parcial: ${unmatchedIds.length} anúncio(s) sem custo cadastrado. ` +
-        "O faturamento total está completo; LC, MC e Resultado Final cobrem apenas a receita com custo identificado."
+        "O faturamento total está completo; LC, MC e Resultado Final cobrem apenas a receita com custo e financeiro completo."
     );
   }
   if (revenuePendingFinancial > 0) executiveNotes.push(AVISO_FINANCEIRO_PENDENTE);
@@ -584,7 +589,6 @@ async function gerarFechamentoViaApi({ clienteSlugRaw, clienteContaIdRaw, period
   );
 
   const consolidado = consolidarFechamentoApi({
-    lucroContribuicaoImport: asObject(imp.resumo_json).lucroContribuicao,
     pedidos,
     itens,
     componentes,
