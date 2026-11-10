@@ -372,6 +372,27 @@ function montarFiltroSnapshots({
   return { condicoes, params, statusExpr };
 }
 
+// P0 10/11/2026 — HTTP 500 em /snapshot/itens (conta 87): com `statusOverrides`
+// (retorno ML de promoção em andamento) o filtro carrega $4/$5, que só aparecem
+// no SQL quando há filtro/ordenação por status. Sem eles o Postgres recusa a
+// query ("bind message supplies 5 parameters, but prepared statement requires
+// 3" / "could not determine data type of parameter $4"). Toda query que consome
+// o filtro passa por aqui: só os parâmetros REFERENCIADOS vão ao banco,
+// renumerados na ordem de aparição. O texto do filtro não muda.
+function compactarParametros(sql, params) {
+  const novoIndice = new Map();
+  const usados = [];
+  const texto = String(sql).replace(/\$(\d+)\b/g, (_, n) => {
+    const original = Number(n);
+    if (!novoIndice.has(original)) {
+      usados.push(params[original - 1]);
+      novoIndice.set(original, usados.length);
+    }
+    return `$${novoIndice.get(original)}`;
+  });
+  return { sql: texto, params: usados };
+}
+
 // Ordenação por WHITELIST (M6). A chave pública vira um fragmento SQL fixo;
 // nada enviado pelo usuário é interpolado. Toda ordem termina em
 // `item_id ASC` (paginação estável) e manda nulos para o fim nos dois
@@ -448,23 +469,25 @@ async function queryProjectionSnapshotsPage({ filtro, orderBy = ORDEM_PADRAO, li
     ordem = ordem.replace(/__RECEITA__/g, `COALESCE(($${params.length}::jsonb ->> item_id)::numeric, 0)`);
   }
   params.push(limit, offset);
-  const result = await db.query(
+  const q = compactarParametros(
     `/* ms:list */ SELECT * FROM margin_projection_snapshots
       WHERE ${filtro.condicoes.join(" AND ")}
       ORDER BY ${ordem}
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
+  const result = await db.query(q.sql, q.params);
   return result.rows.map(sanitizeSnapshot);
 }
 
 async function countProjectionSnapshotsFiltrado({ filtro, db = pool }) {
-  const result = await db.query(
+  const q = compactarParametros(
     `/* ms:count */ SELECT COUNT(*)::int AS total, MAX(calculated_at) AS ultimo_calculo
        FROM margin_projection_snapshots
       WHERE ${filtro.condicoes.join(" AND ")}`,
     filtro.params
   );
+  const result = await db.query(q.sql, q.params);
   const row = result.rows[0] || {};
   return { total: Number(row.total || 0), ultimoCalculoEm: row.ultimo_calculo || null };
 }
@@ -479,7 +502,7 @@ async function summarizeProjectionSnapshots({ filtro, db = pool }) {
   const porRefresh = ["fresh", "stale", "failed"]
     .map((s) => `COUNT(*) FILTER (WHERE refresh_status = '${s}')::int AS "refresh_${s}"`)
     .join(",\n            ");
-  const result = await db.query(
+  const qk = compactarParametros(
     `/* ms:kpis */ SELECT COUNT(*)::int AS total,
             ${porStatus},
             ${porRefresh},
@@ -493,6 +516,7 @@ async function summarizeProjectionSnapshots({ filtro, db = pool }) {
       WHERE ${filtro.condicoes.join(" AND ")}`,
     filtro.params
   );
+  const result = await db.query(qk.sql, qk.params);
   const row = result.rows[0] || {};
   const n = (v) => Number(v || 0);
   return {
@@ -578,6 +602,7 @@ module.exports = {
   markSnapshotsRefreshFailed,
   markSnapshotsOutsideCatalog,
   montarFiltroSnapshots,
+  compactarParametros,
   queryProjectionSnapshotsPage,
   countProjectionSnapshotsFiltrado,
   ORDEM_PADRAO,
