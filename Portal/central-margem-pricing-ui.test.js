@@ -296,6 +296,8 @@ const MOCK_CLIENT = `
           ? (semDados ? { disponivel: false, motivo: "sem_snapshot_promocoes", snapshot_em: null, parcial: null } : { disponivel: true, motivo: null, snapshot_em: "2026-10-14T08:00:00Z", parcial: false })
           : null,
         fontePromocoes: fp || undefined,
+        // Coerência do "hoje" (preço do snapshot × preço de agora no ML); o teste injeta a divergência.
+        leituras: window.__pc.leituras || undefined,
         cotacoes: { consultas: 3, precos_distintos: 3, limite_excedido: 0, maximo_por_requisicao: 40 },
         cenarios: saida,
       };
@@ -1605,6 +1607,30 @@ async function run() {
       assert.strictEqual(await cdp.evaluate("document.getElementById('cm-bancada-review').disabled"), false, "snapshot (mesmo stale): Participar segue pelas regras de sempre");
       await fecharDrawer();
       await cdp.evaluate("window.__pc.fp = null; window.__pc.oppsModo = null");
+    });
+
+    await check("preço de hoje mudou desde a leitura da margem (MLB7892951136): aviso com os DOIS preços e horários; não verificado é dito; coerente não polui", async () => {
+      await cdp.evaluate("window.__pc.fp = " + JSON.stringify(FP_CASOS[2].fp) + "; window.__pc.leituras = " + JSON.stringify({
+        status: "divergente", preco_snapshot: 278.14, snapshot_em: "2026-11-10T16:14:53Z", preco_vigente: 169.66,
+        vigente_lido_em: "2026-11-10T16:59:50Z", vigente_motivo: null, promocoes_em: "2026-11-10T06:32:34Z",
+      }));
+      await abrirBancadaDoItem();
+      await waitFor(cdp, "document.querySelector('[data-cm-bancada=\"hoje-divergente\"]')", "aviso de preço de hoje divergente não apareceu");
+      const aviso = normalizar(await cdp.evaluate("document.querySelector('[data-cm-bancada=\"hoje-divergente\"]').textContent"));
+      for (const t of ["R$ 278,14", "R$ 169,66", "não são recomendação", "Atualizar leitura", "Promoções lidas em"]) assert.ok(aviso.includes(t), `falta "${t}": ${aviso}`);
+      await fecharDrawer();
+
+      await cdp.evaluate("window.__pc.leituras = { status: 'nao_verificado', preco_snapshot: 278.14, snapshot_em: '2026-11-10T16:14:53Z', preco_vigente: null, vigente_lido_em: '2026-11-10T16:59:50Z', vigente_motivo: 'sale_price_http_429' }");
+      await abrirBancadaDoItem();
+      await waitFor(cdp, "document.querySelector('[data-cm-bancada=\"hoje-nao-verificado\"]')", "nota de não verificado não apareceu");
+      assert.ok(!(await cdp.evaluate("Boolean(document.querySelector('[data-cm-bancada=\"hoje-divergente\"]'))")));
+      await fecharDrawer();
+
+      await cdp.evaluate("window.__pc.leituras = { status: 'coerente', preco_snapshot: 278.14, preco_vigente: 278.14 }");
+      await abrirBancadaDoItem();
+      assert.ok(!(await cdp.evaluate("Boolean(document.querySelector('[data-cm-bancada^=\"hoje-\"]'))")), "coerente: nenhum aviso");
+      await fecharDrawer();
+      await cdp.evaluate("window.__pc.leituras = null; window.__pc.fp = null");
     });
 
     console.log(`# ${checks} smoke tests de UI (precificação) concluídos`);

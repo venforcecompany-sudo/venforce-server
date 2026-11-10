@@ -346,6 +346,11 @@ const MOCK_CLIENT = `
         window.__cmCalls.status.push(params);
         var run = window.__cmRuns[String(params.clienteContaId)];
         if (!run || run.runId !== params.runId) return Promise.resolve({ ok: false, status: 404, error: "run não encontrado" });
+        // "stuck": run sem heartbeat (PostgreSQL/servidor reiniciou) — o backend marca parado:true.
+        if (window.__cmOutcome === "stuck" && run.status !== "completed" && run.status !== "failed") {
+          run.status = "running"; run.totalItems = TOTAL; run.processedItems = 300;
+          return Promise.resolve({ ok: true, run: Object.assign(runPublico(run), { parado: true, semProgressoMinutos: 7 }) });
+        }
         if (run.status === "queued") { run.status = "running"; run.totalItems = TOTAL; }
         else if (run.status === "running" && window.__cmOutcome !== "slow") {
           run.processedItems = Math.min(TOTAL, run.processedItems + 2500);
@@ -602,7 +607,8 @@ async function run() {
 
     await check("Central de Vendas falhando: UM aviso 'Realizado indisponível · motivo' (nenhum R$ 0 nem 0), bloco detalhado oculto, e as linhas não dizem 'sem venda'", async () => {
       await cdp.evaluate("window.__cmRealizadoFalha = true");
-      await cdp.evaluate("(function(){var s=document.getElementById('cm-period');s.value='2026-07';s.dispatchEvent(new Event('change'));})()");
+      // Um mês que EXISTE no seletor (mês atual + 3 anteriores): data fixa ('2026-07') saía da lista com o tempo.
+      await cdp.evaluate("(function(){var s=document.getElementById('cm-period');s.value=s.options[s.options.length-1].value;s.dispatchEvent(new Event('change'));})()");
       await waitFor(cdp, "document.querySelector('[data-cm-realized-unavailable]') && !window.VFCentralMargemUi.getState().loading && !window.VFCentralMargemUi.getState().realizadoLoading", "estado indisponível do realizado não apareceu");
       assert.strictEqual(await cdp.evaluate("document.querySelectorAll('[data-cm-realized-unavailable]').length"), 1, "aviso ÚNICO");
       const aviso = await cdp.evaluate("document.getElementById('cm-top-realized').textContent");
@@ -745,6 +751,20 @@ async function run() {
       assert.ok((await pageState()).includes("último snapshot válido"));
       assert.ok(await rowCount() > 0);
       assert.ok((await cdp.evaluate("document.getElementById('cm-kpis-financial').innerText")).includes("5000"));
+    });
+
+    await check("run sem progresso (crash do banco): banner 'parado', nunca 'Atualizando…', leitura anterior mantida e polling espaçado", async () => {
+      await cdp.evaluate("window.__cmOutcome='stuck';document.getElementById('cm-refresh').click()");
+      await waitFor(cdp, "document.querySelector('[data-cm-snapshot-state=\"parado\"]')", "banner de run parado não apareceu");
+      const texto = await pageState();
+      assert.ok(texto.includes("sem progresso há 7 min"), texto);
+      assert.ok(texto.includes("300 / 5000"), texto);
+      assert.ok(texto.includes("último snapshot válido"), texto);
+      assert.ok(!texto.includes("Atualizando leitura"), `run parado exibido como em andamento: ${texto}`);
+      assert.ok(await rowCount() > 0, "leitura anterior continua visível");
+      // O reconcile do backend encerra o run: a tela sai do estado parado sozinha.
+      await cdp.evaluate("window.__cmOutcome=null;window.__cmRuns['900'].status='failed';window.__cmRuns['900'].errorMessage='Run sem heartbeat além do limite (processo reiniciado ou travado); marcado como falho para liberar um novo run.'");
+      await waitFor(cdp, "document.querySelector('[data-cm-snapshot-state=\"failed\"]') && !window.VFCentralMargemUi.getState().pollTimer", "tela não saiu do estado parado após o run encerrar", 20000);
     });
 
     await check("troca de conta troca o dataset e mata o polling da conta anterior", async () => {

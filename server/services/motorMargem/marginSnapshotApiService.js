@@ -69,8 +69,25 @@ function idsFalhosDoRun(run) {
   return Array.isArray(ids) ? ids : [];
 }
 
-function runPublico(run) {
+// P0 10/11/2026 (run 3808, conta 87): com o PostgreSQL em crash-recovery o run
+// ficou `running` sem heartbeat por 10 min (até o reconcile do worker marcá-lo
+// failed) e a tela fez ~200 polls mostrando "Atualizando…". O heartbeat é
+// renovado a cada lote (~2 s; com retry/Retry-After, no máximo ~2–3 min), então
+// sem sinal há RUN_PARADO_MINUTOS o run é exibido como PARADO — sem mudar o
+// estado no banco (quem encerra é o reconcile; um GET nunca escreve).
+const RUN_PARADO_MINUTOS = 4;
+
+function minutosSemProgresso(run, agora) {
+  if (run.status !== "running" && run.status !== "queued") return null;
+  const ref = run.status === "running" ? (run.heartbeatAt || run.startedAt || run.createdAt) : run.createdAt;
+  const t = ref ? new Date(ref).getTime() : NaN;
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.floor((agora - t) / 60000));
+}
+
+function runPublico(run, agora = Date.now()) {
   if (!run) return null;
+  const semProgresso = minutosSemProgresso(run, agora);
   return {
     runId: run.id,
     clienteContaId: run.clienteContaId,
@@ -90,6 +107,10 @@ function runPublico(run) {
     finishedAt: run.finishedAt,
     errorCode: run.errorCode || null,
     errorMessage: run.errorMessage ? redigirSegredos(run.errorMessage, 500) : null,
+    // running: minutos desde o último heartbeat; queued: desde a criação (nenhum
+    // worker pegou — ex.: MARGIN_SNAPSHOT_WORKER_ENABLED desligado). null = terminal.
+    semProgressoMinutos: semProgresso,
+    parado: semProgresso !== null && semProgresso >= RUN_PARADO_MINUTOS,
   };
 }
 
