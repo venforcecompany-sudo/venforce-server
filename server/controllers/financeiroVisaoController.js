@@ -5,6 +5,10 @@
 const { obterFinanceiro } = require("../services/financeiroVisaoService");
 const { obterAdsDoFechamento } = require("../services/financeiroAdsService");
 const { obterMiniaturas } = require("../services/financeiroMiniaturasService");
+const {
+  obterStatusFechamentoViaApi,
+  gerarFechamentoViaApi,
+} = require("../services/fechamentoFinanceiro/fechamentoViaApiService");
 
 function responderErro(res, err) {
   const statusCode = Number.isFinite(Number(err?.statusCode)) && Number(err.statusCode) >= 400 ? Number(err.statusCode) : 500;
@@ -61,4 +65,46 @@ async function miniaturas(req, res) {
   }
 }
 
-module.exports = { financeiro, ads, miniaturas };
+// Fechamento pela API do Mercado Livre (Central de Vendas, sem planilha).
+// Contrato em docs/FECHAMENTO_VIA_API.md. Envelope de erro próprio:
+// { ok:false, error, code } — o restante deste módulo usa `erro`.
+function responderErroFechamentoApi(res, err) {
+  const statusCode = Number.isFinite(Number(err?.statusCode)) && Number(err.statusCode) >= 400 ? Number(err.statusCode) : 500;
+  if (statusCode >= 500) console.error("[fechamento-api]", err?.message);
+  const payload = { ok: false, error: err?.message || "Erro interno." };
+  if (err?.code) payload.code = err.code;
+  return res.status(statusCode).json(payload);
+}
+
+// GET /financeiro/:cliente/fechamento-api/status?conta=&periodo=YYYY-MM
+async function fechamentoApiStatus(req, res) {
+  try {
+    const dados = await obterStatusFechamentoViaApi({
+      clienteSlugRaw: req.params.cliente,
+      clienteContaIdRaw: req.query.conta,
+      periodoRaw: req.query.periodo,
+    });
+    return res.json({ ok: true, ...dados });
+  } catch (err) {
+    return responderErroFechamentoApi(res, err);
+  }
+}
+
+// POST /financeiro/:cliente/fechamento-api — body JSON:
+// { clienteContaId, periodo, ads, venforce, affiliates, fullCost, additionalCosts }
+async function fechamentoApi(req, res) {
+  try {
+    const body = req.body || {};
+    const dados = await gerarFechamentoViaApi({
+      clienteSlugRaw: req.params.cliente,
+      clienteContaIdRaw: body.clienteContaId,
+      periodoRaw: body.periodo,
+      ajustesRaw: body,
+    });
+    return res.json(dados);
+  } catch (err) {
+    return responderErroFechamentoApi(res, err);
+  }
+}
+
+module.exports = { financeiro, ads, miniaturas, fechamentoApiStatus, fechamentoApi };

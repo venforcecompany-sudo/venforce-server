@@ -16,5 +16,9 @@ router.get("/:cliente", authMiddleware, requireAutomacoesAccess, requireClienteN
 router.get("/:cliente/ads", authMiddleware, requireAutomacoesAccess, requireClienteNaCarteira("cliente"), controller.ads);
 // Foto dos produtos da lista (Mercado Livre), lida da base do sync de Anúncios ML.
 router.get("/:cliente/miniaturas", authMiddleware, requireAutomacoesAccess, requireClienteNaCarteira("cliente"), controller.miniaturas);
+// Fechamento pela API do Mercado Livre (Central de Vendas, sem planilha):
+// status do sync da competência e geração do resultado. Leitura pura.
+router.get("/:cliente/fechamento-api/status", authMiddleware, requireAutomacoesAccess, requireClienteNaCarteira("cliente"), controller.fechamentoApiStatus);
+router.post("/:cliente/fechamento-api", authMiddleware, requireAutomacoesAccess, requireClienteNaCarteira("cliente"), controller.fechamentoApi);
 
 module.exports = router;
