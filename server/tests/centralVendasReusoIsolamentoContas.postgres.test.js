@@ -124,9 +124,89 @@ async function filho(url) {
   const vinc2 = await contasDosVinculos();
   ok("vínculo de NULL aponta só para linha de import NULL; nenhum cruza contas", vinc2.every((v) => (v.ref === 0) === (v.dono === 0) && (v.ref === 0 || v.ref === v.dono)));
 
+  // Consulta operacional read-only: quem fornece/referencia linhas. Os
+  // fornecedores são exatamente os imports que a retenção NÃO pode apagar.
+  const sqlVinc = fs.readFileSync(path.join(__dirname, "..", "sql", "observabilidade", "reuso_vinculos.sql"), "utf8");
+  const cli = await pool.connect();
+  let lista;
+  try {
+    await cli.query("BEGIN READ ONLY");
+    lista = (await cli.query(sqlVinc)).rows;
+    await cli.query("ROLLBACK");
+  } finally { cli.release(); }
+  ok("reuso_vinculos.sql roda em transação READ ONLY e devolve linhas", lista.length > 0);
+  const fornecedores = lista.filter((r) => r.papel !== "referencia");
+  ok("há fornecedores (imports com linhas usadas por outro)", fornecedores.length > 0);
+  const contaDe = new Map(lista.map((r) => [String(r.import_id), r.cliente_conta_id == null ? null : Number(r.cliente_conta_id)]));
+  const { rows: todosImports } = await pool.query(`SELECT id, cliente_conta_id FROM central_vendas_imports`);
+  const contaGlobal = new Map(todosImports.map((r) => [String(r.id), r.cliente_conta_id == null ? null : Number(r.cliente_conta_id)]));
+  ok("todo usuário listado de um fornecedor é da MESMA conta dele",
+    fornecedores.every((f) => (f.usado_por_imports || []).every((u) => contaGlobal.get(String(u)) === contaDe.get(String(f.import_id)))));
+  const { rows: [{ n: nBloqueados }] } = await pool.query(
+    `SELECT COUNT(DISTINCT p.import_id)::int AS n FROM central_vendas_import_pedidos v
+       JOIN central_vendas_pedidos p ON p.id = v.pedido_row_id WHERE p.import_id <> v.import_id`);
+  ok("a consulta lista exatamente os imports que a FK impede de apagar", fornecedores.length === nBloqueados);
+  // E de fato: cada fornecedor é barrado pela FK (23503) — nada é apagado.
+  for (const f of fornecedores) {
+    const c = await pool.connect();
+    let codigo = null;
+    try {
+      await c.query("BEGIN");
+      try { await c.query(`DELETE FROM central_vendas_imports WHERE id = $1`, [f.import_id]); } catch (e) { codigo = e.code; }
+    } finally { await c.query("ROLLBACK"); c.release(); }
+    ok(`fornecedor ${f.import_id}: DELETE direto barrado pela FK (23503)`, codigo === "23503");
+  }
+
   // Apagar o import dono da conta 5 não afeta a conta 6.
   const { rows: [{ n }] } = await pool.query(`SELECT COUNT(*)::int AS n FROM central_vendas_import_pedidos v JOIN central_vendas_imports i ON i.id = v.import_id WHERE i.cliente_conta_id = 6`);
   ok("vínculos da conta 6 existem e dependem só de linhas da 6", n === 3);
+
+  // ---- Rollback por flags: desligar TUDO mantém os leitores novos ----
+  const antes5 = await leitura(5, "2026-09-03"); const antes6 = await leitura(6, "2026-09-03");
+  delete process.env.CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS; delete process.env.CENTRAL_VENDAS_SYNC_REUSO_CONTAS; delete process.env.CENTRAL_VENDAS_SYNC_PERSISTENCIA_ENXUTA;
+  const r5 = await leitura(5, "2026-09-03"), r6 = await leitura(6, "2026-09-03");
+  ok("flags desligadas: imports com vínculo seguem completos nas duas contas", r5.pedidos === 3 && r6.pedidos === 3 && antes5.pedidos === 3 && antes6.pedidos === 3);
+  const volta = await noite(5, 3);
+  ok("flags desligadas: novo sync grava completo (3 pedidos, 0 vínculos)", volta.gravados.pedidos === 3 && volta.gravados.vinculos === 0);
+  ok("flags desligadas: leitura da conta 5 continua completa após o novo import", (await leitura(5, "2026-09-03")).pedidos === 3);
+
+  // ---- Transição da migration e falha transitória, com leitores REAIS ----
+  // Cada cenário usa um Pool NOVO (o cache de "existe" é por pool) para
+  // reproduzir um processo que ainda não tinha visto a tabela.
+  {
+    const { Pool } = require("pg");
+    const novoPool = () => new Pool({ connectionString: process.env.DATABASE_URL, ssl: false, max: 2 });
+    const { rows: [imp6] } = await pool.query(
+      `SELECT id FROM central_vendas_imports WHERE cliente_conta_id = 6 AND publication_status = 'published' ORDER BY id DESC LIMIT 1`);
+    const leitor = (db) => repo.loadPedidosByImportIds({ importIds: [Number(imp6.id)], dateFrom: "2026-09-01", dateTo: "2026-09-30" }, db);
+    const completo = (await leitor(pool)).pedidos.length;
+    ok("conta 6: o import vigente enxerga os 3 pedidos (vinculados)", completo === 3);
+
+    // (a) tabela AUSENTE de fato (confirmada pelo PG): leitura = SQL de antes.
+    await pool.query(`ALTER TABLE central_vendas_import_pedidos RENAME TO central_vendas_import_pedidos_off`);
+    const pAusente = novoPool();
+    const semTabela = (await leitor(pAusente)).pedidos.length;
+    ok("tabela ausente confirmada: só linhas próprias (comportamento anterior)", semTabela < completo);
+    // (b) migration aplicada AGORA: a leitura seguinte, no MESMO pool que viu a
+    // ausência, já enxerga os vínculos (nenhum negativo preso em cache).
+    await pool.query(`ALTER TABLE central_vendas_import_pedidos_off RENAME TO central_vendas_import_pedidos`);
+    ok("transição: próxima leitura do mesmo pool já vê os 3 pedidos (sem janela de cache)", (await leitor(pAusente)).pedidos.length === completo);
+    await pAusente.end();
+
+    // (c) falha transitória na checagem: erro propaga (nada parcial) e a
+    // leitura seguinte se recupera com o resultado completo.
+    const pFalha = novoPool();
+    let falhar = true;
+    const dbFalha = { query: (sql, params) => (falhar && String(sql).includes("to_regclass")
+      ? Promise.reject(Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" }))
+      : pFalha.query(sql, params)) };
+    let erro = null; let parcial = null;
+    try { parcial = await leitor(dbFalha); } catch (e) { erro = e; }
+    ok("falha transitória: a leitura REJEITA (não devolve dado parcial)", erro && erro.code === "57014" && parcial === null);
+    falhar = false;
+    ok("recuperação: mesma leitura volta completa", (await leitor(dbFalha)).pedidos.length === completo);
+    await pFalha.end();
+  }
 
   await pool.end();
   process.stdout.write(`@@RESULTADO@@${JSON.stringify({ checks: R.checks.length })}\n`);
