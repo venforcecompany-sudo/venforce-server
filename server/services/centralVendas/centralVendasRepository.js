@@ -6,6 +6,7 @@ const { comRetryTransitorio } = require("./centralVendasTransientRetry");
 const { comPrazo } = require("../../utils/comPrazo");
 const { prazos } = require("./centralVendasPrazos");
 const { aplicarSchemaVersionado } = require("../schema/schemaVersionado");
+const persistenciaEnxuta = require("./centralVendasPersistenciaEnxuta");
 
 const schemaPath = path.join(__dirname, "..", "..", "sql", "central_vendas_schema.sql");
 
@@ -264,7 +265,7 @@ async function insertPedido({ importacao, cliente, marketplace, competencia, ped
   return result.rows[0];
 }
 
-async function insertItem({ importacao, pedidoRowId, cliente, marketplace, competencia, item }, db) {
+async function insertItem({ importacao, pedidoRowId, cliente, marketplace, competencia, item, payloadJson = undefined }, db) {
   const result = await db.query(
     `INSERT INTO central_vendas_pedido_itens
       (import_id, pedido_row_id, cliente_id, cliente_slug, marketplace, competencia, pedido_id,
@@ -295,7 +296,8 @@ async function insertItem({ importacao, pedidoRowId, cliente, marketplace, compe
       item.margemContribuicaoPercentual ?? null,
       item.confianca,
       asJson(item.pendencias, []),
-      asJson(item, {}),
+      // Persistência enxuta: só os extras que as colunas não reproduzem.
+      payloadJson === undefined ? asJson(item, {}) : asJson(payloadJson, {}),
     ]
   );
   return result.rows[0];
@@ -309,6 +311,7 @@ async function insertComponente({
   marketplace,
   competencia,
   componente,
+  payloadJson = undefined,
 }, db) {
   // M6 — classificação explícita (escopo/efeito/incluido_no_resultado),
   // nunca inferida só pelo sinal de `valor`. Ver
@@ -342,13 +345,45 @@ async function insertComponente({
       componente.fonte || null,
       componente.confianca,
       componente.obs || null,
-      asJson(componente, {}),
+      payloadJson === undefined ? asJson(componente, {}) : asJson(payloadJson, {}),
       escopo,
       efeito,
       incluidoNoResultado,
     ]
   );
   return result.rows[0];
+}
+
+// Persistência enxuta (opt-in, só Sync — ver centralVendasPersistenciaEnxuta)
+// + medição de escrita. Formato completo (flag desligada): payloads idênticos
+// aos de antes; só a medição (bytes de JSON e duração) é acrescentada.
+// `iniciar` roda DENTRO da transação (a cada tentativa do retry, do zero).
+function planejarPersistencia({ fonte, syncRunId, motorPayload, resumo }) {
+  const enxuta = persistenciaEnxuta.aplicaPersistenciaEnxuta({ fonte, syncRunId });
+  const manifesto = enxuta ? persistenciaEnxuta.construirManifesto({ motorPayload, resumo }) : null;
+  const inicioMs = Date.now();
+  return {
+    async iniciar(tupla, db) {
+      let bytesJson = 0;
+      const medir = (obj) => { bytesJson += Buffer.byteLength(asJson(obj, {}), "utf8"); return obj; };
+      const diff = enxuta
+        ? persistenciaEnxuta.compararManifestos(manifesto, await lerManifestoVigente(tupla, db))
+        : null;
+      const payloadImport = medir(enxuta ? manifesto : motorPayload);
+      return {
+        payloadImport,
+        medir,
+        payloadItem: (item) => medir(enxuta ? persistenciaEnxuta.extrasDoItem(item) : item),
+        payloadComponente: (c) => medir(enxuta ? persistenciaEnxuta.extrasDoComponente(c) : c),
+        fechar: () => ({
+          formato: enxuta ? persistenciaEnxuta.FORMATO_MANIFESTO : "completo",
+          bytesJsonEstimados: bytesJson,
+          duracaoMs: Date.now() - inicioMs,
+          ...(diff ? { diff } : {}),
+        }),
+      };
+    },
+  };
 }
 
 async function persistCentralVendasImport({
@@ -359,13 +394,17 @@ async function persistCentralVendasImport({
   coverageDateFrom = null,
   coverageDateTo = null,
 }) {
+  const plano = planejarPersistencia({ fonte, syncRunId, motorPayload, resumo });
   return withTransaction(async (db) => {
+    const { payloadImport, payloadItem, payloadComponente, medir, fechar } = await plano.iniciar(
+      { clienteSlug: cliente.slug, marketplace, competencia, clienteContaId }, db
+    );
     const importacao = await createImport({
       cliente,
       marketplace,
       competencia,
       resumo,
-      payload: motorPayload,
+      payload: payloadImport,
       fonte,
       clienteContaId,
       baseId,
@@ -380,6 +419,7 @@ async function persistCentralVendasImport({
 
     const pedidoRowsById = new Map();
     for (const pedido of motorPayload.pedidos || []) {
+      medir(pedido);
       const pedidoRow = await insertPedido({ importacao, cliente, marketplace, competencia, pedido }, db);
       pedidoRowsById.set(pedido.pedidoId, pedidoRow.id);
     }
@@ -387,6 +427,7 @@ async function persistCentralVendasImport({
     const itemRowsById = new Map();
     for (const item of motorPayload.itens || []) {
       const pedidoRowId = pedidoRowsById.get(item.pedidoId) || null;
+      const itemPayload = payloadItem(item);
       const itemRow = await insertItem({
         importacao,
         pedidoRowId,
@@ -394,12 +435,14 @@ async function persistCentralVendasImport({
         marketplace,
         competencia,
         item,
+        payloadJson: itemPayload,
       }, db);
       itemRowsById.set(item.itemId, itemRow.id);
     }
 
     for (const componente of motorPayload.componentes || []) {
       await insertComponente({
+        payloadJson: payloadComponente(componente),
         importacao,
         pedidoRowId: pedidoRowsById.get(componente.pedidoId) || null,
         itemRowId: componente.itemId ? itemRowsById.get(componente.itemId) : null,
@@ -415,11 +458,41 @@ async function persistCentralVendasImport({
       pedidosPersistidos: pedidoRowsById.size,
       itensPersistidos: itemRowsById.size,
       componentesPersistidos: (motorPayload.componentes || []).length,
+      persistencia: fechar(),
     };
     // Só INSERTs a partir de motorPayload já em memória (a coleta HTTP acontece
     // ANTES): reexecutar do zero depois de 40P01/40001 é seguro e idempotente,
     // porque a tentativa abortada foi revertida por inteiro.
   }, { retryTransient: true, queryTimeoutMs: prazos().dbQueryMs });
+}
+
+// Manifesto do import PUBLICADO vigente da mesma tupla (cliente, conta,
+// marketplace, competência) — só para MEDIR o que mudou (persistência enxuta).
+// Nunca decide leitura nem publicação. Import antigo (motorPayload completo)
+// não tem manifesto: devolve null sem transferir o JSON grande (o CASE só
+// devolve o valor quando ele É um manifesto; o teto evita descomprimir um
+// payload gigante só para descobrir que não é).
+const TETO_BYTES_MANIFESTO = 16 * 1024 * 1024;
+async function lerManifestoVigente({ clienteSlug, marketplace, competencia, clienteContaId = null }, db = pool) {
+  const result = await db.query(
+    `/* cv:manifesto-vigente */
+     SELECT id,
+            CASE WHEN pg_column_size(payload_json) <= $5
+                  AND payload_json->>'formato' = $6
+                 THEN payload_json END AS manifesto
+       FROM central_vendas_imports
+      WHERE cliente_slug = $1 AND marketplace = $2 AND competencia = $3
+        AND cliente_conta_id IS NOT DISTINCT FROM $4
+        AND publication_status = 'published'
+        AND fonte = 'orders_api'
+      ORDER BY published_at DESC NULLS LAST, id DESC
+      LIMIT 1`,
+    [normalizeSlug(clienteSlug), marketplace, competencia, clienteContaId, TETO_BYTES_MANIFESTO,
+      persistenciaEnxuta.FORMATO_MANIFESTO]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return row.manifesto ? { importId: Number(row.id), ...row.manifesto } : null;
 }
 
 // clienteContaId + includeLegacy implementam a política de escopo de conta
@@ -895,6 +968,7 @@ module.exports = {
   TIPOS_COMPONENTE_REALIZADO,
   getPedidoDetailByRowId,
   promoverCandidatesDoRun,
+  lerManifestoVigente,
   selecionarMelhorImportPorCompetencia,
   coberturaContemSegmento,
   monthBounds,

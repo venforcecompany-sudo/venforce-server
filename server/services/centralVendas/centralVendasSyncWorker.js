@@ -103,7 +103,13 @@ function resumoDoResultado(resultado) {
     itensPersistidos: resultado?.itensPersistidos ?? null,
     componentesPersistidos: resultado?.componentesPersistidos ?? null,
     porCompetencia: Array.isArray(resultado?.porCompetencia)
-      ? resultado.porCompetencia.map((c) => ({ competencia: c.competencia, importId: c.importId, pedidos: c.pedidos }))
+      ? resultado.porCompetencia.map((c) => ({
+        competencia: c.competencia, importId: c.importId, pedidos: c.pedidos,
+        // Medição de escrita do import (bytes/duração e, com a persistência
+        // enxuta, novos/alterados/inalterados/removidos) — fica no
+        // metadata_json do run para acompanhar o volume por sincronização.
+        ...(c.persistencia ? { persistencia: c.persistencia } : {}),
+      }))
       : [],
   };
 }

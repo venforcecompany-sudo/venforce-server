@@ -1499,7 +1499,19 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
         competencia: comp,
         importId: persisted.importacao.id,
         pedidos: persisted.pedidosPersistidos,
+        ...(persisted.persistencia ? { persistencia: persisted.persistencia } : {}),
       });
+      if (persisted.persistencia) {
+        const pz = persisted.persistencia;
+        const d = pz.diff;
+        console.log(
+          `[centralVendas] persistencia ${slug} ${comp} import=${persisted.importacao.id} formato=${pz.formato}`
+            + ` bytesJson=${pz.bytesJsonEstimados} ms=${pz.duracaoMs}`
+            + (d && d.comparavel
+              ? ` novos=${d.novos} alterados=${d.alterados} inalterados=${d.inalterados} removidos=${d.removidos} identico=${d.identico ? 1 : 0}`
+              : d ? ` diff=${d.motivo}` : "")
+        );
+      }
     }
 
     console.log(
