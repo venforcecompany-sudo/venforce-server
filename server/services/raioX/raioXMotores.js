@@ -167,6 +167,105 @@ const MOTORES = [
   },
 ];
 
+
+// ---------------------------------------------------------------------------
+// "Como funciona": etapas e acionamento por motor. Fonte ÚNICA: os fluxos de
+// docs/banco-de-dados/inventario/MATRIZ_DEPENDENCIAS.md (leitura do código) e os
+// gatilhos já catalogados acima. Sem fluxo documentado ⇒ lista vazia ⇒ a tela
+// mostra "Não mapeado" (nada é inventado). Nenhum motor é executado ou alterado.
+// ---------------------------------------------------------------------------
+const e = (texto, evidencia = C) => ({ texto, evidencia });
+const a = (tipo, texto, evidencia = C) => ({ tipo, texto, evidencia }); // tipo: manual | agendado | automatico | evento
+
+const COMO_FUNCIONA = {
+  central_vendas: {
+    etapas: [
+      e("Um gatilho abre um run de sync (central_vendas_sync_runs / sync_sources)."),
+      e("O sync lê Orders, Shipments e Billing do Mercado Livre (e pagamentos/Settlement do Mercado Pago) e aplica o custo da base vinculada."),
+      e("persistCentralVendasImport grava um import por conta × competência, com pedidos → itens → componentes, primeiro como candidate."),
+      e("A publicação promove o candidate a published; o vigente é escolhido pela seleção canônica de cobertura."),
+      e("Painel, Financeiro, Cliente 360 e Margem leem o import vigente."),
+    ],
+    acionamento: [a("manual", "Botão/rota POST /operacao/central-vendas/:slug/sync-runs"), a("agendado", "Scheduler noturno interno (opt-in: CENTRAL_VENDAS_NOTURNO_ENABLED)")],
+  },
+  painel_contas: {
+    etapas: [
+      e("Lê os imports vigentes (pedidos e composição), o resumo mensal do Cliente 360, o Ads e o status dos runs."),
+      e("Soma por semana/conta e junta os lançamentos manuais digitados pelo usuário."),
+      e("A tela /painel-contas exibe o consolidado e a comparação por conta."),
+    ],
+    acionamento: [a("manual", "\"Atualizar dados\" sob demanda pelo usuário"), a("automatico", "Atualização automática existe, mas o padrão é o modo manual")],
+  },
+  cliente_360: {
+    etapas: [
+      e("O adapter noturno lê o import vigente publicado de cada conta (nunca candidate/legacy)."),
+      e("Consolida FAT/LC/MC com o cálculo oficial da Central (consolidarCentral) e aplica a precedência do fechamento publicado para o MC."),
+      e("Grava o snapshot em cliente_360_resumos_mensais sob lock por (cliente, competência) e registra o job em cliente_360_sync_jobs."),
+      e("O motor de diagnóstico gera cliente_360_diagnosticos; o usuário registra ações em cliente_360_acoes."),
+    ],
+    acionamento: [a("agendado", "Adapter noturno (centralVendasCliente360Adapter)"), a("manual", "Sync do Cliente 360 pela tela")],
+  },
+  margem: {
+    etapas: [
+      e("Gatilhos (pós-sync, mudança de base, manual) acordam o worker de snapshot."),
+      e("O worker lê custos/bases e os anúncios (meli_anuncios) e calcula a margem projetada por item."),
+      e("Grava o estado atual em margin_projection_snapshots (1 por item) e o run em margin_snapshot_runs."),
+      e("A Central de Margem e /anuncios-meli leem o snapshot; as oportunidades combinam com os snapshots de promoção."),
+      e("No cockpit, o usuário aplica preço no ML; a ação fica em margem_precificacao_aplicacoes."),
+    ],
+    acionamento: [a("evento", "Gatilhos pós-sync / base / manual (MARGIN_SNAPSHOT_WORKER_ENABLED)"), a("agendado", "Scheduler de margem projetada legado (MARGEM_PROJETADA_SCHEDULER_ENABLED)")],
+  },
+  promocoes: {
+    etapas: [
+      e("O worker lê as promoções do ML por conta (somente leitura) e abre um run com lotes."),
+      e("Grava promo_snapshot_itens e atualiza o ponteiro de vigência (promo_snapshot_contas)."),
+      e("Poda os runs antigos (mantém os últimos PROMO_SNAPSHOT_RUNS_RETIDOS)."),
+      e("precificacaoOportunidadesService combina promoções, margem e o legado (promoSnapshotLegado) e a Central de Margem exibe."),
+    ],
+    acionamento: [a("agendado", "Worker (PROMO_SNAPSHOT_WORKER_ENABLED — desligado por padrão), restrito aos clientes de PROMO_SNAPSHOT_CLIENTES")],
+  },
+  sentinel: {
+    etapas: [
+      e("O worker (SENTINEL_WORKER_ENABLED) executa o polling incremental dos pedidos ML por conta, guardando o ponto em sentinel_checkpoints."),
+      e("sentinelPedidoService.calcularPedido calcula a margem por pedido com o custo da base e grava sentinel_pedidos."),
+      e("sentinelExcecoes registra exceções; avaliarIncidentesConta abre/atualiza sentinel_incidentes (e eventos)."),
+      e("A tela Pedidos ao vivo lista os incidentes; o usuário reconhece/resolve e a transição volta ao motor de incidentes."),
+    ],
+    acionamento: [a("agendado", "Worker de polling (SENTINEL_WORKER_ENABLED)"), a("manual", "Resolver/transicionar incidentes pela tela")],
+  },
+  conciliacao_mp: {
+    etapas: [
+      e("Os payments, charges e Settlement já vêm gravados pelo sync da Central (este motor só lê)."),
+      e("Conciliation/Mp3Read cruza os payments dos runs dos imports vigentes com o import e com o Settlement."),
+      e("financeiroVisaoService expõe o resultado na aba de conciliação do Financeiro V3 (não entra em pedido, margem nem fechamento)."),
+    ],
+    acionamento: [a("manual", "Leitura sob demanda (aba do Financeiro V3 / rota read/mercado-pago/reconciliation)"), a("automatico", "A coleta que o alimenta roda dentro do sync da Central (flag CENTRAL_VENDAS_MP_PAYMENTS_COLETA_ENABLED)")],
+  },
+  financeiro: {
+    etapas: [
+      e("fechamentoViaApiService lê o import vigente (e a conciliação MP) do cliente."),
+      e("Monta o fechamento e a tela Financeiro V3 o exibe."),
+      e("A entrega publicada vira entregas_cliente com link público (ligação deduzida do inventário, sem leitura direta do fluxo de publicação).", I),
+    ],
+    acionamento: [a("manual", "Tela Financeiro V3 (fechamento pelo usuário)")],
+  },
+  anuncios_ml: {
+    etapas: [
+      e("meliSyncService (via meliAnunciosService/meliFamiliaService) traz os anúncios do ML para meli_anuncios e meli_user_products."),
+      e("O otimizador grava sugestões em meli_anuncio_otimizacoes (aprovação humana) e a criação grava meli_anuncio_publicacoes."),
+    ],
+    acionamento: [a("manual", "Sincronização e ações pela tela Anúncios ML")],
+  },
+  ads: {
+    etapas: [
+      e("O resumo mensal entra por upload (adsController) ou pelo sync noturno (centralVendasAdsSyncService) em ads_resumos_mensais."),
+      e("O usuário registra acompanhamentos em ads_acompanhamentos."),
+    ],
+    acionamento: [a("manual", "Upload da planilha de Ads"), a("agendado", "Sync noturno de Ads")],
+  },
+  outros: { etapas: [], acionamento: [] },
+};
+
 // Duplicações/compartilhamentos CONHECIDOS (curadoria do inventário). Os
 // compartilhamentos por tabela (2+ motores) são calculados abaixo.
 const DUPLICACOES = [
@@ -230,8 +329,22 @@ function catalogo() {
     const compartilhadas = [...new Set([...soTabelas(m.consome), ...soTabelas(m.produz)].map((x) => x.ref))]
       .filter((ref) => idx.get(ref) && new Set([...idx.get(ref).escritores, ...idx.get(ref).leitores].map((x) => x.motor)).size > 1)
       .map((ref) => ({ tabela: ref, comMotores: [...new Set([...idx.get(ref).escritores, ...idx.get(ref).leitores].map((x) => x.motor))].filter((x) => x !== m.id) }));
+    const cf = COMO_FUNCIONA[m.id] || { etapas: [], acionamento: [] };
+    const alimenta = [];
+    for (const outro of MOTORES) {
+      if (outro.id === m.id) continue;
+      const tabs = soTabelas(outro.consome).map((x) => x.ref).filter((ref) => persistidas.includes(ref));
+      if (tabs.length) alimenta.push({ motor: outro.id, nome: outro.nome, tabelas: [...new Set(tabs)] });
+    }
+    const comoFunciona = {
+      finalidade: { texto: m.descricao, evidencia: m.id === "outros" ? N : C },
+      etapas: cf.etapas, acionamento: cf.acionamento,
+      resultado: { grava: [...new Set(persistidas)], alimenta },
+      ondeAparece: m.telas,
+      naoMapeado: [...(cf.etapas.length ? [] : ["Sequência de etapas deste motor"]), ...(cf.acionamento.length ? [] : ["Como é acionado"]), ...(m.telas.length ? [] : ["Em qual tela aparece"])],
+    };
     return {
-      ...m, produz, consome, snapshotsCachesHistoricos: porClasse, compartilhadas,
+      ...m, produz, consome, comoFunciona, snapshotsCachesHistoricos: porClasse, compartilhadas,
       bloqueiosDeExclusao: persistidas.map((ref) => ({ tabela: ref, restricoes: restricoesDaTabela(idx.get(ref)).filter((r) => r.tipo !== "nao_mapeada") })).filter((x) => x.restricoes.length),
     };
   });

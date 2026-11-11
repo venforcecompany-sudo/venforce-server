@@ -221,6 +221,7 @@ function detalheMotor(m, c) {
   return `<div class="card"><h2 style="margin:0">${esc(m.nome)}</h2><p class="sub">${esc(m.descricao)}</p>
   <div class="mut">Gatilhos: ${m.gatilhos.map((g) => `${esc(g.ref)} ${evChip(g.evidencia)}`).join(" · ") || "—"}</div>
   <div class="mut">Telas: ${esc(m.telas.join(", ") || "—")}</div>
+  ${comoFunciona(m)}
   ${fluxoSvg(m)}
   <h3>Consome (de onde vem)</h3>${m.consome.map(lin).join("") || "<p class='empty'>—</p>"}
   <h3>Produz (e onde persiste)</h3>${m.produz.map(lin).join("") || "<p class='empty'>Não grava tabelas próprias.</p>"}
@@ -228,6 +229,19 @@ function detalheMotor(m, c) {
   <h3>Dados compartilhados com outros motores</h3>${m.compartilhadas.map((s) => `<div class="row"><span class="n"><button class="link" data-tab="${esc(s.tabela)}">${esc(s.tabela)}</button> <span class="mut">↔ ${s.comMotores.map((x) => esc(x)).join(", ")}</span></span></div>`).join("") || "<p class='empty'>Nenhuma.</p>"}
   <h3>O que impede excluir ou reconstruir</h3>${m.bloqueiosDeExclusao.map((b) => `<div style="padding:6px 0;border-top:1px solid var(--line)"><button class="link" data-tab="${esc(b.tabela)}"><b>${esc(b.tabela)}</b></button>${b.restricoes.map((r) => `<div class="warn-t">• ${esc(r.motivo)} ${evChip(r.evidencia)}</div>`).join("")}</div>`).join("") || "<p class='empty'>Nenhuma restrição mapeada.</p>"}
   <h3>Ainda não mapeado ${evChip("nao_mapeado")}</h3>${m.naoMapeado.map((x) => `<div class="row"><span class="n">${esc(x)}</span></div>`).join("") || "<p class='empty'>—</p>"}</div>`;
+}
+const ACION = { manual: "Manual", agendado: "Agendado", automatico: "Automático", evento: "Por evento" };
+function comoFunciona(m) {
+  const c = m.comoFunciona, nm = (x) => esc(x);
+  const nao = `<span class="chip c-nao_mapeado">Não mapeado</span>`;
+  return `<h3>Como funciona</h3>
+  <div class="row"><span class="n"><b>Finalidade</b> — ${nm(c.finalidade.texto)}</span>${evChip(c.finalidade.evidencia)}</div>
+  <div style="padding:6px 0;border-top:1px solid var(--line)"><b>Funcionamento</b>${c.etapas.length ? `<ol style="margin:6px 0 0;padding-left:20px">${c.etapas.map((x) => `<li>${nm(x.texto)} ${x.evidencia === "confirmado" ? "" : evChip(x.evidencia)}</li>`).join("")}</ol>` : ` ${nao}`}</div>
+  <div style="padding:6px 0;border-top:1px solid var(--line)"><b>Acionamento</b>${c.acionamento.length ? c.acionamento.map((x) => `<div><span class="chip c-acc">${ACION[x.tipo] || esc(x.tipo)}</span> ${nm(x.texto)} ${x.evidencia === "confirmado" ? "" : evChip(x.evidencia)}</div>`).join("") : ` ${nao}`}</div>
+  <div style="padding:6px 0;border-top:1px solid var(--line)"><b>Resultado</b>
+    <div class="mut">Grava: ${c.resultado.grava.length ? c.resultado.grava.map((t) => `<button class="link" data-tab="${esc(t)}">${esc(t)}</button>`).join(" · ") : "nada próprio (só consome)"}</div>
+    <div class="mut">Alimenta: ${c.resultado.alimenta.length ? c.resultado.alimenta.map((x) => esc(x.nome)).join(" · ") : "nenhum outro motor mapeado"}</div></div>
+  <div style="padding:6px 0;border-top:1px solid var(--line)"><b>Onde aparece</b> ${c.ondeAparece.length ? esc(c.ondeAparece.join(", ")) : nao}</div>`;
 }
 function detalheTabela(t, c) {
   const nm = (id) => (c.motores.find((m) => m.id === id) || {}).nome || id;

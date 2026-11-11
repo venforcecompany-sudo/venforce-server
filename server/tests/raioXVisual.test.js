@@ -47,6 +47,37 @@ async function run() {
   ok("resumo conta confirmadas/inferidas/não mapeadas", cat.resumo.confirmadas > 50 && cat.resumo.inferidas >= 1 && cat.resumo.naoMapeados >= 5);
   ok("o motor Sentinel declara o que NÃO está mapeado", MOTORES.find((m) => m.id === "sentinel").naoMapeado.length >= 1);
 
+  // ---- "Como funciona" dos motores: só o que está mapeado
+  const fsx = require("fs"), pth = require("path");
+  const raiz = pth.join(__dirname, "..");
+  const arquivosJs = (dir) => fsx.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+    if (["node_modules", "tests", "raioX", "raioX-ui"].includes(d.name)) return [];
+    const f = pth.join(dir, d.name);
+    return d.isDirectory() ? arquivosJs(f) : d.name.endsWith(".js") ? [f] : [];
+  });
+  const codigo = ["services", "workers", "jobs", "config", "controllers", "routes"].filter((d) => fsx.existsSync(pth.join(raiz, d))).flatMap((d) => arquivosJs(pth.join(raiz, d)))
+    .concat([pth.join(raiz, "index.js")]).map((f) => fsx.readFileSync(f, "utf8")).join("\n");
+  for (const m of cat.motores) {
+    const cf = m.comoFunciona;
+    ok(`${m.id}: comoFunciona tem finalidade, etapas, acionamento, resultado e onde aparece`, cf && cf.finalidade.texto && Array.isArray(cf.etapas) && Array.isArray(cf.acionamento) && cf.resultado && Array.isArray(cf.ondeAparece));
+    ok(`${m.id}: toda etapa/acionamento traz evidência válida`, [...cf.etapas, ...cf.acionamento].every((x) => ev.has(x.evidencia)));
+    ok(`${m.id}: o que falta vira 'não mapeado' (nunca texto inventado)`, (cf.etapas.length > 0 || cf.naoMapeado.includes("Sequência de etapas deste motor")) && (cf.acionamento.length > 0 || cf.naoMapeado.includes("Como é acionado")));
+    const textos = [...cf.etapas, ...cf.acionamento].map((x) => x.texto).join(" ");
+    const flags = [...new Set(textos.match(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+){2,}\b/g) || [])];
+    const sumidas = flags.filter((f) => !codigo.includes(f));
+    eq(`${m.id}: toda flag/env citada existe no código`, sumidas, []);
+  }
+  const tipoA = new Set(["manual", "agendado", "automatico", "evento"]);
+  ok("acionamento usa só tipos conhecidos", cat.motores.every((m) => m.comoFunciona.acionamento.every((x) => tipoA.has(x.tipo))));
+  const mm = (id) => cat.motores.find((x) => x.id === id).comoFunciona;
+  ok("Sentinel: etapas citam polling, cálculo do pedido e incidentes", ["polling", "calcularPedido", "sentinel_incidentes"].every((k) => mm("sentinel").etapas.some((x) => x.texto.includes(k))));
+  ok("Central: acionamento manual E agendado confirmados", ["manual", "agendado"].every((k) => mm("central_vendas").acionamento.some((x) => x.tipo === k && x.evidencia === "confirmado")));
+  ok("Margem e Promoções têm etapas e a Central de Margem aparece como destino", mm("margem").etapas.length >= 4 && mm("promocoes").etapas.some((x) => /Central de Margem/.test(x.texto)));
+  ok("Conciliação MP: só lê (não grava) e isso aparece no resultado", mm("conciliacao_mp").resultado.grava.length === 0);
+  ok("Central de Vendas alimenta Painel, Cliente 360, Margem e Financeiro", ["painel_contas", "cliente_360", "margem", "financeiro"].every((k) => mm("central_vendas").resultado.alimenta.some((x) => x.motor === k)));
+  eq("'Demais motores' é declarado não mapeado nos 3 pontos", mm("outros").naoMapeado, ["Sequência de etapas deste motor", "Como é acionado", "Em qual tela aparece"]);
+  ok("a ligação deduzida (publicação → entregas) está marcada como inferida", mm("financeiro").etapas.some((x) => x.evidencia === "inferido" && /entregas_cliente/.test(x.texto)));
+
   // ---- provedor sintético
   const v = await sint.visaoGeral();
   ok("visão geral sintética tem domínios e tabelas não mapeadas", v.porDominio.length > 5 && v.resumo.naoMapeadas === 4);
