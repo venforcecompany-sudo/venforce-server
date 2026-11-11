@@ -20,8 +20,18 @@ const TTL_NEGATIVO_MS = 60 * 1000;
 
 const cache = new WeakMap();
 
-function isReusoHabilitado(env = process.env) {
-  return ["true", "1", "on", "sim"].includes(String(env[ENV_NAME] || "").trim().toLowerCase());
+const ENV_CONTAS = "CENTRAL_VENDAS_SYNC_REUSO_CONTAS";
+
+// Rollout por conta (só ESCRITA — os leitores entendem vínculos sempre, então
+// desligar/trocar a lista nunca deixa um import já gravado incompleto):
+//   CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS=true  E
+//   CENTRAL_VENDAS_SYNC_REUSO_CONTAS="41,87" (cliente_conta_id) ou "*" (todas).
+// Lista ausente/vazia = nenhuma conta (opt-in explícito).
+function isReusoHabilitado(env = process.env, clienteContaId = null) {
+  if (!["true", "1", "on", "sim"].includes(String(env[ENV_NAME] || "").trim().toLowerCase())) return false;
+  const lista = String(env[ENV_CONTAS] || "").split(",").map((v) => v.trim()).filter(Boolean);
+  if (lista.includes("*")) return true;
+  return clienteContaId != null && lista.includes(String(clienteContaId));
 }
 
 // Existência da tabela, por pool/client. Positivo fica em cache para sempre
@@ -84,6 +94,7 @@ function itensComImportLido(pedidos, itens, componentes) {
 module.exports = {
   itensComImportLido,
   ENV_NAME,
+  ENV_CONTAS,
   TABELA,
   isReusoHabilitado,
   tabelaVinculosDisponivel,

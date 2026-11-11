@@ -128,6 +128,15 @@ async function run() {
   eq("sem manifesto anterior ⇒ não comparável", pe.compararManifestos(m2, null),
     { comparavel: false, motivo: "SEM_MANIFESTO_ANTERIOR" });
 
+  // 5 — rollout por conta do reuso (lista explícita; ausente = nenhuma).
+  const pc = require("../services/centralVendas/centralVendasPedidosCompartilhados");
+  eq("reuso: flag sem lista = nenhuma conta", pc.isReusoHabilitado({ CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS: "true" }, 41), false);
+  eq("reuso: conta na lista", pc.isReusoHabilitado({ CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS: "true", CENTRAL_VENDAS_SYNC_REUSO_CONTAS: "41, 87" }, 87), true);
+  eq("reuso: conta fora da lista", pc.isReusoHabilitado({ CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS: "true", CENTRAL_VENDAS_SYNC_REUSO_CONTAS: "41" }, 87), false);
+  eq("reuso: * = todas", pc.isReusoHabilitado({ CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS: "true", CENTRAL_VENDAS_SYNC_REUSO_CONTAS: "*" }, 5), true);
+  eq("reuso: lista sem flag = desligado", pc.isReusoHabilitado({ CENTRAL_VENDAS_SYNC_REUSO_CONTAS: "*" }, 5), false);
+  eq("reuso: sem conta resolvida = desligado", pc.isReusoHabilitado({ CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS: "true", CENTRAL_VENDAS_SYNC_REUSO_CONTAS: "41" }, null), false);
+
   console.log(`centralVendasPersistenciaEnxuta.test.js: ${checks} verificacoes OK`);
 }
 

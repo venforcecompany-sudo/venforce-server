@@ -369,7 +369,7 @@ function planejarPersistencia({ fonte, syncRunId, motorPayload, resumo }) {
       const medir = (obj) => { bytesJson += Buffer.byteLength(asJson(obj, {}), "utf8"); return obj; };
       const vigente = enxuta ? await lerManifestoVigente(tupla, db) : null;
       const diff = enxuta ? persistenciaEnxuta.compararManifestos(manifesto, vigente) : null;
-      const reuso = enxuta && vigente && pedidosCompartilhados.isReusoHabilitado()
+      const reuso = enxuta && vigente && pedidosCompartilhados.isReusoHabilitado(process.env, tupla.clienteContaId)
         && await pedidosCompartilhados.tabelaVinculosDisponivel(db)
         ? await planejarReuso({ manifesto, vigente, tupla }, db)
         : null;

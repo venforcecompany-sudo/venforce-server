@@ -88,7 +88,7 @@ async function filho({ url, modo }) {
   delete process.env.CENTRAL_VENDAS_SYNC_PERSISTENCIA_ENXUTA;
   delete process.env.CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS;
   if (modo !== "completo") process.env.CENTRAL_VENDAS_SYNC_PERSISTENCIA_ENXUTA = "true";
-  if (modo === "reuso") process.env.CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS = "true";
+  if (modo === "reuso") { process.env.CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS = "true"; process.env.CENTRAL_VENDAS_SYNC_REUSO_CONTAS = "5"; }
 
   const pool = require("../config/database");
   const repo = require("../services/centralVendas/centralVendasRepository");
@@ -169,6 +169,9 @@ async function filho({ url, modo }) {
       `INSERT INTO central_vendas_sync_runs (cliente_id, cliente_slug, cliente_conta_id, marketplace, date_from, date_to, status)
        VALUES (1, 'loja', 5, 'meli', '2026-09-01', $1, 'completed') RETURNING id`, [dateTo]
     );
+    // Rollout por conta: na penúltima noite a conta sai da lista (grava
+    // completo) e volta na seguinte — leitores precisam seguir idênticos.
+    if (modo === "reuso") process.env.CENTRAL_VENDAS_SYNC_REUSO_CONTAS = noite === NOITES - 1 ? "" : "5";
     const resumo = { ...buildResumoCentralVendas(motor), syncRunId: Number(run.id) };
     const { coverageFrom, coverageTo } = coverageParaCompetencia("2026-09", "2026-09-01", dateTo);
     const t0 = Date.now();
@@ -315,7 +318,9 @@ async function pai() {
       ok(`noite ${a.noite} ${m}: leitores devolvem o import lido`, R[m].noites[i].importLidoOk === true);
     }
     const g = reuso.noites[i].persistencia;
-    if (i > 0) {
+    if (a.noite === NOITES - 1) {
+      ok(`noite ${a.noite} reuso: conta fora da lista grava completo`, g.gravados.pedidos === a.pedidosNoSnapshot && g.gravados.vinculos === 0);
+    } else if (i > 0) {
       ok(`noite ${a.noite} reuso: só novos+alterados são gravados; inalterados viram vínculo`,
         g.gravados.pedidos === g.diff.novos + g.diff.alterados && g.gravados.vinculos === g.diff.inalterados);
     }
