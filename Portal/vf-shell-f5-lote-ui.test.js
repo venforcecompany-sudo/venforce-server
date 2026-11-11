@@ -46,7 +46,8 @@ const PROD_HOST = "venforce-server.onrender.com";
 const PAGINAS = [
   { arquivo: "clientes.html", modulo: "clientes-contas", marca: "#clientes-feedback" },
   { arquivo: "usuarios.html", modulo: "pessoas", marca: "#usuarios-content" },
-  { arquivo: "guia-vendedor.html", modulo: "guia", marca: "#reputacao" },
+  // Guia do Vendedor saiu da sidebar (acesso só por URL) — sem item de navegação para marcar.
+  { arquivo: "guia-vendedor.html", modulo: null, marca: "#reputacao" },
   { arquivo: "atividade.html", modulo: "atividade", marca: "#act-sum-total" },
   { arquivo: "control-center.html", modulo: "control-center", marca: "#cc-main" },
   { arquivo: "callbacks.html", modulo: "callbacks", marca: "#filter-base" },
@@ -77,7 +78,7 @@ const PAGINAS = [
   // Central Full: módulo de CONTA desde o modelo C (lê o contexto do Shell).
   { arquivo: "full-gestao.html", modulo: "central-full", marca: "#root > *", escopo: "account", query: "?cliente=n97&conta=42" },
   { arquivo: "fechamento.html", modulo: "curva-abc", marca: "#fc-wrap" },
-  { arquivo: "cliente-operacao.html", modulo: "cliente-operacao", marca: "#vfop-client-select" },
+  { arquivo: "cliente-operacao.html", modulo: null, marca: "#vfop-client-select" }, // fora da sidebar (só por URL)
   { arquivo: "promocoes-retorno.html", modulo: "promocoes-ml", marca: "#promo-cliente-search" },
   { arquivo: "financeiro.html", modulo: "financeiro", marca: "#fin-shell" },
   { arquivo: "ml-tokens.html", modulo: "ml-tokens", marca: "#mlt-sum-total" },

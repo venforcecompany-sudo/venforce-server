@@ -180,7 +180,6 @@ async function check(name, fn) {
 // GLOBAIS: sempre habilitadas, independente de cliente/operação selecionados
 // (nenhuma delas exige contexto — cada uma tem seletor próprio na página).
 const TELAS_RESTAURADAS = [
-  { modulo: "cliente-operacao", rotaEsperada: "cliente-operacao.html" },
   { modulo: "promocoes-ml", rotaEsperada: "promocoes-retorno.html" },
   { modulo: "curva-abc", rotaEsperada: "fechamento.html" },
 ];
@@ -191,7 +190,12 @@ const TELAS_ADMIN_RESTAURADAS = [
 // Telas que a missão de recuperação deliberadamente NÃO devolve ao menu —
 // nenhuma delas tem `data-module` correspondente hoje; se aparecerem aqui é
 // porque viraram vf-shell.js sem essa decisão ser revisada.
-const IDS_QUE_NAO_DEVEM_EXISTIR = ["dashboard", "design-templates", "clickup-executivo", "estudio-templates", "cliente-360", "cliente-360-v2"];
+// Cliente 360 (V1/V2/V3), Cliente Operação, Sentinel, Margem e Guia do Vendedor
+// também saíram da sidebar por decisão de produto — seguem acessíveis só por URL.
+const IDS_QUE_NAO_DEVEM_EXISTIR = [
+  "dashboard", "design-templates", "clickup-executivo", "estudio-templates",
+  "cliente-360", "cliente-360-v2", "cliente-360-v3", "cliente-operacao", "sentinel", "margem", "guia",
+];
 
 async function run() {
   const server = await startServer();
@@ -291,10 +295,8 @@ async function run() {
     await cdp.evaluate("document.querySelector('.vf-menu__item').click()");
     await waitFor(cdp, "window.VF.context.getState() === 'READY'", "contexto não chegou a READY com 1 conta ativa");
 
-    await check("Cliente 360 usa V3; V1 e V2 ficam fora da sidebar", async () => {
-      const href = await cdp.evaluate("document.querySelector('.vf-shell__item[data-module=cliente-360-v3]').getAttribute('href')");
-      assert.ok(href.startsWith("cliente-360-v3.html"));
-      for (const id of ["cliente-360", "cliente-360-v2"]) {
+    await check("com contexto selecionado, nenhuma Cliente 360 (V1/V2/V3), Cliente Operação nem Margem aparece na sidebar", async () => {
+      for (const id of ["cliente-360", "cliente-360-v2", "cliente-360-v3", "cliente-operacao", "margem"]) {
         assert.strictEqual(await cdp.evaluate(`Boolean(document.querySelector('.vf-shell__item[data-module="${id}"]'))`), false);
       }
     });
@@ -307,11 +309,6 @@ async function run() {
       );
       assert.ok(href.startsWith("full-gestao.html"), `href inesperado para Central Full: ${href}`);
       assert.ok(/[?&]conta=42\b/.test(href), `esperado conta=42 no link de Central Full, veio: ${href}`);
-    });
-
-    await check("Cliente Operacao preserva o link no Shell", async () => {
-      const hrefOperacao = await cdp.evaluate("document.querySelector('.vf-shell__item[data-module=cliente-operacao]').getAttribute('href')");
-      assert.ok(hrefOperacao.startsWith("cliente-operacao.html"), `href inesperado para Cliente Operação: ${hrefOperacao}`);
     });
 
     console.log(`\n✓ ${checks} verificações de recuperação de navegação (fix/v3-navigation-recovery)`);
