@@ -110,6 +110,7 @@ async function inventariarTabela(entrada, ctx) {
 
   let where;
   let identidade;
+  let porConta = false;
   if (entrada.via) {
     if (!detalhado) return { ...base, status: "so_no_modo_detalhado", identidade: `via ${entrada.via.pai}.${entrada.via.fk}` };
     const pai = REGISTRO.find((r) => r.tabela === entrada.via.pai);
@@ -121,7 +122,12 @@ async function inventariarTabela(entrada, ctx) {
     identidade = primeira(cols, COLUNAS_IDENTIDADE);
     if (!identidade) return { ...base, status: "sem_identidade" };
     where = filtroCliente(identidade);
+    // Filtro opcional por conta: só vale onde a tabela TEM identidade de conta.
+    // Número validado (inteiro) e inlinado — não consome parâmetro ($n a mais
+    // causaria 08P01).
+    if (ctx.contaId != null && cols.has("cliente_conta_id")) { where = `cliente_conta_id = ${Number(ctx.contaId)}`; porConta = true; }
   }
+  base.escopo = porConta ? "conta" : "cliente";
   const colPeriodo = primeira(cols, COLUNAS_PERIODO);
   const colUltima = primeira(cols, COLUNAS_ULTIMA_ESCRITA);
   const t = ident(entrada.tabela);
@@ -295,7 +301,7 @@ function montarFluxo(tabelas) {
     .map((t) => ({ origem: t.origem, tabela: t.tabela, modulos: t.modulos, classe: t.classe }));
 }
 
-async function gerarRaioXCliente({ clienteId = null, clienteSlug = null } = {}, {
+async function gerarRaioXCliente({ clienteId = null, clienteSlug = null, contaId = null } = {}, {
   db = pool, timeoutMs = TIMEOUT_PADRAO_MS, orcamentoMs = ORCAMENTO_PADRAO_MS, detalhado = false,
 } = {}) {
   const client = typeof db.connect === "function" ? await db.connect() : db;
@@ -322,8 +328,14 @@ async function gerarRaioXCliente({ clienteId = null, clienteSlug = null } = {}, 
          FROM ml_tokens WHERE cliente_id = $1 ORDER BY id`,
       [cliente.id]
     );
+    if (contaId != null) {
+      if (!Number.isInteger(Number(contaId)) || !(contas.status === "ok" && contas.rows.some((r) => Number(r.id) === Number(contaId)))) {
+        await client.query("ROLLBACK");
+        return { ok: false, codigo: "CONTA_NAO_PERTENCE_AO_CLIENTE" };
+      }
+    }
     const catalogo = await carregarCatalogo(q);
-    const ctx = { q, catalogo, cliente, detalhado };
+    const ctx = { q, catalogo, cliente, detalhado, contaId: contaId == null ? null : Number(contaId) };
 
     const tabelas = [];
     for (const entrada of REGISTRO) {
@@ -343,6 +355,7 @@ async function gerarRaioXCliente({ clienteId = null, clienteSlug = null } = {}, 
       geradoEm: new Date().toISOString(),
       duracaoMs: decorridoMs(),
       modo: detalhado ? "detalhado" : "rapido",
+      escopoConta: contaId == null ? null : Number(contaId),
       limites: { timeoutPorConsultaMs: timeoutMs, orcamentoTotalMs: orcamentoMs },
       estimativaTamanho: { metodo: METODO_ESTIMATIVA, exato: false },
       cliente: { id: cliente.id, nome: cliente.nome, slug: cliente.slug, ativo: cliente.ativo },
