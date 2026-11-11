@@ -1,16 +1,170 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="robots" content="noindex">
-  <title>Central de Vendas — redirecionando</title>
-  <!-- Stub de redirecionamento: a Central de Vendas foi removida. Links salvos
-       (?cliente=&conta=&periodo=) continuam funcionando, indo para o Financeiro
-       com os mesmos parâmetros. Sem Shell e sem módulos: só redireciona. -->
-  <script>location.replace("financeiro-v3.html" + location.search + location.hash);</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Venforce — Central de Vendas</title>
+  <!-- Acesso restrito ao ROLE global admin (hotfix de navegação): os demais perfis
+       seguem sendo levados ao Financeiro, com a mesma query/hash, como no stub anterior.
+       É só UX de navegação — a autorização real continua sendo da API (403). -->
+  <script>
+    (function () {
+      var role = "";
+      try { role = String((JSON.parse(localStorage.getItem("vf-user") || "{}") || {}).role || "").toLowerCase(); } catch (e) { role = ""; }
+      if (role !== "admin") location.replace("financeiro-v3.html" + location.search + location.hash);
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Fundação Global V2: Hanken Grotesk (corpo) · Manrope (display) · IBM Plex Mono (códigos) -->
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- 1. Layout compartilhado (sidebar/topbar/estados globais indispensáveis) -->
+  <link rel="stylesheet" href="style.css">
+  <!-- 2. Fundação Global V2 (tokens → componentes → página) -->
+  <link rel="stylesheet" href="css/vf-tokens-v2.css">
+  <link rel="stylesheet" href="css/vf-components-v2.css">
+  <link rel="stylesheet" href="css/pages/fechamentos-api-v2.css">
+  <link rel="stylesheet" href="css/vf-shell.css">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
 </head>
-<body>
-  <p>A Central de Vendas foi substituída pelo <a href="financeiro-v3.html">Financeiro</a>.</p>
+<body class="vf-page vf-page-fechamentos-api" data-vf-scope="account" data-vf-module="central-vendas">
+
+  <div>
+    <main class="vf-content" id="fapi-main" aria-label="Central de Vendas">
+      <div class="vf-page-shell">
+        <div class="vf-page-container vf-page-container--wide">
+
+          <!-- 1. PAGE HEADER -->
+          <header class="vf-page-header">
+            <div class="vf-page-header__main">
+              <p class="vf-page-header__eyebrow">Fechamentos API</p>
+              <h1 class="vf-page-header__title">Central de Vendas</h1>
+              <p class="vf-page-header__description">Concilie pedidos, faturamento, custos e qualidade dos dados do Mercado Livre.</p>
+            </div>
+          </header>
+
+          <!-- Banner persistente de modo demonstrativo (dados mock) -->
+          <div id="fapi-mock-banner" class="vf-banner is-info" role="status" hidden>
+            <div class="vf-banner__content">
+              <p class="vf-banner__title">Modo demonstrativo</p>
+              <p class="vf-banner__description">O backend não respondeu e esta visualização usa dados simulados. Nenhum número desta tela reflete a operação real.</p>
+            </div>
+          </div>
+
+          <!-- 2. BARRA GLOBAL DE CONTEXTO (período + motor + ações) —
+               F2.2: Cliente/Conta saíram daqui, o Shell V3 (barra lateral)
+               é quem resolve o contexto agora; MASTER_SPEC §5/§9. -->
+          <section class="vf-fapi-context" aria-label="Contexto da análise">
+            <div class="vf-fapi-context__row">
+              <div class="vf-fapi-context__filters">
+                <div class="vf-field">
+                  <label class="vf-field__label" for="fapi-period-select">Período de análise</label>
+                  <select id="fapi-period-select" class="vf-select vf-select--sm"></select>
+                </div>
+                <div class="vf-field" id="fapi-period-custom" hidden>
+                  <span class="vf-field__label" id="fapi-period-custom-label">Datas</span>
+                  <div class="vf-fapi-context__range" role="group" aria-labelledby="fapi-period-custom-label">
+                    <input type="date" id="fapi-period-from" class="vf-input vf-input--sm" aria-label="Data inicial">
+                    <span class="vf-fapi-context__range-sep" aria-hidden="true">até</span>
+                    <input type="date" id="fapi-period-to" class="vf-input vf-input--sm" aria-label="Data final">
+                    <button type="button" id="fapi-period-apply" class="vf-btn vf-btn--secondary vf-btn--sm">Aplicar</button>
+                  </div>
+                </div>
+              </div>
+              <div class="vf-fapi-context__actions" id="fapi-actions">
+                <button type="button" id="fapi-refresh-btn" class="vf-btn vf-btn--secondary vf-btn--sm" title="Relê os dados já sincronizados no banco — não chama a API do Mercado Livre">Atualizar leitura</button>
+                <button type="button" id="fapi-import-toggle" class="vf-btn vf-btn--secondary vf-btn--sm" aria-expanded="false" aria-controls="fapi-import-panel" hidden>Importar planilha</button>
+                <button type="button" id="fapi-sync-btn" class="vf-btn vf-btn--primary vf-btn--sm" title="Busca os pedidos direto da API do Mercado Livre (sem planilha)" hidden>Sincronizar via API</button>
+              </div>
+            </div>
+
+            <!-- Importação por planilha: alternativa/fallback compacta (admin) -->
+            <div class="vf-fapi-import-panel" id="fapi-import-panel" hidden>
+              <div class="vf-fapi-import-panel__row">
+                <input type="file" id="fapi-import-file" accept=".xlsx" class="vf-visually-hidden" aria-label="Planilha de vendas (.xlsx)">
+                <button type="button" id="fapi-import-choose" class="vf-btn vf-btn--secondary vf-btn--sm">Escolher .xlsx</button>
+                <div class="vf-file-item" id="fapi-import-fileitem" hidden>
+                  <span class="vf-file-item__icon" aria-hidden="true">xlsx</span>
+                  <div class="vf-file-item__meta">
+                    <p class="vf-file-item__name" id="fapi-import-fname"></p>
+                    <p class="vf-file-item__info">Planilha de vendas selecionada</p>
+                  </div>
+                  <div class="vf-file-item__actions">
+                    <button type="button" id="fapi-import-clear" class="vf-btn vf-btn--ghost vf-btn--sm" aria-label="Remover arquivo selecionado">Remover</button>
+                  </div>
+                </div>
+                <button type="button" id="fapi-import-btn" class="vf-btn vf-btn--primary vf-btn--sm">Importar</button>
+              </div>
+              <p class="vf-fapi-import-panel__hint">Alternativa à sincronização: importa a planilha de vendas exportada do Mercado Livre. A importação grava na competência do início do período selecionado.</p>
+            </div>
+
+            <!-- Feedback das ações administrativas (importar/sincronizar) -->
+            <div id="fapi-action-status" role="status" aria-live="polite" hidden></div>
+
+            <!-- Estado do conjunto carregado: motor, confiança, origem, geração, intervalo, base -->
+            <div class="vf-fapi-context__status" id="fapi-context-status" aria-label="Estado dos dados carregados"></div>
+          </section>
+
+          <!-- 3. ESTADOS GLOBAIS (sem cliente / carregando / backend indisponível) -->
+          <div id="fapi-state-host" hidden></div>
+
+          <!-- 4. NAVEGAÇÃO INTERNA -->
+          <nav class="vf-tabs" id="fapi-tabs" role="tablist" aria-label="Seções da Central de Vendas" hidden>
+            <button type="button" class="vf-tab is-active" id="fapi-tab-visao" role="tab" aria-selected="true" aria-controls="fapi-panel-visao" data-tab="visao">
+              Visão geral
+            </button>
+            <button type="button" class="vf-tab" id="fapi-tab-pedidos" role="tab" aria-selected="false" aria-controls="fapi-panel-pedidos" data-tab="pedidos" tabindex="-1">
+              Pedidos <span class="vf-badge" id="fapi-tab-pedidos-count" hidden>0</span>
+            </button>
+            <button type="button" class="vf-tab" id="fapi-tab-produtos" role="tab" aria-selected="false" aria-controls="fapi-panel-produtos" data-tab="produtos" tabindex="-1">
+              Desempenho de produtos <span class="vf-badge" id="fapi-tab-produtos-count" hidden>0</span>
+            </button>
+          </nav>
+
+          <!-- 5. PAINÉIS -->
+          <div class="vf-fapi-tabpanel" id="fapi-panel-visao" role="tabpanel" aria-labelledby="fapi-tab-visao" tabindex="0" hidden>
+            <div id="fapi-fech-host"></div>
+            <!-- MP3 — Conciliação Mercado Pago: carrega à parte, depois do
+                 conteúdo principal (nunca bloqueia a carga da tela). -->
+            <div id="fapi-mp-host"></div>
+            <div id="fapi-days-host"></div>
+          </div>
+
+          <div class="vf-fapi-tabpanel vf-fapi-orders" id="fapi-panel-pedidos" role="tabpanel" aria-labelledby="fapi-tab-pedidos" tabindex="0" hidden></div>
+
+          <!-- O módulo de produtos permanece integrado à Fechamento API;
+               o root próprio organiza o componente, sem indicar outra página. -->
+          <div class="vf-fapi-tabpanel" id="fapi-panel-produtos" role="tabpanel" aria-labelledby="fapi-tab-produtos" tabindex="0" hidden>
+            <section class="vf-fapi-abc" id="fapi-abc-root" data-module="curva-abc" aria-label="Curva ABC de produtos"></section>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 6. DRAWER DO PEDIDO -->
+  <div class="vf-drawer-backdrop" id="fapi-drawer-backdrop"></div>
+  <aside class="vf-drawer vf-drawer--lg vf-fapi-order-drawer" id="fapi-order-drawer" role="dialog" aria-modal="true" aria-labelledby="fapi-drawer-title" tabindex="-1">
+    <header class="vf-drawer__header">
+      <h2 class="vf-drawer__title" id="fapi-drawer-title">Extrato financeiro do pedido</h2>
+      <div class="vf-cluster">
+        <span id="fapi-drawer-conf"></span>
+        <button type="button" class="vf-btn vf-btn--ghost vf-btn--sm vf-btn--icon" id="fapi-drawer-close" aria-label="Fechar detalhe do pedido">✕</button>
+      </div>
+    </header>
+    <div class="vf-drawer__body" id="fapi-drawer-body"></div>
+    <footer class="vf-drawer__footer">
+      <button type="button" class="vf-btn vf-btn--secondary" id="fapi-drawer-close-footer">Fechar</button>
+    </footer>
+  </aside>
+
+  <!-- F2.2 — Shell V3 por padrão (a comparação lado a lado de F0.7 já
+       provou que ele não regride a tela; a flag ?shell=v3 não é mais
+       necessária). layout.js sai de vez desta página — a barra lateral
+       antiga não tem mais nada para controlar aqui (Cliente/Conta já
+       vêm do Shell). Rollback: `git revert` deste commit. -->
+  <script type="module" src="vf-shell.js"></script>
+  <script src="fechamentos-api.js"></script>
 </body>
 </html>

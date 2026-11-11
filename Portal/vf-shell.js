@@ -61,6 +61,9 @@ export const MODULOS = [
   // não suportado por V3 (TikTok legado) ou sem conta resolvida cai em
   // `rota` (o legado) — nunca fica sem destino algum. Ver resolverRota().
   { id: "financeiro", label: "Financeiro", rota: "financeiro.html", rotaPorMarketplace: { meli: "financeiro-v3.html", shopee: "financeiro-v3.html" } },
+  // Central de Vendas: restaurada SÓ para o ROLE global admin (ver GRUPOS_NAV_ADMIN). A página
+  // redireciona os demais perfis ao Financeiro; a sidebar não é mecanismo de segurança.
+  { id: "central-vendas", label: "Central de Vendas", rota: "fechamentos-api.html" },
   { id: "ads", label: "Ads", rota: "ads.html", marketplaces: ["meli"] },
   { id: "anuncios", label: "Anúncios", rota: "anuncios-meli.html", marketplaces: ["meli"] },
   // Central do Full (modelo C): ilha React que lê Cliente+Operação do
@@ -168,6 +171,7 @@ const ICONS = {
   "cliente-360-v3": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
   "cliente-operacao": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
   "cliente-360": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
+  "central-vendas": '<circle cx="9" cy="21" r="1"></circle><circle cx="19" cy="21" r="1"></circle><path d="M2.5 3h2l2.4 12.4a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L21 8H6"></path>',
   financeiro: '<path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-8"></path><path d="M3 20h18"></path>',
   margem: '<line x1="18" y1="6" x2="6" y2="18"></line><circle cx="7.5" cy="7.5" r="2"></circle><circle cx="16.5" cy="16.5" r="2"></circle>',
   ads: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline>',
@@ -204,6 +208,20 @@ export const GRUPOS_NAV = [
   { titulo: "Gestão", ids: ["pessoas", "clientes-contas", "relatorios", "bases"] },
   { titulo: "Ferramentas", ids: ["ferramentas"] },
 ];
+
+// Navegação do ROLE global `admin`: o menu novo (GRUPOS_NAV) MAIS as ferramentas operacionais
+// que saíram da sidebar de todos os perfis — Cliente 360 V3, Sentinel, Central de Vendas e
+// Central de Margem. Mesmos ids/rotas/regras de contexto e marketplace de MODULOS/GLOBAIS
+// (nenhum item novo é criado); só decide sob qual grupo cada id aparece. Os demais perfis
+// continuam com GRUPOS_NAV exatamente como está. Não é mecanismo de segurança: a API autoriza.
+export const GRUPOS_NAV_ADMIN = [
+  { titulo: "Operação", ids: ["visao", "painel-contas", "sentinel", "cliente-360-v3"] },
+  { titulo: "Performance", ids: ["central-vendas", "financeiro", "margem", "ads", "anuncios", "central-full", "curva-abc"] },
+  ...GRUPOS_NAV.slice(2),
+];
+export function gruposNavPara(role) {
+  return String(role || "").toLowerCase() === "admin" ? GRUPOS_NAV_ADMIN : GRUPOS_NAV;
+}
 
 export const MARKETPLACE_LABEL = { meli: "Mercado Livre", shopee: "Shopee", tiktok: "TikTok Shop" };
 
@@ -547,7 +565,7 @@ export function createVfShell(options = {}) {
     // mantém EXATAMENTE a regra de disponibilidade que já tinha (contexto
     // obrigatório + gating por marketplace para quem era MODULOS; sempre
     // disponível para quem era GLOBAIS) — só decidida por id agora.
-    GRUPOS_NAV.forEach((grupo) => {
+    gruposNavPara(user.role).forEach((grupo) => {
       const papelAtual = String(user.role || "").toLowerCase();
       const itens = grupo.ids.map(porId).filter(Boolean).filter((mod) => !mod.papeis || mod.papeis.includes(papelAtual));
       const disponiveis = [];

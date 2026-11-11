@@ -1,0 +1,296 @@
+/* ================================================================
+   fechamentos-api.css — VenForce · Painel de vendas por pedido
+   Motor de conciliação financeira (laboratório). Prefixo fapi-.
+   Reaproveita tokens --vfop-* (cliente-operacao.css). Roxo = acento.
+   Bordas leves fazem o trabalho. Aparência de ferramenta financeira séria.
+   ================================================================ */
+
+.fapi-page { padding-bottom: 48px; }
+
+/* ── HEADER ──────────────────────────────────────────────── */
+.fapi-phead { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+.fapi-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--vfop-soft, #8c96a6); margin-bottom: 4px; }
+.fapi-title { font-family: 'Fraunces', Georgia, serif; font-size: 30px; font-weight: 600; letter-spacing: -.02em; color: var(--vfop-text, #111827); margin: 0; line-height: 1.05; }
+.fapi-sub { font-size: 14px; font-weight: 600; color: var(--vfop-primary, #4b267a); margin: 6px 0 0; }
+.fapi-phead-right { flex-shrink: 0; padding-top: 22px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+
+.fapi-motor { display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 20px; border: 1px solid var(--vfop-border, #dde1e8); color: var(--vfop-muted, #5a6578); background: var(--vfop-surface, #fff); white-space: nowrap; }
+.fapi-motor--mock         { color: #5a3b86; border-color: #ddd0ef; background: #f7f3fd; }
+.fapi-motor--parcial      { color: #855100; border-color: #ecdcb4; background: #fdf9f0; }
+.fapi-motor--api          { color: #1a7a45; border-color: #cbe6d6; background: #f4fbf7; }
+.fapi-motor--indisponivel { color: #9b1c1c; border-color: #ecc9c9; background: #fdf4f3; }
+.fapi-confianca { font-size: 11px; color: var(--vfop-soft, #8c96a6); font-weight: 600; }
+
+/* ── CONTROLES ───────────────────────────────────────────── */
+.fapi-controls { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; padding: 12px 14px; margin-bottom: 16px; background: var(--vfop-surface, #fff); border: 1px solid var(--vfop-border, #dde1e8); border-radius: 8px; }
+.fapi-field { display: grid; gap: 4px; }
+.fapi-field label { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--vfop-soft, #8c96a6); }
+.fapi-field .vfop-select { min-width: 220px; }
+
+/* ── BOTÕES ──────────────────────────────────────────────── */
+.fapi-btn { display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 13px; border-radius: 6px; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; line-height: 1; transition: background .12s, border-color .12s, color .12s, opacity .12s; }
+.fapi-btn-sm { height: 28px; padding: 0 10px; font-size: 11.5px; }
+.fapi-btn-primary { background: var(--vfop-primary, #4b267a); border: 1px solid var(--vfop-primary, #4b267a); color: #fff; }
+.fapi-btn-primary:hover:not(:disabled) { background: #3b1d61; border-color: #3b1d61; }
+.fapi-btn-ghost { background: none; border: 1px solid var(--vfop-border, #dde1e8); color: var(--vfop-muted, #5a6578); }
+.fapi-btn-ghost:hover:not(:disabled) { background: var(--vfop-subtle, #f8f9fb); border-color: var(--vfop-border-strong, #c8cdd8); color: var(--vfop-text, #111827); }
+.fapi-btn-ghost.active { border-color: var(--vfop-primary, #4b267a); color: var(--vfop-primary, #4b267a); }
+.fapi-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── PAINEL GENÉRICO ─────────────────────────────────────── */
+.fapi-panel { background: var(--vfop-surface, #fff); border: 1px solid var(--vfop-border, #dde1e8); border-radius: 8px; overflow: hidden; margin-bottom: 16px; }
+.fapi-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 18px; border-bottom: 1px solid #eaecf0; background: var(--vfop-subtle, #f8f9fb); }
+.fapi-panel-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--vfop-text, #111827); margin: 0; }
+.fapi-panel-meta { font-size: 11.5px; color: var(--vfop-soft, #8c96a6); font-weight: 500; }
+.fapi-panel-actions { display: flex; align-items: center; gap: 8px; }
+.fapi-panel-body { padding: 18px; }
+.fapi-panel-body--flush { padding: 0; }
+
+/* ── BADGES DE STATUS ────────────────────────────────────── */
+.fapi-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid transparent; white-space: nowrap; }
+.fapi-badge--ok    { color: #1a7a45; background: #f0faf3; border-color: #cbe6d6; }
+.fapi-badge--info  { color: #1a4a8a; background: #eef4fd; border-color: #c3d7f3; }
+.fapi-badge--warn  { color: #855100; background: #fdf8ec; border-color: #ecdcb4; }
+.fapi-badge--crit  { color: #9b1c1c; background: #fdf4f3; border-color: #ecc9c9; }
+.fapi-badge--muted { color: #5a6578; background: #f4f5f8; border-color: #dde1e8; }
+.fapi-conf-pill { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; border: 1px solid transparent; }
+.fapi-conf-pill--ok   { color: #1a7a45; background: #f0faf3; border-color: #cbe6d6; }
+.fapi-conf-pill--warn { color: #855100; background: #fdf8ec; border-color: #ecdcb4; }
+.fapi-conf-pill--crit { color: #9b1c1c; background: #fdf4f3; border-color: #ecc9c9; }
+
+/* ── 3. CARDS PRINCIPAIS ─────────────────────────────────── */
+.fapi-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+.fapi-card { background: var(--vfop-surface, #fff); border: 1px solid var(--vfop-border, #dde1e8); border-radius: 8px; padding: 13px 15px; }
+.fapi-card--primary { box-shadow: inset 3px 0 0 var(--vfop-primary, #4b267a); background: linear-gradient(180deg, #fbfaff 0%, #fff 60%); }
+.fapi-card-lbl { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--vfop-soft, #8c96a6); margin-bottom: 8px; }
+.fapi-card-val { font-size: 22px; font-weight: 700; letter-spacing: -.02em; line-height: 1.05; color: var(--vfop-text, #111827); font-variant-numeric: tabular-nums; }
+.fapi-card-val.brand { color: var(--vfop-primary, #4b267a); }
+.fapi-card-val.ok    { color: #1a7a45; }
+.fapi-card-val.warn  { color: #855100; }
+.fapi-card-val.crit  { color: #9b1c1c; }
+.fapi-card-sub { font-size: 11px; color: var(--vfop-muted, #5a6578); margin-top: 6px; min-height: 14px; }
+
+/* ── TABELAS ─────────────────────────────────────────────── */
+.fapi-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.fapi-table th { text-align: left; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--vfop-soft, #8c96a6); background: var(--vfop-subtle, #f8f9fb); border-bottom: 1px solid var(--vfop-border, #dde1e8); padding: 8px 13px; white-space: nowrap; }
+.fapi-table td { padding: 9px 13px; border-bottom: 1px solid #eef0f4; vertical-align: middle; color: var(--vfop-text, #111827); }
+.fapi-table tr:last-child td { border-bottom: none; }
+.fapi-table tbody tr:hover td { background: var(--vfop-subtle, #f8f9fb); }
+.fapi-table .right  { text-align: right; font-variant-numeric: tabular-nums; }
+.fapi-table .strong { font-weight: 600; }
+.fapi-table .muted  { color: var(--vfop-soft, #8c96a6); }
+.fapi-table .mono   { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
+.fapi-table .nowrap { white-space: nowrap; }
+.fapi-table .clip   { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fapi-table--click tbody tr { cursor: pointer; }
+.fapi-up   { color: #1a7a45; }
+.fapi-down { color: #9b1c1c; }
+.fapi-est  { color: var(--vfop-muted, #5a6578); font-style: italic; font-variant-numeric: tabular-nums; }
+.fapi-table-note { font-size: 11px; color: var(--vfop-soft, #8c96a6); line-height: 1.5; padding: 10px 14px; border-top: 1px solid #eef0f4; background: var(--vfop-subtle, #fafbfc); }
+.fapi-table-note b { color: var(--vfop-muted, #5a6578); }
+
+/* ── THUMB DE PRODUTO ────────────────────────────────────── */
+.fapi-thumb { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 6px; background: #ede8f5; color: var(--vfop-primary, #4b267a); font-size: 10px; font-weight: 700; border: 1px solid #e0d3f0; }
+
+/* ── PILLS DE STATUS DO PEDIDO ───────────────────────────── */
+.fapi-pill { font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 4px; border: 1px solid transparent; white-space: nowrap; }
+.fapi-pill--ok    { color: #1a7a45; background: #f0faf3; border-color: #cbe6d6; }
+.fapi-pill--warn  { color: #855100; background: #fdf8ec; border-color: #ecdcb4; }
+.fapi-pill--crit  { color: #9b1c1c; background: #fdf4f3; border-color: #ecc9c9; }
+.fapi-pill--muted { color: #5a6578; background: #f4f5f8; border-color: #dde1e8; }
+
+/* ── 11. DETALHE DO PEDIDO ───────────────────────────────── */
+.fapi-detail { border-color: var(--vfop-primary, #4b267a); box-shadow: 0 0 0 3px rgba(75,38,122,.06); }
+.fapi-det-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.fapi-det-title { font-size: 14px; font-weight: 600; color: var(--vfop-text, #111827); }
+.fapi-det-meta { font-size: 11.5px; color: var(--vfop-soft, #8c96a6); margin-top: 2px; }
+.fapi-det-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #eaecf0; border: 1px solid #eaecf0; border-radius: 7px; overflow: hidden; }
+.fapi-det-row { background: var(--vfop-surface, #fff); padding: 10px 14px; display: grid; gap: 2px; }
+.fapi-det-k { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--vfop-soft, #8c96a6); }
+.fapi-det-v { font-size: 13px; font-weight: 600; color: var(--vfop-text, #111827); font-variant-numeric: tabular-nums; }
+/* Bloco "Sem informações suficientes para concluir" (bloqueado = crítico) */
+.fapi-det-block { margin-top: 14px; padding: 12px 14px; font-size: 12.5px; color: #9b1c1c; background: #fdf4f3; border: 1px solid #ecc9c9; border-radius: 7px; }
+.fapi-det-block b { font-weight: 700; }
+
+/* ── EMPTY STATE ─────────────────────────────────────────── */
+.fapi-empty { text-align: center; padding: 40px 20px; max-width: 500px; margin: 0 auto; color: var(--vfop-soft, #8c96a6); }
+.fapi-empty-ic { width: 44px; height: 44px; border-radius: 11px; margin: 0 auto 12px; display: grid; place-items: center; font-size: 20px; background: var(--vfop-subtle, #f8f9fb); }
+.fapi-empty b { display: block; font-size: 14px; color: var(--vfop-text, #111827); margin-bottom: 8px; }
+.fapi-empty-why, .fapi-empty-next { font-size: 12.5px; margin: 4px 0; line-height: 1.5; color: var(--vfop-muted, #5a6578); }
+.fapi-empty-why span, .fapi-empty-next span { font-weight: 700; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--vfop-soft, #8c96a6); }
+.fapi-empty-next { color: var(--vfop-primary, #4b267a); }
+
+/* ── RESPONSIVE ──────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .fapi-cards { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 900px) {
+  .fapi-phead { flex-direction: column; gap: 12px; }
+  .fapi-phead-right { padding-top: 0; align-items: flex-start; flex-direction: row; }
+  .fapi-det-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .fapi-cards { grid-template-columns: 1fr; }
+  .fapi-title { font-size: 24px; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   EVOLUÇÃO PEDIDO-FIRST — filtros, régua de dias, ranking, tags, extrato
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Filtros ─────────────────────────────────────────────── */
+.fapi-filters { background: var(--vfop-surface, #fff); border: 1px solid var(--vfop-border, #dde1e8); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
+.fapi-filters-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.fapi-filters-main { padding-bottom: 10px; border-bottom: 1px solid #eef0f4; }
+.fapi-filters-secondary { padding-top: 10px; }
+.fapi-fitem { display: grid; gap: 4px; }
+.fapi-fitem > span { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--vfop-soft, #8c96a6); }
+.fapi-fsel, .fapi-fdate { border: 1px solid var(--vfop-border, #dde1e8); border-radius: 6px; background: var(--vfop-surface, #fff); color: var(--vfop-text, #111827); font: inherit; font-size: 12px; font-weight: 600; padding: 5px 8px; cursor: pointer; min-width: 120px; }
+.fapi-fsel:focus, .fapi-fdate:focus { outline: none; border-color: var(--vfop-primary, #4b267a); box-shadow: 0 0 0 3px #ede8f5; }
+.fapi-filter-actions { display: flex; gap: 8px; align-items: flex-end; margin-left: auto; }
+.fapi-filter-summary { margin-top: 10px; font-size: 12px; color: var(--vfop-muted, #5a6578); line-height: 1.45; }
+.fapi-filter-pending { display: inline-flex; margin-left: 6px; padding: 2px 7px; border-radius: 4px; background: #fdf8ec; color: #855100; border: 1px solid #ecdcb4; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+
+/* Campo visual de intervalo (Data personalizada, à la Métricas) */
+.fapi-fitem--date .fapi-fdate { min-width: 150px; }
+.fapi-date-sep { align-self: center; padding-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--vfop-soft, #8c96a6); }
+.fapi-filter-aviso { margin-top: 10px; padding: 7px 11px; font-size: 11.5px; color: #855100; background: #fdf8ec; border: 1px solid #ecdcb4; border-radius: 6px; }
+
+/* ── Período de análise personalizado ────────────────────── */
+.fapi-period-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fapi-period-range input[type="date"] { min-width: 140px; }
+.fapi-period-sep { font-size: 12px; font-weight: 600; color: var(--vfop-soft, #8c96a6); }
+
+/* ── Busca local ─────────────────────────────────────────── */
+.fapi-fitem--search { min-width: 220px; }
+.fapi-fsearch { border: 1px solid var(--vfop-border, #dde1e8); border-radius: 6px; background: var(--vfop-surface, #fff); color: var(--vfop-text, #111827); font: inherit; font-size: 12px; font-weight: 600; padding: 5px 8px; min-width: 220px; }
+.fapi-fsearch:focus { outline: none; border-color: var(--vfop-primary, #4b267a); box-shadow: 0 0 0 3px #ede8f5; }
+.fapi-fsearch::placeholder { color: var(--vfop-soft, #8c96a6); font-weight: 500; }
+
+/* ── Paginação da tabela de pedidos ──────────────────────── */
+.fapi-pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 14px; border-top: 1px solid #eef0f4; flex-wrap: wrap; }
+.fapi-pager-info { font-size: 12px; font-weight: 600; color: var(--vfop-muted, #5a6578); font-variant-numeric: tabular-nums; }
+.fapi-pager .fapi-btn[disabled] { opacity: .45; cursor: not-allowed; pointer-events: none; }
+
+/* ── Fechamento API: sub-blocos + qualidade ──────────────── */
+.fapi-fech-sub { padding: 14px 14px 6px; font-size: 12px; color: var(--vfop-muted, #5a6578); }
+.fapi-fech-sub b { color: var(--vfop-text, #111827); font-size: 12.5px; }
+.fapi-fech-qgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; padding: 0 14px 12px; }
+.fapi-fech-q { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--vfop-border, #dde1e8); border-radius: 6px; background: var(--vfop-subtle, #fafbfc); }
+.fapi-fech-q-v { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--vfop-text, #111827); }
+.fapi-fech-q-v.crit { color: #9b1c1c; }
+.fapi-fech-q-v.warn { color: #855100; }
+.fapi-fech-q-v.ok { color: #1a7a45; }
+.fapi-fech-q-l { font-size: 10.5px; color: var(--vfop-soft, #8c96a6); text-transform: uppercase; letter-spacing: .04em; }
+
+/* ── Toolbar de recortes rápidos + ordenação (tabela de pedidos) ── */
+.fapi-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 14px 4px; }
+.fapi-chipbar { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; }
+.fapi-chip { height: 26px; padding: 0 11px; border-radius: 13px; font-size: 11.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--vfop-border, #dde1e8); background: var(--vfop-surface, #fff); color: var(--vfop-muted, #5a6578); white-space: nowrap; }
+.fapi-chip:hover { background: var(--vfop-subtle, #f8f9fb); }
+.fapi-chip.active { background: var(--vfop-primary, #4b267a); border-color: var(--vfop-primary, #4b267a); color: #fff; }
+.fapi-toolbar-sort { flex: 0 0 auto; }
+
+/* Linha de filtros ativos */
+.fapi-active-filters { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 4px 14px 10px; font-size: 11.5px; color: var(--vfop-muted, #5a6578); }
+.fapi-active-filters b { color: var(--vfop-text, #111827); }
+
+/* Destaque de linhas da tabela de pedidos (borda esquerda) */
+.fapi-prow--cancel  td:first-child { box-shadow: inset 3px 0 0 #c0392b; }
+.fapi-prow--bloq    td:first-child { box-shadow: inset 3px 0 0 #9b1c1c; }
+.fapi-prow--prob    td:first-child { box-shadow: inset 3px 0 0 #d68910; }
+.fapi-prow--nocusto td:first-child { box-shadow: inset 3px 0 0 #e67e22; }
+.fapi-prow--nofrete td:first-child { box-shadow: inset 3px 0 0 #b0b8c4; }
+.fapi-cell-ok { color: #1a7a45; }
+
+/* Resumo por dia: linhas clicáveis + cabeçalho com sort */
+.fapi-fech-sub--row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.fapi-dayrow { cursor: pointer; }
+.fapi-dayrow:hover td { background: #f5f0fb; }
+
+/* Cards de qualidade clicáveis */
+.fapi-fech-q--click { text-align: left; cursor: pointer; font: inherit; }
+.fapi-fech-q--click:hover { border-color: var(--vfop-primary, #4b267a); background: #f5f0fb; }
+
+/* ── Ações de API à direita no topo (Importar / Sincronizar) ── */
+.fapi-import-block { margin-left: auto; }
+
+/* ── Toolbar de filtros do bloco Pedidos (busca + selects + sort) ── */
+.fapi-toolbar--ped { align-items: flex-end; gap: 10px; }
+.fapi-toolbar--ped .fapi-fitem--search { flex: 1 1 220px; }
+.fapi-chipbar--ped { padding: 0 14px 10px; }
+
+/* Linha do dia em destaque quando é o recorte ativo da tabela de pedidos */
+.fapi-dayrow--scope td { background: #f5f0fb; }
+
+/* ── Produtos por impacto: barra de grupos + ações ───────── */
+.fapi-prodbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 14px 0; }
+.fapi-prodgroups { flex: 1 1 auto; }
+.fapi-prodactions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Wrap de tabela densa (scroll horizontal) ────────────── */
+.fapi-tablewrap { overflow-x: auto; }
+.fapi-table .center { text-align: center; }
+.fapi-rank { font-weight: 700; color: var(--vfop-soft, #8c96a6); font-variant-numeric: tabular-nums; width: 26px; text-align: center; }
+.fapi-prow--sel td { background: #f5f0fb !important; box-shadow: inset 2px 0 0 var(--vfop-primary, #4b267a); }
+
+/* ── Tags discretas (logística / ads / diag) ─────────────── */
+.fapi-tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; border: 1px solid transparent; white-space: nowrap; }
+.fapi-tag--full    { color: #4b267a; background: #f3eefb; border-color: #e0d3f0; }
+.fapi-tag--ads     { color: #1a4a8a; background: #eef4fd; border-color: #c3d7f3; }
+.fapi-tag--ok      { color: #1a7a45; background: #f0faf3; border-color: #cbe6d6; }
+.fapi-tag--warn    { color: #855100; background: #fdf8ec; border-color: #ecdcb4; }
+.fapi-tag--crit    { color: #9b1c1c; background: #fdf4f3; border-color: #ecc9c9; }
+.fapi-tag--muted   { color: #5a6578; background: #f4f5f8; border-color: #dde1e8; }
+.fapi-tag--ausente { color: #b3bac6; background: #fafbfc; border-color: #eef0f4; }
+
+/* ── Vendas por dia (strip) ──────────────────────────────── */
+.fapi-days { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; align-items: stretch; }
+.fapi-day { position: relative; display: grid; grid-template-rows: auto auto auto 8px; gap: 2px; min-height: 58px; padding: 7px 6px 6px; border: 1px solid var(--vfop-border, #dde1e8); border-radius: 7px; background: var(--vfop-surface, #fff); cursor: pointer; transition: border-color .12s, background .12s; text-align: left; }
+.fapi-day:hover { border-color: var(--vfop-primary, #4b267a); background: var(--vfop-subtle, #f8f9fb); }
+.fapi-day--sel { border-color: var(--vfop-primary, #4b267a); background: #f5f0fb; }
+.fapi-day--scope { border-color: #d8c8ec; background: #fbf8ff; }
+.fapi-day--empty { color: var(--vfop-soft, #8c96a6); background: #fcfcfd; }
+.fapi-day-d { font-size: 12px; font-weight: 800; color: var(--vfop-text, #111827); line-height: 1; }
+.fapi-day-v { font-size: 10.5px; color: var(--vfop-muted, #5a6578); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fapi-day-p { font-size: 10px; color: var(--vfop-soft, #8c96a6); font-variant-numeric: tabular-nums; }
+.fapi-day-markers { display: flex; gap: 3px; min-height: 6px; align-items: center; }
+.fapi-day-marker { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.fapi-day-marker--problem { background: #c98a1e; }
+.fapi-day-marker--blocked { background: #9b1c1c; }
+
+/* ── Barra de ordenação do ranking ───────────────────────── */
+.fapi-sortbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 9px 16px; border-bottom: 1px solid #eef0f4; background: var(--vfop-subtle, #fafbfc); }
+.fapi-sortbar-lbl { font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--vfop-soft, #8c96a6); margin-right: 2px; }
+.fapi-sortbtn { border: 1px solid var(--vfop-border, #dde1e8); background: var(--vfop-surface, #fff); color: var(--vfop-muted, #5a6578); font: inherit; font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 20px; cursor: pointer; transition: all .12s; }
+.fapi-sortbtn:hover { border-color: var(--vfop-border-strong, #c8cdd8); color: var(--vfop-text, #111827); }
+.fapi-sortbtn.active { border-color: var(--vfop-primary, #4b267a); color: var(--vfop-primary, #4b267a); background: #f5f0fb; }
+
+/* Ranking: realça discretamente produtos sem custo/base. */
+.fapi-prow--missing-base td { box-shadow: inset 2px 0 0 #c98a1e; }
+
+/* ── Extrato financeiro do pedido ────────────────────────── */
+.fapi-det-tags { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.fapi-det-lede { margin: 0 0 14px; font-size: 12px; color: var(--vfop-muted, #5a6578); line-height: 1.5; }
+.fapi-det-grid { margin-bottom: 14px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.fapi-ext-wrap { border: 1px solid var(--vfop-border, #dde1e8); border-radius: 8px; }
+.fapi-ext-table { width: 100%; }
+.fapi-ext-table th { white-space: nowrap; }
+.fapi-ext-comp { font-weight: 500; }
+.fapi-ext-op { width: 30px; color: var(--vfop-soft, #8c96a6); font-weight: 700; }
+.fapi-ext-val { font-variant-numeric: tabular-nums; font-weight: 600; }
+.fapi-ext-fonte { font-size: 11px; }
+.fapi-ext-obs { font-size: 11.5px; max-width: 240px; }
+.fapi-ext-total td { background: #f8f4ff; border-top: 2px solid #e0d3f0; }
+.fapi-ext-total:hover td { background: #f8f4ff; }
+.fapi-ext-total .fapi-ext-comp { font-weight: 700; font-size: 13px; }
+.fapi-det-block ul { margin: 8px 0 0; padding-left: 18px; }
+.fapi-det-block li { margin: 3px 0; line-height: 1.45; }
+.fapi-det-block li b { font-weight: 700; }
+.fapi-det-block--warn { color: #855100; background: #fdf8ec; border-color: #ecdcb4; }
+
+@media (max-width: 700px) {
+  .fapi-det-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fapi-ext-fonte { display: none; }
+  .fapi-filter-actions { width: 100%; margin-left: 0; }
+}
