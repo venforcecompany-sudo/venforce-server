@@ -32,18 +32,20 @@ function criarProvedor() {
   if (!arg("real")) return { provedor: require("../services/raioX/raioXSintetico").criar(), meta: { modo: "sintetico", host: null } };
   const url = process.env.RAIO_X_DATABASE_URL;
   if (!url) { console.error("[raio-x] --real exige RAIO_X_DATABASE_URL (não usa server/.env nem DATABASE_URL)."); process.exit(2); }
-  const host = new URL(url).hostname;
-  if (!LOCAIS.has(host) && arg("autorizo-host") !== host) {
-    console.error(`[raio-x] host "${host}" não é local. Para ler um banco remoto (carga de leitura), confirme com --autorizo-host=${host}.`);
-    process.exit(2);
-  }
+  const { validarUrlRaioX, autorizar, limparEnvPg } = require("../services/raioX/raioXConexao");
+  let destino;
+  try { destino = validarUrlRaioX(url); } catch (e) { console.error(`[raio-x] URL recusada (${e.codigo || "ERRO"}): ${e.message}`); process.exit(2); }
+  const aut = autorizar(destino, arg("autorizo-host"));
+  if (!aut.permitido) { console.error(`[raio-x] ${aut.motivo}.`); process.exit(2); }
+  const host = destino.host; // destino EFETIVO (o mesmo que o driver usa)
+  limparEnvPg(); // PGHOST & cia não podem redirecionar a conexão
   process.env.DATABASE_URL = url; // o pool do app lê no require
   const pool = require("../config/database");
   const svc = require("../services/raioX/raioXVisualService");
   let fila = Promise.resolve();
   const serial = (fn) => { const p = fila.then(fn, fn); fila = p.catch(() => {}); return p; };
   return {
-    meta: { modo: "real", host },
+    meta: { modo: "real", host, portaBanco: destino.port, banco: destino.banco },
     fechar: () => pool.end().catch(() => {}),
     provedor: {
       visaoGeral: () => serial(() => svc.visaoGeral(pool)),

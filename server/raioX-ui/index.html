@@ -90,7 +90,7 @@ function banner() {
   const b = $("#banner"), m = S.meta;
   if (!m) return;
   if (m.modo === "sintetico") { b.className = "syn"; b.innerHTML = "<b>DADOS SINTÉTICOS</b> — exemplo para navegar na interface. Nada aqui vem do seu banco. Para ler o banco: <code>RAIO_X_DATABASE_URL=… node server/scripts/raio-x-visual.js --real</code>"; }
-  else { b.className = "real"; b.innerHTML = `<b>BANCO REAL — somente leitura</b> · host ${esc(m.host)} · cada leitura roda em transação READ ONLY com timeout · cache de 60 s`; }
+  else { b.className = "real"; b.innerHTML = `<b>BANCO REAL — somente leitura</b> · host ${esc(m.host)}${m.portaBanco ? ":" + esc(m.portaBanco) : ""} (destino efetivo) · cada leitura roda em transação READ ONLY com timeout · cache de 60 s`; }
 }
 
 // ---------------------------------------------------------------- 1. Visão geral

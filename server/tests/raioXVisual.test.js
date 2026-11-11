@@ -93,6 +93,62 @@ async function run() {
   ok("--real com host remoto exige --autorizo-host", remoto.status === 2 && /--autorizo-host=banco-remoto\.invalid/.test(remoto.stderr));
   ok("a mensagem de recusa não vaza a senha", !/:p@/.test(remoto.stderr));
 
+  // ---- P1: autorização do host (parâmetros que redirecionam a conexão)
+  const { validarUrlRaioX, autorizar, limparEnvPg } = require("../services/raioX/raioXConexao");
+  const { parse } = require("pg-connection-string");
+  eq("PREMISSA: o driver realmente usa ?host= (bug original)", parse("postgres://u:p@localhost/db?host=remoto.example").host, "remoto.example");
+  const recusa = (url) => { try { validarUrlRaioX(url); return null; } catch (e) { return e.codigo; } };
+  for (const [url, cod] of [
+    ["postgres://u:p@localhost/db?host=remoto.example", "PARAMETRO_NAO_PERMITIDO"],
+    ["postgres://u:p@localhost/db?HOST=remoto.example", "PARAMETRO_NAO_PERMITIDO"],
+    ["postgres://u:p@127.0.0.1/db?hostaddr=10.0.0.9", "PARAMETRO_NAO_PERMITIDO"],
+    ["postgres://u:p@localhost/db?port=6543", "PARAMETRO_NAO_PERMITIDO"],
+    ["postgres://u:p@localhost/db?service=prod", "PARAMETRO_NAO_PERMITIDO"],
+    ["postgres://u:p@localhost/db?options=-c%20default_transaction_read_only%3Doff", "PARAMETRO_NAO_PERMITIDO"],
+    ["postgres://u:p@localhost/db?sslmode=disable&host=remoto.example", "PARAMETRO_NAO_PERMITIDO"],
+    ["postgres:///db?host=/tmp", "PARAMETRO_NAO_PERMITIDO"],
+    ["postgres:///db", "HOST_AUSENTE"],
+    ["mysql://u@localhost/db", "PROTOCOLO_INVALIDO"],
+    ["isto-nao-e-url", "URL_INVALIDA"],
+  ]) eq(`recusa ${url.replace(/:p@/, ":***@")} → ${cod}`, recusa(url), cod);
+  const l1 = validarUrlRaioX("postgres://u:p@localhost:5433/db?sslmode=disable&application_name=raiox");
+  eq("URL local legítima: host efetivo/porta/banco", [l1.host, l1.port, l1.banco, l1.local], ["localhost", 5433, "db", true]);
+  eq("IPv6 local é local", validarUrlRaioX("postgres://u@[::1]:5432/db").local, true);
+  eq("caixa do host é normalizada", validarUrlRaioX("postgres://u@LocalHost/db").host, "localhost");
+  const remotoOk = validarUrlRaioX("postgres://u:p@Banco-Remoto.example:5432/db?sslmode=require");
+  eq("remoto: host efetivo e local=false", [remotoOk.host, remotoOk.local], ["banco-remoto.example", false]);
+  ok("remoto sem autorização: recusado", autorizar(remotoOk, null).permitido === false);
+  ok("remoto com autorização de OUTRO host: recusado", autorizar(remotoOk, "localhost").permitido === false);
+  ok("remoto com --autorizo-host exato: permitido", autorizar(remotoOk, "banco-remoto.example").permitido === true);
+  ok("local: permitido sem autorização", autorizar(l1, null).permitido === true);
+  const envFake = { PGHOST: "remoto", PGHOSTADDR: "1.2.3.4", PGSERVICE: "x", PGOPTIONS: "-c x=1", PG_POOL_CONNECTION_TIMEOUT_MS: "5000", PATH: "p" };
+  limparEnvPg(envFake);
+  eq("limparEnvPg remove PGHOST/PGHOSTADDR/… e preserva o resto", Object.keys(envFake).sort(), ["PATH", "PG_POOL_CONNECTION_TIMEOUT_MS"]);
+
+  // Processo: localhost?host=remoto NÃO contorna a autorização (nem com --autorizo-host=localhost).
+  const rodar = (url, extra = []) => spawnSync(process.execPath, [script, "--real", ...extra], { env: { PATH: process.env.PATH, RAIO_X_DATABASE_URL: url }, encoding: "utf8", timeout: 15000 });
+  for (const [rot, url, extra] of [
+    ["localhost?host=remoto", "postgres://u:p@localhost:1/db?host=banco-remoto.invalid", []],
+    ["localhost?host=remoto + --autorizo-host=localhost", "postgres://u:p@localhost:1/db?host=banco-remoto.invalid", ["--autorizo-host=localhost"]],
+    ["localhost?host=remoto + --autorizo-host=remoto", "postgres://u:p@localhost:1/db?host=banco-remoto.invalid", ["--autorizo-host=banco-remoto.invalid"]],
+    ["localhost?hostaddr=remoto", "postgres://u:p@localhost:1/db?hostaddr=203.0.113.9", []],
+  ]) {
+    const r = rodar(url, extra);
+    ok(`processo: ${rot} recusado (exit 2, sem subir servidor)`, r.status === 2 && /PARAMETRO_NAO_PERMITIDO/.test(r.stderr) && !/abra:/.test(r.stdout));
+    ok(`processo: ${rot} não vaza a senha`, !/:p@/.test(r.stderr + r.stdout));
+  }
+  // PGHOST no ambiente não redireciona nem muda o host exibido.
+  const portaR = 49000 + Math.floor(Math.random() * 500);
+  const srvR = spawn(process.execPath, [script, "--real", "--porta", String(portaR)], { env: { PATH: process.env.PATH, RAIO_X_DATABASE_URL: "postgres://u:p@localhost:1/db?sslmode=disable", PGHOST: "banco-remoto.invalid", PGHOSTADDR: "203.0.113.9" }, stdio: "ignore" });
+  try {
+    let metaR = null;
+    for (let i = 0; i < 50 && !metaR; i++) { try { const r = await get(portaR, "/api/meta"); if (r.status === 200) metaR = JSON.parse(r.corpo); } catch { await new Promise((r) => setTimeout(r, 100)); } }
+    ok("meta exibe o destino EFETIVO (localhost:1), ignorando PGHOST do ambiente", metaR && metaR.host === "localhost" && metaR.portaBanco === 1 && metaR.modo === "real");
+  } finally { srvR.kill(); }
+  // Sintético nunca conecta nem lê a URL.
+  const sint2 = spawnSync(process.execPath, [script, "--porta", String(49600 + Math.floor(Math.random() * 300))], { env: { PATH: process.env.PATH, RAIO_X_DATABASE_URL: "postgres://u:p@localhost/db?host=remoto" }, encoding: "utf8", timeout: 1500, killSignal: "SIGKILL" });
+  ok("modo sintético ignora RAIO_X_DATABASE_URL (sobe sem validar nem conectar)", /modo=sintetico/.test(sint2.stdout || ""));
+
   console.log(`raioXVisual.test.js: ${checks} verificacoes OK`);
 }
 run().catch((e) => { console.error(e); process.exit(1); });
