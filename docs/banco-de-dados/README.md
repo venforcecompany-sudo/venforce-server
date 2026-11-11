@@ -16,6 +16,7 @@ Branch `feat/pg-reorganizacao` (worktree `~/venforce-dev/wt-pg-reorg`, base
 | — | Snapshots, cache e históricos | [06_SNAPSHOTS_CACHE_HISTORICO.md](06_SNAPSHOTS_CACHE_HISTORICO.md) | — |
 | — | Retenção (integração, sem novo sistema) | [07_RETENCAO_INTEGRACAO.md](07_RETENCAO_INTEGRACAO.md) | — |
 | — | **Pendências e rollout** | [PENDENCIAS_E_ROLLOUT.md](PENDENCIAS_E_ROLLOUT.md) | — |
+| — | **Checklist de publicação (flags desligadas)** | [CHECKLIST_PUBLICACAO.md](CHECKLIST_PUBLICACAO.md) | — |
 
 Etiquetas de evidência nos documentos: **[código]** confirmado lendo código
 (arquivo:linha), **[inferido]**, **[não verificado]**. Nada aqui foi confirmado
