@@ -6,9 +6,10 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import InicioPage from "./InicioPage.jsx";
 
-const mocks = vi.hoisted(() => ({ useOperacaoAtual: vi.fn(), useInicio: vi.fn(), setPeriodo: vi.fn() }));
+const mocks = vi.hoisted(() => ({ useOperacaoAtual: vi.fn(), useInicio: vi.fn(), setPeriodo: vi.fn(), useSincronizaHoje: vi.fn(), sincronizar: vi.fn() }));
 
 vi.mock("../hooks/useVfContext.js", () => ({ useOperacaoAtual: mocks.useOperacaoAtual }));
+vi.mock("../hooks/useSincronizaHoje.js", () => ({ useSincronizaHoje: mocks.useSincronizaHoje }));
 vi.mock("../hooks/useInicio.js", async (original) => ({ ...(await original()), useInicio: mocks.useInicio }));
 
 const env = (dados, disponivel = true, motivo = null) => ({ disponivel, escopoConta: true, motivo, dados });
@@ -51,7 +52,8 @@ function dadosBase(over = {}) {
   };
 }
 
-function montar({ dados = dadosBase(), carregando = false, erro = null, pronta = true, periodo = "30d" } = {}) {
+function montar({ dados = dadosBase(), carregando = false, erro = null, pronta = true, periodo = "30d", hoje = {} } = {}) {
+  mocks.useSincronizaHoje.mockReturnValue({ podeSincronizar: true, faltaHoje: false, fase: "ocioso", erro: null, emAndamento: false, sincronizar: mocks.sincronizar, ...hoje });
   mocks.useOperacaoAtual.mockReturnValue({ pronta, clienteSlug: "n97", clienteContaId: 42 });
   mocks.useInicio.mockReturnValue({ periodo, setPeriodo: mocks.setPeriodo, dados, carregando, erro });
   return render(<InicioPage />);
@@ -163,15 +165,39 @@ describe("InicioPage", () => {
     expect(screen.getByLabelText("Resumo do período")).toBeInTheDocument();
   });
 
-  it("Hoje sem pedidos sincronizados avisa em vez de mostrar zero", () => {
+  function dadosHojePendente() {
     const d = dadosBase();
     d.periodo = { ...d.periodo, id: "hoje", hoje: "2026-11-11", de: "2026-11-11", ate: "2026-11-11" };
     Object.assign(d.vendas.dados, { dadosAte: "2026-11-10", hojePendente: true, totais: totais({ faturamento: 0, vendas: 0, lucro: null }) });
-    montar({ dados: d, periodo: "hoje" });
-    expect(screen.getByRole("status")).toHaveTextContent("Os pedidos de hoje ainda não foram sincronizados — as vendas vão até 10/11.");
-    expect(screen.getByRole("link", { name: "Sincronize no Financeiro" })).toHaveAttribute("href", "financeiro-v3.html?cliente=n97&conta=42");
+    return d;
+  }
+
+  it("Hoje sem pedidos sincronizados: enquanto busca, diz que está buscando", () => {
+    montar({ dados: dadosHojePendente(), periodo: "hoje", hoje: { faltaHoje: true, fase: "acompanhando", emAndamento: true } });
+    expect(screen.getByRole("status")).toHaveTextContent("Buscando os pedidos de hoje no Mercado Livre…");
+    expect(screen.getByText("Buscando os pedidos de hoje…")).toBeInTheDocument();
     expect(screen.queryByLabelText("Resumo do período")).toBeNull();
     expect(screen.queryByRole("heading", { name: /^Os que mais lucraram/ })).toBeNull();
+  });
+
+  it("Hoje sem pedidos, admin sem sync em curso: botão Sincronizar agora", async () => {
+    montar({ dados: dadosHojePendente(), periodo: "hoje", hoje: { faltaHoje: true } });
+    expect(screen.getByRole("status")).toHaveTextContent("Os pedidos de hoje ainda não foram sincronizados — as vendas vão até 10/11.");
+    await userEvent.click(screen.getByRole("button", { name: "Sincronizar agora" }));
+    expect(mocks.sincronizar).toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "abra o Financeiro" })).toHaveAttribute("href", "financeiro-v3.html?cliente=n97&conta=42");
+  });
+
+  it("Hoje sem pedidos, não admin: avisa quando entram, sem botão", () => {
+    montar({ dados: dadosHojePendente(), periodo: "hoje", hoje: { podeSincronizar: false, faltaHoje: true } });
+    expect(screen.getByRole("status")).toHaveTextContent("Os pedidos de hoje entram na próxima sincronização — as vendas vão até 10/11.");
+    expect(screen.queryByRole("button", { name: "Sincronizar agora" })).toBeNull();
+  });
+
+  it("sync falhou: mostra o motivo e deixa tentar de novo", () => {
+    montar({ dados: dadosHojePendente(), periodo: "hoje", hoje: { faltaHoje: true, fase: "falhou", erro: "Sincronização falhou: token." } });
+    expect(screen.getByRole("status")).toHaveTextContent("Não deu para trazer os pedidos de hoje agora (Sincronização falhou: token.)");
+    expect(screen.getByRole("button", { name: "Sincronizar agora" })).toBeInTheDocument();
   });
 
   it("erro sem dados mostra o banner", () => {
