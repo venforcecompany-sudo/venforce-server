@@ -31,8 +31,9 @@ vínculos do superado e as versões dele que ninguém referencia.
 ## Interação com as Entregas 1 e 2
 
 - Entrega 1 reduz o que a retenção precisa apagar de MP daqui para frente.
-- Entrega 2 reduz o tamanho de cada cópia (~34% nas 4 tabelas) — não reduz o
-  **número** de cópias; isso continua papel da retenção (e da etapa 2/mosaico).
+- Entrega 2 (enxuta) reduz o tamanho de cada cópia; o reuso de pedidos deixa de
+  criar a cópia dos inalterados (−83% no teste local). A retenção passa a cuidar
+  só do que sobra: versões antigas e vínculos de imports superados.
 - O manifesto e `metadata_json.persistencia` não mudam nenhuma regra da retenção.
 
 ## Políticas futuras por classe
