@@ -7,6 +7,7 @@ const { comPrazo } = require("../../utils/comPrazo");
 const { prazos } = require("./centralVendasPrazos");
 const { aplicarSchemaVersionado } = require("../schema/schemaVersionado");
 const persistenciaEnxuta = require("./centralVendasPersistenciaEnxuta");
+const pedidosCompartilhados = require("./centralVendasPedidosCompartilhados");
 
 const schemaPath = path.join(__dirname, "..", "..", "sql", "central_vendas_schema.sql");
 
@@ -366,13 +367,29 @@ function planejarPersistencia({ fonte, syncRunId, motorPayload, resumo }) {
     async iniciar(tupla, db) {
       let bytesJson = 0;
       const medir = (obj) => { bytesJson += Buffer.byteLength(asJson(obj, {}), "utf8"); return obj; };
-      const diff = enxuta
-        ? persistenciaEnxuta.compararManifestos(manifesto, await lerManifestoVigente(tupla, db))
+      const vigente = enxuta ? await lerManifestoVigente(tupla, db) : null;
+      const diff = enxuta ? persistenciaEnxuta.compararManifestos(manifesto, vigente) : null;
+      const reuso = enxuta && vigente && pedidosCompartilhados.isReusoHabilitado()
+        && await pedidosCompartilhados.tabelaVinculosDisponivel(db)
+        ? await planejarReuso({ manifesto, vigente, tupla }, db)
         : null;
+      const reusados = reuso ? reuso.porPedidoId : new Map();
       const payloadImport = medir(enxuta ? manifesto : motorPayload);
       return {
         payloadImport,
         medir,
+        // Pedido inalterado em relação ao vigente da MESMA tupla: não regrava
+        // pedido/itens/componentes — o import novo só aponta para as linhas.
+        reusado: (pedidoId) => reusados.has(String(pedidoId)),
+        vincular: async (importId) => {
+          if (!reusados.size) return;
+          await db.query(
+            `INSERT INTO ${pedidosCompartilhados.TABELA} (import_id, pedido_row_id)
+             SELECT $1, unnest($2::bigint[])`,
+            [importId, [...reusados.values()]]
+          );
+        },
+        totalReusados: reusados.size,
         payloadItem: (item) => medir(enxuta ? persistenciaEnxuta.extrasDoItem(item) : item),
         payloadComponente: (c) => medir(enxuta ? persistenciaEnxuta.extrasDoComponente(c) : c),
         fechar: () => ({
@@ -380,10 +397,38 @@ function planejarPersistencia({ fonte, syncRunId, motorPayload, resumo }) {
           bytesJsonEstimados: bytesJson,
           duracaoMs: Date.now() - inicioMs,
           ...(diff ? { diff } : {}),
+          // Linhas efetivamente gravadas por este import (sem as vinculadas).
+          gravados: {
+            pedidos: (motorPayload.pedidos || []).filter((x) => !reusados.has(String(x.pedidoId))).length,
+            itens: (motorPayload.itens || []).filter((x) => !reusados.has(String(x.pedidoId))).length,
+            componentes: (motorPayload.componentes || []).filter((x) => !reusados.has(String(x.pedidoId))).length,
+            vinculos: reusados.size,
+          },
+          ...(reuso ? { reuso: { pedidosReusados: reusados.size, vigenteImportId: vigente.importId } } : {}),
         }),
       };
     },
   };
+}
+
+// Pedidos com digest IGUAL ao do import vigente da mesma tupla → id da linha
+// (própria ou vinculada) no vigente. Só linhas da mesma tupla (cliente_slug,
+// marketplace, competência — a conta já foi garantida por lerManifestoVigente).
+async function planejarReuso({ manifesto, vigente, tupla }, db) {
+  const iguais = Object.keys(manifesto.digests).filter((k) => vigente.digests[k] === manifesto.digests[k]);
+  const porPedidoId = new Map();
+  if (!iguais.length) return { porPedidoId };
+  const { rows } = await db.query(
+    `/* cv:reuso-pedidos */
+     SELECT p.id, p.pedido_id
+       FROM ${pedidosCompartilhados.fontePedidosSql("$1", { comVinculos: true })}
+       JOIN central_vendas_pedidos p ON p.id = fp.pedido_row_id
+      WHERE p.pedido_id = ANY($2::text[])
+        AND p.cliente_slug = $3 AND p.marketplace = $4 AND p.competencia = $5`,
+    [[vigente.importId], iguais, normalizeSlug(tupla.clienteSlug), tupla.marketplace, tupla.competencia]
+  );
+  for (const row of rows) porPedidoId.set(String(row.pedido_id), Number(row.id));
+  return { porPedidoId };
 }
 
 async function persistCentralVendasImport({
@@ -396,7 +441,7 @@ async function persistCentralVendasImport({
 }) {
   const plano = planejarPersistencia({ fonte, syncRunId, motorPayload, resumo });
   return withTransaction(async (db) => {
-    const { payloadImport, payloadItem, payloadComponente, medir, fechar } = await plano.iniciar(
+    const { payloadImport, payloadItem, payloadComponente, medir, fechar, reusado, vincular, totalReusados } = await plano.iniciar(
       { clienteSlug: cliente.slug, marketplace, competencia, clienteContaId }, db
     );
     const importacao = await createImport({
@@ -419,6 +464,7 @@ async function persistCentralVendasImport({
 
     const pedidoRowsById = new Map();
     for (const pedido of motorPayload.pedidos || []) {
+      if (reusado(pedido.pedidoId)) continue;
       medir(pedido);
       const pedidoRow = await insertPedido({ importacao, cliente, marketplace, competencia, pedido }, db);
       pedidoRowsById.set(pedido.pedidoId, pedidoRow.id);
@@ -426,6 +472,7 @@ async function persistCentralVendasImport({
 
     const itemRowsById = new Map();
     for (const item of motorPayload.itens || []) {
+      if (reusado(item.pedidoId)) continue;
       const pedidoRowId = pedidoRowsById.get(item.pedidoId) || null;
       const itemPayload = payloadItem(item);
       const itemRow = await insertItem({
@@ -441,6 +488,7 @@ async function persistCentralVendasImport({
     }
 
     for (const componente of motorPayload.componentes || []) {
+      if (reusado(componente.pedidoId)) continue;
       await insertComponente({
         payloadJson: payloadComponente(componente),
         importacao,
@@ -453,10 +501,11 @@ async function persistCentralVendasImport({
       }, db);
     }
 
+    await vincular(importacao.id);
     return {
       importacao,
-      pedidosPersistidos: pedidoRowsById.size,
-      itensPersistidos: itemRowsById.size,
+      pedidosPersistidos: pedidoRowsById.size + totalReusados,
+      itensPersistidos: (motorPayload.itens || []).length,
       componentesPersistidos: (motorPayload.componentes || []).length,
       persistencia: fechar(),
     };
@@ -605,6 +654,37 @@ async function getLatestCentralVendasImport(
   const { inicio, fim } = monthBounds(competencia);
   const importacao = selecionarMelhorImportPorCompetencia(rowsResult.rows, { segmentStart: inicio, segmentEnd: fim });
   if (!importacao) return null;
+
+  // Reuso de pedidos (linhas vinculadas): só quando a tabela de vínculos existe.
+  if (await pedidosCompartilhados.tabelaVinculosDisponivel(db)) {
+    const fonte = pedidosCompartilhados.fontePedidosSql("$1", { comVinculos: true });
+    const [pedidosR, itensR, componentesR] = await Promise.all([
+      db.query(
+        `SELECT p.*, fp.import_lido FROM ${fonte} JOIN central_vendas_pedidos p ON p.id = fp.pedido_row_id
+          ORDER BY p.data_pedido ASC NULLS LAST, p.pedido_id ASC, p.id ASC`,
+        [[importacao.id]]
+      ),
+      db.query(
+        `SELECT ${ITEM_READ_COLUMNS} FROM central_vendas_pedido_itens
+          WHERE pedido_row_id IN (SELECT pedido_row_id FROM ${fonte})
+          ORDER BY pedido_id ASC, id ASC`,
+        [[importacao.id]]
+      ),
+      db.query(
+        `SELECT ${COMPONENTE_READ_COLUMNS} FROM central_vendas_componentes
+          WHERE pedido_row_id IN (SELECT pedido_row_id FROM ${fonte})
+          ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
+        [[importacao.id]]
+      ),
+    ]);
+    const lido = (rows) => rows.map((r) => ({ ...r, import_id: importacao.id }));
+    return {
+      importacao,
+      pedidos: pedidosCompartilhados.normalizarImportLido(pedidosR.rows),
+      itens: lido(itensR.rows),
+      componentes: lido(componentesR.rows),
+    };
+  }
 
   const [pedidosResult, itensResult, componentesResult] = await Promise.all([
     db.query(
@@ -787,7 +867,16 @@ async function loadPedidosByImportIds({ importIds, dateFrom, dateTo }, db = pool
     return { pedidos: [], itens: [], componentes: [] };
   }
 
-  const pedidosResult = await db.query(
+  const pedidosResult = (await pedidosCompartilhados.tabelaVinculosDisponivel(db))
+    ? await db.query(
+      `SELECT p.*, fp.import_lido
+         FROM ${pedidosCompartilhados.fontePedidosSql("$1", { comVinculos: true })}
+         JOIN central_vendas_pedidos p ON p.id = fp.pedido_row_id
+        WHERE p.data_pedido BETWEEN $2 AND $3
+        ORDER BY p.data_pedido ASC NULLS LAST, p.pedido_id ASC, p.id ASC`,
+      [importIds, dateFrom, dateTo]
+    )
+    : await db.query(
     `SELECT *
        FROM central_vendas_pedidos
       WHERE import_id = ANY($1::bigint[])
@@ -795,7 +884,7 @@ async function loadPedidosByImportIds({ importIds, dateFrom, dateTo }, db = pool
       ORDER BY data_pedido ASC NULLS LAST, pedido_id ASC, id ASC`,
     [importIds, dateFrom, dateTo]
   );
-  const pedidos = pedidosResult.rows;
+  const pedidos = pedidosCompartilhados.normalizarImportLido(pedidosResult.rows);
 
   const pedidoRowIds = pedidos.map((row) => row.id);
   if (!pedidoRowIds.length) {
@@ -819,7 +908,7 @@ async function loadPedidosByImportIds({ importIds, dateFrom, dateTo }, db = pool
     ),
   ]);
 
-  return { pedidos, itens: itensResult.rows, componentes: componentesResult.rows };
+  return { pedidos, ...pedidosCompartilhados.itensComImportLido(pedidos, itensResult.rows, componentesResult.rows) };
 }
 
 // Leitura ENXUTA para o REALIZADO do Motor de Margem
@@ -837,7 +926,16 @@ async function loadRealizadoByImportIds({ importIds, dateFrom, dateTo }, db = po
     return { pedidos: [], itens: [], componentes: [] };
   }
 
-  const pedidosResult = await db.query(
+  const pedidosResult = (await pedidosCompartilhados.tabelaVinculosDisponivel(db))
+    ? await db.query(
+      `/* cv:realizado-pedidos */ SELECT p.id, p.pedido_id, p.data_pedido, p.status
+         FROM ${pedidosCompartilhados.fontePedidosSql("$1", { comVinculos: true })}
+         JOIN central_vendas_pedidos p ON p.id = fp.pedido_row_id
+        WHERE p.data_pedido BETWEEN $2 AND $3
+        ORDER BY p.data_pedido ASC NULLS LAST, p.pedido_id ASC, p.id ASC`,
+      [importIds, dateFrom, dateTo]
+    )
+    : await db.query(
     `/* cv:realizado-pedidos */ SELECT id, pedido_id, data_pedido, status
        FROM central_vendas_pedidos
       WHERE import_id = ANY($1::bigint[])
@@ -905,7 +1003,17 @@ async function getPedidoDetailByRowId({ importIds, dateFrom, dateTo, rowId }, db
   if (!Array.isArray(importIds) || !importIds.length) return null;
   if (!Number.isFinite(Number(rowId))) return null;
 
-  const pedidoResult = await db.query(
+  const pedidoResult = (await pedidosCompartilhados.tabelaVinculosDisponivel(db))
+    ? await db.query(
+      `SELECT p.*, fp.import_lido
+         FROM ${pedidosCompartilhados.fontePedidosSql("$2", { comVinculos: true })}
+         JOIN central_vendas_pedidos p ON p.id = fp.pedido_row_id
+        WHERE p.id = $1
+          AND p.data_pedido BETWEEN $3 AND $4
+        LIMIT 1`,
+      [rowId, importIds, dateFrom, dateTo]
+    )
+    : await db.query(
     `SELECT *
        FROM central_vendas_pedidos
       WHERE id = $1
@@ -914,7 +1022,7 @@ async function getPedidoDetailByRowId({ importIds, dateFrom, dateTo, rowId }, db
       LIMIT 1`,
     [rowId, importIds, dateFrom, dateTo]
   );
-  const pedido = pedidoResult.rows[0];
+  const pedido = pedidosCompartilhados.normalizarImportLido(pedidoResult.rows)[0];
   if (!pedido) return null;
 
   const [itensResult, componentesResult] = await Promise.all([
@@ -934,7 +1042,7 @@ async function getPedidoDetailByRowId({ importIds, dateFrom, dateTo, rowId }, db
     ),
   ]);
 
-  return { pedido, itens: itensResult.rows, componentes: componentesResult.rows };
+  return { pedido, ...pedidosCompartilhados.itensComImportLido([pedido], itensResult.rows, componentesResult.rows) };
 }
 
 // M4, seção 9 — promove TODOS os candidates de um sync_run para published de

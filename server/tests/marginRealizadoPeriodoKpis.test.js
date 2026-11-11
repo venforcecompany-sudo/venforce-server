@@ -395,7 +395,9 @@ cenario("leitura do realizado é ENXUTA: sem payload_json/SELECT *, só os 3 tip
   const vendas = await cv.carregarVendasDoPeriodo({ clienteSlug: "loja-a", dateFrom: "2026-09-01", dateTo: "2026-09-27", clienteContaId: 5 }, db);
   assert.strictEqual(vendas.sincronizado, true);
   assert.strictEqual(vendas.competencias.length, 1);
-  const leitura = chamadas.filter((c) => !c.sql.includes("FROM central_vendas_imports"));
+  // to_regclass = checagem de catálogo (cacheada) da tabela de vínculos do
+  // reuso de pedidos — não é leitura de dados.
+  const leitura = chamadas.filter((c) => !c.sql.includes("FROM central_vendas_imports") && !c.sql.includes("to_regclass"));
   assert.strictEqual(leitura.length, 3, "pedidos + itens + componentes");
   for (const c of leitura) {
     assert.ok(!/SELECT \*/.test(c.sql), "nunca SELECT * na leitura do realizado");

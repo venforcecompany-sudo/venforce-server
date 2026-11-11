@@ -139,6 +139,24 @@ async function resolverMcComPrecedencia({ cliente, competencia, contas, mcCentra
 // Leitura enxuta dos pedidos/itens dos imports escolhidos — só as colunas que
 // o snapshot usa (nada de payload_json por pedido).
 async function carregarPedidosEItens(importIds, db) {
+  // Reuso de pedidos (linhas vinculadas entre imports): mesma leitura, via
+  // centralVendasPedidosCompartilhados. Sem a tabela de vínculos, SQL de antes.
+  const pc = require("./centralVendasPedidosCompartilhados");
+  if (await pc.tabelaVinculosDisponivel(db)) {
+    const fonte = pc.fontePedidosSql("$1", { comVinculos: true });
+    const pedidosR = await db.query(
+      `SELECT p.id, fp.import_lido AS import_id, p.data_pedido, p.status, p.confianca, p.faturamento
+         FROM ${fonte} JOIN central_vendas_pedidos p ON p.id = fp.pedido_row_id`,
+      [importIds]
+    );
+    const itensR = await db.query(
+      `SELECT pedido_row_id, mlb, sku, titulo, quantidade, receita_produto
+         FROM central_vendas_pedido_itens
+        WHERE pedido_row_id IN (SELECT pedido_row_id FROM ${fonte})`,
+      [importIds]
+    );
+    return { pedidos: pedidosR.rows, itens: itensR.rows };
+  }
   const pedidosResult = await db.query(
     `SELECT id, import_id, data_pedido, status, confianca, faturamento
        FROM central_vendas_pedidos
@@ -406,6 +424,7 @@ async function reconstruirSnapshotMensal({ cliente, competencia, contas, segment
 module.exports = {
   reconstruirSnapshotMensal,
   consolidarCentral,
+  carregarPedidosEItens,
   montarPorDia,
   montarTopProdutos,
   resolverMcComPrecedencia,

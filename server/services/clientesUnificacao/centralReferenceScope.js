@@ -59,6 +59,16 @@ const CENTRAL_POLICY = {
     scope: ["import_id", "pedido_row_id"],
     identity: ["cliente_id", "cliente_slug"],
   },
+  // Reuso de pedidos entre imports (migration 20261111): só vínculos
+  // import → linha de pedido, sem identidade própria; segue os dois pais.
+  central_vendas_import_pedidos: {
+    strategy: "PRESERVE_BY_PARENT",
+    parents: [
+      ["import_id", "central_vendas_imports"],
+      ["pedido_row_id", "central_vendas_pedidos"],
+    ],
+    identity: [],
+  },
   central_vendas_mp_payments: {
     strategy: "PRESERVE_BY_PARENT",
     parents: [["sync_run_id", "central_vendas_sync_runs"]],

@@ -12,6 +12,7 @@
 // leitura do que o sync já gravou.
 
 const fs = require("fs");
+const pedidosCompartilhados = require("../centralVendas/centralVendasPedidosCompartilhados");
 const path = require("path");
 const pool = require("../../config/database");
 
@@ -147,6 +148,19 @@ async function listarImportsDaCompetencia(contaIds, competencia) {
 // contamine o mês selecionado.
 async function listarPedidosDosImports(importIds, { inicio, fim }) {
   if (!Array.isArray(importIds) || !importIds.length) return [];
+  if (await pedidosCompartilhados.tabelaVinculosDisponivel(pool)) {
+    const { rows } = await pool.query(
+      `/* painelContas:PEDIDOS_DOS_IMPORTS */
+       SELECT fp.import_lido AS import_id, p.data_pedido, p.status, p.confianca,
+              p.faturamento, p.resultado
+         FROM ${pedidosCompartilhados.fontePedidosSql("$1", { comVinculos: true })}
+         JOIN central_vendas_pedidos p ON p.id = fp.pedido_row_id
+        WHERE p.data_pedido BETWEEN $2::date AND $3::date
+        ORDER BY fp.import_lido, p.data_pedido, p.pedido_id`,
+      [importIds, inicio, fim]
+    );
+    return rows;
+  }
   const { rows } = await pool.query(
     `/* painelContas:PEDIDOS_DOS_IMPORTS */
      SELECT p.import_id, p.data_pedido, p.status, p.confianca,
@@ -167,6 +181,20 @@ async function listarPedidosDosImports(importIds, { inicio, fim }) {
 // mesmo predicado da Central.
 async function listarComposicaoDosImports(importIds) {
   if (!Array.isArray(importIds) || !importIds.length) return [];
+  if (await pedidosCompartilhados.tabelaVinculosDisponivel(pool)) {
+    const { rows } = await pool.query(
+      `/* painelContas:COMPOSICAO_DOS_IMPORTS */
+       SELECT fp.import_lido AS import_id, p.status, p.payload_json->>'posVendaTipo' AS pos_venda_tipo,
+              COUNT(*)::int AS pedidos,
+              (COUNT(*) - COUNT(p.faturamento))::int AS sem_valor,
+              COALESCE(SUM(p.faturamento), 0) AS faturamento
+         FROM ${pedidosCompartilhados.fontePedidosSql("$1", { comVinculos: true })}
+         JOIN central_vendas_pedidos p ON p.id = fp.pedido_row_id
+        GROUP BY fp.import_lido, p.status, p.payload_json->>'posVendaTipo'`,
+      [importIds]
+    );
+    return rows;
+  }
   const { rows } = await pool.query(
     `/* painelContas:COMPOSICAO_DOS_IMPORTS */
      SELECT p.import_id, p.status, p.payload_json->>'posVendaTipo' AS pos_venda_tipo,
@@ -186,6 +214,19 @@ async function listarComposicaoDosImports(importIds) {
 // isso é medido, nunca deduplicado em silêncio.
 async function medirSobreposicaoDosImports(importIds) {
   if (!Array.isArray(importIds) || importIds.length < 2) return { pedidos: 0, valor: 0 };
+  if (await pedidosCompartilhados.tabelaVinculosDisponivel(pool)) {
+    const { rows } = await pool.query(
+      `/* painelContas:COMPOSICAO_SOBREPOSICAO */
+       SELECT COUNT(*)::int AS pedidos, COALESCE(SUM(d.excedente), 0) AS valor
+         FROM (SELECT p.pedido_id, SUM(p.faturamento) - MAX(p.faturamento) AS excedente
+                 FROM ${pedidosCompartilhados.fontePedidosSql("$1", { comVinculos: true })}
+                 JOIN central_vendas_pedidos p ON p.id = fp.pedido_row_id
+                GROUP BY p.pedido_id
+               HAVING COUNT(*) > 1) d`,
+      [importIds]
+    );
+    return { pedidos: Number(rows[0]?.pedidos) || 0, valor: Number(rows[0]?.valor) || 0 };
+  }
   const { rows } = await pool.query(
     `/* painelContas:COMPOSICAO_SOBREPOSICAO */
      SELECT COUNT(*)::int AS pedidos, COALESCE(SUM(d.excedente), 0) AS valor
