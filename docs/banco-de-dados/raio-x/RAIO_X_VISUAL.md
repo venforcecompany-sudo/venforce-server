@@ -1,12 +1,27 @@
 # Raio-X visual (interface local, somente leitura)
 
+## Como abrir
 ```bash
 cd server
-npm run raio-x                      # dados SINTÉTICOS (sem banco)  → http://127.0.0.1:4777
-RAIO_X_DATABASE_URL=postgres://... npm run raio-x -- --real                       # banco local
-RAIO_X_DATABASE_URL=postgres://... npm run raio-x -- --real --autorizo-host=<host> # banco remoto (carga de leitura: exige autorização)
+npm run raio-x                      # modo SINTÉTICO (sem banco, sem credenciais) → http://127.0.0.1:4777
 ```
-(equivalente: `node server/scripts/raio-x-visual.js [--real] [--porta 4777]`)
+Modo **real** (somente leitura) — só com URL explícita e autorização do host:
+```bash
+# banco local (descartável):
+RAIO_X_DATABASE_URL='postgres://usuario_ro:***@127.0.0.1:5432/banco?sslmode=disable' npm run raio-x -- --real
+
+# banco REMOTO (carga de leitura: exige autorização do responsável) — host exato da URL:
+RAIO_X_DATABASE_URL='postgres://raiox_ro:***@HOST:5432/banco?sslmode=verify-full' npm run raio-x -- --real --autorizo-host=HOST
+```
+- **Credencial**: use um usuário **somente leitura** (nunca o do app). Sugestão para o DBA — *não executada; criar/alterar
+  usuário e grants exige autorização*: `CREATE ROLE raiox_ro LOGIN …; ALTER ROLE raiox_ro SET default_transaction_read_only = on;
+  GRANT CONNECT …; GRANT USAGE ON SCHEMA public …; GRANT SELECT` nas tabelas do inventário e, em `ml_tokens`, só as colunas
+  `(id, cliente_id, ml_user_id, is_primary, token_status, refresh_failures, superseded_at, expires_at, updated_at)` — o Raio-X nunca lê token.
+- A URL só aceita `sslmode`, `ssl`, `application_name`, `connect_timeout`; `?host=`, `hostaddr`, `port`, `service`, `options` são recusados.
+  O host exibido na interface é o destino efetivo. Sem `--autorizo-host` exato, host não-local é recusado antes de conectar.
+- Fora do pico; o serviço serializa as consultas e guarda 60 s em cache. Encerrar com Ctrl+C.
+- **CLI antigo `server/scripts/raio-x-cliente.js`: NÃO usar contra banco remoto** até alinhar a validação de destino
+  (ele ainda confia em `new URL().hostname`, que `?host=` contorna). Para banco remoto use somente `npm run raio-x -- --real`.
 
 Garantias: escuta só em `127.0.0.1` e recusa `Host` não-local; só `GET`; cada leitura em
 `BEGIN READ ONLY` + `statement_timeout`; não lê `server/.env` nem `DATABASE_URL`; modo real

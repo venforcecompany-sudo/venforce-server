@@ -1,27 +1,45 @@
-# PR e ordem de implantação — `feat/pg-reorganizacao`
+# PR — `feat/pg-reorganizacao` (HEAD `eabaeef2`, 29 commits sobre `origin/main` 3504b1ac)
 
-Compatível com a `main` atual (verificado em `3504b1ac`: a main só mexeu em `Portal/vf-shell*`; zero
-arquivos em comum, zero conflitos na simulação de merge). Nada foi enviado ao remoto.
+Verificado em 11/11/2026: worktree limpa, sem upstream (nada no remoto). Merge de teste com `origin/main`
+(`3504b1ac`, só `Portal/vf-shell*`) numa worktree descartável: **0 conflitos**; suíte (402 arquivos) =
+**4 falhas, todas preexistentes na main** (basesTiktok, designStudioWorkspace, meliAnunciosOrdenacaoGlobal,
+mlTokenService); **nenhuma regressão nova**. PG 18 local sobre a árvore mesclada: reuso/3 versões (175),
+isolamento por conta (29), trava S3 (25), Raio-X (23 + 57), retenção (11), unificação (68) — todos OK.
 
 ## Título
 `feat(banco): reorganização do PostgreSQL — reuso de pedidos, trava de retenção e Raio-X visual (flags desligadas)`
 
-## Descrição (resumo)
-- **Sync da Central**: persistência enxuta + reuso de pedidos inalterados por conta (−83% em PG local sintético). Tudo opt-in; migration manual `20261111_central_vendas_import_pedidos.sql` (não entra no boot).
-- **Leitores** (Central, Margem, Painel, Cliente 360) entendem vínculos; sem a tabela rodam o SQL de antes. Checagem de existência propaga erro e nunca cacheia negativo (P1 da revisão).
-- **Retenção**: trava S3 no executor (CLI e auto) recusa exclusões enquanto houver vínculo de reuso; correção S1/S2/S4 fica com a frente de retenção (`09_RETENCAO_X_REUSO_ESPECIFICACAO.md`).
-- **MP**: flag de coleta (`CENTRAL_VENDAS_MP_PAYMENTS_COLETA_ENABLED`, ausente = ligada) + SQL de redundância.
-- **Raio-X**: serviço read-only, CLI, métricas de armazenamento e **interface visual local** (`npm run raio-x`).
-- Flags novas ausentes por padrão ⇒ **nenhuma mudança de comportamento em produção**.
-- Testes: suíte com as mesmas 4 falhas preexistentes da main; PG local: 3 versões (175), isolamento por conta (29), trava S3 (25), Raio-X (23 + 29), unificação (68), retenção (11).
+## Descrição
+**O quê**
+- **Sync da Central**: persistência enxuta + reuso de pedidos inalterados por conta (−83% de disco no PG local sintético; estimativa de campo: −73% a −89% da escrita diária). Tudo opt-in.
+- **Leitores** (Central, Margem, Painel, Cliente 360) entendem vínculos; sem a tabela rodam o SQL de antes. A checagem de existência propaga erro e nunca cacheia negativo.
+- **Retenção**: trava S3 no executor — `apply` (CLI e auto) recusa enquanto houver vínculo de reuso ou se não conseguir verificar. Correção S1/S2/S4 fica com a frente de retenção.
+- **Mercado Pago**: flag para desligar a coleta + SQL read-only de redundância.
+- **Raio-X**: serviço read-only, métricas de armazenamento e **interface visual local** (`npm run raio-x`), com host efetivo validado e escopo por conta.
+- **Docs** em `docs/banco-de-dados/`.
+
+**Não muda em produção no primeiro deploy**: nenhuma flag nova está ligada; a migration é manual e fora do boot;
+o Raio-X é script local (nada dele é carregado pelo app); nenhum motor foi alterado.
+Único efeito visível: `metadata_json.porCompetencia[].persistencia` nos runs e 1 consulta de catálogo (`to_regclass`)
+por leitura enquanto a tabela de vínculos não existir.
+
+## Flags — devem ficar AUSENTES/desligadas no primeiro deploy
+| Variável | Primeiro deploy | Observação |
+|---|---|---|
+| `CENTRAL_VENDAS_SYNC_PERSISTENCIA_ENXUTA` | ausente (off) | liga a gravação enxuta |
+| `CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS` | ausente (off) | exige a migration |
+| `CENTRAL_VENDAS_SYNC_REUSO_CONTAS` | ausente (nenhuma conta) | lista de ids ou `*` |
+| `CENTRAL_VENDAS_RETENCAO_AUTO` | ausente (off) | segue desligada |
+| `CENTRAL_VENDAS_RETENCAO_APPLY` | ausente | só para execução manual autorizada |
+| `CENTRAL_VENDAS_MP_PAYMENTS_COLETA_ENABLED` | **ausente = coleta LIGADA (igual hoje)** | `false` desliga: decisão separada, fora do 1º deploy |
 
 ## Ordem de implantação (cada passo com autorização própria)
-1. Rebase/merge na `main` e suíte completa → PR → merge → deploy **com flags ausentes**. Verificar telas e o próximo sync noturno (`persistencia.formato = "completo"`).
-2. (Opcional, leitura) Raio-X `--real` e `mp_redundancia.sql` fora do pico, para medir a base real.
+1. Rebase/merge na `main` → suíte → PR → merge → deploy **com as flags acima ausentes**. Validar telas e o sync noturno (`persistencia.formato = "completo"`).
+2. (Opcional) Raio-X `--real` e `mp_redundancia.sql` fora do pico, para medir a base real (ver `raio-x/RAIO_X_VISUAL.md`).
 3. `CENTRAL_VENDAS_SYNC_PERSISTENCIA_ENXUTA=true`; validar 1–2 contas.
-4. Aplicar a migration manualmente → restart → `CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS=true` + `_CONTAS=<1–2 contas>` (piloto **sem limpeza**; retenção segue desligada e a trava S3 a recusa).
+4. Aplicar a migration manualmente → restart → `REUSO_PEDIDOS=true` + `REUSO_CONTAS=<1–2 contas>` (piloto **sem limpeza**).
 5. Ampliar contas → `*`.
-6. Só depois de S1+S2+S4 na `main` (e `GUARDA_VINCULOS=true`): retenção em contas com reuso.
-7. Decisão separada: `CENTRAL_VENDAS_MP_PAYMENTS_COLETA_ENABLED=false` e retenção do MP (`08_`).
+6. Retenção em contas com reuso só após S1+S2+S4 na `main` (`GUARDA_VINCULOS=true`).
+7. Decisão separada: coleta MP off e retenção do MP (`08_`).
 
-Reversão: remover a variável / tirar a conta da lista; imports com vínculo seguem legíveis. Deploy: redeploy da versão anterior (sem dependência de schema).
+Checklist curto e rollback por período: [`CHECKLIST_PUBLICACAO.md`](CHECKLIST_PUBLICACAO.md).

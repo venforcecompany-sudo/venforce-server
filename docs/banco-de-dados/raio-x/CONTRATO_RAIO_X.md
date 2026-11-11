@@ -49,7 +49,7 @@ gerarRaioXCliente({ clienteId } | { clienteSlug }, { detalhado = false, timeoutM
 RAIO_X_DATABASE_URL=postgres://... node server/scripts/raio-x-cliente.js --cliente <slug|id> [--detalhado] --saida rx.json
 ```
 
-Não usa `server/.env`. Contra produção: leitura, mas exige autorização (carga no banco).
+Não usa `server/.env`. **Use este CLI só contra banco LOCAL**: a validação de destino dele ainda confia em `new URL().hostname` (`?host=` contorna). Para banco remoto use `npm run raio-x -- --real --autorizo-host=<host>` (ver `RAIO_X_VISUAL.md`). Contra produção: leitura, mas exige autorização (carga no banco).
 
 ## Limitações conhecidas
 
