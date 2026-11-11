@@ -407,6 +407,28 @@ async function run() {
     eq("8: 0% cobertura por settlement_missing (nao pending) -> partial", classificarMpReconciliationStatus(missingDefinitivo), "partial");
   }
 
+  // 9 — coleta MP desligada pela flag: run sem Payments cuja fonte payments
+  // foi registrada como not_applicable (motivo da flag) ⇒ "collection_disabled",
+  // nunca "pending"; sem o registro, continua "pending" (comportamento antigo).
+  for (const [runsDesligados, esperado] of [[[701], "collection_disabled"], [[], "pending"]]) {
+    const imp = importRow({ id: 1, competencia: "2026-08", publicationStatus: "published", coverageFrom: "2026-08-01", coverageTo: "2026-08-31", publishedAt: "2026-08-01T10:00:00Z", syncRunId: 701 });
+    const pedidos = [pedidoRow({ id: 1, importId: 1, pedidoId: "O9", data: "2026-08-10", faturamento: 100, resultado: 60 })];
+    const db = makeDb({ imports: [imp], pedidos, componentes: [] });
+    const mp = makeMpRepos({ payments: [], movements: [], reports: [] });
+    let consultas = 0;
+    mp.mpPaymentsRepository.listRunIdsComColetaPaymentsDesligada = async (ids) => {
+      consultas += 1;
+      return runsDesligados.filter((id) => ids.includes(id));
+    };
+    const svc = createCentralVendasMp3ReadService(realRepositoryComDb(db), db, mp.mpPaymentsRepository, mp.mpSettlementRepository);
+    const resp = await svc.getMercadoPagoReconciliationForRange(cliente.slug, { dateFrom: "2026-08-01", dateTo: "2026-08-31" });
+    eq(`9: status ${esperado}`, resp.mpReconciliationStatus, esperado);
+    eq("9: 1 consulta extra só no caso sem payments", consultas, 1);
+    eq("9: coletaPayments declarado só quando desligada",
+      resp.coletaPayments || null,
+      runsDesligados.length ? { desligada: true, runsSemColeta: [701] } : null);
+  }
+
   console.log(`centralVendasMp3ReadService.test.js: ${checks} verificacoes OK`);
 }
 

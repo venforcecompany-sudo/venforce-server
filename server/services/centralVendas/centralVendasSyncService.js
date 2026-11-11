@@ -43,6 +43,11 @@ const {
 } = require("./centralVendasClaimsService");
 const { coletarPaymentsMp } = require("./centralVendasMpPaymentsService");
 const { persistMpPayments } = require("./centralVendasMpPaymentsRepository");
+const {
+  isColetaPaymentsMpHabilitada,
+  MOTIVO_COLETA_DESLIGADA,
+  ENV_NAME: ENV_COLETA_PAYMENTS_MP,
+} = require("./centralVendasMpColetaFlag");
 // MP2 — Settlement Report. Automação no Sync Worker é OPT-IN (env flag,
 // desligada por padrão nesta rodada — ver comentário no ponto de chamada
 // abaixo): dispara efetivamente só quando o operador ligar
@@ -1073,6 +1078,9 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
     assertNaoCancelado(signal, "frete/pós-venda/pagamentos");
     const shipmentIds = orders.map((o) => o.shipping?.id).filter((v) => v != null);
     const orderIds = new Set(orders.map((o) => String(o.id)));
+    // MP1 — coleta de Payments só quando há run real E a flag permite
+    // (centralVendasMpColetaFlag: ausente = ligada, comportamento anterior).
+    const coletarPayments = !!sourceService && isColetaPaymentsMpHabilitada();
     if (sourceService) {
       await Promise.all([
         sourceService.iniciarFonte({ runId, source: "shipments", db }),
@@ -1100,7 +1108,7 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
         clienteId: cliente.id, sellerId, dateFrom: from, dateTo: to, orderIds, orders,
         ordersCompletos: ordersCompleteness?.complete === true,
       }),
-      sourceService
+      coletarPayments
         ? coletarPaymentsMp({ clienteId: cliente.id, sellerId, orders })
         : Promise.resolve(null),
       // Envio de pack: 1× GET /packs por pack_id distinto + irmãos fora do run (cache por run).
@@ -1120,6 +1128,21 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
     // podeConcluir, não muda a confiança financeira atual. NÃO altera
     // Resultado Parcial/margem/ledger M6 — só persiste evidência.
     let paymentsPersistResult = null;
+    if (sourceService && !coletarPayments) {
+      // Coleta desligada pela flag: nenhuma chamada ao MP, nenhuma linha em
+      // mp_payments/charges. A fonte fica `not_applicable` com o motivo
+      // explícito — a conciliação lê isso e responde "coleta desligada",
+      // nunca "pendente" nem zero.
+      await sourceService.marcarFonteNaoAplicavel({
+        runId, source: "payments",
+        metadata: {
+          motivo: MOTIVO_COLETA_DESLIGADA,
+          flag: ENV_COLETA_PAYMENTS_MP,
+          ordersCount: orders.length,
+        },
+        db,
+      });
+    }
     if (sourceService && paymentsLote) {
       paymentsPersistResult = await persistMpPayments({
         syncRunId: runId,
@@ -1554,7 +1577,9 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
         persistidos: paymentsPersistResult ? paymentsPersistResult.persistedCount : 0,
         chargesCount: paymentsLote.chargesCount,
         ordersWithoutPaymentId: paymentsLote.ordersWithoutPaymentId,
-      } : null,
+      } : (sourceService && !coletarPayments
+        ? { coletaDesligada: true, motivo: MOTIVO_COLETA_DESLIGADA }
+        : null),
       pedidosPersistidos,
       itensPersistidos,
       componentesPersistidos,

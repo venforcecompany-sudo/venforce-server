@@ -521,6 +521,74 @@ async function run() {
     ok("E: payment MP foi persistido de qualquer forma (evidencia, fora do ledger)", db.mpPayments.length === 1);
   });
 
+  // ── CENÁRIO F: flag CENTRAL_VENDAS_MP_PAYMENTS_COLETA_ENABLED — coleta
+  // ligada × desligada sobre os MESMOS orders. Desligada: zero chamadas ao
+  // MP, zero linhas mp_*, fonte payments=not_applicable com motivo, e o
+  // motorPayload (pedidos/itens/componentes) é IDÊNTICO ao da coleta ligada.
+  const { ENV_NAME, MOTIVO_COLETA_DESLIGADA } = require("../services/centralVendas/centralVendasMpColetaFlag");
+  const envAntes = process.env[ENV_NAME];
+  async function rodarComFlag(valorFlag) {
+    if (valorFlag === undefined) delete process.env[ENV_NAME];
+    else process.env[ENV_NAME] = valorFlag;
+    const mpCalls = [];
+    const db = makeDb({ contas: [contaA], grants });
+    const { run: r, context } = await runService.criarSyncRun({
+      clienteSlug: cliente.slug, marketplace: "meli", dateFrom: "2026-08-01", dateTo: "2026-08-31", db,
+    });
+    const fakeRepo = await novoRunFakeRepo();
+    const syncService = carregarComHandlers(
+      orderHandlers([pedido("9100", "s100", ["PAY_F1"]), pedido("9101", "s101", ["PAY_F2"])]),
+      [
+        ["/v1/payments/PAY_F1", () => ({ ok: true, status: 200, data: { id: "PAY_F1", status: "approved", transaction_amount: 100, charges_details: [{ amounts: { original: 12 }, name: "ml_sale_fee", type: "fee" }] } })],
+        ["/v1/payments/PAY_F2", () => ({ ok: true, status: 200, data: { id: "PAY_F2", status: "approved", transaction_amount: 100 } })],
+      ],
+      mpCalls,
+    );
+    let resultado;
+    await worker.executarSyncRun({
+      run: r, context, db,
+      sincronizarVendasMeli: async (...args) => {
+        resultado = await syncService.createCentralVendasSyncService(fakeRepo, db).sincronizarVendasMeli(...args);
+        return resultado;
+      },
+      params: { clienteSlug: cliente.slug, dateFrom: "2026-08-01", dateTo: "2026-08-31", marketplace: "meli" },
+    });
+    const runFinal = await runService.obterSyncRun({ runId: r.id, clienteSlug: cliente.slug, db });
+    const fontes = await sourceService.listarFontesDoRun(r.id, db);
+    return { db, mpCalls, fakeRepo, runFinal, resultado, porFonte: Object.fromEntries(fontes.map((f) => [f.source, f])) };
+  }
+
+  await capturandoLogs(async () => {
+    const ausente = await rodarComFlag(undefined);
+    const ligada = await rodarComFlag("true");
+    const desligada = await rodarComFlag("false");
+
+    eq("F: flag ausente = coleta ligada (comportamento anterior)", ausente.db.mpPayments.length, 2);
+    eq("F: flag true coleta 2 payments", ligada.db.mpPayments.length, 2);
+    eq("F: flag true grava charges", ligada.db.mpCharges.length, 1);
+    eq("F: flag true payments complete", ligada.porFonte.payments.status, "complete");
+
+    eq("F: flag false NÃO chama o Mercado Pago", desligada.mpCalls.length, 0);
+    eq("F: flag false NÃO grava mp_payments", desligada.db.mpPayments.length, 0);
+    eq("F: flag false NÃO grava mp_payment_charges", desligada.db.mpCharges.length, 0);
+    eq("F: flag false payments=not_applicable", desligada.porFonte.payments.status, "not_applicable");
+    eq("F: flag false registra o motivo", desligada.porFonte.payments.metadata.motivo, MOTIVO_COLETA_DESLIGADA);
+    eq("F: flag false run completed", desligada.runFinal.status, "completed");
+    eq("F: flag false completude global inalterada", desligada.runFinal.completenessStatus, ligada.runFinal.completenessStatus);
+    eq("F: flag false demais fontes inalteradas",
+      ["orders", "shipments", "claims", "returns", "base"].map((f) => desligada.porFonte[f] && desligada.porFonte[f].status),
+      ["orders", "shipments", "claims", "returns", "base"].map((f) => ligada.porFonte[f] && ligada.porFonte[f].status));
+
+    const payloadLigada = ligada.fakeRepo.persistedCalls[0].motorPayload;
+    const payloadDesligada = desligada.fakeRepo.persistedCalls[0].motorPayload;
+    eq("F: pedidos idênticos ligada × desligada", payloadDesligada.pedidos, payloadLigada.pedidos);
+    eq("F: itens idênticos ligada × desligada", payloadDesligada.itens, payloadLigada.itens);
+    eq("F: componentes idênticos ligada × desligada", payloadDesligada.componentes, payloadLigada.componentes);
+    ok("F: resumo do run declara a coleta desligada",
+      desligada.resultado && desligada.resultado.pagamentosMp && desligada.resultado.pagamentosMp.coletaDesligada === true);
+  });
+  if (envAntes === undefined) delete process.env[ENV_NAME]; else process.env[ENV_NAME] = envAntes;
+
   console.log(`centralVendasMp1PaymentsIntegration.test.js: ${checks} verificacoes OK`);
 }
 
