@@ -80,6 +80,7 @@ const painelContasRoutes = require("./routes/painelContasRoutes");
 const clienteResponsaveisRoutes = require("./routes/clienteResponsaveisRoutes");
 const clienteImagemRoutes = require("./routes/clienteImagemRoutes");
 const visaoRoutes = require("./routes/visaoRoutes");
+const inicioRoutes = require("./routes/inicioRoutes");
 const financeiroVisaoRoutes = require("./routes/financeiroVisaoRoutes");
 const { verificarDependenciasCliente } = require("./services/clientes/clienteDependenciasService");
 const { purgarClientePermanentemente } = require("./services/clientes/clientePurgeService");
@@ -907,6 +908,7 @@ app.use("/operacao/central-margem", promoSnapshotRoutes);
 // V3: Visão (composicao read-only de fontes existentes) e leitura do
 // Financeiro por periodo/conta — nao confundir com /fechamentos (upload).
 app.use("/operacao/visao", visaoRoutes);
+app.use("/operacao/inicio", inicioRoutes);
 app.use("/financeiro", financeiroVisaoRoutes);
 // Cliente 360 V3 (Projeto_cliente360, FASE 1) - ilha nova, prefixo proprio,
 // nao aninhado em /operacao/cliente-360: contrato aditivo, nao altera o
