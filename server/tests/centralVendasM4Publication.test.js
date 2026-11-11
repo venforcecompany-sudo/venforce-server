@@ -114,6 +114,8 @@ function makeImportsDb(imports) {
         }
         return { rows: afetados.map((r) => ({ id: r.id, competencia: r.competencia })) };
       }
+      // A tabela de vínculos não existe nesta fixture (reuso desligado).
+      if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
       throw new Error(`makeImportsDb: SQL nao mapeado -> ${sql.slice(0, 120)}`);
     },
   };
@@ -247,6 +249,8 @@ function makeRunDb({ run, fontes }) {
         for (const row of afetados) { row.publication_status = "published"; row.published_at = new Date().toISOString(); }
         return { rows: afetados.map((r) => ({ id: r.id, competencia: r.competencia })) };
       }
+      // A tabela de vínculos não existe nesta fixture (reuso desligado).
+      if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
       throw new Error(`makeRunDb: SQL nao mapeado -> ${sql.slice(0, 120)}`);
     },
   };
@@ -580,6 +584,8 @@ function makeFullDb({ contas, grants }) {
         return { rows: componentes.filter((c) => idsSet.has(Number(c.pedido_row_id))) };
       }
 
+      // A tabela de vínculos não existe nesta fixture (reuso desligado).
+      if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
       throw new Error(`makeFullDb: SQL nao mapeado -> ${sql.slice(0, 160)}`);
     },
   };

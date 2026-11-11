@@ -253,6 +253,7 @@ function instalarMock(m) {
       return { rows: [] };
     }
 
+    if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(q))) return { rows: [{ ok: false }] };
     throw new Error(`SQL inesperado no teste: ${q.slice(0, 100)}`);
   }
 

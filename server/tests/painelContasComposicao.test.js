@@ -220,6 +220,8 @@ pool.query = async (sql, params = []) => {
     ] };
   }
   if (tag === "painelContas:COMPOSICAO_SOBREPOSICAO") return { rows: [{ pedidos: 0, valor: 0 }] };
+  // A tabela de vínculos não existe nesta fixture (reuso desligado).
+  if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(q))) return { rows: [{ ok: false }] };
   throw new Error(`Query inesperada: ${q}`);
 };
 

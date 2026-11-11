@@ -132,6 +132,8 @@ function makeDb() {
         const idsSet = new Set(params[0].map(Number));
         return { rows: componentes.filter((c) => idsSet.has(Number(c.pedido_row_id))) };
       }
+      // A tabela de vínculos não existe nesta fixture (reuso desligado).
+      if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
       throw new Error(`makeDb: SQL nao mapeado -> ${sql.slice(0, 160)}`);
     },
   };

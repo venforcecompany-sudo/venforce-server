@@ -95,6 +95,8 @@ function makeDeps({ importsPorConta, fechamentos = [], existente = null, lockCon
           return { rows: ITENS.filter((i) => params[0].includes(i.import_id)) };
         }
         if (sql.includes("FROM entregas_cliente")) return { rows: fechamentos };
+        // A tabela de vínculos não existe nesta fixture (reuso desligado).
+        if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
         throw new Error(`SQL inesperado: ${sql.slice(0, 80)}`);
       },
     },
@@ -223,7 +225,7 @@ async function run() {
     const pedidos = [{ id: 1, import_id: 501, data_pedido: "2026-09-02", status: "paid", confianca: "confiavel", faturamento: "1000.00", lc: 8 }];
     const imp = importRow({ id: 501, contaId: 1, pedidos });
     const { deps, chamadas } = makeDeps({ importsPorConta: { 1: [imp] } });
-    deps.db.query = async (sql) => (sql.includes("pedido_itens") ? { rows: [] } : sql.includes("entregas_cliente") ? { rows: [] } : { rows: pedidos.map(({ lc, ...r }) => r) });
+    deps.db.query = async (sql) => (sql.includes("to_regclass") ? { rows: [{ ok: false }] } : sql.includes("pedido_itens") ? { rows: [] } : sql.includes("entregas_cliente") ? { rows: [] } : { rows: pedidos.map(({ lc, ...r }) => r) });
     await adapter.reconstruirSnapshotMensal({ cliente: CLIENTE, competencia: "2026-09", contas: [{ clienteContaId: 1 }], segmento: SEGMENTO }, deps);
     const u = chamadas.upsert[0];
     eq("escala: mcMedia gravado como fração", u.mcMedia, 0.008);

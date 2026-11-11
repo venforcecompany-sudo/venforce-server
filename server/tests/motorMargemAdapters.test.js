@@ -25,6 +25,7 @@ function fakeDb(handlers) {
     chamadas,
     async query(sql, params) {
       chamadas.push({ sql, params });
+      if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
       for (const [trecho, rows] of Object.entries(handlers)) {
         if (sql.includes(trecho)) return { rows: typeof rows === "function" ? rows(params) : rows };
       }

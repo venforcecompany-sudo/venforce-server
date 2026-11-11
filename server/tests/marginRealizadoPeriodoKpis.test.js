@@ -81,7 +81,7 @@ const IMPORTS_NOTURNO = [
   { id: 12, competencia: "2026-09", publication_status: "candidate", coverage_date_from: "2026-09-01", coverage_date_to: "2026-09-28", published_at: null, created_at: "2026-09-28T10:00:00Z" },
 ];
 function dbImports(rows) {
-  return { query: async (sql) => (sql.includes("FROM central_vendas_imports") ? { rows: rows.filter((r) => r.publication_status !== "candidate") } : { rows: [] }) };
+  return { query: async (sql) => (sql.includes("to_regclass") ? { rows: [{ ok: false }] } : sql.includes("FROM central_vendas_imports") ? { rows: rows.filter((r) => r.publication_status !== "candidate") } : { rows: [] }) };
 }
 
 cenario("R-01 (regressão): com o período PADRÃO, o import do mês corrente publicado até ontem é usado", async () => {
@@ -385,6 +385,7 @@ cenario("leitura do realizado é ENXUTA: sem payload_json/SELECT *, só os 3 tip
   const db = {
     async query(sql, params) {
       chamadas.push({ sql, params });
+      if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
       if (sql.includes("FROM central_vendas_imports")) {
         return { rows: [{ id: 11, competencia: "2026-09", publication_status: "published", coverage_date_from: "2026-09-01", coverage_date_to: "2026-09-27", published_at: "2026-09-28T06:00:00Z" }] };
       }

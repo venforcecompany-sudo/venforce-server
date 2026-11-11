@@ -31,6 +31,8 @@ pool.query = async (sql, params = []) => {
       { import_id: 102, data_pedido: "2026-09-03", status: "paid", confianca: "bloqueado", faturamento: 50, resultado: null },
     ] };
   }
+  // A tabela de vínculos não existe nesta fixture (reuso desligado).
+  if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(q))) return { rows: [{ ok: false }] };
   throw new Error(`Query inesperada: ${q}`);
 };
 
