@@ -58,6 +58,7 @@ function depsBase(overrides = {}) {
     obterConta: async (id) => [contaMeli, contaShopee].find((c) => c.id === Number(id)),
     sanitizarConta: (row) => row,
     carregarPedidos: async () => ({ sincronizado: true, atualizadoEm: "2026-11-11T12:00:00Z", pedidos: PEDIDOS }),
+    carregarCobertura: async () => null,
     obterResumoMargem: async () => ({
       margemAlvo: 0.15,
       placar: { porStatus: { HEALTHY: 6, LOW_MARGIN: 2, LOSS: 1, SUSPECT_DATA: 1, UNVALIDATED: 3 } },
@@ -141,6 +142,34 @@ async function run() {
   ok("hoje: compara com ontem, série de 1 dia", semAnterior.vendas.dados.anterior !== null && semAnterior.vendas.dados.serie.length === 1);
   const vazio = await obterInicio({ clienteSlugRaw: "n97", clienteContaIdRaw: "10", periodoRaw: "hoje" }, depsBase({ carregarPedidos: async () => ({ sincronizado: false, atualizadoEm: null, pedidos: [] }) }));
   ok("nunca sincronizado é declarado", vazio.vendas.dados.sincronizado === false && vazio.vendas.dados.anterior === null && vazio.vendas.dados.totais.lucro === null);
+
+  console.log("vendas sincronizadas só até ontem");
+  const p7ontem = resolverPeriodoInicio("7d", AGORA, "2026-11-10");
+  ok("7 dias termina no último dia sincronizado", p7ontem.atual.de === "2026-11-04" && p7ontem.atual.ate === "2026-11-10" && p7ontem.anterior.ate === "2026-11-03");
+  ok("Hoje continua sendo hoje", resolverPeriodoInicio("hoje", AGORA, "2026-11-10").atual.ate === "2026-11-11");
+  ok("cobertura de hoje não muda nada", resolverPeriodoInicio("7d", AGORA, "2026-11-11").atual.ate === "2026-11-11");
+  let cargaOntem = null;
+  const ontem = await obterInicio(
+    { clienteSlugRaw: "n97", clienteContaIdRaw: "10", periodoRaw: "7d" },
+    depsBase({
+      carregarCobertura: async () => ({ dadosAte: "2026-11-10", atualizadoEm: "2026-11-10T21:05:55.000Z" }),
+      carregarPedidos: async (a) => { cargaOntem = a.intervalo; return depsBase().carregarPedidos(); },
+    })
+  );
+  ok("carga não pede dia sem import (senão o mês some)", cargaOntem.ate === "2026-11-10");
+  ok("período devolvido termina em dadosAte", ontem.periodo.ate === "2026-11-10" && ontem.periodo.dadosAte === "2026-11-10");
+  ok("'atualizado em' é a publicação do import, não o motor", ontem.vendas.dados.atualizadoEm === "2026-11-10T21:05:55.000Z");
+  ok("série termina no último dia com dados", ontem.vendas.dados.serie.at(-1).dia === "2026-11-10");
+  const hojePend = await obterInicio(
+    { clienteSlugRaw: "n97", clienteContaIdRaw: "10", periodoRaw: "hoje" },
+    depsBase({ carregarCobertura: async () => ({ dadosAte: "2026-11-10", atualizadoEm: null }) })
+  );
+  ok("Hoje sem pedidos sincronizados é declarado", hojePend.vendas.dados.hojePendente === true);
+  const coberturaFalhou = await obterInicio(
+    { clienteSlugRaw: "n97", clienteContaIdRaw: "10", periodoRaw: "7d" },
+    depsBase({ carregarCobertura: async () => { throw new Error("banco"); } })
+  );
+  ok("falha ao ler cobertura não derruba a tela", coberturaFalhou.vendas.disponivel && coberturaFalhou.periodo.ate === "2026-11-11");
 
   console.log("leitura da reputação");
   const nada = lerReputacaoMl({});

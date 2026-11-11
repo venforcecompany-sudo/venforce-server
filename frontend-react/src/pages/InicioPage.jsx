@@ -26,7 +26,7 @@ import { Cartoes } from "../components/inicio/Cartoes.jsx";
 import { GraficoVendas } from "../components/inicio/GraficoVendas.jsx";
 import { MercadoLider, SaudeConta } from "../components/inicio/Reputacao.jsx";
 import { Atencao, itensDeAtencao, Ranking, SaudeCatalogo } from "../components/inicio/Blocos.jsx";
-import { horario } from "../components/inicio/formato.js";
+import { diaCurto, horario } from "../components/inicio/formato.js";
 
 function Bloco({ envelope, render, ...props }) {
   if (!envelope) return null;
@@ -77,6 +77,10 @@ export default function InicioPage() {
   const semVendas = t && t.vendas === 0 && t.canceladas === 0;
   const umDia = dados?.periodo?.de === dados?.periodo?.ate;
   const prejuizos = catalogo?.porStatus?.prejuizo ?? 0;
+  // O sync diário cobre até ontem: os períodos terminam no último dia com
+  // pedidos sincronizados, e a tela diz qual é.
+  const dadosAte = vendas?.dadosAte && dados?.periodo?.hoje && vendas.dadosAte < dados.periodo.hoje ? vendas.dadosAte : null;
+  const hojePendente = !!vendas?.hojePendente;
 
   return (
     <div className="vf-page-shell">
@@ -87,7 +91,11 @@ export default function InicioPage() {
             <h1 className="vf-page-header__title">Como está a loja</h1>
           </div>
           <div className="vf-page-header__actions vf-inicio-topo">
-            {vendas?.atualizadoEm && <span className="vf-field__hint">Vendas atualizadas em {horario(vendas.atualizadoEm)}</span>}
+            {vendas?.atualizadoEm && (
+              <span className="vf-field__hint">
+                {dadosAte ? `Vendas até ${diaCurto(dadosAte)} · sincronizadas em ${horario(vendas.atualizadoEm)}` : `Vendas atualizadas em ${horario(vendas.atualizadoEm)}`}
+              </span>
+            )}
             <div className="vf-inicio-atalhos" role="group" aria-label="Período">
               {PERIODOS.map((p) => (
                 <button key={p.id} type="button" className="vf-inicio-atalho" aria-pressed={periodo === p.id} onClick={() => setPeriodo(p.id)}>
@@ -111,7 +119,12 @@ export default function InicioPage() {
 
         {dados && (
           <div className={`vf-inicio-corpo${carregando ? " is-atualizando" : ""}`}>
-            {vendas && t ? (
+            {hojePendente ? (
+              <p className="vf-inicio-vazio" role="status">
+                Os pedidos de hoje ainda não foram sincronizados — as vendas vão até {diaCurto(vendas.dadosAte)}.{" "}
+                <a href={links.vendas}>Sincronize no Financeiro</a> para ver o dia de hoje.
+              </p>
+            ) : vendas && t ? (
               <Cartoes totais={t} anterior={vendas.anterior} />
             ) : (
               <section className="vf-inicio-bloco"><BlocoIndisponivel motivo={dados.vendas?.motivo} /></section>
@@ -127,7 +140,7 @@ export default function InicioPage() {
               <MercadoLider envelope={dados.reputacao} janela={vendas?.sincronizado ? vendas.lider : null} metas={dados.metasMercadoLider} limites={dados.limitesMercadoLider} />
             </div>
 
-            {vendas && (semVendas ? (
+            {vendas && !hojePendente && (semVendas ? (
               <p className="vf-inicio-vazio">
                 Nenhuma venda {periodo === "hoje" ? "hoje" : "neste período"}. <a href={links.vendas}>Sincronize as vendas</a> no Financeiro para trazer os pedidos do Mercado Livre.
               </p>
@@ -138,7 +151,7 @@ export default function InicioPage() {
               </section>
             ))}
 
-            {vendas && (
+            {vendas && !hojePendente && (
               <div className="vf-inicio-duo">
                 <Ranking id="inicio-lucraram" titulo="Os que mais lucraram" itens={vendas.lucraram} tom="positivo"
                   vazio="Nenhuma venda com lucro calculado neste período." ver={{ href: links.vendas, rotulo: "Ver vendas" }} />

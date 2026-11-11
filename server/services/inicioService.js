@@ -25,6 +25,7 @@ const { getCliente360 } = require("./cliente360/cliente360Service");
 const { obterResumo: obterResumoMargem } = require("./motorMargem/motorMargemService");
 const { buscarPerformanceML } = require("./ads/mlAdsService");
 const { mlFetch } = require("../utils/mlClient");
+const { asDate } = require("./centralVendas/centralVendasRepository");
 const { resolverContaObrigatoria, bloco } = require("./visaoService");
 const visaoDeps = require("./clienteContas/clienteContaService");
 
@@ -86,7 +87,12 @@ function inicioJanelaLider(hoje) {
   return new Date(Date.UTC(ano, mes - 1 - 3, 1)).toISOString().slice(0, 10);
 }
 
-function resolverPeriodoInicio(periodoRaw, agora = new Date()) {
+// `dadosAte` = último dia com pedidos sincronizados (o sync diário cobre até
+// ontem). Os períodos de 7/30/90 dias terminam nele — senão o mês corrente
+// inteiro cairia fora (a Central só usa um import que cobre o trecho pedido
+// todo) e a comparação com o período anterior ficaria torta. "Hoje" continua
+// sendo hoje: sem pedidos de hoje, a tela avisa em vez de mostrar zero.
+function resolverPeriodoInicio(periodoRaw, agora = new Date(), dadosAte = null) {
   const informado = periodoRaw !== undefined && periodoRaw !== null && String(periodoRaw).trim() !== "";
   const id = informado ? String(periodoRaw).trim() : PERIODO_PADRAO;
   const def = PERIODOS[id];
@@ -94,16 +100,19 @@ function resolverPeriodoInicio(periodoRaw, agora = new Date()) {
     throw criarErroHttp(400, `periodo inválido: use ${Object.keys(PERIODOS).join(", ")}.`, { code: "PERIODO_INVALIDO" });
   }
   const hoje = hojeEmSaoPaulo(agora);
-  const de = somarDias(hoje, -(def.dias - 1));
+  const ultimoDia = dadosAte && dadosAte < hoje ? dadosAte : hoje;
+  const fim = id === "hoje" ? hoje : ultimoDia;
+  const de = somarDias(fim, -(def.dias - 1));
   const anteriorAte = somarDias(de, -1);
   const anteriorDe = somarDias(anteriorAte, -(def.dias - 1));
   return {
     id,
     rotulo: def.rotulo,
     hoje,
-    atual: { de, ate: hoje },
+    dadosAte: dadosAte || null,
+    atual: { de, ate: fim },
     anterior: { de: anteriorDe, ate: anteriorAte },
-    lider: { de: inicioJanelaLider(hoje), ate: hoje },
+    lider: { de: inicioJanelaLider(hoje), ate: ultimoDia },
   };
 }
 
@@ -196,8 +205,13 @@ function rankings(produtos) {
 }
 
 async function carregarVendas({ cliente, conta, periodo }, d) {
-  const carga = { de: [periodo.anterior.de, periodo.lider.de].sort()[0], ate: periodo.hoje };
-  const { sincronizado, atualizadoEm, pedidos } = await d.carregarPedidos({ cliente, conta, intervalo: carga });
+  // Carga até o último dia sincronizado: pedir um dia que nenhum import
+  // cobre faria a Central descartar o mês inteiro desse dia.
+  const ultimoDia = periodo.dadosAte && periodo.dadosAte < periodo.hoje ? periodo.dadosAte : periodo.hoje;
+  const carga = { de: [periodo.anterior.de, periodo.lider.de].sort()[0], ate: ultimoDia };
+  const lido = await d.carregarPedidos({ cliente, conta, intervalo: carga });
+  const { sincronizado, pedidos } = lido;
+  const atualizadoEm = periodo.atualizadoEm || lido.atualizadoEm;
   const doAtual = pedidos.filter(dentro(periodo.atual));
   const doAnterior = pedidos.filter(dentro(periodo.anterior));
   const daJanelaLider = pedidos.filter(dentro(periodo.lider)).filter(pedidoEntraNoResultado);
@@ -212,6 +226,9 @@ async function carregarVendas({ cliente, conta, periodo }, d) {
   return {
     sincronizado,
     atualizadoEm,
+    dadosAte: periodo.dadosAte,
+    // Pediu "Hoje" e os pedidos de hoje ainda não foram sincronizados.
+    hojePendente: periodo.id === "hoje" && !!periodo.dadosAte && periodo.dadosAte < periodo.hoje,
     totais,
     anterior,
     serie: serieDiaria(doAtual, periodo.atual),
@@ -234,6 +251,31 @@ async function carregarPedidosCentral({ cliente, conta, intervalo }) {
   });
   const payload = buildPayloadFromRange(clienteCv, { dateFrom, dateTo }, snapshot);
   return { sincronizado: snapshot !== null, atualizadoEm: payload.motor?.geradoEm || null, pedidos: payload.pedidos || [] };
+}
+
+// Até que dia há pedidos sincronizados desta conta: o import escolhido pela
+// Central para o 1º dia do mês corrente (mesma seleção de snapshot/conta) diz
+// até onde ele cobre. Sem import no mês (dia 1º, antes do sync), vale o fim
+// do mês anterior. Nada sincronizado recentemente = null (usa hoje).
+async function carregarCoberturaCentral({ cliente, conta, hoje }) {
+  const svc = createCentralVendasService();
+  const importDoDia = async (dia) => {
+    const r = await svc.resolveRangeImports(cliente.slug, { dateFrom: dia, dateTo: dia, marketplace: conta.marketplace, clienteContaId: conta.id });
+    return r.imports[r.imports.length - 1] || null;
+  };
+  const primeiroDoMes = `${hoje.slice(0, 7)}-01`;
+  let imp = await importDoDia(primeiroDoMes);
+  let dadosAte = null;
+  if (imp) {
+    const cobertura = asDate(imp.coverage_date_to);
+    dadosAte = cobertura && cobertura < hoje ? cobertura : hoje;
+  } else {
+    const fimMesAnterior = somarDias(primeiroDoMes, -1);
+    imp = await importDoDia(fimMesAnterior);
+    if (imp) dadosAte = fimMesAnterior;
+  }
+  const quando = imp && (imp.published_at || imp.updated_at || imp.created_at);
+  return { dadosAte, atualizadoEm: quando ? new Date(quando).toISOString() : null };
 }
 
 // ─── Catálogo (Motor de Margem) ──────────────────────────────────────────────
@@ -316,6 +358,7 @@ async function obterInicio({ clienteSlugRaw, clienteContaIdRaw, periodoRaw }, de
     obterConta: visaoDeps.obterConta,
     sanitizarConta: visaoDeps.sanitizarConta,
     carregarPedidos: carregarPedidosCentral,
+    carregarCobertura: carregarCoberturaCentral,
     obterResumoMargem,
     buscarPerformanceML,
     getCliente360,
@@ -326,7 +369,11 @@ async function obterInicio({ clienteSlugRaw, clienteContaIdRaw, periodoRaw }, de
   };
 
   const { cliente, conta } = await resolverContaObrigatoria({ clienteSlugRaw, clienteContaIdRaw }, d);
-  const periodo = resolverPeriodoInicio(periodoRaw, d.agora());
+  const agora = d.agora();
+  resolverPeriodoInicio(periodoRaw, agora); // valida antes de qualquer leitura
+  // Falha ao ler a cobertura não derruba a tela: cai no comportamento de hoje.
+  const cobertura = await d.carregarCobertura({ cliente, conta, hoje: hojeEmSaoPaulo(agora) }).catch(() => null);
+  const periodo = { ...resolverPeriodoInicio(periodoRaw, agora, cobertura?.dadosAte || null), atualizadoEm: cobertura?.atualizadoEm || null };
   const isMeli = conta.marketplace === "meli";
   const soMeli = (nome) => ({ escopoConta: true, aplicavel: isMeli, motivoInaplicavel: `${nome} está disponível só para operações Mercado Livre.` });
   const ctx = { cliente, conta, periodo };
@@ -351,7 +398,7 @@ async function obterInicio({ clienteSlugRaw, clienteContaIdRaw, periodoRaw }, de
       clienteId: cliente.id, clienteSlug: cliente.slug, clienteNome: cliente.nome || null,
       clienteContaId: conta.id, contaNome: conta.externalAccountLabel || conta.nome || null, marketplace: conta.marketplace,
     },
-    periodo: { id: periodo.id, rotulo: periodo.rotulo, hoje: periodo.hoje, de: periodo.atual.de, ate: periodo.atual.ate, anterior: periodo.anterior },
+    periodo: { id: periodo.id, rotulo: periodo.rotulo, hoje: periodo.hoje, dadosAte: periodo.dadosAte, de: periodo.atual.de, ate: periodo.atual.ate, anterior: periodo.anterior },
     metasMercadoLider: METAS_MERCADO_LIDER,
     limitesMercadoLider: LIMITES_MERCADO_LIDER,
     vendas,
