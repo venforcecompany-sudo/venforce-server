@@ -194,13 +194,15 @@ const ICONS = {
   lab: '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>',
 };
 
-// V1 e V2 permanecem registradas para acesso direto por URL, fora da sidebar para todos os perfis.
+// Fora da sidebar para todos os perfis, mas ainda registradas em MODULOS/GLOBAIS
+// (rota, gating e destaque continuam valendo) — acessíveis só por URL direta:
+// Cliente 360 V1/V2/V3, Cliente Operação, Sentinel, Margem e Guia do Vendedor.
 export const GRUPOS_NAV = [
-  { titulo: "Operação", ids: ["visao", "painel-contas", "sentinel", "cliente-360-v3", "cliente-operacao"] },
-  { titulo: "Performance", ids: ["financeiro", "margem", "ads", "anuncios", "central-full", "curva-abc"] },
+  { titulo: "Operação", ids: ["visao", "painel-contas"] },
+  { titulo: "Performance", ids: ["financeiro", "ads", "anuncios", "central-full", "curva-abc"] },
   { titulo: "Execução", ids: ["automacoes", "diagnosticos", "promocoes-ml"] },
   { titulo: "Gestão", ids: ["pessoas", "clientes-contas", "relatorios", "bases"] },
-  { titulo: "Ferramentas", ids: ["ferramentas", "guia"] },
+  { titulo: "Ferramentas", ids: ["ferramentas"] },
 ];
 
 export const MARKETPLACE_LABEL = { meli: "Mercado Livre", shopee: "Shopee", tiktok: "TikTok Shop" };

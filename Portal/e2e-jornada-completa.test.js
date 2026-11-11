@@ -279,8 +279,11 @@ async function run() {
       assert.strictEqual(c.clienteContaId, 43);
     });
 
-    // ═══ 4. Sidebar → Margem (navegação real, não deep link) ═══
-    await clicarModulo("margem", "central-margem.html");
+    // ═══ 4. URL → Margem (saiu da sidebar; só acessível por URL). Sem
+    //         ?cliente= na URL: o contexto tem que vir do sessionStorage. ═══
+    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${serverPort}/central-margem.html` });
+    await waitFor(cdp, "window.location.href.indexOf('central-margem.html') >= 0", "não navegou para central-margem.html");
+    await waitFor(cdp, "window.VF && window.VF.context", "central-margem.html não montou o Shell");
     await sleep(300);
 
     await check("4. Margem: contexto sobrevive à navegação real (sessionStorage), cliente=n97", async () => {
