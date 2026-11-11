@@ -1,4 +1,4 @@
-# PR — `feat/pg-reorganizacao` (HEAD `eabaeef2`, 29 commits sobre `origin/main` 3504b1ac)
+# PR — `feat/pg-reorganizacao` (30 commits sobre `origin/main` 3504b1ac; validado no código de `eabaeef2`, depois só docs)
 
 Verificado em 11/11/2026: worktree limpa, sem upstream (nada no remoto). Merge de teste com `origin/main`
 (`3504b1ac`, só `Portal/vf-shell*`) numa worktree descartável: **0 conflitos**; suíte (402 arquivos) =

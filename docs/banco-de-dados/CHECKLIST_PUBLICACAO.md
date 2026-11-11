@@ -3,7 +3,7 @@
 `[A]` = autorização própria. Nada abaixo foi executado em produção.
 
 ## Antes do PR
-- [x] Branch `feat/pg-reorg…`, worktree limpa, HEAD `eabaeef2`; merge de teste com `origin/main` sem conflitos; suíte = só as 4 falhas preexistentes.
+- [x] Branch `feat/pg-reorg…`, worktree limpa, código validado em `eabaeef2` (depois só docs); merge de teste com `origin/main` sem conflitos; suíte = só as 4 falhas preexistentes.
 - [ ] No dia: `git fetch` + rebase/merge na `main` e rerodar a suíte (esperado: as mesmas 4).
 
 ## Deploy (flags ausentes — ver `PR_E_IMPLANTACAO.md`)
