@@ -153,6 +153,27 @@ describe("InicioPage", () => {
     expect(mocks.setPeriodo).toHaveBeenCalledWith("7d");
   });
 
+  it("vendas sincronizadas até ontem: o topo diz até quando", () => {
+    const d = dadosBase();
+    d.periodo = { ...d.periodo, hoje: "2026-11-11", ate: "2026-11-10" };
+    d.vendas.dados.dadosAte = "2026-11-10";
+    d.vendas.dados.atualizadoEm = "2026-11-10T21:05:00Z";
+    montar({ dados: d });
+    expect(screen.getByText(/Vendas até 10\/11 · sincronizadas em/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Resumo do período")).toBeInTheDocument();
+  });
+
+  it("Hoje sem pedidos sincronizados avisa em vez de mostrar zero", () => {
+    const d = dadosBase();
+    d.periodo = { ...d.periodo, id: "hoje", hoje: "2026-11-11", de: "2026-11-11", ate: "2026-11-11" };
+    Object.assign(d.vendas.dados, { dadosAte: "2026-11-10", hojePendente: true, totais: totais({ faturamento: 0, vendas: 0, lucro: null }) });
+    montar({ dados: d, periodo: "hoje" });
+    expect(screen.getByRole("status")).toHaveTextContent("Os pedidos de hoje ainda não foram sincronizados — as vendas vão até 10/11.");
+    expect(screen.getByRole("link", { name: "Sincronize no Financeiro" })).toHaveAttribute("href", "financeiro-v3.html?cliente=n97&conta=42");
+    expect(screen.queryByLabelText("Resumo do período")).toBeNull();
+    expect(screen.queryByRole("heading", { name: /^Os que mais lucraram/ })).toBeNull();
+  });
+
   it("erro sem dados mostra o banner", () => {
     montar({ dados: null, erro: { mensagem: "Falhou geral." } });
     expect(screen.getByRole("alert")).toHaveTextContent("Falhou geral.");
