@@ -1,0 +1,688 @@
+{
+  "parametros": {
+    "NOITES": 12,
+    "PEDIDOS_POR_DIA": 40,
+    "TAXA_MUDANCA": 0.03
+  },
+  "totalBytes": {
+    "completo": 17514496,
+    "enxuto": 11517952,
+    "reuso": 4046848
+  },
+  "tamanhos": {
+    "completo": [
+      {
+        "tabela": "central_vendas_componentes",
+        "total": "9814016",
+        "heap": "8077312",
+        "indices": "1695744",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_imports",
+        "total": "933888",
+        "heap": "24576",
+        "indices": "81920",
+        "toast": "794624"
+      },
+      {
+        "tabela": "central_vendas_pedido_itens",
+        "total": "3047424",
+        "heap": "2482176",
+        "indices": "524288",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedidos",
+        "total": "3719168",
+        "heap": "3284992",
+        "indices": "393216",
+        "toast": "8192"
+      }
+    ],
+    "enxuto": [
+      {
+        "tabela": "central_vendas_componentes",
+        "total": "6094848",
+        "heap": "4358144",
+        "indices": "1695744",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_imports",
+        "total": "286720",
+        "heap": "24576",
+        "indices": "81920",
+        "toast": "147456"
+      },
+      {
+        "tabela": "central_vendas_pedido_itens",
+        "total": "1417216",
+        "heap": "851968",
+        "indices": "524288",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedidos",
+        "total": "3719168",
+        "heap": "3284992",
+        "indices": "393216",
+        "toast": "8192"
+      }
+    ],
+    "reuso": [
+      {
+        "tabela": "central_vendas_componentes",
+        "total": "1818624",
+        "heap": "1245184",
+        "indices": "532480",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_import_pedidos",
+        "total": "327680",
+        "heap": "114688",
+        "indices": "180224",
+        "toast": "0"
+      },
+      {
+        "tabela": "central_vendas_imports",
+        "total": "286720",
+        "heap": "24576",
+        "indices": "81920",
+        "toast": "147456"
+      },
+      {
+        "tabela": "central_vendas_pedido_itens",
+        "total": "491520",
+        "heap": "245760",
+        "indices": "204800",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedidos",
+        "total": "1122304",
+        "heap": "933888",
+        "indices": "147456",
+        "toast": "8192"
+      }
+    ]
+  },
+  "linhas": {
+    "completo": {
+      "imports": 14,
+      "pedidos": 3601,
+      "itens": 3600,
+      "componentes": 21750,
+      "vinculos": 0
+    },
+    "enxuto": {
+      "imports": 14,
+      "pedidos": 3601,
+      "itens": 3600,
+      "componentes": 21750,
+      "vinculos": 0
+    },
+    "reuso": {
+      "imports": 14,
+      "pedidos": 1020,
+      "itens": 1019,
+      "componentes": 6165,
+      "vinculos": 2581
+    }
+  },
+  "msPersistirTotal": {
+    "completo": 5978,
+    "enxuto": 5198,
+    "reuso": 1811
+  },
+  "fk": {
+    "apagarDonoUsado": "23503",
+    "purgeApagou": 14,
+    "pedidosRestantes": 0
+  },
+  "porNoite": [
+    {
+      "noite": 1,
+      "pedidosNoSnapshot": 40,
+      "diff": {
+        "comparavel": false,
+        "motivo": "SEM_MANIFESTO_ANTERIOR"
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 40,
+          "itens": 40,
+          "componentes": 240,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 40,
+          "itens": 40,
+          "componentes": 240,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 40,
+          "itens": 40,
+          "componentes": 240,
+          "vinculos": 0
+        }
+      },
+      "bytesJson": {
+        "completo": 146245,
+        "enxuto": 26794,
+        "reuso": 26794
+      },
+      "ms": {
+        "completo": 139,
+        "enxuto": 136,
+        "reuso": 104
+      }
+    },
+    {
+      "noite": 2,
+      "pedidosNoSnapshot": 80,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 8,
+        "inalterados": 32,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 80,
+          "itens": 80,
+          "componentes": 480,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 80,
+          "itens": 80,
+          "componentes": 480,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 48,
+          "itens": 48,
+          "componentes": 288,
+          "vinculos": 32
+        }
+      },
+      "bytesJson": {
+        "completo": 289425,
+        "enxuto": 53150,
+        "reuso": 32995
+      },
+      "ms": {
+        "completo": 180,
+        "enxuto": 139,
+        "reuso": 84
+      }
+    },
+    {
+      "noite": 3,
+      "pedidosNoSnapshot": 120,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 10,
+        "inalterados": 70,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 120,
+          "itens": 120,
+          "componentes": 721,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 120,
+          "itens": 120,
+          "componentes": 721,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 50,
+          "itens": 50,
+          "componentes": 301,
+          "vinculos": 70
+        }
+      },
+      "bytesJson": {
+        "completo": 433241,
+        "enxuto": 79528,
+        "reuso": 35442
+      },
+      "ms": {
+        "completo": 237,
+        "enxuto": 230,
+        "reuso": 77
+      }
+    },
+    {
+      "noite": 4,
+      "pedidosNoSnapshot": 160,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 12,
+        "inalterados": 108,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 160,
+          "itens": 160,
+          "componentes": 963,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 160,
+          "itens": 160,
+          "componentes": 963,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 52,
+          "itens": 52,
+          "componentes": 314,
+          "vinculos": 108
+        }
+      },
+      "bytesJson": {
+        "completo": 578005,
+        "enxuto": 105970,
+        "reuso": 37962
+      },
+      "ms": {
+        "completo": 252,
+        "enxuto": 265,
+        "reuso": 92
+      }
+    },
+    {
+      "noite": 5,
+      "pedidosNoSnapshot": 200,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 9,
+        "inalterados": 151,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 200,
+          "itens": 200,
+          "componentes": 1204,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 200,
+          "itens": 200,
+          "componentes": 1204,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 49,
+          "itens": 49,
+          "componentes": 295,
+          "vinculos": 151
+        }
+      },
+      "bytesJson": {
+        "completo": 722704,
+        "enxuto": 132452,
+        "reuso": 37259
+      },
+      "ms": {
+        "completo": 353,
+        "enxuto": 329,
+        "reuso": 81
+      }
+    },
+    {
+      "noite": 6,
+      "pedidosNoSnapshot": 240,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 11,
+        "inalterados": 189,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 240,
+          "itens": 240,
+          "componentes": 1445,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 240,
+          "itens": 240,
+          "componentes": 1445,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 51,
+          "itens": 51,
+          "componentes": 307,
+          "vinculos": 189
+        }
+      },
+      "bytesJson": {
+        "completo": 866324,
+        "enxuto": 158809,
+        "reuso": 39562
+      },
+      "ms": {
+        "completo": 389,
+        "enxuto": 314,
+        "reuso": 89
+      }
+    },
+    {
+      "noite": 7,
+      "pedidosNoSnapshot": 280,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 12,
+        "inalterados": 228,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 280,
+          "itens": 280,
+          "componentes": 1687,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 280,
+          "itens": 280,
+          "componentes": 1687,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 52,
+          "itens": 52,
+          "componentes": 314,
+          "vinculos": 228
+        }
+      },
+      "bytesJson": {
+        "completo": 1010675,
+        "enxuto": 185188,
+        "reuso": 41337
+      },
+      "ms": {
+        "completo": 496,
+        "enxuto": 395,
+        "reuso": 92
+      }
+    },
+    {
+      "noite": 8,
+      "pedidosNoSnapshot": 320,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 16,
+        "inalterados": 264,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 320,
+          "itens": 320,
+          "componentes": 1931,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 320,
+          "itens": 320,
+          "componentes": 1931,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 56,
+          "itens": 56,
+          "componentes": 341,
+          "vinculos": 264
+        }
+      },
+      "bytesJson": {
+        "completo": 1156605,
+        "enxuto": 211656,
+        "reuso": 45133
+      },
+      "ms": {
+        "completo": 573,
+        "enxuto": 451,
+        "reuso": 103
+      }
+    },
+    {
+      "noite": 9,
+      "pedidosNoSnapshot": 360,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 15,
+        "inalterados": 305,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 360,
+          "itens": 360,
+          "componentes": 2173,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 360,
+          "itens": 360,
+          "componentes": 2173,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 55,
+          "itens": 55,
+          "componentes": 332,
+          "vinculos": 305
+        }
+      },
+      "bytesJson": {
+        "completo": 1301063,
+        "enxuto": 238085,
+        "reuso": 45634
+      },
+      "ms": {
+        "completo": 552,
+        "enxuto": 492,
+        "reuso": 122
+      }
+    },
+    {
+      "noite": 10,
+      "pedidosNoSnapshot": 400,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 24,
+        "inalterados": 336,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 400,
+          "itens": 400,
+          "componentes": 2419,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 400,
+          "itens": 400,
+          "componentes": 2419,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 64,
+          "itens": 64,
+          "componentes": 390,
+          "vinculos": 336
+        }
+      },
+      "bytesJson": {
+        "completo": 1447772,
+        "enxuto": 264558,
+        "reuso": 52487
+      },
+      "ms": {
+        "completo": 695,
+        "enxuto": 570,
+        "reuso": 115
+      }
+    },
+    {
+      "noite": 11,
+      "pedidosNoSnapshot": 440,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 16,
+        "inalterados": 384,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 440,
+          "itens": 440,
+          "componentes": 2665,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 440,
+          "itens": 440,
+          "componentes": 2665,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 440,
+          "itens": 440,
+          "componentes": 2665,
+          "vinculos": 0
+        }
+      },
+      "bytesJson": {
+        "completo": 1594356,
+        "enxuto": 290962,
+        "reuso": 290962
+      },
+      "ms": {
+        "completo": 675,
+        "enxuto": 579,
+        "reuso": 694
+      }
+    },
+    {
+      "noite": 12,
+      "pedidosNoSnapshot": 480,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 22,
+        "inalterados": 418,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 480,
+          "itens": 480,
+          "componentes": 2911,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 480,
+          "itens": 480,
+          "componentes": 2911,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 62,
+          "itens": 62,
+          "componentes": 378,
+          "vinculos": 418
+        }
+      },
+      "bytesJson": {
+        "completo": 1741487,
+        "enxuto": 317481,
+        "reuso": 53620
+      },
+      "ms": {
+        "completo": 719,
+        "enxuto": 650,
+        "reuso": 129
+      }
+    },
+    {
+      "noite": 13,
+      "pedidosNoSnapshot": 480,
+      "diff": {
+        "comparavel": true,
+        "novos": 0,
+        "alterados": 0,
+        "inalterados": 480,
+        "removidos": 0,
+        "identico": true
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 480,
+          "itens": 480,
+          "componentes": 2911,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 480,
+          "itens": 480,
+          "componentes": 2911,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 0,
+          "itens": 0,
+          "componentes": 0,
+          "vinculos": 480
+        }
+      },
+      "bytesJson": {
+        "completo": 1741487,
+        "enxuto": 317481,
+        "reuso": 14190
+      },
+      "ms": {
+        "completo": 718,
+        "enxuto": 648,
+        "reuso": 29
+      }
+    }
+  ]
+}

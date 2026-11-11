@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Raio-X do PostgreSQL</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#16181d;--mut:#667085;--line:#e4e7ec;--acc:#3b5bdb;--acc-bg:#edf0ff;
+--ok:#1a7f4b;--ok-bg:#e6f5ec;--warn:#9a6700;--warn-bg:#fff4d6;--bad:#b42318;--bad-bg:#fde8e6;--info:#475467;--info-bg:#eef0f3;--syn:#7a3ff2;--syn-bg:#f1eaff}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#171a21;--ink:#e8eaee;--mut:#98a2b3;--line:#272c36;--acc:#8fa4ff;--acc-bg:#1e2442;
+--ok:#5fd394;--ok-bg:#12301f;--warn:#f0c04a;--warn-bg:#3a2f0e;--bad:#ff8a80;--bad-bg:#3b1714;--info:#b2b9c6;--info-bg:#222733;--syn:#c3a2ff;--syn-bg:#2a1f4a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;gap:16px;padding:10px 20px;flex-wrap:wrap}
+.brand{font-weight:650;font-size:15px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{border:0;background:none;color:var(--mut);padding:8px 12px;border-radius:8px;font:inherit;cursor:pointer}
+nav button.on{background:var(--acc-bg);color:var(--acc);font-weight:600}
+nav button:hover{color:var(--ink)}
+.sp{flex:1}
+#banner{padding:6px 20px;font-size:12.5px;border-bottom:1px solid var(--line)}
+#banner.syn{background:var(--syn-bg);color:var(--syn)}#banner.real{background:var(--ok-bg);color:var(--ok)}
+main{max-width:1180px;margin:0 auto;padding:20px}
+h2{font-size:17px;margin:0 0 4px}h3{font-size:14px;margin:18px 0 8px}
+.sub{color:var(--mut);margin:0 0 16px}
+.grid{display:grid;gap:12px}.g4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}.g2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.kpi .v{font-size:24px;font-weight:650}.kpi .l{color:var(--mut);font-size:12.5px}
+.chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;background:var(--info-bg);color:var(--info);white-space:nowrap}
+.c-ok,.c-confirmado{background:var(--ok-bg);color:var(--ok)}.c-warn,.c-inferido,.c-atencao{background:var(--warn-bg);color:var(--warn)}
+.c-bad,.c-nao_mapeado{background:var(--bad-bg);color:var(--bad)}.c-acc{background:var(--acc-bg);color:var(--acc)}
+.c-est{background:transparent;border:1px dashed var(--mut);color:var(--mut)}
+.row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line)}.row:first-child{border-top:0}
+.row .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+.bar-b{height:8px;background:var(--info-bg);border-radius:6px;flex:0 0 140px;overflow:hidden}.bar-b i{display:block;height:100%;background:var(--acc)}
+.mut{color:var(--mut)}.num{font-variant-numeric:tabular-nums;text-align:right;min-width:78px}
+.split{display:grid;grid-template-columns:260px 1fr;gap:16px}@media(max-width:820px){.split{grid-template-columns:1fr}}
+.list{max-height:70vh;overflow:auto}.list button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 10px;border-radius:8px;color:inherit;font:inherit;cursor:pointer}
+.list button.on,.list button:hover{background:var(--acc-bg)}.list small{color:var(--mut);display:block}
+input[type=search]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;margin-bottom:8px}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.pills button{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:4px 10px;border-radius:999px;font:inherit;cursor:pointer}
+.pills button.on{border-color:var(--acc);background:var(--acc-bg);color:var(--acc);font-weight:600}
+details{border-top:1px solid var(--line);padding:8px 0}details:first-of-type{border-top:0}summary{cursor:pointer;font-weight:600}
+.legend{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--mut);margin:6px 0 14px}
+button.link{border:0;background:none;color:var(--acc);cursor:pointer;font:inherit;padding:0}
+svg text{font:12px system-ui,sans-serif;fill:var(--ink)}svg .box{fill:var(--card);stroke:var(--line)}svg .hl{stroke:var(--acc);fill:var(--acc-bg)}svg .ln{stroke:var(--mut);opacity:.5}svg .ex{stroke-dasharray:4 3}
+.warn-t{color:var(--warn)}.empty{color:var(--mut);padding:12px 0}
+#erro{background:var(--bad-bg);color:var(--bad);padding:10px 14px;border-radius:8px;margin-bottom:12px;display:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="brand">Raio-X do PostgreSQL</span>
+    <nav id="nav"></nav><span class="sp"></span>
+    <button class="link" id="refresh" title="Recarrega os dados (ignora o cache de 60 s)">Atualizar</button>
+  </div>
+  <div id="banner"></div>
+</header>
+<main><div id="erro"></div><div id="view"></div></main>
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtB = (n) => { if (n == null) return "—"; const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0, v = Number(n); while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return v.toFixed(i ? (v < 10 ? 2 : 1) : 0) + " " + u[i]; };
+const fmtN = (n) => (n == null ? "—" : Number(n).toLocaleString("pt-BR"));
+const fmtD = (s) => { if (!s) return "—"; const d = new Date(s); return isNaN(d) ? esc(s) : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); };
+const ago = (s) => { if (!s) return ""; const d = (Date.now() - new Date(s)) / 86400000; return d < 1 ? "hoje" : d < 2 ? "ontem" : Math.round(d) + " d atrás"; };
+const EV = { confirmado: "Confirmado", inferido: "Inferido", nao_mapeado: "Não mapeado" };
+const evChip = (e) => `<span class="chip c-${esc(e)}" title="${esc(({ confirmado: "lido no código", inferido: "deduzido, sem leitura direta", nao_mapeado: "existe, mas não foi investigado" })[e] || "")}">${esc(EV[e] || e)}</span>`;
+const estChip = `<span class="chip c-est" title="Estimativa proporcional (linhas do escopo × bytes médios por linha); não é tamanho físico">≈ estimativa</span>`;
+const rc = () => (S.meta && S.meta.modo === "real" ? `<span class="chip" title="Medido no catálogo do PostgreSQL (pg_total_relation_size)">real</span>` : `<span class="chip" style="background:var(--syn-bg);color:var(--syn)" title="Valor inventado para demonstração">sintético</span>`);
+const CLASSES = { canonica: ["Canônico", "c-ok"], config: ["Canônico (config)", "c-ok"], snapshot: ["Snapshot", "c-acc"], cache: ["Cache", "c-acc"], historico: ["Histórico", "c-warn"], auditoria: ["Auditoria", "c-warn"], derivada: ["Derivado", "c-acc"], vinculo: ["Vínculo (reuso)", "c-acc"], temporaria: ["Temporário", ""], log: ["Log", ""], desconhecida: ["Fora do inventário", "c-bad"] };
+const classeChip = (c) => { const [t, k] = CLASSES[c] || [c, ""]; return `<span class="chip ${k}">${esc(t)}</span>`; };
+const descartavel = (t) => t.reconstruivel === "sim" && !t.manual && !["canonica", "config"].includes(t.classe);
+const protChip = (t) => (t.manual ? `<span class="chip c-bad" title="Digitado/enviado por pessoa — não reconstruível">🔒 manual</span>` : "");
+const recChip = (t) => (descartavel(t) ? `<span class="chip c-warn" title="Reconstruível e não manual: candidato a limpeza, SEM garantia — veja dependências">potencialmente descartável</span>` : "");
+
+const S = { aba: "visao", meta: null, visao: null, motoresCat: null, clientes: null, cli: null, conta: null, dados: null, motor: null, tabela: null, filtroCli: "", dominio: null, vistaArm: "dominio" };
+const ABAS = [["visao", "1 · Visão geral"], ["clientes", "2 · Clientes e contas"], ["armazenamento", "3 · Armazenamento"], ["dependencias", "4 · Dependências e motores"], ["oportunidades", "5 · Otimização e limpeza"]];
+
+async function api(caminho, fresh) { const r = await fetch(caminho + (fresh ? (caminho.includes("?") ? "&" : "?") + "fresh=1" : "")); const j = await r.json(); if (!r.ok) throw new Error(j.erro || r.status); return j; }
+function erro(e) { const el = $("#erro"); el.style.display = e ? "block" : "none"; el.textContent = e ? "Falha ao ler: " + (e.message || e) : ""; }
+
+function nav() {
+  $("#nav").innerHTML = ABAS.map(([k, t]) => `<button class="${S.aba === k ? "on" : ""}" data-aba="${k}">${t}</button>`).join("");
+  $("#nav").querySelectorAll("button").forEach((b) => b.onclick = () => { S.aba = b.dataset.aba; render(); });
+}
+function banner() {
+  const b = $("#banner"), m = S.meta;
+  if (!m) return;
+  if (m.modo === "sintetico") { b.className = "syn"; b.innerHTML = "<b>DADOS SINTÉTICOS</b> — exemplo para navegar na interface. Nada aqui vem do seu banco. Para ler o banco: <code>RAIO_X_DATABASE_URL=… node server/scripts/raio-x-visual.js --real</code>"; }
+  else { b.className = "real"; b.innerHTML = `<b>BANCO REAL — somente leitura</b> · host ${esc(m.host)}${m.portaBanco ? ":" + esc(m.portaBanco) : ""} (destino efetivo) · cada leitura roda em transação READ ONLY com timeout · cache de 60 s`; }
+}
+
+// ---------------------------------------------------------------- 1. Visão geral
+function vVisao() {
+  const v = S.visao; if (!v) return "<p class='empty'>Carregando…</p>";
+  const max = Math.max(...v.porDominio.map((d) => d.bytes), 1);
+  const cls = Math.max(...v.porClasse.map((d) => d.bytes), 1);
+  return `<h2>Visão geral do banco</h2><p class="sub">${esc(v.banco)} · PostgreSQL ${esc(v.versaoPostgres)} · tamanhos de tabela ${rc()}, contagem de linhas ${estChip} (planner)</p>
+  <div class="grid g4">
+    <div class="card kpi"><div class="v">${fmtB(v.bytesBanco)}</div><div class="l">banco inteiro ${rc()}</div></div>
+    <div class="card kpi"><div class="v">${fmtN(v.resumo.tabelas)}</div><div class="l">tabelas (${fmtN(v.resumo.mapeadas)} mapeadas · ${fmtN(v.resumo.naoMapeadas)} fora do inventário)</div></div>
+    <div class="card kpi"><div class="v">${fmtN(v.clientes)} / ${fmtN(v.contas)}</div><div class="l">clientes / contas</div></div>
+    <div class="card kpi"><div class="v">${fmtB(v.resumo.bytesNaoMapeadas)}</div><div class="l">em tabelas ${evChip("nao_mapeado")}</div></div>
+  </div>
+  <div class="grid g2" style="margin-top:12px">
+    <div class="card"><h3 style="margin-top:0">Onde está o espaço (por domínio)</h3>
+      ${v.porDominio.slice(0, 10).map((d) => `<div class="row"><button class="link n" data-dom="${esc(d.dominio)}">${esc(d.dominio)}</button><div class="bar-b"><i style="width:${(d.bytes / max * 100).toFixed(1)}%"></i></div><span class="num">${fmtB(d.bytes)}</span></div>`).join("")}
+      <p class="mut" style="margin:8px 0 0">Clique num domínio para ver as tabelas.</p></div>
+    <div class="card"><h3 style="margin-top:0">Por tipo de dado</h3>
+      ${v.porClasse.map((d) => `<div class="row"><span class="n">${classeChip(d.classe)}</span><div class="bar-b"><i style="width:${(d.bytes / cls * 100).toFixed(1)}%"></i></div><span class="num">${fmtB(d.bytes)}</span></div>`).join("")}
+      <p class="mut" style="margin:8px 0 0">Canônico = fonte da verdade · Snapshot/Cache/Derivado = reconstruível, em geral · Histórico/Auditoria = registro do que aconteceu.</p></div>
+  </div>
+  <h3>Comece por aqui</h3>
+  <div class="grid g4">
+    <div class="card"><b>Entender um cliente</b><p class="mut">IDs, contas, imports vigentes/substituídos, motores e dependências.</p><button class="link" data-go="clientes">Abrir clientes →</button></div>
+    <div class="card"><b>Entender os motores</b><p class="mut">Sentinel, Margem, Promoções, Central… o que consomem e produzem.</p><button class="link" data-go="dependencias">Abrir dependências →</button></div>
+    <div class="card"><b>Ver o que dá para otimizar</b><p class="mut">Sugestões com evidência e o que as bloqueia.</p><button class="link" data-go="oportunidades">Abrir oportunidades →</button></div>
+    <div class="card"><b>Lacunas do mapa</b><p class="mut">${fmtN(S.motoresCat?.resumo.naoMapeados)} pontos ${evChip("nao_mapeado")} e ${fmtN(S.motoresCat?.resumo.inferidas)} ligações ${evChip("inferido")}.</p><button class="link" data-go="dependencias">Ver lacunas →</button></div>
+  </div>`;
+}
+
+// ---------------------------------------------------------------- 2. Clientes e contas
+function vClientes() {
+  const lista = (S.clientes || []).filter((c) => (c.nome + c.slug).toLowerCase().includes(S.filtroCli.toLowerCase()));
+  const esq = `<div class="card"><input type="search" id="busca" placeholder="Buscar cliente…" value="${esc(S.filtroCli)}"><div class="list">${lista.map((c) => `<button data-cli="${c.id}" class="${S.cli === c.id ? "on" : ""}">${esc(c.nome)}<small>${esc(c.slug)} · ${c.contas.length} conta(s)</small></button>`).join("") || "<p class='empty'>Nenhum cliente.</p>"}</div></div>`;
+  return `<h2>Explorador de clientes e contas</h2><p class="sub">Escolha um cliente e, se quiser, uma conta. Contagens por conta valem onde a tabela tem identidade de conta; as demais ficam no nível do cliente (marcadas).</p>
+  <div class="split">${esq}<div id="detalhe">${S.dados ? detalheCliente(S.dados) : "<div class='card empty'>Selecione um cliente à esquerda.</div>"}</div></div>`;
+}
+
+function detalheCliente(d) {
+  if (!d.ok) return `<div class="card warn-t">Não foi possível montar: ${esc(d.codigo)}</div>`;
+  const cli = (S.clientes || []).find((c) => c.id === d.cliente.id);
+  const pills = `<div class="pills"><button data-conta="" class="${S.conta == null ? "on" : ""}">Todas as contas</button>${(cli?.contas || []).map((c) => `<button data-conta="${c.id}" class="${S.conta === c.id ? "on" : ""}">${esc(c.nome)} <span class="mut">#${c.id} · ${esc(c.marketplace)}${c.ativa ? "" : " · inativa"}</span></button>`).join("")}</div>`;
+  const ok = d.tabelas.filter((t) => t.status === "ok");
+  const comDados = ok.filter((t) => t.linhas > 0);
+  const dom = {};
+  for (const t of comDados) { const x = dom[t.dominio] ||= { linhas: 0, bytes: 0, tabelas: [] }; x.linhas += t.linhas; x.bytes += t.bytesEstimados || 0; x.tabelas.push(t); }
+  const domArr = Object.entries(dom).sort((a, b) => b[1].bytes - a[1].bytes);
+  const maxD = Math.max(...domArr.map(([, x]) => x.bytes), 1);
+  const cv = d.centralVendas?.status === "ok" ? d.centralVendas : null;
+  const vincPorImport = new Map((d.vinculos?.imports || []).map((i) => [i.importId, i]));
+  const syncs = d.syncs?.status === "ok" ? d.syncs.ultimoPorConta : [];
+  const mp = d.mercadoPago?.status === "ok" ? d.mercadoPago.porConta : [];
+  const inc = (d.inconsistencias || []).filter((i) => i.ocorrencias > 0);
+  const escopoTxt = d.escopoConta != null ? `conta #${d.escopoConta}` : "cliente inteiro";
+  return `<div class="card"><h2 style="margin:0">${esc(d.cliente.nome)} <span class="chip">cliente #${d.cliente.id}</span> <span class="chip">${esc(d.cliente.slug)}</span></h2>
+    <div class="mut">Escopo da leitura: <b>${escopoTxt}</b> · gerado ${fmtD(d.geradoEm)} · ${fmtN(d.duracaoMs)} ms</div>${pills}
+    <div class="grid g4"><div class="kpi"><div class="v">${fmtN(d.resumo.tabelasComDados)}</div><div class="l">tabelas com dados</div></div>
+    <div class="kpi"><div class="v">${fmtN(d.resumo.linhas)}</div><div class="l">linhas</div></div>
+    <div class="kpi"><div class="v">${fmtB(d.resumo.bytesEstimados)}</div><div class="l">tamanho ${estChip}</div></div>
+    <div class="kpi"><div class="v">${fmtN(d.resumo.tabelasManuaisComDados.length)}</div><div class="l">tabelas com dado manual 🔒</div></div></div></div>
+
+  <div class="card" style="margin-top:12px"><h3 style="margin-top:0">IDs e relacionamentos</h3>
+    ${d.contas.map((c) => { const g = (d.grants.mercadoLivre || []).find((x) => String(x.mlUserId) === String(c.externalAccountId)); return `<div class="row"><span class="n"><b>${esc(c.nome)}</b> <span class="mut">conta #${c.id} · ${esc(c.marketplace)} · seller ${esc(c.externalAccountId || "—")}${c.principal ? " · principal" : ""}${c.ativa ? "" : " · inativa"}</span></span>${c.marketplace === "meli" ? (g ? `<span class="chip c-ok">grant ${esc(g.status)}</span>` : `<span class="chip c-bad">sem grant</span>`) : `<span class="chip">${esc(c.marketplace)}</span>`}</div>`; }).join("") || "<p class='empty'>Sem contas.</p>"}
+    <p class="mut" style="margin:8px 0 0">Cliente #${d.cliente.id} → contas → grants (ml_tokens) → runs de sync → imports → pedidos/itens/componentes. Ads é identificado só pelo slug do cliente.</p></div>
+
+  <div class="card" style="margin-top:12px"><h3 style="margin-top:0">Última sincronização e períodos</h3>
+    ${syncs.map((s) => `<div class="row"><span class="n">Conta #${s.clienteContaId} · período ${esc((s.periodo || []).join(" → "))}</span><span class="chip ${s.status === "completed" ? "c-ok" : "c-bad"}">${esc(s.status)}</span><span class="mut">${fmtD(s.terminadoEm || s.criadoEm)} (${ago(s.terminadoEm || s.criadoEm)})</span></div>${s.erro ? `<div class="warn-t" style="padding-left:4px">${esc(s.erro)}</div>` : ""}`).join("") || "<p class='empty'>Sem runs registrados.</p>"}</div>
+
+  <div class="card" style="margin-top:12px"><h3 style="margin-top:0">Imports da Central: vigentes, substituídos e vinculados</h3>
+    ${cv && cv.foraDoEscopo && cv.foraDoEscopo.importsSemConta ? `<p class="mut" style="margin:0 0 6px"><span class="chip c-warn">escopo do cliente</span> ${fmtN(cv.foraDoEscopo.importsSemConta)} import(s) sem conta (legado) não são atribuídos a esta conta e ficam fora desta lista.</p>` : ""}
+    ${cv ? cv.porContaCompetencia.map((p) => { const v = p.vigente; const vinc = v && vincPorImport.get(v.importId); return `<div class="row"><span class="n">#${p.clienteContaId} · ${esc(p.competencia)}${v ? ` · import ${v.importId} (${esc(v.fonte)}, ${fmtN(v.pedidos)} pedidos)` : ""}</span>
+      ${v ? `<span class="chip c-ok">vigente</span>` : `<span class="chip c-bad">sem vigente</span>`}
+      ${p.copiasSuperadas ? `<span class="chip c-warn" title="${fmtN(p.pedidosEmCopiasSuperadas)} pedidos declarados nas cópias">${p.copiasSuperadas} substituído(s)</span>` : ""}
+      ${vinc ? `<span class="chip c-acc" title="Reuso de pedidos: ${vinc.vinculos} vínculos">${esc(vinc.papel)} (reuso)</span>` : ""}
+      ${p.manuaisProtegidos.length ? `<span class="chip c-bad">🔒 ${p.manuaisProtegidos.length} manual</span>` : ""}
+      ${p.candidatesNaoPublicados.length ? `<span class="chip c-warn">${p.candidatesNaoPublicados.length} candidate</span>` : ""}</div>`; }).join("") : "<p class='empty'>Sem dados da Central.</p>"}
+    ${(d.vinculos?.imports || []).length ? `<div style="margin-top:10px"><b>Imports em reuso</b> <span class="mut">(fornecedor = outro import usa suas linhas → <b>não pode ser apagado</b>; retenção proibida)</span>${d.vinculos.imports.map((i) => `<div class="row"><span class="n">import ${i.importId} · conta #${i.clienteContaId} · ${esc(i.competencia)}</span><span class="chip c-acc">${esc(i.papel)}</span><span class="mut">${i.linhasFornecidas ? fmtN(i.linhasFornecidas) + " linhas fornecidas" : ""} ${i.vinculos ? fmtN(i.vinculos) + " vínculos" : ""}</span></div>`).join("")}</div>` : (d.vinculos?.status === "tabela_ausente" ? `<p class="mut">Tabela de vínculos ausente (migration do reuso não aplicada): nenhum import em reuso.</p>` : "")}</div>
+
+  <div class="card" style="margin-top:12px"><h3 style="margin-top:0">Mercado Pago — pagamentos duplicados</h3>
+    ${mp.map((m) => `<div class="row"><span class="n">Conta #${m.clienteContaId}: ${fmtN(m.linhas)} linhas · ${fmtN(m.paymentsDistintos)} payments distintos · ${fmtN(m.runs)} runs</span><span class="chip ${Number(m.copiasPorPayment) > 1.5 ? "c-bad" : "c-ok"}">${esc(m.copiasPorPayment)} cópias/payment</span><span class="mut">${fmtN(m.linhas - m.paymentsDistintos)} linhas redundantes</span></div>`).join("") || "<p class='empty'>Sem dados de MP.</p>"}
+    <p class="mut" style="margin:6px 0 0">Chave (run, payment): o mesmo payment é gravado de novo a cada run. A Conciliação só usa os runs dos imports vigentes.</p></div>
+
+  ${inc.length ? `<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Inconsistências</h3>${inc.map((i) => `<div class="row"><span class="n">${esc(i.descricao)}</span>${d.escopoConta != null ? `<span class="chip ${i.escopo === "conta" ? "c-acc" : "c-warn"}" title="${i.escopo === "conta" ? "Calculado para a conta selecionada" : "Não dá para separar por conta: vale para o cliente inteiro"}">${i.escopo === "conta" ? "desta conta" : "escopo do cliente"}</span>` : ""}<span class="chip c-warn">${i.ocorrencias}</span></div>`).join("")}</div>` : ""}
+
+  <div class="card" style="margin-top:12px"><h3 style="margin-top:0">Armazenamento por domínio ${estChip}</h3>
+    ${domArr.map(([k, x]) => `<details><summary><span style="display:inline-flex;gap:10px;align-items:center;width:calc(100% - 20px)"><span class="n" style="flex:1">${esc(k)} <span class="mut">(${x.tabelas.length} tabelas)</span></span><span class="bar-b"><i style="width:${(x.bytes / maxD * 100).toFixed(1)}%"></i></span><span class="num">${fmtB(x.bytes)}</span></span></summary>
+      ${x.tabelas.sort((a, b) => (b.bytesEstimados || 0) - (a.bytesEstimados || 0)).map((t) => `<div class="row"><button class="link n" data-tab="${esc(t.tabela)}">${esc(t.tabela)}</button>${classeChip(t.classe)} ${protChip(t)} ${recChip(t)}<span class="chip" title="${t.escopo === "conta" ? "Contagem filtrada pela conta" : "Contagem do cliente inteiro (a tabela não tem conta)"}">${t.escopo === "conta" ? "conta" : "cliente"}</span><span class="num">${fmtN(t.linhas)}</span><span class="num">${fmtB(t.bytesEstimados)}</span><span class="mut num" style="min-width:90px">${t.ultimaEscrita ? ago(t.ultimaEscrita) : ""}</span></div>`).join("")}</details>`).join("") || "<p class='empty'>Sem dados.</p>"}
+    <p class="mut" style="margin:8px 0 0">Colunas: linhas · tamanho ≈ · última escrita. Tabelas filhas (pedidos, itens, componentes…) só entram no modo detalhado do serviço.</p></div>
+
+  <div class="card" style="margin-top:12px"><h3 style="margin-top:0">Motores deste ${d.escopoConta != null ? "conta" : "cliente"}</h3>
+    <div class="grid g2">${d.motores.map((m) => `<div class="card" style="padding:10px 12px"><div style="display:flex;gap:8px;align-items:center"><b style="flex:1">${esc(m.nome)}</b>${nivelChip(m.qualidade.nivel)}</div>
+      <div class="mut">Última atualização: ${m.ultimaAtualizacao ? fmtD(m.ultimaAtualizacao) + " (" + ago(m.ultimaAtualizacao) + ")" : "—"} · ${m.bytesEstimados ? fmtB(m.bytesEstimados) + " ≈" : "sem tamanho"}</div>
+      ${m.qualidade.motivos.map((x) => `<div class="warn-t">• ${esc(x)}</div>`).join("")}
+      <button class="link" data-motor="${esc(m.id)}">consome / produz / depende →</button></div>`).join("")}</div>
+    <p class="mut" style="margin:8px 0 0">Qualidade = regra heurística do Raio-X (último sync, falhas, cópias, tempo sem escrita) — não é SLA.</p></div>`;
+}
+function nivelChip(n) { const m = { ok: ["OK", "c-ok"], atencao: ["Atenção", "c-warn"], sem_dados: ["Sem dados", ""], nao_medido: ["Não medido", "c-nao_mapeado"], sem_producao: ["Só consome", ""] }[n] || [n, ""]; return `<span class="chip ${m[1]}">${m[0]}</span>`; }
+
+// ---------------------------------------------------------------- 3. Armazenamento
+function vArmazenamento() {
+  const v = S.visao; if (!v) return "<p class='empty'>Carregando…</p>";
+  const tabelas = S.dominio ? v.tabelas.filter((t) => t.dominio === S.dominio) : v.tabelas;
+  const itens = S.vistaArm === "dominio" ? v.porDominio.map((d) => ({ n: d.dominio, b: d.bytes, extra: d.tabelas + " tabelas", dom: d.dominio })) : S.vistaArm === "classe" ? v.porClasse.map((d) => ({ n: d.classe, b: d.bytes, html: classeChip(d.classe) })) : tabelas.slice(0, 40).map((t) => ({ n: t.tabela, b: t.bytesTotal, extra: fmtN(Math.max(t.linhasEstimadas, 0)) + " linhas ≈", html: `<button class="link" data-tab="${esc(t.tabela)}">${esc(t.tabela)}</button> ${classeChip(t.classe)} ${t.manual ? protChip(t) : ""}` }));
+  const max = Math.max(...itens.map((i) => i.b), 1);
+  return `<h2>Armazenamento por domínio e tabela</h2><p class="sub">Tamanho de tabela ${rc()} (inclui índices e TOAST) · linhas ${estChip} · por cliente/conta veja a aba 2 (sempre ${estChip}).</p>
+  <div class="pills"><button data-vista="dominio" class="${S.vistaArm === "dominio" ? "on" : ""}">Por domínio</button><button data-vista="classe" class="${S.vistaArm === "classe" ? "on" : ""}">Por tipo de dado</button><button data-vista="tabela" class="${S.vistaArm === "tabela" ? "on" : ""}">Por tabela${S.dominio ? " · " + esc(S.dominio) : ""}</button>${S.dominio ? `<button data-dom="">× limpar domínio</button>` : ""}</div>
+  <div class="card">${itens.map((i) => `<div class="row"><span class="n">${i.html || (i.dom ? `<button class="link" data-dom="${esc(i.dom)}">${esc(i.n)}</button>` : esc(i.n))} ${i.extra ? `<span class="mut">${esc(i.extra)}</span>` : ""}</span><div class="bar-b"><i style="width:${(i.b / max * 100).toFixed(1)}%"></i></div><span class="num">${fmtB(i.b)}</span></div>`).join("")}</div>
+  ${v.resumo.naoMapeadas ? `<h3>Tabelas fora do inventário ${evChip("nao_mapeado")}</h3><div class="card">${v.tabelas.filter((t) => !t.mapeada).map((t) => `<div class="row"><span class="n">${esc(t.tabela)}</span><span class="num">${fmtB(t.bytesTotal)}</span></div>`).join("")}<p class="mut" style="margin:8px 0 0">Existem no banco, mas não estão no inventário do Raio-X: ninguém sabe dizer (ainda) quem escreve ou lê.</p></div>` : ""}`;
+}
+
+// ---------------------------------------------------------------- 4. Dependências
+function vDependencias() {
+  const c = S.motoresCat; if (!c) return "<p class='empty'>Carregando…</p>";
+  const grupos = {}; for (const m of c.motores) (grupos[m.grupo] ||= []).push(m);
+  const sel = c.motores.find((m) => m.id === S.motor) || c.motores[0];
+  const t = S.tabela ? c.tabelas.find((x) => x.tabela === S.tabela) : null;
+  const r = c.resumo;
+  return `<h2>Dependências e fluxo dos dados</h2><p class="sub">${r.motores} motores · ${r.ligacoes} ligações: ${r.confirmadas} confirmadas, ${r.inferidas} inferidas · ${r.naoMapeados} pontos não mapeados · ${r.tabelasCompartilhadas} tabelas usadas por 2+ motores. Fonte: inventário do código (nenhum motor foi alterado).</p>
+  <div class="legend">${evChip("confirmado")} lido no código ${evChip("inferido")} deduzido, sem leitura direta ${evChip("nao_mapeado")} existe, mas não foi investigado</div>
+  <div class="split"><div class="card"><div class="list">${Object.entries(grupos).map(([g, ms]) => `<div class="mut" style="padding:6px 10px;font-size:12px">${esc(g)}</div>${ms.map((m) => `<button data-motor="${esc(m.id)}" class="${sel.id === m.id ? "on" : ""}">${esc(m.nome)}</button>`).join("")}`).join("")}</div></div>
+  <div>${t ? detalheTabela(t, c) : detalheMotor(sel, c)}</div></div>
+  <h3>Compartilhado ou duplicado entre motores</h3><div class="card">${c.duplicacoes.map((d) => `<div class="row"><span class="n"><b>${esc(d.titulo)}</b><br><span class="mut">${esc(d.nota)}</span><br><span class="mut">${d.tabelas.map((x) => `<button class="link" data-tab="${esc(x)}">${esc(x)}</button>`).join(" · ")}</span></span>${evChip(d.evidencia)}</div>`).join("")}</div>`;
+}
+function detalheMotor(m, c) {
+  const ref = (x) => x.tipo === "fonte_externa" ? `<span class="chip c-acc">externo</span> ${esc(x.ref)}` : (c.tabelas.find((t) => t.tabela === x.ref) ? `<button class="link" data-tab="${esc(x.ref)}">${esc(x.ref)}</button>` : esc(x.ref));
+  const lin = (x) => `<div class="row"><span class="n">${ref(x)}${x.nota ? ` <span class="mut">— ${esc(x.nota)}</span>` : ""}</span>${x.meta ? classeChip(x.meta.classe) : ""}${evChip(x.evidencia)}</div>`;
+  return `<div class="card"><h2 style="margin:0">${esc(m.nome)}</h2><p class="sub">${esc(m.descricao)}</p>
+  <div class="mut">Gatilhos: ${m.gatilhos.map((g) => `${esc(g.ref)} ${evChip(g.evidencia)}`).join(" · ") || "—"}</div>
+  <div class="mut">Telas: ${esc(m.telas.join(", ") || "—")}</div>
+  ${comoFunciona(m)}
+  ${fluxoSvg(m)}
+  <h3>Consome (de onde vem)</h3>${m.consome.map(lin).join("") || "<p class='empty'>—</p>"}
+  <h3>Produz (e onde persiste)</h3>${m.produz.map(lin).join("") || "<p class='empty'>Não grava tabelas próprias.</p>"}
+  <h3>Snapshots, caches e históricos que ele mantém</h3>${Object.entries(m.snapshotsCachesHistoricos).map(([k, ts]) => `<div class="row"><span class="n">${classeChip(k)} ${ts.map((x) => `<button class="link" data-tab="${esc(x)}">${esc(x)}</button>`).join(" · ")}</span></div>`).join("") || "<p class='empty'>—</p>"}
+  <h3>Dados compartilhados com outros motores</h3>${m.compartilhadas.map((s) => `<div class="row"><span class="n"><button class="link" data-tab="${esc(s.tabela)}">${esc(s.tabela)}</button> <span class="mut">↔ ${s.comMotores.map((x) => esc(x)).join(", ")}</span></span></div>`).join("") || "<p class='empty'>Nenhuma.</p>"}
+  <h3>O que impede excluir ou reconstruir</h3>${m.bloqueiosDeExclusao.map((b) => `<div style="padding:6px 0;border-top:1px solid var(--line)"><button class="link" data-tab="${esc(b.tabela)}"><b>${esc(b.tabela)}</b></button>${b.restricoes.map((r) => `<div class="warn-t">• ${esc(r.motivo)} ${evChip(r.evidencia)}</div>`).join("")}</div>`).join("") || "<p class='empty'>Nenhuma restrição mapeada.</p>"}
+  <h3>Ainda não mapeado ${evChip("nao_mapeado")}</h3>${m.naoMapeado.map((x) => `<div class="row"><span class="n">${esc(x)}</span></div>`).join("") || "<p class='empty'>—</p>"}</div>`;
+}
+const ACION = { manual: "Manual", agendado: "Agendado", automatico: "Automático", evento: "Por evento" };
+function comoFunciona(m) {
+  const c = m.comoFunciona, nm = (x) => esc(x);
+  const nao = `<span class="chip c-nao_mapeado">Não mapeado</span>`;
+  return `<h3>Como funciona</h3>
+  <div class="row"><span class="n"><b>Finalidade</b> — ${nm(c.finalidade.texto)}</span>${evChip(c.finalidade.evidencia)}</div>
+  <div style="padding:6px 0;border-top:1px solid var(--line)"><b>Funcionamento</b>${c.etapas.length ? `<ol style="margin:6px 0 0;padding-left:20px">${c.etapas.map((x) => `<li>${nm(x.texto)} ${x.evidencia === "confirmado" ? "" : evChip(x.evidencia)}</li>`).join("")}</ol>` : ` ${nao}`}</div>
+  <div style="padding:6px 0;border-top:1px solid var(--line)"><b>Acionamento</b>${c.acionamento.length ? c.acionamento.map((x) => `<div><span class="chip c-acc">${ACION[x.tipo] || esc(x.tipo)}</span> ${nm(x.texto)} ${x.evidencia === "confirmado" ? "" : evChip(x.evidencia)}</div>`).join("") : ` ${nao}`}</div>
+  <div style="padding:6px 0;border-top:1px solid var(--line)"><b>Resultado</b>
+    <div class="mut">Grava: ${c.resultado.grava.length ? c.resultado.grava.map((t) => `<button class="link" data-tab="${esc(t)}">${esc(t)}</button>`).join(" · ") : "nada próprio (só consome)"}</div>
+    <div class="mut">Alimenta: ${c.resultado.alimenta.length ? c.resultado.alimenta.map((x) => esc(x.nome)).join(" · ") : "nenhum outro motor mapeado"}</div></div>
+  <div style="padding:6px 0;border-top:1px solid var(--line)"><b>Onde aparece</b> ${c.ondeAparece.length ? esc(c.ondeAparece.join(", ")) : nao}</div>`;
+}
+function detalheTabela(t, c) {
+  const nm = (id) => (c.motores.find((m) => m.id === id) || {}).nome || id;
+  return `<div class="card"><button class="link" data-motor="${esc(S.motor || "")}">← voltar ao motor</button><h2 style="margin:6px 0">${esc(t.tabela)} ${classeChip(t.classe)} ${protChip(t)} ${recChip(t)}</h2>
+  <p class="sub">${esc(t.dominio)} · origem: ${esc(t.origem || "—")} · reconstruível: <b>${esc(t.reconstruivel)}</b>${t.foraDoRegistro ? ` · <span class="chip c-warn">sem contagem por cliente (fora do registro)</span>` : ""}</p>
+  <h3>Quem escreve</h3>${t.escritores.map((e) => `<div class="row"><span class="n">${esc(nm(e.motor))}${e.nota ? ` <span class="mut">— ${esc(e.nota)}</span>` : ""}</span>${evChip(e.evidencia)}</div>`).join("") || "<p class='empty'>Nenhum motor mapeado escreve aqui.</p>"}
+  <h3>Quem consome</h3>${t.leitores.map((e) => `<div class="row"><span class="n">${esc(nm(e.motor))}${e.nota ? ` <span class="mut">— ${esc(e.nota)}</span>` : ""}</span>${evChip(e.evidencia)}</div>`).join("") || "<p class='empty'>Nenhum motor mapeado lê esta tabela.</p>"}
+  <h3>Não pode ser excluída/reconstruída sem cuidado porque…</h3>${t.restricoes.map((r) => `<div class="row"><span class="n">${esc(r.motivo)}</span>${evChip(r.evidencia)}</div>`).join("") || "<p class='empty'>Sem restrição mapeada.</p>"}</div>`;
+}
+function fluxoSvg(m) {
+  const cons = m.consome.slice(0, 9), prod = m.produz.slice(0, 9), h = Math.max(cons.length, prod.length, 1) * 30 + 20;
+  const box = (x, y, w, t, ex, cls = "") => `<g><rect class="box ${cls} ${ex ? "ex" : ""}" x="${x}" y="${y}" width="${w}" height="24" rx="6"/><text x="${x + 8}" y="${y + 16}">${esc(t.length > 30 ? t.slice(0, 29) + "…" : t)}</text></g>`;
+  const cy = h / 2;
+  const L = cons.map((c, i) => { const y = 10 + i * 30; return `<line class="ln" x1="236" y1="${y + 12}" x2="300" y2="${cy}"/>${box(6, y, 230, c.ref, c.evidencia !== "confirmado")}`; }).join("");
+  const R = prod.map((c, i) => { const y = 10 + i * 30; return `<line class="ln" x1="460" y1="${cy}" x2="524" y2="${y + 12}"/>${box(524, y, 230, c.ref, c.evidencia !== "confirmado")}`; }).join("");
+  return `<svg viewBox="0 0 760 ${h}" width="100%" role="img" aria-label="Fluxo do motor">${L}<rect class="box hl" x="300" y="${cy - 18}" width="160" height="36" rx="8"/><text x="380" y="${cy + 5}" text-anchor="middle" style="font-weight:600">${esc(m.nome.length > 22 ? m.nome.slice(0, 21) + "…" : m.nome)}</text>${R}</svg><div class="mut" style="font-size:12px">Tracejado = ligação ${"não confirmada"} (inferida ou não mapeada). Esquerda consome · direita produz.</div>`;
+}
+
+// ---------------------------------------------------------------- 5. Oportunidades
+function vOportunidades() {
+  const o = S.oport; if (!o) return "<p class='empty'>Carregando…</p>";
+  const cli = S.dados && S.dados.ok ? S.dados.oportunidades : [];
+  const card = (x) => `<div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="flex:1">${esc(x.titulo)}</b>${evChip(x.evidencia)}<span class="chip ${x.risco === "alto" ? "c-bad" : x.risco === "médio" ? "c-warn" : "c-ok"}">risco ${esc(x.risco)}</span></div>
+    <div class="mut">${esc(x.dominio)} · ${x.tabelas.map((t) => `<button class="link" data-tab="${esc(t)}">${esc(t)}</button>`).join(", ")}</div>
+    <div style="margin-top:6px">${x.bytesAlvo ? `Tamanho atual das tabelas-alvo: <b>${fmtB(x.bytesAlvo)}</b> ${rc()} · ` : ""}Ganho: ${esc(x.ganhoEstimado)} ${x.tipoGanho === "estimativa" ? estChip : ""}</div>
+    <div>Próximo passo: ${esc(x.acao)}</div><div class="warn-t">Bloqueio: ${esc(x.bloqueio)}</div></div>`;
+  return `<h2>Oportunidades de otimização e limpeza</h2><p class="sub"><b>Somente leitura:</b> o Raio-X nunca executa limpeza. Cada item é uma sugestão com evidência; qualquer ação exige aprovação própria e respeita as dependências da aba 4.</p>
+  ${cli.length ? `<h3>Deste cliente (${esc(S.dados.cliente.nome)})</h3>${cli.map(card).join("")}<h3>Gerais</h3>` : ""}${o.map(card).join("")}`;
+}
+
+// ---------------------------------------------------------------- controle
+function render() {
+  nav();
+  const v = $("#view");
+  v.innerHTML = { visao: vVisao, clientes: vClientes, armazenamento: vArmazenamento, dependencias: vDependencias, oportunidades: vOportunidades }[S.aba]();
+  v.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => { S.aba = b.dataset.go; render(); });
+  v.querySelectorAll("[data-dom]").forEach((b) => b.onclick = () => { S.dominio = b.dataset.dom || null; S.vistaArm = S.dominio ? "tabela" : "dominio"; S.aba = "armazenamento"; render(); });
+  v.querySelectorAll("[data-vista]").forEach((b) => b.onclick = () => { S.vistaArm = b.dataset.vista; render(); });
+  v.querySelectorAll("[data-motor]").forEach((b) => b.onclick = () => { S.motor = b.dataset.motor || null; S.tabela = null; S.aba = "dependencias"; render(); });
+  v.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => { S.tabela = b.dataset.tab; S.aba = "dependencias"; render(); window.scrollTo(0, 0); });
+  v.querySelectorAll("[data-cli]").forEach((b) => b.onclick = () => escolherCliente(Number(b.dataset.cli), null));
+  v.querySelectorAll("[data-conta]").forEach((b) => b.onclick = () => escolherCliente(S.cli, b.dataset.conta ? Number(b.dataset.conta) : null));
+  const busca = $("#busca"); if (busca) busca.oninput = (e) => { S.filtroCli = e.target.value; const pos = e.target.selectionStart; render(); const n = $("#busca"); n.focus(); n.setSelectionRange(pos, pos); };
+}
+async function escolherCliente(id, conta, fresh) {
+  S.cli = id; S.conta = conta; S.dados = null; S.aba = "clientes"; render();
+  try { erro(null); S.dados = await api(`/api/cliente?id=${id}${conta != null ? "&conta=" + conta : ""}`, fresh); S.oport = await api("/api/otimizacao"); } catch (e) { erro(e); }
+  render();
+}
+async function carregar(fresh) {
+  try {
+    erro(null);
+    [S.meta, S.visao, S.motoresCat, S.clientes, S.oport] = await Promise.all([api("/api/meta"), api("/api/visao-geral", fresh), api("/api/motores"), api("/api/clientes", fresh), api("/api/otimizacao", fresh)]);
+    if (!S.motor) S.motor = S.motoresCat.motores[0].id;
+    banner();
+  } catch (e) { erro(e); }
+  render();
+}
+$("#refresh").onclick = async () => { await carregar(true); if (S.cli != null) await escolherCliente(S.cli, S.conta, true); };
+function irPeloHash() {
+  const [aba, a, b] = location.hash.replace(/^#/, "").split("/");
+  if (ABAS.some(([k]) => k === aba)) S.aba = aba;
+  if (aba === "dependencias" && a) { if (S.motoresCat.motores.some((m) => m.id === a)) S.motor = a; else if (S.motoresCat.tabelas.some((t) => t.tabela === a)) S.tabela = a; }
+  if (aba === "clientes" && a) return escolherCliente(Number(a), b ? Number(b) : null);
+  render();
+}
+carregar(false).then(irPeloHash);
+</script>
+</body>
+</html>

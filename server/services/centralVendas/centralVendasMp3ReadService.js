@@ -156,7 +156,25 @@ function createCentralVendasMp3ReadService(
       transactionTypeCounts: mpSummary.transactionTypeCounts,
     });
 
-    const mpReconciliationStatus = classificarMpReconciliationStatus({ syncRunIds, summary });
+    let mpReconciliationStatus = classificarMpReconciliationStatus({ syncRunIds, summary });
+
+    // Coleta MP desligada (centralVendasMpColetaFlag): sem Payments no range e
+    // pelo menos um run do snapshot registrou payments=not_applicable pelo
+    // motivo da flag ⇒ "collection_disabled". Nunca "pending" (não há nada a
+    // chegar) e nunca zero. Consulta extra só neste caso (paymentsUnique 0).
+    let coletaPayments = null;
+    if (
+      summary.paymentsUnique === 0
+      && syncRunIds.length
+      && mpReconciliationStatus !== "not_available"
+      && typeof mpPaymentsRepository.listRunIdsComColetaPaymentsDesligada === "function"
+    ) {
+      const runsDesligados = await mpPaymentsRepository.listRunIdsComColetaPaymentsDesligada(syncRunIds, db);
+      if (runsDesligados.length) {
+        mpReconciliationStatus = "collection_disabled";
+        coletaPayments = { desligada: true, runsSemColeta: runsDesligados };
+      }
+    }
     const total = rows.length;
 
     // Hardening final MP3 (ponto 1) — modo `full`: os `rows` já foram
@@ -191,6 +209,7 @@ function createCentralVendasMp3ReadService(
       periodo: payload.periodo,
       contexto: buildContextoPayload(context),
       mpReconciliationStatus,
+      ...(coletaPayments ? { coletaPayments } : {}),
       // `recorteTemporal` DECLARA que Payments/movimentos foram recortados ao
       // período (nunca escondido): se `paymentsNoRun > paymentsNoRange`, o run
       // cobre mais que o mês pedido e o summary reflete só o mês.

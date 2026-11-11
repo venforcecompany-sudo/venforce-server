@@ -251,7 +251,29 @@ async function listMpPaymentsWithChargesTotalByRunIds(syncRunIds, db = pool, { c
   return result.rows.map(sanitizePaymentRow);
 }
 
+// Runs (do conjunto dado) cuja fonte "payments" foi registrada como
+// `not_applicable` porque a coleta automática estava desligada pela flag
+// (centralVendasMpColetaFlag). 1 query, só sobre central_vendas_sync_sources
+// (tabela pequena, índice por sync_run_id). Usada pela conciliação para
+// distinguir "coleta desligada" de "pendente".
+async function listRunIdsComColetaPaymentsDesligada(syncRunIds, db = pool) {
+  const ids = Array.isArray(syncRunIds) ? syncRunIds.filter((id) => Number.isFinite(Number(id))) : [];
+  if (!ids.length) return [];
+  const { MOTIVO_COLETA_DESLIGADA } = require("./centralVendasMpColetaFlag");
+  const result = await db.query(
+    `SELECT DISTINCT sync_run_id
+       FROM central_vendas_sync_sources
+      WHERE sync_run_id = ANY($1::bigint[])
+        AND source = 'payments'
+        AND status = 'not_applicable'
+        AND metadata_json->>'motivo' = $2`,
+    [ids, MOTIVO_COLETA_DESLIGADA]
+  );
+  return result.rows.map((r) => Number(r.sync_run_id));
+}
+
 module.exports = {
+  listRunIdsComColetaPaymentsDesligada,
   upsertMpPayment,
   replaceMpPaymentCharges,
   persistMpPayments,

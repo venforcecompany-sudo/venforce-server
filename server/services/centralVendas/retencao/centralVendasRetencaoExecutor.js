@@ -37,6 +37,41 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 // referência JSON sem lock. Dry-run aceita qualquer valor (só simulação).
 const PISO_MIN_IDADE_HORAS_APPLY = 24;
 
+// ---------------------------------------------------------------------------
+// TRAVA S3 — reuso de pedidos (docs/banco-de-dados/09_RETENCAO_X_REUSO_ESPECIFICACAO.md)
+//
+// Enquanto este executor/planner NÃO sabe preservar imports que fornecem linhas
+// a outro import (S1), tratar o 23503 sem parar o run (S2) e exportar os
+// vínculos (S4), NENHUMA exclusão pode rodar se existir vínculo de reuso
+// (central_vendas_import_pedidos com linhas). Vale para CLI e modo auto (ambos
+// passam por executarRetencao) e é repetida DENTRO de cada lote, na mesma
+// transação do DELETE. Qualquer falha ao verificar RECUSA (nunca assume "sem
+// vínculos"). Dry-run não é afetado (não exclui).
+//
+// CONCILIAÇÃO com a correção da frente de retenção (outra worktree): quando S1,
+// S2 e S4 chegarem à main, a mesma mudança passa GUARDA_VINCULOS para true e
+// esta trava vira no-op; os testes `centralVendasRetencaoTravaReuso.*` então
+// trocam a expectativa "recusa" por "protege fornecedores". Não remover antes.
+// ---------------------------------------------------------------------------
+const GUARDA_VINCULOS = false;
+
+async function verificarReusoSemGuarda(db, { guarda = GUARDA_VINCULOS } = {}) {
+  if (guarda === true) return;
+  let existe;
+  try {
+    const t = await db.query("SELECT to_regclass('public.central_vendas_import_pedidos') IS NOT NULL AS t");
+    if (typeof t.rows?.[0]?.t !== "boolean") throw new Error("resposta indeterminada");
+    existe = t.rows[0].t;
+    if (!existe) return; // tabela ausente CONFIRMADA pelo PostgreSQL ⇒ sem reuso possível
+    const v = await db.query("SELECT EXISTS (SELECT 1 FROM central_vendas_import_pedidos) AS e");
+    if (typeof v.rows?.[0]?.e !== "boolean") throw new Error("resposta indeterminada");
+    if (!v.rows[0].e) return;
+  } catch (err) {
+    throw erroComCodigo("REUSO_VERIFICACAO_FALHOU", `Retenção recusada: não foi possível verificar os vínculos de reuso (${err.message})`);
+  }
+  throw erroComCodigo("REUSO_ATIVO_SEM_GUARDA", "Retenção recusada: há imports em modo reuso (vínculos) e a retenção ainda não os protege");
+}
+
 function hostDaUrl(url) {
   try { return new URL(url).hostname || null; } catch (_) { return null; }
 }
@@ -147,6 +182,7 @@ function montarLotes(plano, imports, tamanhoLote) {
 }
 
 async function aplicarLoteImports(client, lote, { cfg, incluirAuditoriaSyncJobs, exportDir, numero }) {
+  await verificarReusoSemGuarda(client); // trava S3, na transação do DELETE
   const chaves = [...lote.tuplas.keys()].sort();
   const linhasTupla = [];
   for (const k of chaves) linhasTupla.push(...(await repo.carregarImports(client, { escopo: { tupla: lote.tuplas.get(k) }, forUpdate: true })));
@@ -219,6 +255,8 @@ async function executarRetencao({
     const permissao = verificarPermissaoApply({ apply, env, host, confirmHost, autorizacao, cfg });
     if (!permissao.permitido) throw erroComCodigo(permissao.motivo, `Retenção recusada: ${permissao.motivo}`);
   }
+
+  if (apply) await verificarReusoSemGuarda(pool);
 
   const inicio = Date.now();
   const { plano, imports } = await comTransacao(
@@ -303,6 +341,8 @@ module.exports = {
   executarRetencao,
   planejarEscopo,
   verificarPermissaoApply,
+  verificarReusoSemGuarda,
+  GUARDA_VINCULOS,
   montarLotes,
   hostDaUrl,
   LOCAL_HOSTS,

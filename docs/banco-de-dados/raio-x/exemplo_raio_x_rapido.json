@@ -1,0 +1,891 @@
+{
+  "ok": true,
+  "versao": "raio-x-cliente/v1",
+  "geradoEm": "2026-11-11T16:05:11.162Z",
+  "duracaoMs": 41,
+  "modo": "rapido",
+  "limites": {
+    "timeoutPorConsultaMs": 3000,
+    "orcamentoTotalMs": 20000
+  },
+  "estimativaTamanho": {
+    "metodo": "linhas_do_cliente × (pg_total_relation_size / reltuples) — estimativa proporcional, não tamanho físico",
+    "exato": false
+  },
+  "cliente": {
+    "id": 1,
+    "nome": "Loja",
+    "slug": "loja",
+    "ativo": true
+  },
+  "contas": [
+    {
+      "id": 5,
+      "marketplace": "meli",
+      "nome": "ML 1",
+      "slug": "loja-ml1",
+      "externalAccountId": "111",
+      "principal": true,
+      "ativa": true,
+      "criadaEm": "2026-11-11T16:05:11.072Z"
+    },
+    {
+      "id": 6,
+      "marketplace": "meli",
+      "nome": "ML 2",
+      "slug": "loja-ml2",
+      "externalAccountId": "222",
+      "principal": false,
+      "ativa": true,
+      "criadaEm": "2026-11-11T16:05:11.072Z"
+    }
+  ],
+  "grants": {
+    "mercadoLivre": [
+      {
+        "id": 100,
+        "mlUserId": "111",
+        "principal": true,
+        "status": "valid",
+        "falhasRefresh": 0,
+        "substituidoEm": null,
+        "expiraEm": "2026-11-12T16:05:11.072Z",
+        "atualizadoEm": "2026-11-11T16:05:11.072Z"
+      }
+    ]
+  },
+  "resumo": {
+    "tabelasComDados": 6,
+    "linhas": 17,
+    "bytesEstimados": 1163264,
+    "tabelasManuaisComDados": [
+      "cliente_contas",
+      "painel_contas_lancamentos_manuais"
+    ],
+    "blocosComTimeout": []
+  },
+  "tabelas": [
+    {
+      "tabela": "cliente_contas",
+      "dominio": "Clientes e contas",
+      "modulos": [
+        "Clientes",
+        "todas as telas por conta"
+      ],
+      "classe": "config",
+      "origem": "cadastro (usuário)",
+      "manual": true,
+      "reconstruivel": "nao",
+      "identidade": "cliente_id",
+      "status": "ok",
+      "linhas": 2,
+      "bytesEstimados": 65536,
+      "periodo": {
+        "coluna": "created_at",
+        "de": "2026-11-11 13:05:11.07267",
+        "ate": "2026-11-11 13:05:11.07267"
+      },
+      "ultimaEscrita": "2026-11-11T16:05:11.072Z"
+    },
+    {
+      "tabela": "ml_tokens",
+      "dominio": "Clientes e contas",
+      "modulos": [
+        "sync Central",
+        "Sentinel",
+        "Anúncios",
+        "Margem"
+      ],
+      "classe": "config",
+      "origem": "OAuth Mercado Livre",
+      "manual": false,
+      "reconstruivel": "parcial",
+      "identidade": "cliente_id",
+      "status": "ok",
+      "linhas": 1,
+      "bytesEstimados": 32768,
+      "periodo": null,
+      "ultimaEscrita": "2026-11-11T16:05:11.072Z"
+    },
+    {
+      "tabela": "shopee_grants",
+      "dominio": "Clientes e contas",
+      "modulos": [
+        "Shopee admin"
+      ],
+      "classe": "config",
+      "origem": "OAuth Shopee",
+      "manual": false,
+      "reconstruivel": "parcial",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "cliente_squad_history",
+      "dominio": "Squads e permissões",
+      "modulos": [
+        "Squads"
+      ],
+      "classe": "historico",
+      "origem": "usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "cliente_responsaveis",
+      "dominio": "Squads e permissões",
+      "modulos": [
+        "Squads",
+        "Carteira"
+      ],
+      "classe": "config",
+      "origem": "usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "seller_clientes",
+      "dominio": "Squads e permissões",
+      "modulos": [
+        "Portal do seller"
+      ],
+      "classe": "config",
+      "origem": "usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "central_vendas_imports",
+      "dominio": "Central de Vendas",
+      "modulos": [
+        "Painel de Contas",
+        "Cliente 360",
+        "Central de Margem (realizado)",
+        "Fechamento via API",
+        "Financeiro V3"
+      ],
+      "classe": "snapshot",
+      "origem": "API ML (sync) ou planilha (manual)",
+      "manual": false,
+      "reconstruivel": "parcial",
+      "identidade": "cliente_id",
+      "status": "ok",
+      "linhas": 5,
+      "bytesEstimados": 491520,
+      "periodo": {
+        "coluna": "competencia",
+        "de": "2026-08",
+        "ate": "2026-10"
+      },
+      "ultimaEscrita": "2026-11-11T16:05:11.117Z"
+    },
+    {
+      "tabela": "central_vendas_pedidos",
+      "dominio": "Central de Vendas",
+      "modulos": [],
+      "classe": "snapshot",
+      "origem": "derivado do import",
+      "manual": false,
+      "reconstruivel": "parcial",
+      "status": "so_no_modo_detalhado",
+      "identidade": "via central_vendas_imports.import_id"
+    },
+    {
+      "tabela": "central_vendas_pedido_itens",
+      "dominio": "Central de Vendas",
+      "modulos": [],
+      "classe": "snapshot",
+      "origem": "derivado do import",
+      "manual": false,
+      "reconstruivel": "parcial",
+      "status": "so_no_modo_detalhado",
+      "identidade": "via central_vendas_imports.import_id"
+    },
+    {
+      "tabela": "central_vendas_componentes",
+      "dominio": "Central de Vendas",
+      "modulos": [],
+      "classe": "snapshot",
+      "origem": "derivado do import",
+      "manual": false,
+      "reconstruivel": "parcial",
+      "status": "so_no_modo_detalhado",
+      "identidade": "via central_vendas_imports.import_id"
+    },
+    {
+      "tabela": "central_vendas_sync_runs",
+      "dominio": "Central de Vendas",
+      "modulos": [
+        "Painel de Contas (status)",
+        "Control Center"
+      ],
+      "classe": "auditoria",
+      "origem": "worker de sync",
+      "manual": false,
+      "reconstruivel": "nao",
+      "identidade": "cliente_id",
+      "status": "ok",
+      "linhas": 2,
+      "bytesEstimados": 147456,
+      "periodo": {
+        "coluna": "date_from",
+        "de": "2026-09-01",
+        "ate": "2026-09-01"
+      },
+      "ultimaEscrita": "2026-11-11T16:05:11.107Z"
+    },
+    {
+      "tabela": "central_vendas_sync_sources",
+      "dominio": "Central de Vendas",
+      "modulos": [],
+      "classe": "auditoria",
+      "origem": "worker de sync",
+      "manual": false,
+      "reconstruivel": "nao",
+      "status": "so_no_modo_detalhado",
+      "identidade": "via central_vendas_sync_runs.sync_run_id"
+    },
+    {
+      "tabela": "central_vendas_mp_payments",
+      "dominio": "Mercado Pago",
+      "modulos": [
+        "Conciliação MP (Financeiro V3)"
+      ],
+      "classe": "historico",
+      "origem": "API Mercado Pago /v1/payments (por run)",
+      "manual": false,
+      "reconstruivel": "sim",
+      "identidade": "cliente_id",
+      "status": "ok",
+      "linhas": 6,
+      "bytesEstimados": 393216,
+      "periodo": {
+        "coluna": "created_at",
+        "de": "2026-11-11 13:05:11.119853-03",
+        "ate": "2026-11-11 13:05:11.119853-03"
+      },
+      "ultimaEscrita": "2026-11-11T16:05:11.119Z"
+    },
+    {
+      "tabela": "central_vendas_mp_payment_charges",
+      "dominio": "Mercado Pago",
+      "modulos": [
+        "Conciliação MP"
+      ],
+      "classe": "historico",
+      "origem": "API Mercado Pago",
+      "manual": false,
+      "reconstruivel": "sim",
+      "status": "so_no_modo_detalhado",
+      "identidade": "via central_vendas_mp_payments.mp_payment_row_id"
+    },
+    {
+      "tabela": "central_vendas_mp_settlement_reports",
+      "dominio": "Mercado Pago",
+      "modulos": [
+        "Conciliação MP"
+      ],
+      "classe": "historico",
+      "origem": "Settlement Report MP",
+      "manual": false,
+      "reconstruivel": "parcial",
+      "identidade": "cliente_id",
+      "status": "ok",
+      "linhas": 0,
+      "bytesEstimados": 0,
+      "periodo": {
+        "coluna": "created_at",
+        "de": null,
+        "ate": null
+      },
+      "ultimaEscrita": null
+    },
+    {
+      "tabela": "painel_contas_lancamentos_manuais",
+      "dominio": "Painel de Contas",
+      "modulos": [
+        "Painel de Contas"
+      ],
+      "classe": "canonica",
+      "origem": "digitação do usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "identidade": "cliente_id",
+      "status": "ok",
+      "linhas": 1,
+      "bytesEstimados": 32768,
+      "periodo": {
+        "coluna": "competencia",
+        "de": "2026-08",
+        "ate": "2026-08"
+      },
+      "ultimaEscrita": "2026-11-11T16:05:11.072Z"
+    },
+    {
+      "tabela": "painel_contas_lancamentos_manuais_historico",
+      "dominio": "Painel de Contas",
+      "modulos": [
+        "Painel de Contas"
+      ],
+      "classe": "historico",
+      "origem": "digitação do usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "cliente_360_resumos_mensais",
+      "dominio": "Cliente 360",
+      "modulos": [
+        "Cliente 360",
+        "Painel de Contas",
+        "Dashboard"
+      ],
+      "classe": "snapshot",
+      "origem": "derivado (Central/manual)",
+      "manual": false,
+      "reconstruivel": "parcial",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "cliente_360_sync_jobs",
+      "dominio": "Cliente 360",
+      "modulos": [],
+      "classe": "auditoria",
+      "origem": "jobs de sync do 360",
+      "manual": false,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "cliente_360_diagnosticos",
+      "dominio": "Cliente 360",
+      "modulos": [
+        "Cliente 360"
+      ],
+      "classe": "derivada",
+      "origem": "motor de diagnóstico",
+      "manual": false,
+      "reconstruivel": "sim",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "cliente_360_frete_historico",
+      "dominio": "Cliente 360",
+      "modulos": [
+        "Cliente 360"
+      ],
+      "classe": "historico",
+      "origem": "derivado",
+      "manual": false,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "cliente_360_acoes",
+      "dominio": "Cliente 360",
+      "modulos": [
+        "Placar de Impacto"
+      ],
+      "classe": "canonica",
+      "origem": "usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "entregas_cliente",
+      "dominio": "Financeiro e fechamentos",
+      "modulos": [
+        "Financeiro",
+        "relatório público",
+        "Cliente 360"
+      ],
+      "classe": "historico",
+      "origem": "fechamento publicado (usuário)",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "margin_projection_snapshots",
+      "dominio": "Central de Margem",
+      "modulos": [
+        "Central de Margem"
+      ],
+      "classe": "snapshot",
+      "origem": "motor de margem (projeção)",
+      "manual": false,
+      "reconstruivel": "sim",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "margin_snapshot_runs",
+      "dominio": "Central de Margem",
+      "modulos": [],
+      "classe": "auditoria",
+      "origem": "worker de margem",
+      "manual": false,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "anuncios_margem_projetada_snapshot",
+      "dominio": "Central de Margem",
+      "modulos": [],
+      "classe": "snapshot",
+      "origem": "margem projetada",
+      "manual": false,
+      "reconstruivel": "sim",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "margem_precificacao_aplicacoes",
+      "dominio": "Central de Margem",
+      "modulos": [
+        "Cockpit de precificação"
+      ],
+      "classe": "auditoria",
+      "origem": "ação do usuário (preço aplicado no ML)",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "promo_snapshot_contas",
+      "dominio": "Promoções",
+      "modulos": [],
+      "classe": "snapshot",
+      "origem": "API ML promoções",
+      "manual": false,
+      "reconstruivel": "sim",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "promo_snapshot_itens",
+      "dominio": "Promoções",
+      "modulos": [
+        "Central de Promoções"
+      ],
+      "classe": "snapshot",
+      "origem": "API ML promoções",
+      "manual": false,
+      "reconstruivel": "sim",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "promocoes_diagnosticos",
+      "dominio": "Promoções",
+      "modulos": [],
+      "classe": "derivada",
+      "origem": "diagnóstico",
+      "manual": false,
+      "reconstruivel": "sim",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "meli_anuncios",
+      "dominio": "Anúncios",
+      "modulos": [
+        "Anúncios ML"
+      ],
+      "classe": "cache",
+      "origem": "API ML itens",
+      "manual": false,
+      "reconstruivel": "sim",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "meli_anuncio_otimizacoes",
+      "dominio": "Anúncios",
+      "modulos": [],
+      "classe": "historico",
+      "origem": "ação do usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "meli_anuncio_publicacoes",
+      "dominio": "Anúncios",
+      "modulos": [],
+      "classe": "historico",
+      "origem": "ação do usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "ads_resumos_mensais",
+      "dominio": "Ads",
+      "modulos": [
+        "Ads",
+        "Cliente 360"
+      ],
+      "classe": "snapshot",
+      "origem": "API ML Ads",
+      "manual": false,
+      "reconstruivel": "parcial",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "ads_acompanhamentos",
+      "dominio": "Ads",
+      "modulos": [
+        "Ads"
+      ],
+      "classe": "canonica",
+      "origem": "usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "sentinel_pedidos",
+      "dominio": "Sentinel",
+      "modulos": [
+        "Pedidos ao vivo"
+      ],
+      "classe": "historico",
+      "origem": "polling ML (incremental)",
+      "manual": false,
+      "reconstruivel": "parcial",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "sentinel_incidentes",
+      "dominio": "Sentinel",
+      "modulos": [
+        "Pedidos ao vivo"
+      ],
+      "classe": "historico",
+      "origem": "Sentinel",
+      "manual": false,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "sentinel_checkpoints",
+      "dominio": "Sentinel",
+      "modulos": [],
+      "classe": "config",
+      "origem": "Sentinel",
+      "manual": false,
+      "reconstruivel": "sim",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "sentinel_pedido_excecoes",
+      "dominio": "Sentinel",
+      "modulos": [],
+      "classe": "canonica",
+      "origem": "usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "base_cliente_vinculos",
+      "dominio": "Custos e bases",
+      "modulos": [
+        "Bases",
+        "sync Central (custo)",
+        "Margem"
+      ],
+      "classe": "config",
+      "origem": "usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "seller_custos_submissoes",
+      "dominio": "Custos e bases",
+      "modulos": [],
+      "classe": "canonica",
+      "origem": "seller (planilha)",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "relatorios",
+      "dominio": "Relatórios",
+      "modulos": [
+        "Relatórios"
+      ],
+      "classe": "historico",
+      "origem": "scanner/relatório gerado",
+      "manual": false,
+      "reconstruivel": "parcial",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "diagnosticos_iniciais",
+      "dominio": "Relatórios",
+      "modulos": [],
+      "classe": "historico",
+      "origem": "usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "design_client_profiles",
+      "dominio": "Design Studio",
+      "modulos": [],
+      "classe": "config",
+      "origem": "usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "design_templates",
+      "dominio": "Design Studio",
+      "modulos": [],
+      "classe": "canonica",
+      "origem": "usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    },
+    {
+      "tabela": "design_artworks",
+      "dominio": "Design Studio",
+      "modulos": [],
+      "classe": "canonica",
+      "origem": "usuário",
+      "manual": true,
+      "reconstruivel": "nao",
+      "status": "nao_existe"
+    }
+  ],
+  "centralVendas": {
+    "status": "ok",
+    "totais": {
+      "imports": 5,
+      "vigentes": 3,
+      "superados": 1,
+      "manuais": 1,
+      "candidatesNaoPublicados": 1,
+      "pedidosEmCopiasSuperadas": 290
+    },
+    "porContaCompetencia": [
+      {
+        "clienteContaId": 5,
+        "marketplace": "meli",
+        "competencia": "2026-08",
+        "vigente": {
+          "importId": 3,
+          "fonte": "planilha_vendas",
+          "status": "legacy",
+          "cobertura": [
+            null,
+            null
+          ],
+          "pedidos": 10
+        },
+        "importsTotal": 1,
+        "copiasSuperadas": 0,
+        "pedidosEmCopiasSuperadas": 0,
+        "manuaisProtegidos": [
+          3
+        ],
+        "candidatesNaoPublicados": []
+      },
+      {
+        "clienteContaId": 5,
+        "marketplace": "meli",
+        "competencia": "2026-09",
+        "vigente": {
+          "importId": 2,
+          "fonte": "orders_api",
+          "status": "published",
+          "cobertura": [
+            "2026-09-01",
+            "2026-09-30"
+          ],
+          "pedidos": 300
+        },
+        "importsTotal": 2,
+        "copiasSuperadas": 1,
+        "pedidosEmCopiasSuperadas": 290,
+        "manuaisProtegidos": [],
+        "candidatesNaoPublicados": []
+      },
+      {
+        "clienteContaId": 7,
+        "marketplace": "meli",
+        "competencia": "2026-09",
+        "vigente": {
+          "importId": 5,
+          "fonte": "orders_api",
+          "status": "published",
+          "cobertura": [
+            "2026-09-01",
+            "2026-09-30"
+          ],
+          "pedidos": 1
+        },
+        "importsTotal": 1,
+        "copiasSuperadas": 0,
+        "pedidosEmCopiasSuperadas": 0,
+        "manuaisProtegidos": [],
+        "candidatesNaoPublicados": []
+      },
+      {
+        "clienteContaId": 5,
+        "marketplace": "meli",
+        "competencia": "2026-10",
+        "vigente": null,
+        "importsTotal": 1,
+        "copiasSuperadas": 0,
+        "pedidosEmCopiasSuperadas": 0,
+        "manuaisProtegidos": [],
+        "candidatesNaoPublicados": [
+          4
+        ]
+      }
+    ]
+  },
+  "syncs": {
+    "status": "ok",
+    "ultimoPorConta": [
+      {
+        "clienteContaId": 5,
+        "runId": 1,
+        "status": "completed",
+        "completude": null,
+        "periodo": [
+          "2026-09-01",
+          "2026-09-29"
+        ],
+        "criadoEm": "2026-11-11T16:05:11.107Z",
+        "terminadoEm": "2026-11-11T16:05:11.107Z",
+        "erro": null
+      }
+    ],
+    "agregadosPorConta": [
+      {
+        "clienteContaId": 5,
+        "runs": 2,
+        "falhas": 0,
+        "runs7d": 2,
+        "duracaoMedianaS": 120
+      }
+    ]
+  },
+  "mercadoPago": {
+    "status": "ok",
+    "porConta": [
+      {
+        "clienteContaId": 5,
+        "linhas": 6,
+        "paymentsDistintos": 3,
+        "runs": 2,
+        "copiasPorPayment": 2,
+        "ultimaColeta": "2026-11-11T16:05:11.119Z"
+      }
+    ]
+  },
+  "inconsistencias": [
+    {
+      "codigo": "import_com_conta_de_outro_cliente",
+      "descricao": "Import da Central apontando para conta de OUTRO cliente",
+      "status": "ok",
+      "ocorrencias": 1
+    },
+    {
+      "codigo": "import_slug_divergente",
+      "descricao": "Import com cliente_id do cliente mas cliente_slug diferente do atual",
+      "status": "ok",
+      "ocorrencias": 0
+    },
+    {
+      "codigo": "import_sem_conta_com_varias_contas",
+      "descricao": "Import sem cliente_conta_id num cliente com 2+ contas no marketplace (invisível na leitura por conta)",
+      "status": "ok",
+      "ocorrencias": 0
+    },
+    {
+      "codigo": "conta_meli_sem_grant",
+      "descricao": "Conta ML ativa sem grant (ml_tokens) para o external_account_id",
+      "status": "ok",
+      "ocorrencias": 1
+    },
+    {
+      "codigo": "grant_sem_conta",
+      "descricao": "Grant ML do cliente sem conta correspondente",
+      "status": "ok",
+      "ocorrencias": 0
+    },
+    {
+      "codigo": "run_preso",
+      "descricao": "Sync run em queued/running há mais de 6 h",
+      "status": "ok",
+      "ocorrencias": 0
+    }
+  ],
+  "fluxo": [
+    {
+      "origem": "cadastro (usuário)",
+      "tabela": "cliente_contas",
+      "modulos": [
+        "Clientes",
+        "todas as telas por conta"
+      ],
+      "classe": "config"
+    },
+    {
+      "origem": "OAuth Mercado Livre",
+      "tabela": "ml_tokens",
+      "modulos": [
+        "sync Central",
+        "Sentinel",
+        "Anúncios",
+        "Margem"
+      ],
+      "classe": "config"
+    },
+    {
+      "origem": "API ML (sync) ou planilha (manual)",
+      "tabela": "central_vendas_imports",
+      "modulos": [
+        "Painel de Contas",
+        "Cliente 360",
+        "Central de Margem (realizado)",
+        "Fechamento via API",
+        "Financeiro V3"
+      ],
+      "classe": "snapshot"
+    },
+    {
+      "origem": "worker de sync",
+      "tabela": "central_vendas_sync_runs",
+      "modulos": [
+        "Painel de Contas (status)",
+        "Control Center"
+      ],
+      "classe": "auditoria"
+    },
+    {
+      "origem": "API Mercado Pago /v1/payments (por run)",
+      "tabela": "central_vendas_mp_payments",
+      "modulos": [
+        "Conciliação MP (Financeiro V3)"
+      ],
+      "classe": "historico"
+    },
+    {
+      "origem": "digitação do usuário",
+      "tabela": "painel_contas_lancamentos_manuais",
+      "modulos": [
+        "Painel de Contas"
+      ],
+      "classe": "canonica"
+    }
+  ]
+}

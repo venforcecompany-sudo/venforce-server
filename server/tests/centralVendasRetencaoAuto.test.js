@@ -101,6 +101,8 @@ function resultadoVazio() {
   await check("executor: timeouts do modo auto valem no BEGIN READ ONLY do planejamento", async () => {
     const sqls = [];
     const pool = {
+      // trava S3: sem tabela de vínculos (confirmada) a retenção segue para o plano
+      async query() { return { rows: [{ t: false }] }; },
       async connect() {
         return {
           release() {},
