@@ -135,7 +135,11 @@ function qualidadeDoMotor(motor, tabelasProduzidas, raiox, agora) {
       const semVigente = cv.porContaCompetencia.filter((p) => !p.vigente && p.candidatesNaoPublicados.length);
       if (semVigente.length) rebaixa("atencao", `${semVigente.length} competência(s) só com candidate não publicado.`);
     }
-    for (const i of raiox.inconsistencias || []) if (i.ocorrencias > 0 && i.codigo !== "import_com_conta_de_outro_cliente") rebaixa("atencao", `${i.descricao} (${i.ocorrencias}).`);
+    // Com conta selecionada só entram as checagens que sabem filtrar por conta; as de
+    // escopo do cliente aparecem na tela, mas NÃO rebaixam a qualidade da conta.
+    for (const i of raiox.inconsistencias || []) {
+      if (i.ocorrencias > 0 && i.codigo !== "import_com_conta_de_outro_cliente" && (raiox.escopoConta == null || i.escopo === "conta")) rebaixa("atencao", `${i.descricao} (${i.ocorrencias}).`);
+    }
   }
   if (motor.id === "conciliacao_mp" || motor.id === "central_vendas") {
     const mp = raiox.mercadoPago && raiox.mercadoPago.status === "ok" ? raiox.mercadoPago.porConta : [];

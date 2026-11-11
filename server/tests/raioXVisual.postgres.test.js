@@ -72,7 +72,7 @@ async function main() {
     const p1 = await ped(A, "X1"); const p2 = await ped(A, "X2"); await ped(B, "X3"); await ped(C, "Y1");
     await pool.query(`INSERT INTO central_vendas_import_pedidos (import_id, pedido_row_id) VALUES ($1,$2),($1,$3)`, [B, p1, p2]);
     const tokens = (await q(`SELECT access_token FROM ml_tokens`))[0].access_token;
-    const contagemAntes = (await q(`SELECT (SELECT COUNT(*) FROM central_vendas_imports)::int i, (SELECT COUNT(*) FROM central_vendas_import_pedidos)::int v, (SELECT COUNT(*) FROM clientes)::int c`))[0];
+    let contagemAntes = (await q(`SELECT (SELECT COUNT(*) FROM central_vendas_imports)::int i, (SELECT COUNT(*) FROM central_vendas_import_pedidos)::int v, (SELECT COUNT(*) FROM clientes)::int c`))[0];
 
     process.env.DATABASE_URL = url.toString();
     const svc = require("../services/raioX/raioXVisualService");
@@ -108,6 +108,44 @@ async function main() {
     eq("conta de outro cliente é recusada", alheia.codigo, "CONTA_NAO_PERTENCE_AO_CLIENTE");
     ok("qualidade da Central é calculada com regra identificada", todas.motores.find((m) => m.id === "central_vendas").qualidade.regra.includes("heurística"));
     ok("nenhum token/segredo aparece em nenhuma resposta", !JSON.stringify([v, cs, todas, conta6]).includes("SEGREDO"));
+
+    // ---- P2: isolamento por conta nos blocos operacionais (duas contas, situações diferentes)
+    // Conta 5: sync ok, MP sem cópias. Conta 6: sync falho + run preso, MP com 2 cópias/payment.
+    // Mais 1 import legado SEM conta (escopo do cliente).
+    const run = async (conta, status, extra = "") => (await q(`INSERT INTO central_vendas_sync_runs (cliente_id, cliente_slug, cliente_conta_id, marketplace, date_from, date_to, status, started_at, finished_at${extra ? ", created_at" : ""})
+      VALUES (1,'loja',$1,'meli','2026-11-01','2026-11-10',$2, now()-interval '2 min', CASE WHEN $2 = 'running' THEN NULL ELSE now() END${extra ? ", now()-interval '10 hours'" : ""}) RETURNING id`, [conta, status]))[0].id;
+    const r5 = await run(5, "completed"); const r6a = await run(6, "completed"); const r6b = await run(6, "failed"); await run(6, "running", "velho");
+    const pay = (rid, conta, pid) => pool.query(`INSERT INTO central_vendas_mp_payments (sync_run_id, cliente_conta_id, payment_id) VALUES ($1,$2,$3)`, [rid, conta, pid]);
+    for (const pid of ["P1", "P2", "P3"]) await pay(r5, 5, pid);
+    for (const pid of ["Q1", "Q2"]) { await pay(r6a, 6, pid); await pay(r6b, 6, pid); }
+    await pool.query(`INSERT INTO central_vendas_imports (cliente_id, cliente_slug, marketplace, competencia, fonte, cliente_conta_id, publication_status, resumo_json, payload_json) VALUES (1,'loja','meli','2026-08','planilha_vendas',NULL,'legacy','{}','{}')`);
+
+    const cli = await svc.raioXDoCliente(dbApp, { clienteSlug: "loja" });
+    const c5 = await svc.raioXDoCliente(dbApp, { clienteSlug: "loja", contaId: 5 });
+    const c6 = await svc.raioXDoCliente(dbApp, { clienteSlug: "loja", contaId: 6 });
+    const contasDe = (arr) => [...new Set(arr.map((x) => x.clienteContaId))].sort((a, b) => (a ?? 0) - (b ?? 0));
+    eq("consolidado: Central cobre as contas 5, 6 e o import sem conta", contasDe(cli.centralVendas.porContaCompetencia), [null, 5, 6]);
+    eq("conta 5: Central só da conta 5", contasDe(c5.centralVendas.porContaCompetencia), [5]);
+    eq("conta 6: Central só da conta 6", contasDe(c6.centralVendas.porContaCompetencia), [6]);
+    eq("totais da Central recalculados por conta (imports)", [cli.centralVendas.totais.imports, c5.centralVendas.totais.imports, c6.centralVendas.totais.imports], [4, 2, 1]);
+    eq("conta 5: import legado sem conta fica fora e é declarado escopo do cliente", c5.centralVendas.foraDoEscopo, { importsSemConta: 1, escopo: "cliente" });
+    ok("consolidado não traz foraDoEscopo", cli.centralVendas.foraDoEscopo === undefined);
+    eq("syncs: consolidado vê as 2 contas; cada conta só a sua", [contasDe(cli.syncs.ultimoPorConta), contasDe(c5.syncs.ultimoPorConta), contasDe(c6.syncs.ultimoPorConta)], [[5, 6], [5], [6]]);
+    eq("syncs da conta 6: último é o falho; agregados só da conta 6 (3 runs, 1 falha)", [c6.syncs.ultimoPorConta[0].status, c6.syncs.agregadosPorConta.map((a) => [a.clienteContaId, a.runs, a.falhas])], ["failed", [[6, 3, 1]]]);
+    eq("syncs da conta 5: completed", c5.syncs.ultimoPorConta[0].status, "completed");
+    eq("MP conta 5: sem cópias", c5.mercadoPago.porConta.map((m) => [m.clienteContaId, m.linhas, m.paymentsDistintos, m.copiasPorPayment]), [[5, 3, 3, 1]]);
+    eq("MP conta 6: 2 cópias por payment", c6.mercadoPago.porConta.map((m) => [m.clienteContaId, m.linhas, m.paymentsDistintos, m.copiasPorPayment]), [[6, 4, 2, 2]]);
+    eq("MP consolidado: as duas contas", contasDe(cli.mercadoPago.porConta), [5, 6]);
+    const insp = (r, cod) => r.inconsistencias.find((i) => i.codigo === cod);
+    eq("run_preso: só a conta 6 (escopo conta)", [insp(cli, "run_preso").ocorrencias, insp(c5, "run_preso").ocorrencias, insp(c6, "run_preso").ocorrencias, insp(c6, "run_preso").escopo], [1, 0, 1, "conta"]);
+    eq("import sem conta: escopo do cliente, igual nas duas visões (não atribuído à conta)", [insp(c5, "import_sem_conta_com_varias_contas").escopo, insp(c5, "import_sem_conta_com_varias_contas").ocorrencias, insp(c6, "import_sem_conta_com_varias_contas").ocorrencias], ["cliente", 1, 1]);
+    const q5 = c5.motores.find((m) => m.id === "central_vendas").qualidade, q6 = c6.motores.find((m) => m.id === "central_vendas").qualidade, qc = cli.motores.find((m) => m.id === "central_vendas").qualidade;
+    eq("qualidade conta 5 = OK (o problema da conta 6 e o escopo do cliente não a contaminam)", [q5.nivel, q5.motivos], ["ok", []]);
+    ok("qualidade conta 6 = atenção por falha de sync, run preso e cópias de MP", q6.nivel === "atencao" && q6.motivos.some((m) => /failed/.test(m)) && q6.motivos.some((m) => /cópias por payment/.test(m)) && q6.motivos.some((m) => /há mais de 6 h/.test(m)));
+    ok("qualidade consolidada continua enxergando tudo (inclui escopo do cliente)", qc.nivel === "atencao" && qc.motivos.some((m) => /sem cliente_conta_id/.test(m)));
+    ok("Mercado Pago como motor: conta 5 sem alerta de cópias", c5.motores.find((m) => m.id === "conciliacao_mp").qualidade.nivel !== "atencao");
+
+    contagemAntes = (await q(`SELECT (SELECT COUNT(*) FROM central_vendas_imports)::int i, (SELECT COUNT(*) FROM central_vendas_import_pedidos)::int v, (SELECT COUNT(*) FROM clientes)::int c`))[0];
 
     // ---- somente leitura: nada mudou
     const contagemDepois = (await q(`SELECT (SELECT COUNT(*) FROM central_vendas_imports)::int i, (SELECT COUNT(*) FROM central_vendas_import_pedidos)::int v, (SELECT COUNT(*) FROM clientes)::int c`))[0];

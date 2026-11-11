@@ -60,6 +60,10 @@ async function run() {
   ok("qualidade aponta falha de sync (atenção)", cvm.qualidade.nivel === "atencao" && cvm.qualidade.motivos.some((x) => /failed/.test(x)));
   ok("motores trazem última atualização e tamanho estimado", todos.motores.every((m) => "ultimaAtualizacao" in m && "bytesEstimados" in m));
   eq("conta de outro cliente é recusada", (await sint.raioXDoCliente({ clienteId: 1, contaId: 9 })).codigo, "CONTA_NAO_PERTENCE_AO_CLIENTE");
+  const g8 = await sint.raioXDoCliente({ clienteId: 3, contaId: 8 });
+  eq("sintético: problema da conta 9 (sem grant) não aparece na conta 8", g8.inconsistencias.find((i) => i.codigo === "conta_meli_sem_grant").ocorrencias, 0);
+  eq("sintético: checagem de escopo do cliente é identificada como tal", g8.inconsistencias.filter((i) => i.escopo === "cliente").map((i) => i.codigo).sort(), ["import_com_conta_de_outro_cliente", "import_sem_conta_com_varias_contas"]);
+  ok("sintético: foraDoEscopo só existe com conta selecionada", (await sint.raioXDoCliente({ clienteId: 1 })).centralVendas.foraDoEscopo === undefined && (await sint.raioXDoCliente({ clienteId: 1, contaId: 5 })).centralVendas.foraDoEscopo.escopo === "cliente");
   ok("oportunidades do cliente com reuso incluem o bloqueio de retenção", todos.oportunidades.some((o) => o.id === "imports_vinculados" && /PROIBIDA/.test(o.bloqueio)));
   ok("toda oportunidade informa evidência, risco e bloqueio", todos.oportunidades.every((o) => o.evidencia && o.risco && o.bloqueio));
   ok("tamanho: estimativa identificada nas oportunidades", todos.oportunidades.some((o) => o.tipoGanho === "estimativa"));

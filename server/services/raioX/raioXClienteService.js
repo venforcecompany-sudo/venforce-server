@@ -99,6 +99,12 @@ function filtroCliente(colunaIdentidade) {
   return "cliente_conta_id IN (SELECT id FROM cliente_contas WHERE cliente_id = $1)";
 }
 
+// Predicado de conta (número validado e inlinado — não consome parâmetro $n).
+// Vazio quando nenhuma conta foi selecionada (visão consolidada do cliente).
+function filtroConta(ctx, coluna) {
+  return ctx.contaId == null ? "" : ` AND ${coluna} = ${Number(ctx.contaId)}`;
+}
+
 async function inventariarTabela(entrada, ctx) {
   const { q, catalogo, cliente, detalhado } = ctx;
   const cols = catalogo.colunas.get(entrada.tabela);
@@ -163,10 +169,20 @@ async function inventariarCentral(ctx) {
             NULLIF(resumo_json->>'pedidosTotal', '')::int AS pedidos_total,
             pg_column_size(payload_json)::bigint AS payload_bytes
        FROM central_vendas_imports
-      WHERE cliente_id = $1 OR cliente_slug = $2`,
+      WHERE (cliente_id = $1 OR cliente_slug = $2)${filtroConta(ctx, "cliente_conta_id")}`,
     [cliente.id, cliente.slug]
   );
   if (r.status !== "ok") return { status: r.status };
+  // Com conta selecionada, imports SEM conta (legado) não podem ser atribuídos a ela:
+  // ficam fora desta visão e são contados à parte como "escopo do cliente".
+  let foraDoEscopo = null;
+  if (ctx.contaId != null) {
+    const sem = await q(
+      `SELECT COUNT(*)::int AS n FROM central_vendas_imports WHERE (cliente_id = $1 OR cliente_slug = $2) AND cliente_conta_id IS NULL`,
+      [cliente.id, cliente.slug]
+    );
+    foraDoEscopo = { importsSemConta: sem.status === "ok" ? Number(sem.rows[0]?.n ?? 0) : null, escopo: "cliente" };
+  }
   const grupos = new Map();
   for (const row of r.rows) {
     const k = `${row.cliente_conta_id ?? "sem_conta"}|${row.marketplace}|${row.competencia}`;
@@ -203,7 +219,7 @@ async function inventariarCentral(ctx) {
     });
   }
   porContaCompetencia.sort((a, b) => String(a.competencia).localeCompare(String(b.competencia)) || (a.clienteContaId || 0) - (b.clienteContaId || 0));
-  return { status: "ok", totais: tot, porContaCompetencia };
+  return { status: "ok", escopo: ctx.contaId != null ? "conta" : "cliente", totais: tot, porContaCompetencia, ...(foraDoEscopo ? { foraDoEscopo } : {}) };
 }
 
 async function inventariarSyncs(ctx) {
@@ -211,7 +227,7 @@ async function inventariarSyncs(ctx) {
   const ultimo = await q(
     `SELECT DISTINCT ON (cliente_conta_id) cliente_conta_id, id, status, completeness_status,
             date_from::text, date_to::text, created_at, finished_at, error_code
-       FROM central_vendas_sync_runs WHERE cliente_id = $1
+       FROM central_vendas_sync_runs WHERE cliente_id = $1${filtroConta(ctx, "cliente_conta_id")}
       ORDER BY cliente_conta_id, created_at DESC`,
     [cliente.id]
   );
@@ -221,10 +237,11 @@ async function inventariarSyncs(ctx) {
             COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS runs_7d,
             percentile_disc(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (finished_at - started_at)))
               FILTER (WHERE finished_at IS NOT NULL AND started_at IS NOT NULL) AS duracao_mediana_s
-       FROM central_vendas_sync_runs WHERE cliente_id = $1 GROUP BY cliente_conta_id`,
+       FROM central_vendas_sync_runs WHERE cliente_id = $1${filtroConta(ctx, "cliente_conta_id")} GROUP BY cliente_conta_id`,
     [cliente.id]
   );
   return {
+    escopo: ctx.contaId != null ? "conta" : "cliente",
     status: ultimo.status === "ok" && agregados.status === "ok" ? "ok" : (ultimo.status !== "ok" ? ultimo.status : agregados.status),
     ultimoPorConta: (ultimo.rows || []).map((row) => ({
       clienteContaId: idOuNull(row.cliente_conta_id), runId: Number(row.id), status: row.status, completude: row.completeness_status,
@@ -243,13 +260,14 @@ async function inventariarMercadoPago(ctx) {
     `SELECT p.cliente_conta_id, COUNT(*)::bigint AS linhas, COUNT(DISTINCT p.payment_id)::bigint AS payments_distintos,
             COUNT(DISTINCT p.sync_run_id)::int AS runs, MAX(p.created_at) AS ultima_coleta
        FROM central_vendas_mp_payments p
-      WHERE p.sync_run_id IN (SELECT id FROM central_vendas_sync_runs WHERE cliente_id = $1)
+      WHERE p.sync_run_id IN (SELECT id FROM central_vendas_sync_runs WHERE cliente_id = $1${filtroConta(ctx, "cliente_conta_id")})${filtroConta(ctx, "p.cliente_conta_id")}
       GROUP BY p.cliente_conta_id`,
     [cliente.id]
   );
   if (r.status !== "ok") return { status: r.status };
   return {
     status: "ok",
+    escopo: ctx.contaId != null ? "conta" : "cliente",
     porConta: r.rows.map((row) => {
       const linhas = Number(row.linhas), distintos = Number(row.payments_distintos);
       return {
@@ -262,34 +280,39 @@ async function inventariarMercadoPago(ctx) {
 }
 
 // Relações que parecem inconsistentes (cada uma = 1 consulta barata).
+// `escopo`: "conta" = a checagem sabe filtrar pela conta selecionada (sqlConta);
+// "cliente" = não dá para atribuir a uma conta — vale só para o cliente inteiro
+// e a visão por conta a mostra identificada como escopo do cliente.
 const CHECAGENS = [
-  ["import_com_conta_de_outro_cliente", "Import da Central apontando para conta de OUTRO cliente",
+  ["import_com_conta_de_outro_cliente", "Import da Central apontando para conta de OUTRO cliente", "cliente",
     `SELECT COUNT(*)::int AS n FROM central_vendas_imports i JOIN cliente_contas cc ON cc.id = i.cliente_conta_id
-      WHERE i.cliente_id = $1 AND cc.cliente_id <> $1`],
-  ["import_slug_divergente", "Import com cliente_id do cliente mas cliente_slug diferente do atual",
-    `SELECT COUNT(*)::int AS n FROM central_vendas_imports WHERE cliente_id = $1 AND cliente_slug <> $2`],
-  ["import_sem_conta_com_varias_contas", "Import sem cliente_conta_id num cliente com 2+ contas no marketplace (invisível na leitura por conta)",
+      WHERE i.cliente_id = $1 AND cc.cliente_id <> $1`, null],
+  ["import_slug_divergente", "Import com cliente_id do cliente mas cliente_slug diferente do atual", "conta",
+    `SELECT COUNT(*)::int AS n FROM central_vendas_imports WHERE cliente_id = $1 AND cliente_slug <> $2`, "AND cliente_conta_id = {conta}"],
+  ["import_sem_conta_com_varias_contas", "Import sem cliente_conta_id num cliente com 2+ contas no marketplace (invisível na leitura por conta)", "cliente",
     `SELECT COUNT(*)::int AS n FROM central_vendas_imports i
       WHERE i.cliente_id = $1 AND i.cliente_conta_id IS NULL
-        AND (SELECT COUNT(*) FROM cliente_contas cc WHERE cc.cliente_id = $1 AND cc.marketplace = i.marketplace AND cc.ativo) > 1`],
-  ["conta_meli_sem_grant", "Conta ML ativa sem grant (ml_tokens) para o external_account_id",
+        AND (SELECT COUNT(*) FROM cliente_contas cc WHERE cc.cliente_id = $1 AND cc.marketplace = i.marketplace AND cc.ativo) > 1`, null],
+  ["conta_meli_sem_grant", "Conta ML ativa sem grant (ml_tokens) para o external_account_id", "conta",
     `SELECT COUNT(*)::int AS n FROM cliente_contas cc
       WHERE cc.cliente_id = $1 AND cc.marketplace = 'meli' AND cc.ativo
-        AND NOT EXISTS (SELECT 1 FROM ml_tokens t WHERE t.ml_user_id = cc.external_account_id)`],
-  ["grant_sem_conta", "Grant ML do cliente sem conta correspondente",
+        AND NOT EXISTS (SELECT 1 FROM ml_tokens t WHERE t.ml_user_id = cc.external_account_id)`, "AND cc.id = {conta}"],
+  ["grant_sem_conta", "Grant ML do cliente sem conta correspondente", "cliente",
     `SELECT COUNT(*)::int AS n FROM ml_tokens t
-      WHERE t.cliente_id = $1 AND NOT EXISTS (SELECT 1 FROM cliente_contas cc WHERE cc.cliente_id = $1 AND cc.external_account_id = t.ml_user_id)`],
-  ["run_preso", "Sync run em queued/running há mais de 6 h",
+      WHERE t.cliente_id = $1 AND NOT EXISTS (SELECT 1 FROM cliente_contas cc WHERE cc.cliente_id = $1 AND cc.external_account_id = t.ml_user_id)`, null],
+  ["run_preso", "Sync run em queued/running há mais de 6 h", "conta",
     `SELECT COUNT(*)::int AS n FROM central_vendas_sync_runs
-      WHERE cliente_id = $1 AND status IN ('queued','running') AND created_at < NOW() - INTERVAL '6 hours'`],
+      WHERE cliente_id = $1 AND status IN ('queued','running') AND created_at < NOW() - INTERVAL '6 hours'`, "AND cliente_conta_id = {conta}"],
 ];
 
 async function checarConsistencia(ctx) {
   const out = [];
-  for (const [codigo, descricao, sql] of CHECAGENS) {
+  for (const [codigo, descricao, escopo, sql, sqlConta] of CHECAGENS) {
+    // Com conta selecionada: "conta" ganha o predicado; "cliente" segue no nível do cliente.
+    const consulta = ctx.contaId != null && sqlConta ? `${sql} ${sqlConta.replace("{conta}", String(Number(ctx.contaId)))}` : sql;
     // eslint-disable-next-line no-await-in-loop
-    const r = await ctx.q(sql, [ctx.cliente.id, ctx.cliente.slug]);
-    out.push({ codigo, descricao, status: r.status, ...(r.codigo ? { codigoErro: r.codigo } : {}), ocorrencias: r.status === "ok" ? Number(r.rows[0]?.n ?? 0) : null });
+    const r = await ctx.q(consulta, [ctx.cliente.id, ctx.cliente.slug]);
+    out.push({ codigo, descricao, escopo, status: r.status, ...(r.codigo ? { codigoErro: r.codigo } : {}), ocorrencias: r.status === "ok" ? Number(r.rows[0]?.n ?? 0) : null });
   }
   return out;
 }

@@ -39,7 +39,7 @@ async function semBanco() {
     async query(sql) {
       chamadas.push(sql);
       if (/FROM clientes WHERE/.test(sql)) return { rows: [{ id: 1, nome: "Loja", slug: "loja", ativo: true }] };
-      if (/FROM central_vendas_imports\s+WHERE cliente_id/.test(sql)) { const e = new Error("canceling statement due to statement timeout"); e.code = "57014"; throw e; }
+      if (/FROM central_vendas_imports\s+WHERE \(?cliente_id/.test(sql)) { const e = new Error("canceling statement due to statement timeout"); e.code = "57014"; throw e; }
       return { rows: [] };
     },
   };
