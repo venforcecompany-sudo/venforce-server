@@ -10,7 +10,7 @@ Branch `feat/pg-reorganizacao` (worktree `~/venforce-dev/wt-pg-reorg`, base
 | 1 | Mercado Pago: flag de coleta | [01_MERCADO_PAGO.md](01_MERCADO_PAGO.md) | `af8523cd` |
 | 2 | Sync noturno: reuso de pedidos inalterados (main × enxuta × reuso) | [02_SYNC_NOTURNO.md](02_SYNC_NOTURNO.md) · [medição 3 versões](sync-noturno/medicao_3_versoes_pg18.json) | `109569e4`, `44fd802c`, `fa9bb21e` |
 | 3 | Inventário técnico (79 tabelas) | [por domínio](inventario/TABELAS_POR_DOMINIO.md) · [identificadores e FKs](inventario/IDENTIFICADORES_E_RELACIONAMENTOS.md) · [dependências](inventario/MATRIZ_DEPENDENCIAS.md) · [classificação e retenção](inventario/CLASSIFICACAO_E_RETENCAO.md) | docs |
-| 4 | Raio-X por cliente (serviço read-only) | [contrato](raio-x/CONTRATO_RAIO_X.md) · [exemplo](raio-x/exemplo_raio_x_rapido.json) | `7e1eb006` |
+| 4 | Raio-X por cliente (serviço read-only) + **interface visual local** | [visual](raio-x/RAIO_X_VISUAL.md) · [contrato](raio-x/CONTRATO_RAIO_X.md) · [exemplo](raio-x/exemplo_raio_x_rapido.json) | `7e1eb006` |
 | 5 | Operação sustentável (métricas) | [05_OPERACAO_SUSTENTAVEL.md](05_OPERACAO_SUSTENTAVEL.md) | `8c681752` |
 | — | Mercado Pago: acumulado e retenção própria | [08_MERCADO_PAGO_ACUMULADO.md](08_MERCADO_PAGO_ACUMULADO.md) | `98cc0328` |
 | — | Snapshots, cache e históricos | [06_SNAPSHOTS_CACHE_HISTORICO.md](06_SNAPSHOTS_CACHE_HISTORICO.md) | — |
