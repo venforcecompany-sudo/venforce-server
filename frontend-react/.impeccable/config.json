@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "src/styles/inicio.css"
+        ],
+        "createdAt": "2026-11-11T17:09:19.977Z",
+        "reason": "Claude triage: L799 is the 16px-wide legend swatch for the profit line in the chart (border-top draws the line), not a card; ported from Lucratto's grafico__chave--linha"
+      }
+    ]
+  }
+}

@@ -41,7 +41,7 @@ const COLLAPSE_KEY = "vf-sidebar-collapsed"; // preferência de UI (§9.2) — l
    versão", nunca link quebrado. `marketplaces` ausente = disponível em
    todos os marketplaces. */
 export const MODULOS = [
-  { id: "visao", label: "Visão", rota: "visao.html" },
+  { id: "visao", label: "Início", rota: "visao.html" },
   // Recuperação de navegação (VENFORCE_AUDITORIA_FORENSE_RECUPERACAO_TELAS.md
   // §8) — cliente-360-react.html é a Cliente 360 V2 REAL (não confundir com
   // o bundle Vue órfão `cliente-360-v2.html`, sem fonte, nunca linkado em

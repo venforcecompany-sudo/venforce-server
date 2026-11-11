@@ -214,4 +214,4 @@ async function obterVisao({ clienteSlugRaw, clienteContaIdRaw, periodoRaw }, dep
   };
 }
 
-module.exports = { obterVisao, resolverContaObrigatoria, resolverPeriodo };
+module.exports = { obterVisao, resolverContaObrigatoria, resolverPeriodo, bloco };
