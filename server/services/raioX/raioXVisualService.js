@@ -13,7 +13,9 @@ const path = require("path");
 const { gerarRaioXCliente } = require("./raioXClienteService");
 const { catalogo, TABELAS, DUPLICACOES } = require("./raioXMotores");
 
-const SQL_VINCULOS = fs.readFileSync(path.join(__dirname, "..", "..", "sql", "observabilidade", "reuso_vinculos.sql"), "utf8").trim().replace(/;\s*$/, "");
+// Consulta específica do Raio-X: restringe cliente/conta ANTES de agregar (a global,
+// reuso_vinculos.sql, segue sendo a de observabilidade geral).
+const SQL_VINCULOS_CLIENTE = fs.readFileSync(path.join(__dirname, "..", "..", "sql", "observabilidade", "reuso_vinculos_cliente.sql"), "utf8");
 const TIMEOUT_MS = 4000;
 
 async function somenteLeitura(db, fn, { timeoutMs = TIMEOUT_MS } = {}) {
@@ -101,11 +103,11 @@ async function listarClientes(db) {
 // ---------------------------------------------------------------------------
 // Vínculos de reuso do cliente (imports vigentes/superados/vinculados).
 // ---------------------------------------------------------------------------
-async function vinculosDoCliente(db, slug) {
+async function vinculosDoCliente(db, { clienteId = null, slug, contaId = null } = {}) {
   return somenteLeitura(db, async (c) => {
     const t = await c.query(`SELECT to_regclass('public.central_vendas_import_pedidos') IS NOT NULL AS ok`);
     if (t.rows[0].ok !== true) return { status: "tabela_ausente", imports: [] };
-    const { rows } = await c.query(`SELECT * FROM (${SQL_VINCULOS}) v WHERE v.cliente_slug = $1`, [slug]);
+    const { rows } = await c.query(SQL_VINCULOS_CLIENTE, [clienteId, slug, contaId == null ? null : Number(contaId)]);
     return { status: "ok", imports: rows.map((r) => ({ importId: Number(r.import_id), clienteContaId: r.cliente_conta_id == null ? null : Number(r.cliente_conta_id), marketplace: r.marketplace, competencia: String(r.competencia).trim(), publicacao: r.publication_status, papel: r.papel, linhasFornecidas: Number(r.linhas_fornecidas), usadoPorImports: (r.usado_por_imports || []).map(Number), vinculos: Number(r.vinculos) })) };
   });
 }
@@ -220,7 +222,7 @@ function oportunidades({ visao = null, raiox = null, vinculos = null } = {}) {
 async function raioXDoCliente(db, { clienteId = null, clienteSlug = null, contaId = null } = {}) {
   const raiox = await gerarRaioXCliente({ clienteId, clienteSlug, contaId }, { db });
   if (!raiox.ok) return raiox;
-  const vinculos = await vinculosDoCliente(db, raiox.cliente.slug).catch((e) => ({ status: "erro", erro: e.code || e.message, imports: [] }));
+  const vinculos = await vinculosDoCliente(db, { clienteId: raiox.cliente.id, slug: raiox.cliente.slug, contaId: raiox.escopoConta }).catch((e) => ({ status: "erro", erro: e.code || e.message, imports: [] }));
   const cat = catalogo();
   return finalizarCliente({ raiox, vinculos, cat });
 }
@@ -240,4 +242,4 @@ function contaFiltro(vinculos, contaId) {
   return { ...vinculos, imports: vinculos.imports.filter((i) => i.clienteContaId === Number(contaId)) };
 }
 
-module.exports = { visaoGeral, listarClientes, raioXDoCliente, vinculosDoCliente, montarVisaoMotores, oportunidades, finalizarCliente, compor, somenteLeitura, DUPLICACOES };
+module.exports = { visaoGeral, listarClientes, raioXDoCliente, vinculosDoCliente, SQL_VINCULOS_CLIENTE, montarVisaoMotores, oportunidades, finalizarCliente, compor, somenteLeitura, DUPLICACOES };

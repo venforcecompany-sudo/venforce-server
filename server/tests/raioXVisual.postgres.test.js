@@ -145,6 +145,51 @@ async function main() {
     ok("qualidade consolidada continua enxergando tudo (inclui escopo do cliente)", qc.nivel === "atencao" && qc.motivos.some((m) => /sem cliente_conta_id/.test(m)));
     ok("Mercado Pago como motor: conta 5 sem alerta de cópias", c5.motores.find((m) => m.id === "conciliacao_mp").qualidade.nivel !== "atencao");
 
+    // ---- P3: consulta de vínculos específica do cliente (restringe antes de agregar)
+    // Volume: 40 clientes "vol_*", 20 imports cada; o 1º é dono de 100 pedidos e os outros 19
+    // os referenciam (1.900 vínculos por cliente, cada cliente ≈ 2,5% do total). Os vínculos do cliente de teste (loja) ficam pequenos.
+    await pool.query(`INSERT INTO central_vendas_imports (cliente_id, cliente_slug, marketplace, competencia, fonte, cliente_conta_id, publication_status, resumo_json, payload_json)
+      SELECT 10 + s.n, 'vol_' || s.n, 'meli', '2026-09', 'orders_api', NULL, 'published', '{}', '{}' FROM generate_series(1,40) s(n), generate_series(1,20) g(i)`);
+    await pool.query(`INSERT INTO central_vendas_pedidos (import_id, cliente_id, cliente_slug, marketplace, competencia, pedido_id, confianca, data_pedido)
+      SELECT i.id, i.cliente_id, i.cliente_slug, 'meli', '2026-09', 'V' || i.cliente_id || '-' || g, 'confiavel', '2026-09-05'
+        FROM (SELECT DISTINCT ON (cliente_slug) * FROM central_vendas_imports WHERE cliente_slug LIKE 'vol_%' ORDER BY cliente_slug, id) i, generate_series(1,100) g`);
+    await pool.query(`INSERT INTO central_vendas_import_pedidos (import_id, pedido_row_id)
+      SELECT u.id, p.id FROM central_vendas_imports u JOIN central_vendas_pedidos p ON p.cliente_slug = u.cliente_slug AND p.import_id <> u.id WHERE u.cliente_slug LIKE 'vol_%'`);
+    await pool.query("ANALYZE central_vendas_imports; ANALYZE central_vendas_pedidos; ANALYZE central_vendas_import_pedidos");
+    const totalVinc = Number((await q(`SELECT COUNT(*) n FROM central_vendas_import_pedidos`))[0].n);
+    const vincCliente = (slug) => q(`SELECT COUNT(*)::int n FROM central_vendas_import_pedidos v JOIN central_vendas_imports i ON i.id = v.import_id WHERE i.cliente_slug = $1`, [slug]).then((r) => r[0].n);
+    eq("volume: 1.900 vínculos por cliente vol_* (de ~76 mil no banco)", await vincCliente("vol_1"), 19 * 100);
+    const sqlGlobal = fs.readFileSync(path.join(__dirname, "..", "sql", "observabilidade", "reuso_vinculos.sql"), "utf8");
+    const norm = (rows) => JSON.stringify(rows.map((r) => ({ ...r, import_id: String(r.import_id), usado_por_imports: (r.usado_por_imports || []).map(String), linhas_fornecidas: String(r.linhas_fornecidas), vinculos: String(r.vinculos) })));
+    for (const [slug, id, conta] of [["vol_1", 11, null], ["loja", 1, null], ["loja", 1, 5], ["loja", 1, 6]]) {
+      const novo = (await pool.query(svc.SQL_VINCULOS_CLIENTE, [id, slug, conta])).rows;
+      const global = (await pool.query(sqlGlobal)).rows.filter((r) => r.cliente_slug === slug && (conta == null || Number(r.cliente_conta_id) === conta));
+      eq(`consulta do cliente = global filtrada (${slug}${conta ? " conta " + conta : ""})`, norm(novo), norm(global));
+    }
+    eq("vol_1: o dono é 'fornece' e os 29 referenciadores 'referencia'", await (async () => { const r = (await pool.query(svc.SQL_VINCULOS_CLIENTE, [11, "vol_1", null])).rows; return [r.filter((x) => x.papel === "fornece").length, r.filter((x) => x.papel === "referencia").length]; })(), [1, 19]);
+    // Plano: examina só os vínculos do cliente, não os do banco todo.
+    const examinados = async (sql, params) => {
+      const plano = (await pool.query(`EXPLAIN (ANALYZE, FORMAT JSON) ${sql}`, params)).rows[0]["QUERY PLAN"][0].Plan;
+      let exam = 0, removidos = 0, seq = 0;
+      (function ande(n) {
+        if (n["Relation Name"] === "central_vendas_import_pedidos") {
+          const loops = n["Actual Loops"] || 1;
+          exam += ((n["Actual Rows"] || 0) + (n["Rows Removed by Filter"] || 0)) * loops;
+          removidos += (n["Rows Removed by Filter"] || 0) * loops;
+          if (n["Node Type"] === "Seq Scan") seq += 1;
+        }
+        for (const f of n.Plans || []) ande(f);
+      })(plano);
+      return { exam, removidos, seq };
+    };
+    const pn = await examinados(svc.SQL_VINCULOS_CLIENTE, [11, "vol_1", null]);
+    const pg = await examinados(sqlGlobal.trim().replace(/;\s*$/, ""), []);
+    ok(`plano (cliente): sem Seq Scan nos vínculos e nada descartado por filtro (examinou ${pn.exam})`, pn.seq === 0 && pn.removidos === 0);
+    ok(`plano (cliente): examina no máximo 2× os vínculos do próprio cliente (${pn.exam} ≤ ${2 * 19 * 100})`, pn.exam <= 2 * 19 * 100);
+    ok(`plano: a global examina o banco todo (${pg.exam} ≥ ${totalVinc}) e a do cliente bem menos (${pn.exam})`, pg.exam >= totalVinc && pn.exam < pg.exam);
+    const pl = await examinados(svc.SQL_VINCULOS_CLIENTE, [1, "loja", 5]);
+    ok(`plano (loja, conta 5): examina só os vínculos dela (${pl.exam} ≤ 4)`, pl.exam <= 4 && pl.seq === 0);
+
     contagemAntes = (await q(`SELECT (SELECT COUNT(*) FROM central_vendas_imports)::int i, (SELECT COUNT(*) FROM central_vendas_import_pedidos)::int v, (SELECT COUNT(*) FROM clientes)::int c`))[0];
 
     // ---- somente leitura: nada mudou
@@ -157,7 +202,7 @@ async function main() {
     ok("somente leitura: cliente 2 continua existindo", (await q(`SELECT 1 FROM clientes WHERE id = 2`)).length === 1);
     // Sem a tabela de vínculos: status 'tabela_ausente', nunca erro.
     await pool.query(`ALTER TABLE central_vendas_import_pedidos RENAME TO central_vendas_import_pedidos_off`);
-    eq("tabela de vínculos ausente ⇒ tabela_ausente", (await svc.vinculosDoCliente(dbApp, "loja")).status, "tabela_ausente");
+    eq("tabela de vínculos ausente ⇒ tabela_ausente", (await svc.vinculosDoCliente(dbApp, { clienteId: 1, slug: "loja" })).status, "tabela_ausente");
     await pool.query(`ALTER TABLE central_vendas_import_pedidos_off RENAME TO central_vendas_import_pedidos`);
 
     // ---- servidor com --real
