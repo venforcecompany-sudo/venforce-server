@@ -16,7 +16,6 @@
 
 const ENV_NAME = "CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS";
 const TABELA = "central_vendas_import_pedidos";
-const TTL_NEGATIVO_MS = 60 * 1000;
 
 const cache = new WeakMap();
 
@@ -34,21 +33,27 @@ function isReusoHabilitado(env = process.env, clienteContaId = null) {
   return clienteContaId != null && lista.includes(String(clienteContaId));
 }
 
-// Existência da tabela, por pool/client. Positivo fica em cache para sempre
-// (tabela não some em operação); negativo expira em 60 s.
+// Existência da tabela, por pool/client.
+//  - "Existe" fica em cache para sempre (tabela não some em operação).
+//  - "Não existe" só vale se o PostgreSQL CONFIRMOU (to_regclass = NULL) e
+//    NUNCA é cacheado: assim, no instante em que a migration é aplicada, todo
+//    leitor passa a enxergar os vínculos na leitura seguinte (um negativo
+//    velho faria o leitor ignorar pedidos vinculados e devolver valores
+//    incompletos). Custo: uma consulta de catálogo por leitura enquanto a
+//    tabela não existe.
+//  - Qualquer erro (timeout, conexão caída, transação abortada) PROPAGA: um
+//    leitor nunca pode concluir "sem vínculos" por não ter conseguido
+//    perguntar. Quem chama falha em vez de devolver/persistir dado parcial.
 async function tabelaVinculosDisponivel(db) {
   const chave = db && typeof db === "object" ? db : cache;
-  const atual = cache.get(chave);
-  if (atual && (atual.disponivel || Date.now() - atual.em < TTL_NEGATIVO_MS)) return atual.disponivel;
-  let disponivel = false;
-  try {
-    const r = await db.query(`SELECT to_regclass('public.${TABELA}') IS NOT NULL AS ok`);
-    disponivel = r.rows?.[0]?.ok === true;
-  } catch {
-    disponivel = false;
+  if (cache.get(chave) === true) return true;
+  const r = await db.query(`SELECT to_regclass('public.${TABELA}') IS NOT NULL AS ok`);
+  const linha = r && r.rows && r.rows[0];
+  if (!linha || typeof linha.ok !== "boolean") {
+    throw new Error("PEDIDOS_COMPARTILHADOS_EXISTENCIA_INDETERMINADA");
   }
-  cache.set(chave, { disponivel, em: Date.now() });
-  return disponivel;
+  if (linha.ok) cache.set(chave, true);
+  return linha.ok;
 }
 
 // Fragmento FROM: ( ... ) AS <alias> com colunas pedido_row_id, import_lido.
