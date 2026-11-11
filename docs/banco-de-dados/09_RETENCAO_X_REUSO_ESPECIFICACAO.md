@@ -105,5 +105,17 @@ contagem do lote (`contarFilhosPorImport` passa a informar `vinculos`).
 | **2** | S1 + S2 + S4 na `main`; `GUARDA_VINCULOS = true` | retenção (manual e auto) em contas com reuso |
 | 3 | GC de imports superados em modo reuso (apagar vínculos do superado + versões sem referência) | longo prazo |
 
-Veredito desta missão: **a Etapa 1 não existe na `main` nem nesta branch ⇒ piloto:
-NO-GO** (ver `PENDENCIAS_E_ROLLOUT.md`).
+**Etapa 1 implementada nesta branch** (`GUARDA_VINCULOS`, `verificarReusoSemGuarda` em
+`centralVendasRetencaoExecutor.js`; teste `centralVendasRetencaoTravaReuso.postgres.test.js`, 25 verificações:
+CLI, modo auto, executor direto, falha de verificação, vínculo surgido entre plano e lote, tabela ausente).
+A trava é global (qualquer vínculo bloqueia todo `apply`), vale também dentro do lote e é no-op só com
+`GUARDA_VINCULOS = true`.
+
+**Conciliação com a correção da outra worktree:** o commit toca só `verificarReusoSemGuarda`, o export
+`GUARDA_VINCULOS`, duas chamadas (`executarRetencao` antes do plano; `aplicarLoteImports` antes do DELETE) e
+o fake de pool de `centralVendasRetencaoAuto.test.js`. Ao integrar S1+S2+S4: aplicar os dois pontos de
+chamada, trocar `GUARDA_VINCULOS` para `true`, e inverter as expectativas "recusa" do teste de trava.
+Se a outra worktree reescrever `aplicarLoteImports`, manter a chamada à trava como primeira linha da
+transação até S1 estar ativo.
+
+Veredito: **piloto SEM LIMPEZA: GO** (ver `PENDENCIAS_E_ROLLOUT.md`). (ver `PENDENCIAS_E_ROLLOUT.md`).

@@ -54,6 +54,6 @@ Reversão de qualquer passo: remover a variável (ou a conta da lista). Imports 
 ## 5. Restrições que continuam valendo
 
 - **Retenção (manual e auto) PROIBIDA para contas com imports vinculados** (`09_RETENCAO_X_REUSO_ESPECIFICACAO.md`). Não ligar `CENTRAL_VENDAS_RETENCAO_AUTO` enquanto: (a) as etapas S1–S4 da retenção não estiverem na `main` e (b) a trava de planilhas legacy não estiver na main (bloqueio 3). Sem a guarda, a FK evita perda de dado, mas o run inteiro para e o export não leva os vínculos.
-- **Piloto do reuso (seção 4, passo 3) só com a Etapa 1 da retenção (S3) na `main`.**
+- **Piloto do reuso (seção 4, passo 3): só com a trava S3 junto no deploy** (está nesta branch). Retenção segue desligada e recusa `apply` enquanto houver vínculo.
 - Leituras em produção (`mp_redundancia.sql`, relatório de armazenamento, Raio-X) exigem autorização e janela fora do pico.
 - Nenhuma escrita/DELETE/DROP/VACUUM FULL em produção é parte deste PR.

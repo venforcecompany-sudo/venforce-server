@@ -11,7 +11,8 @@
    (restauração incompleta). Nenhum caminho (CLI `--apply`, modo auto) consulta os vínculos.
    Evidência e especificação exata (S1–S4) para o agente da retenção:
    [`09_RETENCAO_X_REUSO_ESPECIFICACAO.md`](09_RETENCAO_X_REUSO_ESPECIFICACAO.md).
-   **Bloqueia o piloto** até a Etapa 1 (S3: `apply` recusa enquanto existir vínculo) estar na `main`.
+   **Etapa 1 (S3) implementada nesta branch**: `apply` (CLI e auto) recusa enquanto existir vínculo — piloto
+   sem limpeza liberado. Retenção em contas com reuso continua dependendo de S1+S2+S4 (outra frente).
    Conferência read-only: `server/sql/observabilidade/reuso_vinculos.sql`.
 3. **Retenção na main ainda apaga planilhas legacy** (`incluirLegacy: true`): a trava
    de origem está só na worktree de retenção. Bloqueia ligar retenção automática, não estas entregas.
