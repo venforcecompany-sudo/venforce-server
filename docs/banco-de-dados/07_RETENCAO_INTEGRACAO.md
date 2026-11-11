@@ -20,6 +20,14 @@ A frente de retenção tem dono próprio. Esta missão **não** alterou
 |---|---|---|
 | imports automáticos superados (+ pedidos/itens/componentes por CASCADE); `mp_payments` desses runs (charges por CASCADE) | vigente por conta×competência; manuais; candidates em carência | seleção canônica (dominância), refs JSON em `entregas_cliente`/Cliente 360, carência ≥ 24 h, NOWAIT por tupla |
 
+## Reuso de pedidos × retenção (novo)
+
+Com o reuso ligado, linhas de um import superado podem estar em uso pelo vigente
+(vínculo em `central_vendas_import_pedidos`). A FK impede apagá-lo (23503 — o
+lote falha sem remover nada). O planner precisa da guarda descrita em
+`PENDENCIAS_E_ROLLOUT.md` (bloqueio 2) e, no futuro, de um GC próprio: apagar os
+vínculos do superado e as versões dele que ninguém referencia.
+
 ## Interação com as Entregas 1 e 2
 
 - Entrega 1 reduz o que a retenção precisa apagar de MP daqui para frente.

@@ -1,93 +1,121 @@
-# Entrega 2 — Sync noturno: gravações redundantes
+# Entrega 2 — Sync noturno: parar de recriar pedidos inalterados
 
-Commit `109569e4` (sem push). Medição: `sync-noturno/medicao_persistencia_enxuta_pg18.json`.
+Commits: `109569e4` (persistência enxuta + medição), `44fd802c` (reuso de pedidos),
+`fa9bb21e` (rollout por conta). Sem push.
+Medições: `sync-noturno/medicao_3_versoes_pg18.json` (principal) e
+`sync-noturno/medicao_3_versoes_com_troca_de_lista_pg18.json`.
 
-## Por que cada noite recria pedidos/itens/componentes (confirmado no código)
+## Causa (confirmada no código)
 
-1. **Modelo = snapshot completo por import.** Leitores escolhem **um** import por
-   (cliente, conta, marketplace, competência) que cubra o segmento
-   (`selecionarMelhorImportPorCompetencia` / `coberturaContemSegmento`) e leem
-   suas linhas por `import_id`. Linhas não são compartilháveis entre imports
-   (FK `import_id`, `pedido_row_id`).
-2. **Noturno do mês corrente = 01→ontem, todas as noites**
-   (`calcularPeriodosNoturnos`). A cobertura cresce um dia por noite ⇒ cada noite
-   é um import novo com o mês inteiro: em 30 dias, 1+2+…+30 = 465 "dias-pedido"
-   gravados para 30 dias reais (~15×). Dias 2–5 (e até 15 para contas
-   incompletas) o mês anterior inteiro também é regravado.
-3. **Cada pedido era gravado três vezes por import:** colunas; `payload_json` da
-   linha (itens/componentes: cópia exata das colunas, **sem leitor**); e
-   `central_vendas_imports.payload_json` = o motorPayload **inteiro**, **sem leitor**.
-4. Cópias anteriores ficam até a retenção (frente separada) removê-las.
+1. Cada import é um snapshot completo da competência; os leitores escolhem **um**
+   import por (cliente, conta, marketplace, competência) e leem as linhas dele.
+2. O noturno do mês corrente sincroniza 01→ontem **toda noite** ⇒ import novo com
+   o mês inteiro: 1+2+…+30 = 465 "dias-pedido" gravados para 30 dias reais (~15×).
+3. Cada pedido ainda era gravado 3× por import (colunas + 2 JSONs sem leitor).
 
-Por isso um "hash mensal" não resolve: no mês corrente a cobertura muda toda
-noite, o import nunca é idêntico. E reaproveitar linhas ou mutar o import
-publicado quebra garantias reais (o Painel valida snapshots pelos **ids**
-vigentes; fechamentos e retenção assumem import imutável).
+## Solução escolhida: reuso de pedidos inalterados (variante de A)
 
-## Etapa 1 — compatível (implementada)
+Avaliadas:
+- **B (segmentos por dia/semana):** descartada. Com 3% de pedidos alterados por
+  noite e 40 pedidos/dia, ~70% dos dias têm alguma mudança toda noite (0,97⁴⁰ ≈ 30%
+  de dias intactos) ⇒ quase tudo seria regravado.
+- **A pura (tabela canônica por pedido):** muda ownership, purge, unificação e
+  retenção de uma vez. Reescrita maior que o necessário.
+- **Escolhida — A compatível:** o import continua existindo e sendo publicado
+  igual; só deixa de copiar pedidos que não mudaram.
 
-`CENTRAL_VENDAS_SYNC_PERSISTENCIA_ENXUTA=true` (opt-in; **ausente = formato
-antigo, byte a byte**). Vale só para imports do Sync (`orders_api` + `sync_run_id`).
+Como funciona:
+- O manifesto (digest SHA-256 por pedido = pedido + itens + componentes) do
+  import vigente da **mesma tupla** diz quais pedidos são idênticos.
+- O import novo grava como linhas próprias só **novos e alterados**; os
+  inalterados viram uma linha de vínculo em `central_vendas_import_pedidos
+  (import_id, pedido_row_id)` (~116 B, contra ~6 KB do pacote pedido+itens+componentes).
+- Pedidos de um import = linhas próprias ∪ vinculadas
+  (`centralVendasPedidosCompartilhados.js`). Todos os leitores por `import_id`
+  foram adaptados e devolvem o **import lido**: Central (período, getLatest,
+  detalhe), realizado da Margem, Painel (pedidos, composição, sobreposição),
+  Cliente 360. Sentinel não lê essas tabelas.
+- **Sem a tabela de vínculos, cada leitor executa o SQL de antes, idêntico.**
 
-| O quê | Antes | Depois |
-|---|---|---|
-| `pedido_itens.payload_json` / `componentes.payload_json` | objeto inteiro (= colunas) | só **extras** que as colunas não reproduzem (normalmente `{}`); colunas + extras reconstroem o original (`reconstruirItem/Componente`) |
-| `imports.payload_json` | motorPayload inteiro | **manifesto**: contagens + digest SHA-256 por pedido |
-| `pedidos.payload_json` | completo | **inalterado** (lido por `buildPedidoContrato`) |
-| Planilha manual / outras fontes | completo | **inalterado** |
-| Leitura, seleção canônica, publicação, retenção, Painel, Margem, Sentinel | — | **nenhuma mudança** |
+O que **não** muda: seleção canônica por competência e cobertura; publicação
+candidate→published; isolamento por conta (o reuso só olha a mesma tupla e
+filtra `cliente_slug/marketplace/competencia`); imports existentes; planilhas
+(nunca entram no reuso); fórmulas.
 
-Sempre (com ou sem flag) o run passa a registrar em
-`metadata_json.porCompetencia[].persistencia`: `bytesJsonEstimados`, `duracaoMs`,
-e com a flag `diff = {novos, alterados, inalterados, removidos, identico}` contra
-o manifesto do import vigente. É o medidor de redundância que a Entrega 5 lê.
+Alterações legítimas (frete que chega, status, devolução, reembolso, comissão,
+resultado, custo) mudam o digest ⇒ o pedido é gravado de novo como versão nova.
 
-## Antes × depois (PG 18 local, 12 noites, 40 pedidos/dia, 3% de mudanças/noite)
+Integridade: FK `pedido_row_id` sem CASCADE ⇒ apagar o import **dono** de
+linhas que outro import usa falha com 23503 (testado); apagar o cliente inteiro
+(purge) passa e não deixa órfão (testado). A unificação conhece a tabela nova
+(`centralReferenceScope.js`, PRESERVE_BY_PARENT); seus testes PG (54 cenários) passam.
 
-Fixtures sintéticas; teste `centralVendasPersistenciaEnxuta.postgres.test.js` (74 verificações).
+## Antes × depois — PG 18 local, mesmas 12 noites + fechamento do mês
 
-| Medida | Completo | Enxuto | Diferença |
+40 pedidos/dia, 3% dos pedidos antigos mudam por noite, frete atrasado chega na
+noite seguinte. Dados sintéticos. Teste `centralVendasPersistenciaEnxuta.postgres.test.js`
+(175 verificações). **Não é economia obtida em produção.**
+
+| | 1. main | 2. enxuta | 3. reuso |
 |---|---:|---:|---:|
-| Disco total das 4 tabelas | 14,5 MB | 9,5 MB | **−34%** |
-| `central_vendas_componentes` | 8,1 MB | 5,0 MB | −38% |
-| `central_vendas_pedido_itens` | 2,5 MB | 1,2 MB | −53% |
-| `central_vendas_imports` | 0,8 MB | 0,24 MB | −69% |
-| `central_vendas_pedidos` | 3,1 MB | 3,1 MB | 0 (payload lido) |
-| JSON gravado na noite 12 | 1,66 MB | 0,30 MB | −82% |
-| Tempo de persistência (noite 12) | 694 ms | 734 ms | equivalente |
-| Linhas gravadas | iguais | iguais | — |
-| Leitura canônica + realizado + resumo financeiro | — | — | **idênticos nas 12 noites** |
+| Imports criados | 13 + 1 planilha | igual | igual |
+| Pedidos novos (12 noites) | 480 | 480 | 480 |
+| Pedidos alterados | 155 | 155 | 155 |
+| Inalterados **regravados** | **2.965** | 2.965 | **0** (2.965 vínculos) |
+| Linhas de pedido gravadas | 3.600 | 3.600 | **635** |
+| Itens gravados | 3.600 | 3.600 | 635 |
+| Componentes gravados | 21.750 | 21.750 | 3.842 |
+| Disco (tabelas + índices + vínculos) | 16,71 MB | 10,98 MB | **2,78 MB** |
+| — componentes | 9,4 MB | 5,8 MB | 1,1 MB |
+| — pedidos | 3,5 MB | 3,5 MB | 0,7 MB |
+| — itens | 2,9 MB | 1,4 MB | 0,3 MB |
+| — vínculos | — | — | 0,33 MB |
+| Tempo total de gravação | 5,5 s | 5,4 s | **1,3 s** |
+| Leitores atuais e resultado financeiro | referência | idênticos | idênticos |
+| Fechamento do mês sem mudança | regrava 480 | regrava 480 | **0 linhas** |
 
-Redundância medida pelo manifesto (noites 2–12): 440 novos, 155 alterados,
-**2.485 inalterados (81%)**. Em produção o número real sai do relatório
-diário (`syncs_escrita_24h`) assim que a flag estiver ligada.
+Redução vs main: **−83% de disco**, **−82% de linhas de pedido**, −76% de tempo de gravação.
+Com a conta saindo da lista na noite 11 (grava completo) e voltando na 12: 3,86 MB, leitores idênticos.
 
-> Teste sintético não prova segurança em produção. Ele prova paridade de leitura
-> e ausência de perda no código; o rollout abaixo é gradual por isso.
+## Estimativa de redução do crescimento (fundamentada, não medida em produção)
 
-## Etapa 2 — futura (exige mudança de modelo)
+Base: produção em 05/11 tinha 711.644 linhas de pedido para 4.249 MB em
+pedidos+itens+componentes (≈ **6,0 KB por pedido**, com índices); vínculo medido
+localmente ≈ **116 B**. Por conta e mês, com *d* pedidos/dia e fração *a* de
+pedidos antigos alterados por noite:
 
-**Cobertura em mosaico:** o import do mês corrente vira segmentos não sobrepostos
-(ex.: semanal + "dias recentes"). A cada noite, o manifesto por pedido diz quais
-segmentos mudaram; só esses são regravados como imports novos; os demais
-continuam vigentes.
+- main: 465·d pacotes ≈ 2,8·d MB/mês
+- reuso: (30 + 435·a)·d pacotes + 435·d vínculos
 
-- Leitores por intervalo já aceitam vários `importIds`
-  (`loadPedidosByImportIds` usa `import_id = ANY` + `data_pedido BETWEEN`).
-- A mudar: `selecionarMelhorImportPorCompetencia`/`resolveImportsForRange`
-  (devolver o mosaico vigente), `getLatestCentralVendasImport`, dominância da
-  retenção, invariante de ids vigentes do Painel, `listarContasComMesIncompleto`.
-- Ganho esperado: grava ~(novos + alterados + segmento do dia) em vez do mês
-  inteiro — na medição, ~19% das linhas das noites 2–12.
-- Pré-requisito: etapa 1 ligada em produção por algumas semanas para medir a
-  taxa real de alterados por conta.
+| *a* (alterados/noite) | Redução das gravações da Central |
+|---|---:|
+| 3% (teste) | ≈ 89% |
+| 10% | ≈ 83% |
+| 20% | ≈ 73% |
 
-## Rollout e reversão
+Ordem de grandeza: ~73 runs/dia em produção × ~739 pedidos por import ≈ 54 mil
+pacotes/dia ≈ **320 MB/dia de escrita bruta** na Central hoje (antes da retenção).
+Com reuso em todas as contas: ~35–85 MB/dia, conforme *a*. O valor real sai do
+relatório diário (`syncs_escrita_24h`: inalterados × alterados × novos) depois de
+ligar a flag.
 
-1. Merge: no-op (flag ausente; só a medição de bytes/duração é nova no metadata).
-2. Ligar `CENTRAL_VENDAS_SYNC_PERSISTENCIA_ENXUTA=true` no Render; acompanhar 2–3
-   noites: Painel/Central/Margem/Fechamento-API conferidos em 1–2 contas; relatório
-   de armazenamento (`syncs_escrita_24h`).
-3. Reverter = remover a env. Imports já gravados enxutos continuam **legíveis**
-   (leitores nunca usaram esses JSONs); se um dia for preciso o JSON completo,
-   `reconstruirItem/Componente` reconstrói a partir das linhas.
+## O que continua crescendo (legitimamente)
+
+- 1 pacote por **pedido novo** e 1 por **alteração real** (versão nova).
+- Vínculos: 1 por pedido inalterado por noite (~116 B). Cresce com noites × pedidos
+  do mês, mas ~50× menor que a cópia. Fica limitado pelo GC de imports superados (pendência).
+- Versões antigas de pedidos alterados ficam no import que as gravou, até a retenção tratá-las.
+- `central_vendas_sync_runs/sources` (metadados por run), Sentinel incremental,
+  fechamentos/entregas, dados manuais, snapshots de margem (sobrescritos).
+
+## Rollout gradual por conta e reversão
+
+1. Merge: no-op (flags desligadas, migration fora do boot).
+2. Aplicar `server/sql/migrations/20261111_central_vendas_import_pedidos.sql` (manual, autorizado) e reiniciar.
+3. `CENTRAL_VENDAS_SYNC_PERSISTENCIA_ENXUTA=true` (pré-requisito do manifesto) — 1–2 noites.
+4. `CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS=true` + `CENTRAL_VENDAS_SYNC_REUSO_CONTAS=<1–2 contas>`.
+   Conferir Painel, Central, Margem, Cliente 360 e Fechamento via API dessas contas; relatório diário.
+5. Ampliar a lista; depois `*`.
+6. Reverter: tirar a conta da lista (ou a flag). Imports já gravados com vínculo **continuam
+   legíveis** (leitores sempre entendem vínculos); o próximo import da conta volta a gravar completo.
+   A tabela só pode ser removida quando estiver vazia.
