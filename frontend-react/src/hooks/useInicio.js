@@ -9,7 +9,7 @@
 // O período (hoje | 7d | 30d | 90d) vive na URL como `?periodo=`; o padrão
 // (30 dias) não aparece na URL.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { obterInicio } from "../services/inicioApi.js";
 import { ApiError } from "../services/apiClient.js";
 
@@ -44,6 +44,9 @@ export function useInicio({ clienteSlug, clienteContaId, pronta }) {
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(null);
+  // Recarregar sem trocar nada (ex.: depois de sincronizar os pedidos de hoje).
+  const [versao, setVersao] = useState(0);
+  const recarregar = useCallback(() => setVersao((v) => v + 1), []);
   const seqRef = useRef(0);
   const abortRef = useRef(null);
   const chaveRef = useRef(null);
@@ -88,9 +91,9 @@ export function useInicio({ clienteSlug, clienteContaId, pronta }) {
       });
 
     return () => controlador.abort();
-  }, [clienteSlug, clienteContaId, periodo, pronta]);
+  }, [clienteSlug, clienteContaId, periodo, pronta, versao]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  return { periodo, setPeriodo, dados, carregando, erro };
+  return { periodo, setPeriodo, dados, carregando, erro, recarregar };
 }

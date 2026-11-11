@@ -19,6 +19,7 @@
 
 import { useOperacaoAtual } from "../hooks/useVfContext.js";
 import { PERIODOS, useInicio } from "../hooks/useInicio.js";
+import { useSincronizaHoje } from "../hooks/useSincronizaHoje.js";
 import { BlocoCard, BlocoIndisponivel, BlocoSkeleton } from "../components/visao/BlocoCard.jsx";
 import { AdsBloco } from "../components/visao/AdsBloco.jsx";
 import { SaudeOperacional } from "../components/visao/SaudeOperacional.jsx";
@@ -34,6 +35,36 @@ function Bloco({ envelope, render, ...props }) {
     <BlocoCard {...props}>
       {envelope.disponivel ? render(envelope.dados) : <BlocoIndisponivel motivo={envelope.motivo} />}
     </BlocoCard>
+  );
+}
+
+// "Hoje" sem os pedidos de hoje: enquanto busca, diz que está buscando; se
+// não pode sincronizar (não admin), diz quando entram.
+function AvisoHoje({ dadosAte, hoje, href }) {
+  const ate = diaCurto(dadosAte);
+  let texto;
+  let acao = null;
+  if (hoje.emAndamento) {
+    texto = "Buscando os pedidos de hoje no Mercado Livre…";
+  } else if (!hoje.podeSincronizar) {
+    texto = `Os pedidos de hoje entram na próxima sincronização — as vendas vão até ${ate}.`;
+  } else {
+    texto = hoje.fase === "falhou"
+      ? `Não deu para trazer os pedidos de hoje agora (${hoje.erro || "falha na sincronização"}). As vendas vão até ${ate}.`
+      : `Os pedidos de hoje ainda não foram sincronizados — as vendas vão até ${ate}.`;
+    acao = (
+      <>
+        {" "}
+        <button type="button" className="vf-btn vf-btn--secondary vf-btn--sm" onClick={hoje.sincronizar}>Sincronizar agora</button>
+        {" "}ou <a href={href}>abra o Financeiro</a>.
+      </>
+    );
+  }
+  return (
+    <p className="vf-inicio-vazio" role="status" aria-busy={hoje.emAndamento || undefined}>
+      {texto}
+      {acao}
+    </p>
   );
 }
 
@@ -53,7 +84,8 @@ function Carregando() {
 
 export default function InicioPage() {
   const { pronta, clienteSlug, clienteContaId } = useOperacaoAtual();
-  const { periodo, setPeriodo, dados, carregando, erro } = useInicio({ clienteSlug, clienteContaId, pronta });
+  const { periodo, setPeriodo, dados, carregando, erro, recarregar } = useInicio({ clienteSlug, clienteContaId, pronta });
+  const hoje = useSincronizaHoje({ clienteSlug, clienteContaId, dados, onConcluido: recarregar });
 
   // Contexto incompleto: o Shell (data-vf-scope="account") já esconde a
   // página e mostra o próprio estado.
@@ -93,7 +125,9 @@ export default function InicioPage() {
           <div className="vf-page-header__actions vf-inicio-topo">
             {vendas?.atualizadoEm && (
               <span className="vf-field__hint">
-                {dadosAte ? `Vendas até ${diaCurto(dadosAte)} · sincronizadas em ${horario(vendas.atualizadoEm)}` : `Vendas atualizadas em ${horario(vendas.atualizadoEm)}`}
+                {hoje.emAndamento
+                  ? "Buscando os pedidos de hoje…"
+                  : dadosAte ? `Vendas até ${diaCurto(dadosAte)} · sincronizadas em ${horario(vendas.atualizadoEm)}` : `Vendas atualizadas em ${horario(vendas.atualizadoEm)}`}
               </span>
             )}
             <div className="vf-inicio-atalhos" role="group" aria-label="Período">
@@ -120,10 +154,7 @@ export default function InicioPage() {
         {dados && (
           <div className={`vf-inicio-corpo${carregando ? " is-atualizando" : ""}`}>
             {hojePendente ? (
-              <p className="vf-inicio-vazio" role="status">
-                Os pedidos de hoje ainda não foram sincronizados — as vendas vão até {diaCurto(vendas.dadosAte)}.{" "}
-                <a href={links.vendas}>Sincronize no Financeiro</a> para ver o dia de hoje.
-              </p>
+              <AvisoHoje dadosAte={vendas.dadosAte} hoje={hoje} href={links.vendas} />
             ) : vendas && t ? (
               <Cartoes totais={t} anterior={vendas.anterior} />
             ) : (
