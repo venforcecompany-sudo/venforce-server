@@ -118,10 +118,27 @@ function snapshotFromMotor(motor, resumo = motor.resumo) {
   };
 }
 
-// A tela da Central de Vendas (Portal/fechamentos-api.js) saiu do Portal; as
-// checagens "sem fórmula própria na tela" da seção 17 deixaram de ter arquivo
-// para ler. A composição continua provada abaixo, contra `buildResumoFromRange`
-// (centralVendasService.js), que é quem calcula esses agregados.
+// M9 — Portal/fechamentos-api.js não tem mais fórmula financeira própria
+// (computeOrder/buildFechamentoResumo/buildFechamentoComponentes foram
+// removidas: a tela só consulta a Read API). Este carregador continua
+// existindo só para a seção 17 provar, no arquivo REAL, que essas
+// declarações de fato não existem mais — a composição em si é validada
+// contra `buildResumoFromRange` (centralVendasService.js), que é quem
+// calcula esses agregados agora.
+function carregarTelaFechamento() {
+  const src = fs.readFileSync(path.join(__dirname, "..", "..", "Portal", "fechamentos-api.js"), "utf8");
+  const ctx = vm.createContext({
+    document: { addEventListener() {}, getElementById() { return null; } },
+    window: { location: { replace() {} } },
+    localStorage: { getItem() { return "token-fake"; }, setItem() {}, removeItem() {} },
+    console: { log() {}, warn() {}, error() {} },
+    fetch() {},
+    setTimeout,
+    clearTimeout,
+  });
+  vm.runInContext(src, ctx, { filename: "fechamentos-api.js" });
+  return ctx;
+}
 
 /* ── Claims de referência ──────────────────────────────────────────────── */
 
@@ -979,10 +996,19 @@ async function run() {
   eq("16. confiança parcial na tela", payloadSemClaims.motor.confianca, "parcial");
   eq("16. fechamento não pode concluir", payloadSemClaims.motor.podeConcluir, false);
 
-  /* ── 17. M9 — a composição fecha matematicamente NO BACKEND. A tela não tem
-     mais fórmula própria (buildFechamentoResumo/buildFechamentoComponentes
-     saíram com a Central de Vendas do Portal); a Composição só formata o que
-     buildResumoFromRange já calcula. ──────────────────────────────────── */
+  /* ── 17. M9 — a composição fecha matematicamente NO BACKEND (a tela não
+     tem mais fórmula própria: buildFechamentoResumo/buildFechamentoComponentes/
+     fechamentoComposicaoResiduo foram removidas de Portal/fechamentos-api.js;
+     Composição/Qualidade da Visão Geral agora só formatam os campos que
+     buildResumoFromRange já calcula) ─────────────────────────────────── */
+
+  const tela = carregarTelaFechamento();
+  ok("17. computeOrder não existe mais no arquivo real (M9)", tela.computeOrder === undefined);
+  ok("17. buildFechamentoResumo não existe mais (M9 — virou buildResumoFromRange no backend)", tela.buildFechamentoResumo === undefined);
+  ok("17. buildFechamentoComponentes não existe mais (M9 — Composição só formata summary/filteredSummary)", tela.buildFechamentoComponentes === undefined);
+  const fonte = fs.readFileSync(path.join(__dirname, "..", "..", "Portal", "fechamentos-api.js"), "utf8");
+  ok("17. a fórmula 'valor - frete - taxas - custo - imposto' não existe mais no arquivo",
+    !/valor\s*-\s*\(?o?\.?frete/.test(fonte));
 
   // Cenário misto: pedido completo, pedido sem frete real, pedido bloqueado por
   // custo ausente (receita existe, resultado não é calculável) e uma devolução.
@@ -1018,8 +1044,9 @@ async function run() {
     snapshotFromMotor(motorComposicao)
   );
 
-  // buildResumoFromRange alimenta GET /read (summary/filteredSummary); não
-  // existe segunda implementação no frontend para reconciliar contra.
+  // buildResumoFromRange é a MESMA função que Portal/fechamentos-api.js
+  // consome via GET /read (summary/filteredSummary) — não existe mais
+  // segunda implementação no frontend para reconciliar contra.
   const resumo = buildResumoFromRange({}, payloadComposicao.pedidos);
 
   ok("17. receita bloqueada existe e é > 0 (pedido BLOQUEADO sem custo)", resumo.receitaBloqueada > 0);
