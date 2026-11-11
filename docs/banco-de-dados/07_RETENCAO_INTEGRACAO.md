@@ -20,13 +20,14 @@ A frente de retenção tem dono próprio. Esta missão **não** alterou
 |---|---|---|
 | imports automáticos superados (+ pedidos/itens/componentes por CASCADE); `mp_payments` desses runs (charges por CASCADE) | vigente por conta×competência; manuais; candidates em carência | seleção canônica (dominância), refs JSON em `entregas_cliente`/Cliente 360, carência ≥ 24 h, NOWAIT por tupla |
 
-## Reuso de pedidos × retenção (novo)
+## Reuso de pedidos × retenção — PROIBIDA com vínculos
 
 Com o reuso ligado, linhas de um import superado podem estar em uso pelo vigente
-(vínculo em `central_vendas_import_pedidos`). A FK impede apagá-lo (23503 — o
-lote falha sem remover nada). O planner precisa da guarda descrita em
-`PENDENCIAS_E_ROLLOUT.md` (bloqueio 2) e, no futuro, de um GC próprio: apagar os
-vínculos do superado e as versões dele que ninguém referencia.
+(`central_vendas_import_pedidos`). A FK evita a perda, mas o executor atual aborta o
+run inteiro (23503) e o export não leva os vínculos. **Retenção manual e automática
+ficam proibidas para contas com imports vinculados** até a correção S1–S4 da
+retenção. Especificação, caminhos verificados e evidência em
+[`09_RETENCAO_X_REUSO_ESPECIFICACAO.md`](09_RETENCAO_X_REUSO_ESPECIFICACAO.md).
 
 ## Interação com as Entregas 1 e 2
 

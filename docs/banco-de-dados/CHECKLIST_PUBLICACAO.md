@@ -10,6 +10,7 @@ opt-in e a migration não está no boot.
 - [x] Unitários: `centralVendasPersistenciaEnxuta` (56), `centralVendasCliente360Adapter` (76), `marginRealizado*`, `painelContas*`, `cliente360*`.
 - [x] PG18 local: três versões main × enxuta × reuso (175), isolamento entre contas (13), Raio-X (23), unificação (5 arquivos, 68 cenários).
 - [x] Migration: idempotente (2×), rollback e reaplicação testados em banco descartável.
+- [x] Checagem da tabela de vínculos: erro propaga, negativo nunca cacheado (`centralVendasPedidosCompartilhadosExistencia.test.js`, 20 verificações).
 - [ ] Rebase/merge com a `main` atual e rerodar a suíte (`node --test`/scripts `tests/*.test.js`): esperado = as 4 falhas preexistentes (basesTiktok, designStudioWorkspace, meliAnunciosOrdenacaoGlobal, mlTokenService).
 
 ## 1. Estado de produção ao publicar (flags ausentes)
@@ -52,6 +53,7 @@ Reversão de qualquer passo: remover a variável (ou a conta da lista). Imports 
 
 ## 5. Restrições que continuam valendo
 
-- **Não ligar `CENTRAL_VENDAS_RETENCAO_AUTO`** enquanto: (a) a guarda NOT EXISTS do reuso não estiver no planner (`PENDENCIAS_E_ROLLOUT.md`, bloqueio 2) e (b) a trava de planilhas legacy não estiver na main (bloqueio 3). Com reuso ligado, retenção sem a guarda falha com 23503 e para o lote, sem perder dado.
+- **Retenção (manual e auto) PROIBIDA para contas com imports vinculados** (`09_RETENCAO_X_REUSO_ESPECIFICACAO.md`). Não ligar `CENTRAL_VENDAS_RETENCAO_AUTO` enquanto: (a) as etapas S1–S4 da retenção não estiverem na `main` e (b) a trava de planilhas legacy não estiver na main (bloqueio 3). Sem a guarda, a FK evita perda de dado, mas o run inteiro para e o export não leva os vínculos.
+- **Piloto do reuso (seção 4, passo 3) só com a Etapa 1 da retenção (S3) na `main`.**
 - Leituras em produção (`mp_redundancia.sql`, relatório de armazenamento, Raio-X) exigem autorização e janela fora do pico.
 - Nenhuma escrita/DELETE/DROP/VACUUM FULL em produção é parte deste PR.

@@ -15,6 +15,7 @@ Branch `feat/pg-reorganizacao` (worktree `~/venforce-dev/wt-pg-reorg`, base
 | — | Mercado Pago: acumulado e retenção própria | [08_MERCADO_PAGO_ACUMULADO.md](08_MERCADO_PAGO_ACUMULADO.md) | `98cc0328` |
 | — | Snapshots, cache e históricos | [06_SNAPSHOTS_CACHE_HISTORICO.md](06_SNAPSHOTS_CACHE_HISTORICO.md) | — |
 | — | Retenção (integração, sem novo sistema) | [07_RETENCAO_INTEGRACAO.md](07_RETENCAO_INTEGRACAO.md) | — |
+| — | Retenção × reuso: proibição e especificação (S1–S4) | [09_RETENCAO_X_REUSO_ESPECIFICACAO.md](09_RETENCAO_X_REUSO_ESPECIFICACAO.md) | — |
 | — | **Pendências e rollout** | [PENDENCIAS_E_ROLLOUT.md](PENDENCIAS_E_ROLLOUT.md) | — |
 | — | **Checklist de publicação (flags desligadas)** | [CHECKLIST_PUBLICACAO.md](CHECKLIST_PUBLICACAO.md) | — |
 

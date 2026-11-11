@@ -5,17 +5,14 @@
 1. **Migration do reuso** (`server/sql/migrations/20261111_central_vendas_import_pedidos.sql`)
    precisa ser aplicada manualmente, com autorização, **antes** de ligar o reuso.
    Aditiva (1 tabela + 1 índice), não entra no boot.
-2. **Retenção × reuso:** com reuso ligado, apagar um import superado que é dono de
-   linhas usadas pelo vigente **falha** (FK 23503). Não há perda de dado, mas o lote
-   da retenção para ("nada deste lote foi removido"). Antes de rodar retenção numa
-   conta com reuso, o planner da frente de retenção precisa excluir esses imports:
-   ```sql
-   -- import P é apagável só se nenhuma linha dele é usada por OUTRO import
-   NOT EXISTS (SELECT 1 FROM central_vendas_import_pedidos v
-                JOIN central_vendas_pedidos p ON p.id = v.pedido_row_id
-               WHERE p.import_id = P.id AND v.import_id <> P.id)
-   ```
-   Hoje `CENTRAL_VENDAS_RETENCAO_AUTO` está desligada ⇒ não bloqueia um piloto.
+2. **Retenção × reuso — PROIBIDA** para contas com imports vinculados (manual e automática).
+   A FK impede perda de dados, mas **não** torna a retenção segura: o lote aborta (23503), o
+   run inteiro para (inclusive outras contas) e a exportação não leva os vínculos
+   (restauração incompleta). Nenhum caminho (CLI `--apply`, modo auto) consulta os vínculos.
+   Evidência e especificação exata (S1–S4) para o agente da retenção:
+   [`09_RETENCAO_X_REUSO_ESPECIFICACAO.md`](09_RETENCAO_X_REUSO_ESPECIFICACAO.md).
+   **Bloqueia o piloto** até a Etapa 1 (S3: `apply` recusa enquanto existir vínculo) estar na `main`.
+   Conferência read-only: `server/sql/observabilidade/reuso_vinculos.sql`.
 3. **Retenção na main ainda apaga planilhas legacy** (`incluirLegacy: true`): a trava
    de origem está só na worktree de retenção. Bloqueia ligar retenção automática, não estas entregas.
 
