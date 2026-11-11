@@ -35,7 +35,17 @@ serializa as consultas e guarda 60 s em cache; nunca seleciona token/segredo. De
 ## Código
 `services/raioX/`: `raioXMotores.js` (catálogo), `raioXVisualService.js` (composição; reaproveita
 `gerarRaioXCliente`, agora com `contaId` opcional), `raioXSintetico.js`; `scripts/raio-x-visual.js`;
-`raioX-ui/index.html`. Testes: `raioXVisual.test.js` (46), `raioXVisual.postgres.test.js` (29, PG local).
+`raioX-ui/index.html`. Testes: `raioXVisual.test.js` (132), `raioXVisual.postgres.test.js` (57, PG local).
+
+## Autorização do host e escopo por conta
+- A URL do banco passa por `raioXConexao.js`: o host usado é o do MESMO parser do driver e só são aceitos
+  `sslmode`, `ssl`, `application_name`, `connect_timeout` (`?host=`, `hostaddr`, `port`, `service`, `options`… são recusados);
+  `PGHOST` & cia são removidos do ambiente; o host exibido é o destino efetivo.
+- Com conta selecionada, Central, syncs, Mercado Pago e as checagens filtram pela conta; o que não se separa por conta
+  (imports sem conta, grants sem conta…) aparece como **escopo do cliente** e não rebaixa a qualidade da conta.
+- Vínculos de reuso: `sql/observabilidade/reuso_vinculos_cliente.sql` (restringe cliente/conta antes de agregar); a global
+  `reuso_vinculos.sql` segue para observabilidade geral.
+- "Como funciona" (aba 4) vem de `raioXMotores.js` (fluxos do inventário); sem fluxo documentado a tela mostra **Não mapeado**.
 
 ## Fora do alcance (próximas etapas)
 Tamanho exato por cliente/conta (hoje estimativa); filhas (pedidos/itens/componentes) por cliente só no
