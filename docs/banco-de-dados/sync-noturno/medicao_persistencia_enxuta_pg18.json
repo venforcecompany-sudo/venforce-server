@@ -1,0 +1,361 @@
+{
+  "parametros": {
+    "NOITES": 12,
+    "PEDIDOS_POR_DIA": 40,
+    "TAXA_MUDANCA": 0.03
+  },
+  "porNoite": [
+    {
+      "noite": 1,
+      "pedidosNoSnapshot": 40,
+      "linhas": {
+        "pedidos": 40,
+        "itens": 40,
+        "componentes": 240
+      },
+      "bytesJsonCompleto": 146245,
+      "bytesJsonEnxuto": 26794,
+      "msCompleto": 125,
+      "msEnxuto": 117,
+      "diff": {
+        "comparavel": false,
+        "motivo": "SEM_MANIFESTO_ANTERIOR"
+      }
+    },
+    {
+      "noite": 2,
+      "pedidosNoSnapshot": 80,
+      "linhas": {
+        "pedidos": 80,
+        "itens": 80,
+        "componentes": 480
+      },
+      "bytesJsonCompleto": 289425,
+      "bytesJsonEnxuto": 53150,
+      "msCompleto": 159,
+      "msEnxuto": 149,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 8,
+        "inalterados": 32,
+        "removidos": 0,
+        "identico": false
+      }
+    },
+    {
+      "noite": 3,
+      "pedidosNoSnapshot": 120,
+      "linhas": {
+        "pedidos": 120,
+        "itens": 120,
+        "componentes": 721
+      },
+      "bytesJsonCompleto": 433241,
+      "bytesJsonEnxuto": 79528,
+      "msCompleto": 406,
+      "msEnxuto": 176,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 10,
+        "inalterados": 70,
+        "removidos": 0,
+        "identico": false
+      }
+    },
+    {
+      "noite": 4,
+      "pedidosNoSnapshot": 160,
+      "linhas": {
+        "pedidos": 160,
+        "itens": 160,
+        "componentes": 963
+      },
+      "bytesJsonCompleto": 578005,
+      "bytesJsonEnxuto": 105970,
+      "msCompleto": 354,
+      "msEnxuto": 293,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 12,
+        "inalterados": 108,
+        "removidos": 0,
+        "identico": false
+      }
+    },
+    {
+      "noite": 5,
+      "pedidosNoSnapshot": 200,
+      "linhas": {
+        "pedidos": 200,
+        "itens": 200,
+        "componentes": 1204
+      },
+      "bytesJsonCompleto": 722704,
+      "bytesJsonEnxuto": 132452,
+      "msCompleto": 312,
+      "msEnxuto": 264,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 9,
+        "inalterados": 151,
+        "removidos": 0,
+        "identico": false
+      }
+    },
+    {
+      "noite": 6,
+      "pedidosNoSnapshot": 240,
+      "linhas": {
+        "pedidos": 240,
+        "itens": 240,
+        "componentes": 1445
+      },
+      "bytesJsonCompleto": 866324,
+      "bytesJsonEnxuto": 158809,
+      "msCompleto": 424,
+      "msEnxuto": 387,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 11,
+        "inalterados": 189,
+        "removidos": 0,
+        "identico": false
+      }
+    },
+    {
+      "noite": 7,
+      "pedidosNoSnapshot": 280,
+      "linhas": {
+        "pedidos": 280,
+        "itens": 280,
+        "componentes": 1687
+      },
+      "bytesJsonCompleto": 1010675,
+      "bytesJsonEnxuto": 185188,
+      "msCompleto": 389,
+      "msEnxuto": 365,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 12,
+        "inalterados": 228,
+        "removidos": 0,
+        "identico": false
+      }
+    },
+    {
+      "noite": 8,
+      "pedidosNoSnapshot": 320,
+      "linhas": {
+        "pedidos": 320,
+        "itens": 320,
+        "componentes": 1931
+      },
+      "bytesJsonCompleto": 1156605,
+      "bytesJsonEnxuto": 211656,
+      "msCompleto": 609,
+      "msEnxuto": 567,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 16,
+        "inalterados": 264,
+        "removidos": 0,
+        "identico": false
+      }
+    },
+    {
+      "noite": 9,
+      "pedidosNoSnapshot": 360,
+      "linhas": {
+        "pedidos": 360,
+        "itens": 360,
+        "componentes": 2173
+      },
+      "bytesJsonCompleto": 1301063,
+      "bytesJsonEnxuto": 238085,
+      "msCompleto": 759,
+      "msEnxuto": 505,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 15,
+        "inalterados": 305,
+        "removidos": 0,
+        "identico": false
+      }
+    },
+    {
+      "noite": 10,
+      "pedidosNoSnapshot": 400,
+      "linhas": {
+        "pedidos": 400,
+        "itens": 400,
+        "componentes": 2419
+      },
+      "bytesJsonCompleto": 1447772,
+      "bytesJsonEnxuto": 264558,
+      "msCompleto": 607,
+      "msEnxuto": 539,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 24,
+        "inalterados": 336,
+        "removidos": 0,
+        "identico": false
+      }
+    },
+    {
+      "noite": 11,
+      "pedidosNoSnapshot": 440,
+      "linhas": {
+        "pedidos": 440,
+        "itens": 440,
+        "componentes": 2665
+      },
+      "bytesJsonCompleto": 1594356,
+      "bytesJsonEnxuto": 290962,
+      "msCompleto": 669,
+      "msEnxuto": 706,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 16,
+        "inalterados": 384,
+        "removidos": 0,
+        "identico": false
+      }
+    },
+    {
+      "noite": 12,
+      "pedidosNoSnapshot": 480,
+      "linhas": {
+        "pedidos": 480,
+        "itens": 480,
+        "componentes": 2911
+      },
+      "bytesJsonCompleto": 1741487,
+      "bytesJsonEnxuto": 317481,
+      "msCompleto": 694,
+      "msEnxuto": 734,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 22,
+        "inalterados": 418,
+        "removidos": 0,
+        "identico": false
+      }
+    }
+  ],
+  "tamanhos": {
+    "completo": [
+      {
+        "tabela": "central_vendas_componentes",
+        "total": "8511488",
+        "heap": "6995968",
+        "indices": "1474560",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_imports",
+        "total": "819200",
+        "heap": "24576",
+        "indices": "81920",
+        "toast": "688128"
+      },
+      {
+        "tabela": "central_vendas_pedido_itens",
+        "total": "2662400",
+        "heap": "2154496",
+        "indices": "466944",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedidos",
+        "total": "3235840",
+        "heap": "2842624",
+        "indices": "352256",
+        "toast": "8192"
+      }
+    ],
+    "enxuto": [
+      {
+        "tabela": "central_vendas_componentes",
+        "total": "5275648",
+        "heap": "3768320",
+        "indices": "1474560",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_imports",
+        "total": "253952",
+        "heap": "24576",
+        "indices": "81920",
+        "toast": "122880"
+      },
+      {
+        "tabela": "central_vendas_pedido_itens",
+        "total": "1245184",
+        "heap": "745472",
+        "indices": "466944",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedidos",
+        "total": "3235840",
+        "heap": "2850816",
+        "indices": "352256",
+        "toast": "8192"
+      }
+    ]
+  },
+  "payloadJsonBytes": {
+    "completo": [
+      {
+        "t": "imports",
+        "b": "619842"
+      },
+      {
+        "t": "pedidos",
+        "b": "2238230"
+      },
+      {
+        "t": "itens",
+        "b": "1387308"
+      },
+      {
+        "t": "componentes",
+        "b": "3154085"
+      }
+    ],
+    "enxuto": [
+      {
+        "t": "imports",
+        "b": "67952"
+      },
+      {
+        "t": "pedidos",
+        "b": "2238230"
+      },
+      {
+        "t": "itens",
+        "b": "15600"
+      },
+      {
+        "t": "componentes",
+        "b": "94195"
+      }
+    ]
+  },
+  "totalBytes": {
+    "completo": 15228928,
+    "enxuto": 10010624
+  }
+}
