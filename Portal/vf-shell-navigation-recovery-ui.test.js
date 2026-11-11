@@ -196,6 +196,10 @@ const IDS_QUE_NAO_DEVEM_EXISTIR = [
   "dashboard", "design-templates", "clickup-executivo", "estudio-templates",
   "cliente-360", "cliente-360-v2", "cliente-360-v3", "cliente-operacao", "sentinel", "margem", "guia",
 ];
+// Hotfix admin-nav-restore-vendas: o ROLE global admin recupera Cliente 360 V3, Sentinel,
+// Central de Vendas e Margem na sidebar (provado em vf-admin-nav-restore-ui.test.js). Para o
+// admin, portanto, esses três ids deixam de ser "proibidos"; para os demais perfis a lista acima segue valendo.
+const IDS_RESTAURADOS_PARA_ADMIN = new Set(["cliente-360-v3", "sentinel", "margem"]);
 
 async function run() {
   const server = await startServer();
@@ -282,7 +286,7 @@ async function run() {
     }
 
     await check("Dashboard, Estúdio de Templates e ClickUp Executivo continuam fora do menu mesmo para admin", async () => {
-      for (const id of IDS_QUE_NAO_DEVEM_EXISTIR) {
+      for (const id of IDS_QUE_NAO_DEVEM_EXISTIR.filter((x) => !IDS_RESTAURADOS_PARA_ADMIN.has(x))) {
         const existe = await cdp.evaluate(`Boolean(document.querySelector('.vf-shell__item[data-module=${JSON.stringify(id)}]'))`);
         assert.strictEqual(existe, false, `"${id}" apareceu no Shell V3 para admin — não deveria`);
       }
