@@ -120,6 +120,95 @@ cenario("dimensões históricas de R$ 79 para cima: valor inalterado (13,85 em 8
   for (const p of [82.29, 79]) eq((await cotar(HIST_86, p)).r.fretePrevisto, 13.85);
 }));
 
+// ── Passo 4: dimensões de embalagem declaradas (SELLER_PACKAGE_*) ────────────
+// Caso do Fernando (conta 86): sem nenhuma venda, "Envios Agora" (proximity), 7,75 no item_id.
+const FERNANDO = { id: "MLB4445939340", seller: S86, tags: TAGS_PROX, cotacaoItem: () => NONE(), dims: "28x23x4,324", pedidos: [] };
+
+cenario("conta 86 — MLB4445939340 sem vendas: 7,75 rejeitado, declaradas 28x23x4,324 → 13,85 em 84,90 e em 82,29", () => comEnv(S86, async () => {
+  for (const p of [84.9, 82.29]) {
+    const { r, m } = await cotar(FERNANDO, p);
+    eq(r.fretePrevisto, 13.85, `P=${p}`);
+    eq(r.freteQualidade.nivel, NIVEIS.DECLARADAS);
+    eq(r.freteQualidade.confirmado, false);
+    eq(r.freteQualidade.confianca, "media");
+    eq(r.freteQualidade.dimensions, "28x23x4,324");
+    eq(r.freteQualidade.cotacaoRejeitada, 7.75);
+    eq(r.diagnostico.frete.motivo, null);
+    ok(m.chamadas.every((c) => c.mlUserId === S86), "toda leitura com o token da conta 86");
+  }
+}));
+
+cenario("declaradas abaixo de R$ 79: faixa < 79 do ML (8,25), nunca 7,75 nem 13,85", () => comEnv(S86, async () => {
+  eq((await cotar(FERNANDO, 78.99)).r.fretePrevisto, 8.25);
+}));
+
+cenario("declaradas em kg/mm são convertidas; unidade desconhecida ou medida faltando → desconhecido", () => comEnv(S86, async () => {
+  const kg = await cotar({ ...FERNANDO, dims: "280x230x40,0.324", dimsNormalizadas: "28x23x4,324", unidades: { dim: "mm", peso: "kg" } }, 84.9);
+  eq(kg.r.fretePrevisto, 13.85);
+  eq(kg.r.freteQualidade.dimensions, "28x23x4,324");
+  const pol = await cotar({ ...FERNANDO, unidades: { dim: "in", peso: "g" } }, 84.9);
+  eq(pol.r.fretePrevisto, null);
+  eq(pol.r.diagnostico.frete.motivo, "frete_cotacao_nao_confiavel");
+  const falta = await cotar({ ...FERNANDO, semAtributo: "SELLER_PACKAGE_WEIGHT" }, 84.9);
+  eq(falta.r.fretePrevisto, null);
+  eq(falta.r.freteQualidade.nivel, NIVEIS.DESCONHECIDO);
+}));
+
+cenario("declaradas cuja cotação não volta com desconto obrigatório → desconhecido (não aceita 7,75 por outro caminho)", () => comEnv(S86, async () => {
+  const { r } = await cotar({ ...FERNANDO, tabela: () => NONE() }, 84.9);
+  eq(r.fretePrevisto, null);
+  eq(r.freteQualidade.nivel, NIVEIS.DESCONHECIDO);
+}));
+
+cenario("ordem preservada: com envios históricos concordantes vale o passo 1 (não lê os atributos)", () => comEnv(S86, async () => {
+  const { r, m } = await cotar({ ...HIST_86, dims: "99x99x99,9999" }, 84.9);
+  eq(r.freteQualidade.nivel, NIVEIS.DIMENSOES);
+  eq(r.freteQualidade.dimensions, "28x23x4,324");
+  ok(!m.chamadas.some((c) => c.p.includes("include_attributes")), "atributos só depois dos passos com envios reais");
+}));
+
+cenario("cotação confiável (mandatory) nunca chega ao passo 4: controle e Full ficam iguais, sem GET extra", () => comEnv(`${S86},${S87}`, async () => {
+  const ctrl = { id: "MLB7699058364", seller: S86, tags: TAGS_CTRL, dims: "27x23x4,548", cotacaoItem: (p) => (p >= 79 ? MANDATORY(14.45) : MANDATORY(8.45, 0.3)) };
+  for (const [p, v] of [[104.92, 14.45], [82.29, 14.45], [78.99, 8.45]]) {
+    const { r, m } = await cotar(ctrl, p);
+    eq(r.fretePrevisto, v, `controle P=${p}`);
+    eq(r.freteQualidade.nivel, NIVEIS.COTADO);
+    ok(!m.chamadas.some((c) => c.p.startsWith("/items/") || c.p.startsWith("/orders")), "sem leitura extra");
+  }
+  // Full (MLB7722083152): item_id 19,05 mandatory (cobrado 14,45 em 88,99 = item_id em 88,99). As declaradas do
+  // anúncio Full são MAIORES que as medidas do CD (billable 3168 x 510): nunca podem substituir a cotação.
+  const full = { id: "MLB7722083152", seller: S86, tags: TAGS_CTRL, logistica: "fulfillment", dims: "40x40x10,3168", cotacaoItem: (p) => (p >= 100 ? MANDATORY(19.05) : MANDATORY(14.45)) };
+  const f = await cotar(full, 137.33);
+  eq(f.r.fretePrevisto, 19.05);
+  eq(f.r.freteQualidade.nivel, NIVEIS.COTADO);
+}));
+
+cenario("conta 87 — casos proximity comprovados continuam iguais (envios históricos) e MLB7892951136 sai de desconhecido", () => comEnv(S87, async () => {
+  const comprovados = [
+    { id: "MLB6244198308", preco: 108.8, dims: "27x23x5,620", custo: 16.85 },
+    { id: "MLB4113911709", preco: 99.9, dims: "28x24x4,430", custo: 13.85 },
+    { id: "MLB4161792499", preco: 94.99, dims: "36x26x6,300", custo: 14.45 },
+  ];
+  for (const c of comprovados) {
+    const spec = { id: c.id, seller: S87, tags: TAGS_PROX, cotacaoItem: () => NONE(), precoVenda: c.preco, pedidos: [{}, {}, {}],
+      dimsPorEnvio: [c.dims, c.dims, c.dims], dimsCotaveis: [c.dims], tabela: () => MANDATORY(c.custo) };
+    const { r } = await cotar(spec, c.preco);
+    eq(r.fretePrevisto, c.custo, c.id);
+    eq(r.freteQualidade.nivel, NIVEIS.DIMENSOES, c.id);
+  }
+  const m136 = { id: "MLB7892951136", seller: S87, tags: TAGS_PROX, cotacaoItem: () => NONE(), dims: "10x25x35,700", tabela: () => MANDATORY(21.75), pedidos: [] };
+  const { r } = await cotar(m136, 169.66);
+  eq(r.fretePrevisto, 21.75);
+  eq(r.freteQualidade.nivel, NIVEIS.DECLARADAS);
+}));
+
+cenario("seller fora de FRETE_COTACAO_CONFIAVEL_SELLERS: comportamento antigo (7,75, sem avaliação) — liberação continua por seller", () => comEnv(S87, async () => {
+  const { r, m } = await cotar(FERNANDO, 84.9);
+  eq(r.fretePrevisto, 7.75);
+  eq(r.freteQualidade, null);
+  ok(!m.chamadas.some((c) => c.p.startsWith("/items/")), "nenhuma leitura extra");
+}));
+
 (async () => {
   let falhas = 0;
   for (const { n, f } of casos) {

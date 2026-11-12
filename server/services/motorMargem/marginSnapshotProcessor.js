@@ -243,7 +243,7 @@ const TEXTO_MOTIVO = {
   ml_nao_encontrado: "não encontrado no Mercado Livre (404)",
   ml_sem_tarifa: "resposta do Mercado Livre sem a tarifa",
   ml_sem_frete: "resposta do Mercado Livre sem o custo de frete",
-  frete_cotacao_nao_confiavel: "cotação de frete do Mercado Livre não confiável para este anúncio (tag proximity sem desconto obrigatório) e sem dimensões/custo cobrado suficientes para estimar",
+  frete_cotacao_nao_confiavel: "cotação de frete do Mercado Livre não confiável para este anúncio (tag proximity sem desconto obrigatório) e sem dimensões de envios, custo cobrado nem dimensões de embalagem declaradas no anúncio para estimar",
   anuncio_sem_tipo_ou_categoria: "anúncio sem tipo/categoria na leitura do detalhe",
   conta_sem_seller: "conta sem seller identificado",
   preco_ausente: "preço do anúncio não obtido",

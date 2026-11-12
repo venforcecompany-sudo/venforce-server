@@ -18,7 +18,10 @@
 //   2. custo efetivamente cobrado do vendedor em envios de item único comparáveis
 //      (≥3 amostras, mesmo MLB/logística, preço ±3%, dispersão ≤10%) →
 //      nível "estimado_custo_cobrado" (confiança baixa);
-//   3. nada disso → `null` + motivo `frete_cotacao_nao_confiavel` (frete
+//   3. dimensões de embalagem DECLARADAS no próprio anúncio (atributos
+//      SELLER_PACKAGE_HEIGHT/WIDTH/LENGTH/WEIGHT do ML, P0 12/11/2026) → nova
+//      cotação por `dimensions` (nível "estimado_dimensoes_declaradas");
+//   4. nada disso → `null` + motivo `frete_cotacao_nao_confiavel` (frete
 //      desconhecido: a margem não é calculada, mesmo caminho do frete ausente).
 // Nenhuma estimativa é "cobrança confirmada". SOMENTE LEITURA (GET).
 
@@ -29,6 +32,7 @@ const NIVEIS = Object.freeze({
   COTADO: "cotado_ml",
   DIMENSOES: "estimado_dimensoes_historicas",
   CUSTO_COBRADO: "estimado_custo_cobrado",
+  DECLARADAS: "estimado_dimensoes_declaradas",
   DESCONHECIDO: "desconhecido",
 });
 
@@ -144,6 +148,42 @@ function urlCotacaoPorDimensoes({ sellerId, dimensions, precoEfetivo, listingTyp
     `&mode=me2&condition=new&logistic_type=${encodeURIComponent(logisticType)}`;
 }
 
+// ── Dimensões de embalagem DECLARADAS no anúncio (SELLER_PACKAGE_*) ─────────
+// Validação (12/11/2026, contas 86 e 87): em envios reais cross_docking cuja
+// medida do envio é a declarada, a cotação por elas = custo cobrado (19/20 e
+// 53/53); nos anúncios confiáveis (sem proximity) = cotação por item_id
+// (17/17). Só entra quando os passos com envios reais falham. Exige as QUATRO
+// medidas > 0 em unidade conhecida: nada é completado nem arredondado.
+const UNIDADES = Object.freeze({ cm: 1, mm: 0.1, m: 100, g: 1, kg: 1000 });
+
+function medidaDeclarada(atributos, id) {
+  const a = (atributos || []).find((x) => x && x.id === id);
+  if (!a) return null;
+  const st = a.value_struct || (Array.isArray(a.values) && a.values[0] ? a.values[0].struct : null);
+  if (!st || !Object.prototype.hasOwnProperty.call(UNIDADES, st.unit)) return null;
+  const n = num(st.number);
+  if (n === null || n <= 0) return null;
+  return Math.round(n * UNIDADES[st.unit] * 1000) / 1000;
+}
+
+function lerDimensoesDeclaradas(atributos) {
+  const h = medidaDeclarada(atributos, "SELLER_PACKAGE_HEIGHT");
+  const w = medidaDeclarada(atributos, "SELLER_PACKAGE_WIDTH");
+  const l = medidaDeclarada(atributos, "SELLER_PACKAGE_LENGTH");
+  const p = medidaDeclarada(atributos, "SELLER_PACKAGE_WEIGHT");
+  if (h === null || w === null || l === null || p === null) return null;
+  return { dimensions: `${h}x${w}x${l},${p}` };
+}
+
+function dimensoesDeclaradas(args) {
+  return memoizar(args.memo, "declaradas", async () => {
+    try {
+      const r = await args.fetchFn(args.clienteId, `/items/${encodeURIComponent(args.itemId)}?include_attributes=all`, args.opcoes);
+      return r && r.ok && r.data ? lerDimensoesDeclaradas(r.data.attributes) : null;
+    } catch (_) { return null; }
+  });
+}
+
 function periodo(amostras) {
   const ds = amostras.map((a) => a.data).filter(Boolean).sort();
   return ds.length ? { de: ds[0], ate: ds[ds.length - 1] } : null;
@@ -231,6 +271,23 @@ async function avaliarFrete({
       motivo: null,
     };
   }
+  const declaradas = await dimensoesDeclaradas({ fetchFn, clienteId, itemId, opcoes, memo });
+  if (declaradas) {
+    try {
+      const r = lerResposta(await fetchFn(clienteId, urlCotacaoPorDimensoes({ sellerId, dimensions: declaradas.dimensions, precoEfetivo, listingTypeId, logisticType }), opcoes));
+      if (r.listCost !== null && descontoObrigatorio(r)) {
+        return {
+          fretePrevisto: r.listCost,
+          qualidade: {
+            nivel: NIVEIS.DECLARADAS, confirmado: false, confianca: "media",
+            fonte: "shipping_options/free?dimensions (SELLER_PACKAGE_* declaradas no anuncio)",
+            dimensions: declaradas.dimensions, amostrasEncontradas: amostras.length, cotacaoRejeitada: resposta.listCost, ...base,
+          },
+          motivo: null,
+        };
+      }
+    } catch (_) { /* desconhecido */ }
+  }
   return {
     fretePrevisto: null,
     qualidade: { nivel: NIVEIS.DESCONHECIDO, confirmado: false, motivo: MOTIVO_NAO_CONFIAVEL, amostrasEncontradas: amostras.length, cotacaoRejeitada: resposta.listCost, ...base },
@@ -240,5 +297,5 @@ async function avaliarFrete({
 
 module.exports = {
   freteConfiavelHabilitado, cotacaoNaoConfiavel, lerResposta, descontoObrigatorio, avaliarFrete,
-  dimensoesConcordantes, MOTIVO_NAO_CONFIAVEL, NIVEIS,
+  dimensoesConcordantes, lerDimensoesDeclaradas, MOTIVO_NAO_CONFIAVEL, NIVEIS,
 };
