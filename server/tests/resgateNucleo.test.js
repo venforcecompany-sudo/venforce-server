@@ -188,10 +188,22 @@ const completo = (extra = {}) => ({
     assert.strictEqual(classificarOrigem(montarHistoricoItem({ ...base, eventos: [{ tipo: "rebate_participacao", em: "2026-11-08T00:00:00Z", alteraPreco: true, precoNovo: 89.9 }] })).origem, ORIGEM.ALTERADO_AUTOMACAO);
     assert.strictEqual(classificarOrigem(montarHistoricoItem({ ...base, eventos: [{ tipo: "preco_manual", em: "2026-11-08T00:00:00Z", alteraPreco: true, precoNovo: 89.9 }] })).origem, ORIGEM.ALTERADO_MANUAL);
   });
-  await t("troca de preço nas vendas reais e last_updated do ML entram como sinais datados", () => {
-    const h = montarHistoricoItem({ vendas: { precos: [{ data: "2026-10-20", preco: 100 }, { data: "2026-11-09", preco: 92 }] }, aoVivo: { preco: 92, em: agora.toISOString(), precoBaseAtualizadoEm: "2026-11-09T08:00:00Z" }, agora });
+  await t("troca de REGIME no preço vendido e last_updated do ML entram como sinais datados", () => {
+    const v = { precos: [{ data: "2026-10-20", preco: 100 }, { data: "2026-10-25", preco: 100 }, { data: "2026-11-08", preco: 92 }, { data: "2026-11-09", preco: 92 }] };
+    const h = montarHistoricoItem({ vendas: v, aoVivo: { preco: 92, em: agora.toISOString(), precoBaseAtualizadoEm: "2026-11-09T08:00:00Z" }, agora });
     assert.ok(h.trocaNasVendas && h.trocaNasVendas.para === 92); assert.strictEqual(h.mudancaRecente, true);
     assert.ok(h.linhaDoTempo.some((x) => x.tipo === "preco_base_atualizado_ml"));
+  });
+  await t("falso positivo evitado: venda isolada com cupom, oscilação em promoção e efetivo × cheio não são 'mudança'", () => {
+    const isolada = montarHistoricoItem({ vendas: { precos: [{ data: "2026-11-01", preco: 100 }, { data: "2026-11-05", preco: 88 }, { data: "2026-11-08", preco: 100 }] }, agora });
+    assert.strictEqual(isolada.trocaNasVendas, null);
+    const promo = montarHistoricoItem({ vendas: { precos: [{ data: "2026-10-20", preco: 100 }, { data: "2026-10-25", preco: 100 }, { data: "2026-11-08", preco: 92 }, { data: "2026-11-09", preco: 92 }] }, promocaoAtiva: true, agora });
+    assert.strictEqual(promo.trocaNasVendas, null);
+    // cadastro (cheio) 139,90 × snapshot efetivo 113,78 com promoção: séries diferentes, nada mudou.
+    const series = montarHistoricoItem({ snapshot: { preco: 113.78, precoCheio: 139.9, em: "2026-11-12T20:00:00Z" }, sync: { preco: 139.9, em: "2026-11-12T18:00:00Z" }, agora });
+    assert.strictEqual(series.mudancaDetectada, null); assert.strictEqual(classificarOrigem(series).origem, ORIGEM.SEM_ALTERACAO_REGISTRADA);
+    const cheioMudou = montarHistoricoItem({ snapshot: { preco: 120, precoCheio: 120, em: "2026-11-10T20:00:00Z" }, sync: { preco: 129.9, em: "2026-11-12T18:00:00Z" }, agora });
+    assert.strictEqual(classificarOrigem(cheioMudou).origem, ORIGEM.ALTERADO_ORIGEM_INDETERMINADA);
   });
 
   console.log("Matriz de compatibilidade e ativação");

@@ -152,7 +152,7 @@ async function eventosDePreco(db, { clienteContaId, desde }) {
   const m = new Map();
   const add = (itemId, ev) => { if (!itemId) return; if (!m.has(itemId)) m.set(itemId, []); m.get(itemId).push(ev); };
   const logs = await consultar(db, `
-    SELECT acao, created_at, status, detalhes->>'item_id' AS item_id, detalhes->>'preco_confirmado' AS preco_confirmado,
+    SELECT acao, (created_at AT TIME ZONE 'UTC') AS created_at, status, detalhes->>'item_id' AS item_id, detalhes->>'preco_confirmado' AS preco_confirmado,
            detalhes->>'preco_anterior' AS preco_anterior, detalhes->>'tipo' AS tipo, detalhes->>'codigo' AS codigo
       FROM activity_logs
      WHERE acao IN ('anuncios_meli.promocoes_rebate.participar','anuncios_meli.promocoes.transferir','anuncios_meli.preco.alterar')
@@ -190,7 +190,7 @@ async function eventosDePreco(db, { clienteContaId, desde }) {
 async function precosEmRelatorios(db, { clienteId, itemIds, desde }) {
   if (!itemIds || !itemIds.length) return new Map();
   const { rows } = await consultar(db, `
-    SELECT ri.item_id, r.created_at, ri.preco_efetivo, ri.frete, ri.mc
+    SELECT ri.item_id, (r.created_at AT TIME ZONE 'UTC') AS created_at, ri.preco_efetivo, ri.frete, ri.mc
       FROM relatorio_itens ri JOIN relatorios r ON r.id = ri.relatorio_id
      WHERE r.cliente_id = $1 AND ri.item_id = ANY($2::text[]) AND r.created_at >= $3::timestamptz
      ORDER BY r.created_at`, [clienteId, itemIds, desde]);
@@ -205,7 +205,7 @@ async function precosEmRelatorios(db, { clienteId, itemIds, desde }) {
 /** Meta de margem da conta: última margem_alvo de relatório salvo do cliente (origem explícita). */
 async function metaDoUltimoRelatorio(db, { clienteId }) {
   const { rows } = await consultar(db, `
-    SELECT margem_alvo, created_at FROM relatorios WHERE cliente_id = $1 AND margem_alvo IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [clienteId]);
+    SELECT margem_alvo, (created_at AT TIME ZONE 'UTC') AS created_at FROM relatorios WHERE cliente_id = $1 AND margem_alvo IS NOT NULL ORDER BY created_at DESC LIMIT 1`, [clienteId]);
   return rows[0] ? { valor: Number(rows[0].margem_alvo), em: new Date(rows[0].created_at).toISOString() } : null;
 }
 
@@ -213,7 +213,7 @@ async function metaDoUltimoRelatorio(db, { clienteId }) {
 /** Eventos de preço do VenForce por conta (agregado), para o inventário. */
 async function eventosPorConta(db, { desde }) {
   const logs = await consultar(db, `
-    SELECT detalhes->>'cliente_conta_id' AS conta, acao, count(*)::int AS n, count(DISTINCT detalhes->>'item_id')::int AS itens, max(created_at) AS ultimo
+    SELECT detalhes->>'cliente_conta_id' AS conta, acao, count(*)::int AS n, count(DISTINCT detalhes->>'item_id')::int AS itens, max(created_at AT TIME ZONE 'UTC') AS ultimo
       FROM activity_logs
      WHERE acao IN ('anuncios_meli.promocoes_rebate.participar','anuncios_meli.promocoes.transferir','anuncios_meli.preco.alterar','anuncios_meli.promocoes.criar')
        AND created_at >= $1::timestamptz

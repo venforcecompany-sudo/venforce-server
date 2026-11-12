@@ -105,9 +105,10 @@ async function auditarItem({ row, conta, contaLiberada = false, vendas = null, e
 
   const historico = montarHistoricoItem({
     eventos, relatorios, vendas,
-    snapshot: { preco: row.price, em: row.calculated_at },
+    snapshot: { preco: row.price, precoCheio: row.list_price, em: row.calculated_at },
     sync: { preco: row.preco_sync, em: row.last_synced_at },
-    aoVivo: vivo && vivo.ok ? { preco: vivo.precos.vigente, em: vivo.observadoEm, precoBaseAtualizadoEm: vivo.precoBaseAtualizadoEm } : null,
+    aoVivo: vivo && vivo.ok ? { preco: vivo.precos.vigente, precoCheio: vivo.precos.cheio, em: vivo.observadoEm, precoBaseAtualizadoEm: vivo.precoBaseAtualizadoEm } : null,
+    promocaoAtiva: num(contrato.componentes.precoPromocional.valor) !== null || num(row.promo_price) !== null,
     agora,
   });
   const origem = classificarOrigem(historico);

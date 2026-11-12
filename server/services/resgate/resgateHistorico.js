@@ -28,12 +28,18 @@ function iso(v) {
 }
 function diff(a, b) { return a !== null && b !== null && Math.abs(a - b) >= TOLERANCIA_PRECO; }
 
-/** Última troca de preço na série de vendas (diferença ≥ 1% entre vendas consecutivas). */
+/**
+ * Troca de REGIME no preço vendido: as 2 vendas mais recentes num preço e as 2
+ * anteriores noutro (≥ 1%). Variação de uma venda isolada (cupom, promoção
+ * relâmpago) não conta.
+ */
 function ultimaTrocaNasVendas(precos) {
   const s = (precos || []).filter((p) => num(p.preco) !== null);
-  for (let i = s.length - 1; i > 0; i--) {
-    const a = num(s[i - 1].preco), b = num(s[i].preco);
-    if (Math.abs(b - a) / a >= 0.01) return { em: `${s[i].data}T00:00:00.000Z`, de: a, para: b };
+  for (let i = s.length - 2; i >= 2; i--) {
+    const novo = num(s[i].preco), novo2 = num(s[i + 1].preco), velho = num(s[i - 1].preco), velho2 = num(s[i - 2].preco);
+    if (Math.abs(novo - novo2) < TOLERANCIA_PRECO && Math.abs(velho - velho2) < TOLERANCIA_PRECO && Math.abs(novo - velho) / velho >= 0.01) {
+      return { em: `${s[i].data}T00:00:00.000Z`, de: velho, para: novo };
+    }
   }
   return null;
 }
@@ -48,31 +54,39 @@ function ultimaTrocaNasVendas(precos) {
  *  vendas             { precos:[{data, preco}] }
  *  agora              Date
  */
-function montarHistoricoItem({ eventos = [], snapshot = null, sync = null, aoVivo = null, relatorios = [], vendas = null, agora = new Date(), janelaDias = JANELA_RECENTE_DIAS } = {}) {
+function montarHistoricoItem({ eventos = [], snapshot = null, sync = null, aoVivo = null, relatorios = [], vendas = null, promocaoAtiva = false, agora = new Date(), janelaDias = JANELA_RECENTE_DIAS } = {}) {
   const fontes = [];
   const linha = [];
   const evs = (eventos || []).map((e) => ({ ...e, em: iso(e.em) })).filter((e) => e.em);
   if (evs.length) fontes.push("eventos_venforce");
   for (const e of evs) linha.push({ em: e.em, preco: e.precoNovo ?? null, fonte: e.fonte, tipo: e.tipo, descricao: e.descricao, alteraPreco: Boolean(e.alteraPreco) });
 
+  // Duas séries que NÃO se comparam entre si: preço EFETIVO (o que o comprador paga,
+  // sale_price — muda com promoção) e preço CHEIO/de cadastro (preço base do anúncio).
   const pontos = [];
-  if (snapshot && num(snapshot.preco) !== null && iso(snapshot.em)) { fontes.push("snapshot_motor"); pontos.push({ em: iso(snapshot.em), preco: num(snapshot.preco), fonte: "margin_projection_snapshots" }); }
-  if (sync && num(sync.preco) !== null && iso(sync.em)) { fontes.push("cadastro_sincronizado"); pontos.push({ em: iso(sync.em), preco: num(sync.preco), fonte: "meli_anuncios" }); }
-  for (const r of relatorios || []) if (num(r.preco) !== null && iso(r.em)) { if (!fontes.includes("relatorios_salvos")) fontes.push("relatorios_salvos"); pontos.push({ em: iso(r.em), preco: num(r.preco), fonte: "relatorio_itens" }); }
-  if (aoVivo && num(aoVivo.preco) !== null && iso(aoVivo.em)) { fontes.push("mercado_livre_ao_vivo"); pontos.push({ em: iso(aoVivo.em), preco: num(aoVivo.preco), fonte: "sale_price (ao vivo)" }); }
-  const trocaVendas = vendas ? ultimaTrocaNasVendas(vendas.precos) : null;
+  const ponto = (serie, preco, em, fonte, rotulo) => { if (num(preco) !== null && iso(em)) pontos.push({ serie, em: iso(em), preco: num(preco), fonte, rotulo }); };
+  if (snapshot) { ponto("efetivo", snapshot.preco, snapshot.em, "margin_projection_snapshots", "preço efetivo no snapshot"); ponto("cheio", snapshot.precoCheio, snapshot.em, "margin_projection_snapshots", "preço cheio no snapshot"); if (num(snapshot.preco) !== null) fontes.push("snapshot_motor"); }
+  if (sync && num(sync.preco) !== null) { ponto("cheio", sync.preco, sync.em, "meli_anuncios", "preço de cadastro sincronizado"); fontes.push("cadastro_sincronizado"); }
+  for (const r of relatorios || []) if (num(r.preco) !== null && iso(r.em)) { if (!fontes.includes("relatorios_salvos")) fontes.push("relatorios_salvos"); ponto("efetivo", r.preco, r.em, "relatorio_itens", "preço efetivo em relatório salvo"); }
+  if (aoVivo && num(aoVivo.preco) !== null) { fontes.push("mercado_livre_ao_vivo"); ponto("efetivo", aoVivo.preco, aoVivo.em, "sale_price (ao vivo)", "preço efetivo ao vivo"); ponto("cheio", aoVivo.precoCheio, aoVivo.em, "sale_price (ao vivo)", "preço cheio ao vivo"); }
+  // Com promoção em andamento, o preço vendido oscila por desenho: não vira sinal de mudança.
+  const trocaVendas = vendas && !promocaoAtiva ? ultimaTrocaNasVendas(vendas.precos) : null;
   if (vendas && vendas.precos && vendas.precos.length) fontes.push("vendas_reais");
 
   pontos.sort((a, b) => (a.em < b.em ? -1 : 1));
-  for (const p of pontos) linha.push({ ...p, tipo: "preco_observado", alteraPreco: false });
+  for (const p of pontos) linha.push({ em: p.em, preco: p.preco, fonte: p.fonte, tipo: "preco_observado", serie: p.serie, descricao: p.rotulo, alteraPreco: false });
 
-  // Mudança detectada entre observações (sem dizer quem mudou).
+  // Mudança detectada entre observações DA MESMA SÉRIE (sem dizer quem mudou).
   let mudanca = null;
-  for (let i = pontos.length - 1; i > 0; i--) {
-    if (diff(pontos[i].preco, pontos[i - 1].preco)) {
-      mudanca = { em: pontos[i].em, entre: [pontos[i - 1].em, pontos[i].em], de: pontos[i - 1].preco, para: pontos[i].preco, fonte: `${pontos[i - 1].fonte} → ${pontos[i].fonte}`,
-        descricao: `Preço observado mudou de R$ ${pontos[i - 1].preco.toFixed(2)} (${pontos[i - 1].fonte}, ${pontos[i - 1].em.slice(0, 10)}) para R$ ${pontos[i].preco.toFixed(2)} (${pontos[i].fonte}, ${pontos[i].em.slice(0, 10)}).` };
-      break;
+  for (const serie of ["efetivo", "cheio"]) {
+    const ps = pontos.filter((p) => p.serie === serie);
+    for (let i = ps.length - 1; i > 0; i--) {
+      if (diff(ps[i].preco, ps[i - 1].preco)) {
+        const m = { em: ps[i].em, serie, entre: [ps[i - 1].em, ps[i].em], de: ps[i - 1].preco, para: ps[i].preco, fonte: `${ps[i - 1].fonte} → ${ps[i].fonte}`,
+          descricao: `${serie === "efetivo" ? "Preço efetivo" : "Preço cheio"} mudou de R$ ${ps[i - 1].preco.toFixed(2)} (${ps[i - 1].fonte}, ${ps[i - 1].em.slice(0, 10)}) para R$ ${ps[i].preco.toFixed(2)} (${ps[i].fonte}, ${ps[i].em.slice(0, 10)}).` };
+        if (!mudanca || m.em > mudanca.em) mudanca = m;
+        break;
+      }
     }
   }
   const precoBaseEm = aoVivo ? iso(aoVivo.precoBaseAtualizadoEm) : null;
