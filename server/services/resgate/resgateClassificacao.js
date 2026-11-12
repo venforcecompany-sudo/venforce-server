@@ -46,6 +46,7 @@ const ACAO = Object.freeze({
   REVISAR_PRECO: "REVISAR_PRECO",
   COMPLETAR_DADOS: "COMPLETAR_DADOS",
   VERIFICAR_FRETE: "VERIFICAR_FRETE",
+  VERIFICAR_SUBSIDIO: "VERIFICAR_SUBSIDIO",
   RECALCULAR_SNAPSHOT: "RECALCULAR_SNAPSHOT",
   NENHUMA: "NENHUMA",
 });
@@ -127,7 +128,7 @@ function classificarSituacao({ contrato, margemExibida = null, precoExibido = nu
   // Margem de promoção com subsídio desconhecido é limite inferior: abaixo da meta/prejuízo não é conclusivo.
   if (res.limiteInferior && (margemReal < 0 || (metaV !== null && margemReal < metaV * 100))) {
     motivos.push(`Margem mínima ${margemReal.toFixed(2)}% (promoção ativa com subsídio do ML desconhecido): não conclusivo.`);
-    return { situacao: SITUACAO.MARGEM_DESCONHECIDA, acao: ACAO.RECALCULAR_SNAPSHOT, motivos, margemReal, margemExibida: exibida, inflada: false };
+    return { situacao: SITUACAO.MARGEM_DESCONHECIDA, acao: ACAO.VERIFICAR_SUBSIDIO, motivos, margemReal, margemExibida: exibida, inflada: false };
   }
   if (margemReal < 0) {
     motivos.push(`Prejuízo de ${margemReal.toFixed(2)}% com dados verificados.`);
