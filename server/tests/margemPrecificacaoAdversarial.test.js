@@ -207,6 +207,32 @@ caso("10. recotação falha no aplicar → RECOTACAO_INDISPONIVEL, zero escrita 
   assert.strictEqual(m2.c.chamadas.enviosMl.length, 0);
 });
 
+// ── 10b. frete estimado com confiança baixa / histórico antigo (P0 12/11/2026) ──
+caso("10b. frete de confiança baixa no aplicar → bloqueado, zero escrita; confiança média passa; mesmo via idempotência nova", async () => {
+  for (const [rotulo, q, idem] of [
+    ["custo cobrado (baixa)", { nivel: "estimado_custo_cobrado", confianca: "baixa" }, "frete-baixa-01"],
+    ["histórico antigo", { nivel: "estimado_dimensoes_historicas", confianca: "baixa", historicoAntigo: true }, "frete-antigo-01"],
+  ]) {
+    const m = mundo();
+    const pa = await previewPreco(m.A); // a simulação/preview segue possível (aviso)
+    m.c.estado.cotacao = (p) => ({ comissaoValor: Math.round(p * 0.12 * 100) / 100, fretePrevisto: 14.45, freteQualidade: q });
+    const r = await aplicar(m.A, pa, USER_A, idem);
+    assert.strictEqual(r.codigo, "RECOTACAO_INDISPONIVEL", rotulo);
+    assert.strictEqual(m.c.chamadas.enviosMl.length, 0, `${rotulo}: nenhuma escrita no ML`);
+    // Novo preview + nova chave de idempotência (o preview anterior é de uso único): continua bloqueado.
+    const pb = await previewPreco(m.A);
+    let recusa = null;
+    try { recusa = await aplicar(m.A, pb, USER_A, `${idem}-b`); } catch (e) { recusa = e; }
+    assert.ok(recusa && (recusa.codigo === "RECOTACAO_INDISPONIVEL" || /bloqueios e não pode ser aplicado/.test(recusa.message || "")), `${rotulo}: reaplicar não contorna: ${recusa && recusa.message}`);
+    assert.strictEqual(m.c.chamadas.enviosMl.length, 0);
+  }
+  const ok = mundo();
+  ok.c.estado.cotacao = (p) => ({ comissaoValor: Math.round(p * 0.12 * 100) / 100, fretePrevisto: 14.45, freteQualidade: { nivel: "estimado_dimensoes_declaradas", confianca: "media" } });
+  const po = await previewPreco(ok.A); // preview e aplicar veem a mesma cotação (fingerprint)
+  const rok = await aplicar(ok.A, po, USER_A, "frete-media-01");
+  assert.ok(rok.ok || rok.status === "aplicado" || ok.c.chamadas.enviosMl.length === 1, `confiança média pode gravar: ${JSON.stringify(rok).slice(0, 200)}`);
+});
+
 // ── 11–13. semântica da promoção ───────────────────────────────────────────
 caso("11. promoção muda de status (ELEGÍVEL → PROGRAMADA) → bloqueado, zero escrita", async () => {
   const m = mundo({ motor: motorItem({ preco: 149.9 }) });

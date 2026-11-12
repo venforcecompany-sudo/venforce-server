@@ -202,6 +202,16 @@ async function run() {
 
     assert.strictEqual(svc.margemNoPreco({ preco: 95, custo: 50, aliquota: 0.1, cotacao: { comissao: null, frete: 10, motivos: { comissao: "ml_rate_limit" } } }).ok, false);
     assert.strictEqual(svc.margemNoPreco({ preco: 95, custo: 50, aliquota: 0.1, cotacao: { comissao: 11, frete: null, frete_aplicavel: true, motivos: {} } }).ok, false);
+
+    // P0 12/11/2026: frete estimado de confiança baixa / histórico antigo NÃO decide participação (não vira escrita);
+    // confiança média e cotação do ML seguem valendo.
+    const comQ = (q) => svc.margemNoPreco({ preco: 95, custo: 50, aliquota: 0.1, cotacao: { ...cot, frete_qualidade: q } });
+    const baixa = comQ({ nivel: "estimado_custo_cobrado", confianca: "baixa" });
+    assert.deepStrictEqual([baixa.ok, baixa.motivo], [false, "frete_confianca_baixa"]);
+    assert.strictEqual(comQ({ nivel: "estimado_dimensoes_historicas", confianca: "media", historicoAntigo: true }).ok, false);
+    assert.strictEqual(comQ({ nivel: "estimado_dimensoes_declaradas", confianca: "media" }).ok, true);
+    assert.strictEqual(comQ({ nivel: "cotado_ml" }).ok, true);
+    assert.strictEqual(svc.margemNoPreco({ preco: 95, custo: 50, aliquota: 0.1, cotacao: { ...cot, frete_aplicavel: false, frete: null, frete_qualidade: { confianca: "baixa" } } }).ok, true, "logística combinável: sem frete a avaliar");
     assert.strictEqual(svc.margemNoPreco({ preco: 95, custo: 50, aliquota: 0.1, cotacao: { ...cot, limite_excedido: true } }).ok, false);
     assert.strictEqual(svc.margemNoPreco({ preco: 95, custo: null, aliquota: 0.1, cotacao: cot }).ok, false);
     ok("margem num preço: computeMargin com comissão/frete cotados; ausência bloqueia");
