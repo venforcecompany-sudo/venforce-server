@@ -28,12 +28,16 @@ function planoDeAtivacao({ contas = [], env = process.env, tamanhoOnda = 5 } = {
   const linhas = contas.map((c) => {
     const r = c.resumo || {}, m = c.matriz || null;
     const seller = r.sellerId ? String(r.sellerId) : null;
-    const liberadoSeller = seller ? (curinga || sellersHoje.includes(seller)) : false;
+    const naFlag = seller ? (curinga || sellersHoje.includes(seller)) : false;
+    // A flag do Render não é visível fora do servidor: JA_LIBERADA da matriz (linhas com
+    // freteQualidade gravadas pela produção) também conta como liberada.
+    const porEvidencia = Boolean(m && m.decisao === DECISAO.JA_LIBERADA);
+    const liberadoSeller = naFlag || porEvidencia;
     const bloqueioLegado = contasLegadoHoje.includes(String(r.clienteContaId));
     return {
       clienteContaId: r.clienteContaId, clienteNome: r.clienteNome || null, contaNome: r.contaNome || null, sellerId: seller,
       decisao: m ? m.decisao : (r.semAvaliacao ? DECISAO.SEM_DADOS : null), semAvaliacao: r.semAvaliacao || null,
-      liberadoSeller, bloqueioLegado, inconsistente: liberadoSeller && !bloqueioLegado,
+      liberadoSeller, liberadoPor: naFlag ? "flag" : porEvidencia ? "evidencia_no_banco" : null, bloqueioLegado, inconsistente: liberadoSeller && !bloqueioLegado,
       motivos: m ? m.motivos : (r.semAvaliacao ? [`Sem avaliação: ${r.semAvaliacao}.`] : []),
       risco: Number(r.riscoFinanceiro30d || 0) + Number(r.faturamentoComMargemDesconhecida30d || 0) / 20,
       desconhecidosAposLiberar: m ? m.totais.desconhecidoAoVivo : null,
@@ -46,12 +50,16 @@ function planoDeAtivacao({ contas = [], env = process.env, tamanhoOnda = 5 } = {
   const onda2 = candidatas(DECISAO.LIBERAVEL_COM_RESSALVAS).slice(0, restoTam);
   const proxima = [...onda1, ...onda2];
 
-  const novosSellers = [...new Set([...sellersHoje.filter((s) => s !== "*"), ...proxima.map((l) => l.sellerId)])];
+  const novosSellers = [...new Set([...sellersHoje.filter((s) => s !== "*"), ...linhas.filter((l) => l.liberadoSeller && l.sellerId).map((l) => l.sellerId), ...proxima.map((l) => l.sellerId)])];
   const novasContas = [...new Set([...contasLegadoHoje, ...linhas.filter((l) => l.liberadoSeller).map((l) => String(l.clienteContaId)), ...proxima.map((l) => String(l.clienteContaId))])];
 
   const alertas = [];
   if (curinga) alertas.push("FRETE_COTACAO_CONFIAVEL_SELLERS contém `*` em produção: substituir pela lista explícita abaixo.");
-  for (const l of linhas.filter((x) => x.inconsistente)) alertas.push(`Conta ${l.clienteContaId} (seller ${l.sellerId}) liberada sem FRETE_LEGADO_BLOQUEAR_CONTAS: margens antigas visíveis até o recálculo.`);
+  for (const l of linhas.filter((x) => x.inconsistente)) {
+    alertas.push(l.liberadoPor === "evidencia_no_banco"
+      ? `Conta ${l.clienteContaId} (seller ${l.sellerId}) está liberada em produção (há linhas avaliadas): CONFIRMAR no Render que ela também está em FRETE_LEGADO_BLOQUEAR_CONTAS.`
+      : `Conta ${l.clienteContaId} (seller ${l.sellerId}) liberada sem FRETE_LEGADO_BLOQUEAR_CONTAS: margens antigas visíveis até o recálculo.`);
+  }
 
   return {
     geradoEm: new Date().toISOString(),

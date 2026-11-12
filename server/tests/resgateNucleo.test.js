@@ -226,10 +226,14 @@ const completo = (extra = {}) => ({
     const m = montarMatriz({ conta: {}, itens: [...Array.from({ length: 10 }, () => item("coleta", true)), ...Array.from({ length: 10 }, () => item("flex", true))] });
     assert.strictEqual(m.modalidades.flex.status, "PARCIAL"); assert.strictEqual(m.financeiramenteValidada, false);
   });
-  await t("80–90% de concordância = INCONCLUSIVA (não 'sem evidência'), decisão com ressalvas e motivo com a taxa", () => {
+  await t("frete abaixo do cobrado em 10–20% = INCONCLUSIVA; só acima do cobrado = CONSERVADORA; ambos com ressalvas", () => {
     const m = montarMatriz({ conta: {}, itens: [...Array.from({ length: 17 }, () => item("coleta", true)), ...Array.from({ length: 3 }, () => item("coleta", false))] });
     assert.strictEqual(m.modalidades.coleta.status, "INCONCLUSIVA"); assert.strictEqual(m.decisao, DECISAO.LIBERAVEL_COM_RESSALVAS);
-    assert.ok(m.motivos.some((x) => /85% de 20/.test(x)));
+    assert.ok(m.motivos.some((x) => /85% batem, 3 abaixo e 0 acima do cobrado, de 20/.test(x)));
+    // Projeção ACIMA do cobrado (desconto depois da venda): conservadora, não bloqueia nem valida.
+    const sup = (b) => ({ ...item("agencia", b), comparacaoFrete: { bate: b, subestimado: false, superestimado: !b } });
+    const c = montarMatriz({ conta: {}, itens: [...Array.from({ length: 12 }, () => sup(true)), ...Array.from({ length: 8 }, () => sup(false))] });
+    assert.strictEqual(c.modalidades.agencia.status, "CONSERVADORA"); assert.strictEqual(c.decisao, DECISAO.LIBERAVEL_COM_RESSALVAS); assert.strictEqual(c.financeiramenteValidada, false);
     const lib = montarMatriz({ conta: {}, liberadaHoje: true, itens: Array.from({ length: 10 }, () => item("coleta", false)) });
     assert.strictEqual(lib.decisao, DECISAO.JA_LIBERADA); assert.ok(lib.motivos.some((x) => /Mesmo liberada/.test(x)));
   });
@@ -249,6 +253,10 @@ const completo = (extra = {}) => ({
     assert.strictEqual(p.envProposto.FRETE_LEGADO_BLOQUEAR_CONTAS, "87,18");
     assert.ok(!/\*/.test(JSON.stringify(p.envProposto)));
     assert.ok(p.alertas.some((a) => /87/.test(a)));
+    // Sem a flag no processo (CLI local), JA_LIBERADA por evidência entra nas listas propostas.
+    const q = planoDeAtivacao({ contas, env: {} });
+    assert.strictEqual(q.envProposto.FRETE_COTACAO_CONFIAVEL_SELLERS, "2433,1181");
+    assert.ok(q.alertas.some((a) => /CONFIRMAR no Render/.test(a)));
     assert.ok(p.naoLiberar.some((x) => x.clienteContaId === 66));
   });
 

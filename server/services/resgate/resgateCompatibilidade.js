@@ -13,9 +13,10 @@ const { CONFIANCA } = require("./resgateEvidencias");
 
 const MIN_COMPARACOES_MODALIDADE = 5;
 const CONCORDANCIA_VALIDA = 0.9;
-const CONCORDANCIA_DIVERGENTE = 0.8;
+const LIMITE_SUBESTIMADOS_DIVERGENTE = 0.2;
+const LIMITE_SUBESTIMADOS_RESSALVA = 0.1;
 
-const STATUS_MODALIDADE = Object.freeze({ VALIDADA: "VALIDADA", INCONCLUSIVA: "INCONCLUSIVA", DIVERGENTE: "DIVERGENTE", SEM_EVIDENCIA: "SEM_EVIDENCIA", PARCIAL: "PARCIAL", NAO_APLICAVEL: "NAO_APLICAVEL" });
+const STATUS_MODALIDADE = Object.freeze({ VALIDADA: "VALIDADA", CONSERVADORA: "CONSERVADORA", INCONCLUSIVA: "INCONCLUSIVA", DIVERGENTE: "DIVERGENTE", SEM_EVIDENCIA: "SEM_EVIDENCIA", PARCIAL: "PARCIAL", NAO_APLICAVEL: "NAO_APLICAVEL" });
 const DECISAO = Object.freeze({
   LIBERAVEL: "LIBERAVEL",
   LIBERAVEL_COM_RESSALVAS: "LIBERAVEL_COM_RESSALVAS",
@@ -79,8 +80,12 @@ function montarMatriz({ conta = {}, itens = [], liberadaHoje = false, resumo = {
     else if (fam === "flex") status = STATUS_MODALIDADE.PARCIAL; // entregador próprio fora da margem
     else if (m.comparacoes < MIN_COMPARACOES_MODALIDADE) status = STATUS_MODALIDADE.SEM_EVIDENCIA;
     else if (taxa >= CONCORDANCIA_VALIDA) status = STATUS_MODALIDADE.VALIDADA;
-    else if (taxa < CONCORDANCIA_DIVERGENTE) status = STATUS_MODALIDADE.DIVERGENTE;
-    else status = STATUS_MODALIDADE.INCONCLUSIVA; // 80–90%: mede, mas não basta para validar
+    // O PERIGO é o frete projetado ABAIXO do cobrado (margem inflada). Projeção acima do
+    // cobrado (desconto aplicado depois da venda, medido em Agência ~12–17%) subestima a
+    // margem: é conservadora, não bloqueia — mas também não "valida" a conta.
+    else if (m.subestimados / m.comparacoes >= LIMITE_SUBESTIMADOS_DIVERGENTE) status = STATUS_MODALIDADE.DIVERGENTE;
+    else if (m.subestimados / m.comparacoes >= LIMITE_SUBESTIMADOS_RESSALVA) status = STATUS_MODALIDADE.INCONCLUSIVA;
+    else status = STATUS_MODALIDADE.CONSERVADORA;
     modalidades[fam] = { ...m, concordancia: taxa === null ? null : Math.round(taxa * 1000) / 1000, status };
   }
 
@@ -91,24 +96,29 @@ function montarMatriz({ conta = {}, itens = [], liberadaHoje = false, resumo = {
   const comparacoesTotal = Object.values(modalidades).reduce((a, m) => a + m.comparacoes, 0);
   const divergentes = relevantes.filter(([, m]) => m.status === STATUS_MODALIDADE.DIVERGENTE).map(([f]) => f);
   const semEvidencia = relevantes.filter(([, m]) => m.status === STATUS_MODALIDADE.SEM_EVIDENCIA).map(([f]) => f);
-  const inconclusivas = relevantes.filter(([, m]) => m.status === STATUS_MODALIDADE.INCONCLUSIVA).map(([f]) => `${f} (${Math.round(modalidades[f].concordancia * 100)}% de ${modalidades[f].comparacoes})`);
+  const desc = (f) => `${f} (${Math.round(modalidades[f].concordancia * 100)}% batem, ${modalidades[f].subestimados} abaixo e ${modalidades[f].superestimados} acima do cobrado, de ${modalidades[f].comparacoes})`;
+  const inconclusivas = relevantes.filter(([, m]) => m.status === STATUS_MODALIDADE.INCONCLUSIVA).map(([f]) => desc(f));
+  const conservadoras = relevantes.filter(([, m]) => m.status === STATUS_MODALIDADE.CONSERVADORA).map(([f]) => desc(f));
+  const divergentesDesc = divergentes.map(desc);
   const validadas = relevantes.filter(([, m]) => m.status === STATUS_MODALIDADE.VALIDADA).map(([f]) => f);
 
   const motivos = [];
   let decisao;
   if (liberadaHoje) {
     decisao = DECISAO.JA_LIBERADA; motivos.push("Seller já está na liberação do frete confiável.");
-    if (divergentes.length) motivos.push(`Mesmo liberada, a cotação diverge do cobrado em: ${divergentes.join(", ")}.`);
-    if (inconclusivas.length) motivos.push(`Concordância entre 80% e 90% em: ${inconclusivas.join(", ")}.`);
+    if (divergentes.length) motivos.push(`Mesmo liberada, frete abaixo do cobrado em: ${divergentesDesc.join("; ")}.`);
+    if (inconclusivas.length) motivos.push(`Frete abaixo do cobrado em 10–20% das vendas: ${inconclusivas.join("; ")}.`);
+    if (conservadoras.length) motivos.push(`Projeção acima do cobrado (conservadora): ${conservadoras.join("; ")}.`);
   }
   else if (!itens.length || (comparacoesTotal < MIN_COMPARACOES_MODALIDADE && aoVivo === 0)) { decisao = DECISAO.SEM_DADOS; motivos.push("Sem vendas comparáveis nem amostra ao vivo suficientes para medir a conta."); }
-  else if (divergentes.length) { decisao = DECISAO.NAO_LIBERAVEL; motivos.push(`Cotação diverge do cobrado em: ${divergentes.join(", ")}. Investigar antes de liberar.`); }
+  else if (divergentes.length) { decisao = DECISAO.NAO_LIBERAVEL; motivos.push(`Frete projetado ABAIXO do cobrado em ≥20% das vendas comparáveis: ${divergentesDesc.join("; ")}. Investigar antes de liberar.`); }
   else if (relevantes.length && validadas.length === relevantes.length) { decisao = DECISAO.LIBERAVEL; motivos.push(`Cotações batem com o cobrado em todas as modalidades com volume (${validadas.join(", ")}).`); }
   else {
     decisao = DECISAO.LIBERAVEL_COM_RESSALVAS;
-    if (inconclusivas.length) motivos.push(`Concordância cotação × cobrado entre 80% e 90% em: ${inconclusivas.join(", ")}.`);
+    if (inconclusivas.length) motivos.push(`Frete abaixo do cobrado em 10–20% das vendas comparáveis: ${inconclusivas.join("; ")}.`);
+    if (conservadoras.length) motivos.push(`Projeção acima do cobrado (margem subestimada, conservadora): ${conservadoras.join("; ")}.`);
     if (semEvidencia.length) motivos.push(`Menos de ${MIN_COMPARACOES_MODALIDADE} vendas comparáveis em: ${semEvidencia.join(", ")}.`);
-    if (!inconclusivas.length && !semEvidencia.length) motivos.push("Evidência parcial.");
+    if (!inconclusivas.length && !semEvidencia.length && !conservadoras.length) motivos.push("Evidência parcial.");
   }
   if (cotacaoRejeitadaAoVivo) motivos.push(`${cotacaoRejeitadaAoVivo} anúncio(s) da amostra ao vivo têm cotação por anúncio rejeitada (Envios Agora/proximity).`);
   if (desconhecidoAoVivo) motivos.push(`${desconhecidoAoVivo} anúncio(s) ficariam com frete desconhecido após a liberação (margem bloqueada até declarar medidas).`);

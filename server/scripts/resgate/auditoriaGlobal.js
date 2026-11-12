@@ -15,7 +15,7 @@ const path = require("path");
 const { args, abrirBancoSomenteLeitura } = require("./lib");
 
 const a = args();
-if (!a.executar) {
+if (!a.executar && !a["somente-consolidar"]) {
   console.log("PLANO (nada foi acessado). Com --executar:");
   console.log("  · lista as contas ML; para cada conta (uma por vez): snapshots + cadastro em páginas de 300, vendas pagas 30 d, eventos de preço 120 d");
   console.log("  · classifica TODOS os anúncios (contrato, histórico, situação, exposição, prioridade)");
@@ -24,8 +24,36 @@ if (!a.executar) {
   process.exit(0);
 }
 
+// --somente-consolidar: refaz matriz, resumo, plano de ativação e XLSX a partir dos anúncios JÁ
+// auditados no diretório — sem banco e sem Mercado Livre (regras novas sem repetir as leituras).
+async function consolidar(saida) {
+  const { criarStoreArquivo } = require("../../services/resgate/resgateStoreArquivo");
+  const { montarMatriz } = require("../../services/resgate/resgateCompatibilidade");
+  const { resumirConta } = require("../../services/resgate/resgateAuditoriaService");
+  const { planoDeAtivacao } = require("../../services/resgate/resgateAtivacao");
+  const { planoParaBuffer } = require("../../services/resgate/resgatePlanoXlsx");
+  const store = criarStoreArquivo(saida);
+  const itensPorConta = new Map();
+  for (const c of await store.listarContas()) {
+    if (!c.matriz) continue;
+    const r = c.resumo, m = c.matriz;
+    const itens = await store.lerItens(null, r.clienteContaId);
+    const conta = { clienteId: r.clienteId, clienteContaId: r.clienteContaId, sellerId: r.sellerId, clienteNome: r.clienteNome, contaNome: r.contaNome };
+    const matriz = montarMatriz({ conta, itens, liberadaHoje: m.liberadaHoje, resumo: m.snapshot, metricasApi: m.api, falhasSnapshot: m.falhasSnapshot });
+    const { meta, vendasImports, contaLiberadaEmProducao, linhasLegadoBloqueaveis } = r;
+    await store.salvarConta(null, r.clienteContaId, { resumo: resumirConta(conta, itens, matriz, meta, { vendasImports, contaLiberadaEmProducao, linhasLegadoBloqueaveis }), matriz });
+    itensPorConta.set(Number(r.clienteContaId), itens);
+  }
+  const contas = await store.listarContas();
+  fs.writeFileSync(path.join(saida, "plano_ativacao.json"), JSON.stringify(planoDeAtivacao({ contas }), null, 2));
+  const exec = JSON.parse(fs.readFileSync(path.join(saida, "execucao.json"), "utf8"));
+  fs.writeFileSync(path.join(saida, "VENFORCE_RESGATE_plano.xlsx"), planoParaBuffer({ contas, itensPorConta, execucao: { ...exec, consolidadoEm: new Date().toISOString() } }));
+  console.log(JSON.stringify({ consolidado: contas.length, saida }));
+}
+
 (async () => {
   const saida = path.resolve(a.saida || "resgate_saida");
+  if (a["somente-consolidar"]) return consolidar(saida);
   const { criarStoreArquivo } = require("../../services/resgate/resgateStoreArquivo");
   const store = criarStoreArquivo(saida);
   if (!store.adquirirLock()) { console.error("Outra auditoria está rodando neste diretório."); process.exit(3); }
