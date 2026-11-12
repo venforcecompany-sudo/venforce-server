@@ -111,7 +111,7 @@ function montarMatriz({ conta = {}, itens = [], liberadaHoje = false, resumo = {
     decisao = DECISAO.JA_LIBERADA; motivos.push("Seller já está na liberação do frete confiável.");
     if (divergentes.length) motivos.push(`Mesmo liberada, frete abaixo do cobrado em: ${divergentesDesc.join("; ")}.`);
     if (inconclusivas.length) motivos.push(`Frete abaixo do cobrado em 10–20% das vendas: ${inconclusivas.join("; ")}.`);
-    if (conservadoras.length) motivos.push(`Projeção acima do cobrado (conservadora): ${conservadoras.join("; ")}.`);
+    if (conservadoras.length) motivos.push(`Menos de 10% das vendas com frete abaixo do cobrado; demais diferenças acima (conservadoras): ${conservadoras.join("; ")}.`);
   }
   else if (!itens.length || (comparacoesTotal < MIN_COMPARACOES_MODALIDADE && aoVivo === 0)) { decisao = DECISAO.SEM_DADOS; motivos.push("Sem vendas comparáveis nem amostra ao vivo suficientes para medir a conta."); }
   else if (divergentes.length && cotacaoRejeitadaAoVivo > 0) {
@@ -125,7 +125,7 @@ function montarMatriz({ conta = {}, itens = [], liberadaHoje = false, resumo = {
   else {
     decisao = DECISAO.LIBERAVEL_COM_RESSALVAS;
     if (inconclusivas.length) motivos.push(`Frete abaixo do cobrado em 10–20% das vendas comparáveis: ${inconclusivas.join("; ")}.`);
-    if (conservadoras.length) motivos.push(`Projeção acima do cobrado (margem subestimada, conservadora): ${conservadoras.join("; ")}.`);
+    if (conservadoras.length) motivos.push(`Menos de 10% das vendas com frete abaixo do cobrado; as demais diferenças são acima (conservadoras): ${conservadoras.join("; ")}.`);
     if (semEvidencia.length) motivos.push(`Menos de ${MIN_COMPARACOES_MODALIDADE} vendas comparáveis em: ${semEvidencia.join(", ")}.`);
     if (!inconclusivas.length && !semEvidencia.length && !conservadoras.length) motivos.push("Evidência parcial.");
   }
