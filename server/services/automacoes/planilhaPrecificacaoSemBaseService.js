@@ -236,7 +236,8 @@ async function gerarPlanilhaPrecificacaoSemBase({ clienteSlugRaw, clienteContaId
     ["MLBs legados multivariantes", mlbsLegadosMultivariantes],
     ["Linhas sem SKU", linhasSemSku],
     ["Gerado em", new Date().toLocaleString("pt-BR")],
-    ["Instrução", "Preencha custo, imposto e frete nas colunas em branco. As fórmulas recalculam automaticamente."],
+    ["Origem dos dados", "RECOTADO no Mercado Livre na geração desta planilha (preço, comissão e frete do momento)"],
+    ["Instrução", "Preencha custo, imposto, taxa fixa (0 se não houver) e frete nas colunas em branco. Célula vazia = desconhecido: Lucro, MC e Preço Sugerido só aparecem com todas as entradas preenchidas."],
   ];
 
   const buffer = construirWorkbookMatrizPrecificacao({
@@ -244,6 +245,7 @@ async function gerarPlanilhaPrecificacaoSemBase({ clienteSlugRaw, clienteContaId
     resumoPctCells: [],
     itens,
     margemAlvoPadrao: null,
+    origemTexto: `DADOS RECOTADOS no Mercado Livre em ${new Date().toLocaleString("pt-BR")}.`,
   });
 
   const clienteSlugNorm = normalizarSlug(cliente.slug || cliente.nome || "cliente");
