@@ -19,7 +19,7 @@
   };
   var ACOES = { REVISAR_PRECO: "Revisar preço", COMPLETAR_DADOS: "Completar dados", VERIFICAR_FRETE: "Verificar frete", VERIFICAR_SUBSIDIO: "Verificar subsídio", RECALCULAR_SNAPSHOT: "Recalcular", NENHUMA: "Nenhuma" };
   var ORIGENS = { SEM_ALTERACAO_REGISTRADA: "Sem alteração registrada", ALTERADO_MANUAL: "Alterado manualmente", ALTERADO_AUTOMACAO: "Alterado por automação", ALTERADO_ORIGEM_INDETERMINADA: "Alterado (origem indeterminada)", HISTORICO_INSUFICIENTE: "Histórico insuficiente" };
-  var DECISOES = { JA_LIBERADA: ["Liberada", "success"], LIBERAVEL: ["Pode liberar", "primary"], LIBERAVEL_COM_RESSALVAS: ["Liberar c/ ressalvas", "warning"], NAO_LIBERAVEL: ["Não liberar", "danger"], SEM_DADOS: ["Sem dados", "neutral"] };
+  var DECISOES = { JA_LIBERADA: ["Liberada", "success"], LIBERAR_PRIORITARIO: ["Liberar com prioridade", "danger"], LIBERAVEL: ["Pode liberar", "primary"], LIBERAVEL_COM_RESSALVAS: ["Liberar c/ ressalvas", "warning"], NAO_LIBERAVEL: ["Não liberar", "danger"], SEM_DADOS: ["Sem dados", "neutral"] };
   var CONFIANCAS = { alta: "alta", media: "média", baixa: "baixa", nao_verificada: "não verificada", desconhecida: "desconhecida" };
 
   // ── Formatação (ausente = "—", nunca 0) ─────────────────────────────────

@@ -221,6 +221,16 @@ const completo = (extra = {}) => ({
     const m = montarMatriz({ conta: { clienteContaId: 1, sellerId: "S" }, itens: [...Array.from({ length: 4 }, () => item("coleta", true)), ...Array.from({ length: 6 }, () => item("coleta", false))] });
     assert.strictEqual(m.decisao, DECISAO.NAO_LIBERAVEL); assert.strictEqual(m.financeiramenteValidada, false);
   });
+  await t("frete subestimado + Envios Agora provado ao vivo → LIBERAR_PRIORITARIO e primeiro na onda", () => {
+    const vivo = (b) => ({ ...item("coleta", b), fonteAvaliacao: "ao_vivo", contrato: { ...item("coleta", b).contrato, componentes: { frete: { nivel: "estimado_dimensoes_declaradas", valor: 18, aplicavel: true, cotacaoRejeitada: 7.75 } } } });
+    const m = montarMatriz({ conta: { clienteContaId: 14, sellerId: "S14" }, itens: [...Array.from({ length: 4 }, () => vivo(false)), ...Array.from({ length: 4 }, () => item("coleta", true))] });
+    assert.strictEqual(m.decisao, DECISAO.LIBERAR_PRIORITARIO);
+    const p = planoDeAtivacao({ env: {}, contas: [
+      { resumo: { clienteContaId: 18, sellerId: "S18", riscoFinanceiro30d: 9999 }, matriz: { decisao: DECISAO.LIBERAVEL, motivos: [], totais: {} } },
+      { resumo: { clienteContaId: 14, sellerId: "S14", riscoFinanceiro30d: 1 }, matriz: m },
+    ] });
+    assert.strictEqual(p.proximaOnda[0].clienteContaId, 14);
+  });
   await t("sem comparações nem amostra ao vivo → SEM_DADOS; Flex nunca 'validada' (entregador externo)", () => {
     assert.strictEqual(montarMatriz({ conta: {}, itens: [item("coleta", null)] }).decisao, DECISAO.SEM_DADOS);
     const m = montarMatriz({ conta: {}, itens: [...Array.from({ length: 10 }, () => item("coleta", true)), ...Array.from({ length: 10 }, () => item("flex", true))] });

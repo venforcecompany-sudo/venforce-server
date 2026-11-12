@@ -18,6 +18,9 @@ const LIMITE_SUBESTIMADOS_RESSALVA = 0.1;
 
 const STATUS_MODALIDADE = Object.freeze({ VALIDADA: "VALIDADA", CONSERVADORA: "CONSERVADORA", INCONCLUSIVA: "INCONCLUSIVA", DIVERGENTE: "DIVERGENTE", SEM_EVIDENCIA: "SEM_EVIDENCIA", PARCIAL: "PARCIAL", NAO_APLICAVEL: "NAO_APLICAVEL" });
 const DECISAO = Object.freeze({
+  // A cotação atual SUBESTIMA o frete e a amostra ao vivo achou anúncios Envios Agora
+  // (cotação rejeitada): ligar a avaliação corrige esses — liberar primeiro.
+  LIBERAR_PRIORITARIO: "LIBERAR_PRIORITARIO",
   LIBERAVEL: "LIBERAVEL",
   LIBERAVEL_COM_RESSALVAS: "LIBERAVEL_COM_RESSALVAS",
   NAO_LIBERAVEL: "NAO_LIBERAVEL",
@@ -111,7 +114,13 @@ function montarMatriz({ conta = {}, itens = [], liberadaHoje = false, resumo = {
     if (conservadoras.length) motivos.push(`Projeção acima do cobrado (conservadora): ${conservadoras.join("; ")}.`);
   }
   else if (!itens.length || (comparacoesTotal < MIN_COMPARACOES_MODALIDADE && aoVivo === 0)) { decisao = DECISAO.SEM_DADOS; motivos.push("Sem vendas comparáveis nem amostra ao vivo suficientes para medir a conta."); }
-  else if (divergentes.length) { decisao = DECISAO.NAO_LIBERAVEL; motivos.push(`Frete projetado ABAIXO do cobrado em ≥20% das vendas comparáveis: ${divergentesDesc.join("; ")}. Investigar antes de liberar.`); }
+  else if (divergentes.length && cotacaoRejeitadaAoVivo > 0) {
+    // Ligar a avaliação é conservador por construção (troca a cotação não confiável por estimativa
+    // maior ou por "desconhecido"); aqui há prova de que ela corrige parte do problema.
+    decisao = DECISAO.LIBERAR_PRIORITARIO;
+    motivos.push(`Frete projetado ABAIXO do cobrado: ${divergentesDesc.join("; ")}. A amostra ao vivo achou Envios Agora com cotação rejeitada: liberar a avaliação corrige esses anúncios; o restante segue em investigação.`);
+  }
+  else if (divergentes.length) { decisao = DECISAO.NAO_LIBERAVEL; motivos.push(`Frete projetado ABAIXO do cobrado em ≥20% das vendas comparáveis: ${divergentesDesc.join("; ")}. A amostra ao vivo não mostrou Envios Agora: investigar a causa antes de liberar (a liberação sozinha pode não corrigir).`); }
   else if (relevantes.length && validadas.length === relevantes.length) { decisao = DECISAO.LIBERAVEL; motivos.push(`Cotações batem com o cobrado em todas as modalidades com volume (${validadas.join(", ")}).`); }
   else {
     decisao = DECISAO.LIBERAVEL_COM_RESSALVAS;

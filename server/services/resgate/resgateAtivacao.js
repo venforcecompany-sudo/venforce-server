@@ -45,10 +45,8 @@ function planoDeAtivacao({ contas = [], env = process.env, tamanhoOnda = 5 } = {
   });
 
   const candidatas = (dec) => linhas.filter((l) => !l.liberadoSeller && l.sellerId && l.decisao === dec).sort((a, b) => b.risco - a.risco);
-  const onda1 = candidatas(DECISAO.LIBERAVEL).slice(0, tamanhoOnda);
-  const restoTam = Math.max(0, tamanhoOnda - onda1.length);
-  const onda2 = candidatas(DECISAO.LIBERAVEL_COM_RESSALVAS).slice(0, restoTam);
-  const proxima = [...onda1, ...onda2];
+  // Ordem: frete subestimado com Envios Agora provado > validada > com ressalvas.
+  const proxima = [...candidatas(DECISAO.LIBERAR_PRIORITARIO), ...candidatas(DECISAO.LIBERAVEL), ...candidatas(DECISAO.LIBERAVEL_COM_RESSALVAS)].slice(0, tamanhoOnda);
 
   const novosSellers = [...new Set([...sellersHoje.filter((s) => s !== "*"), ...linhas.filter((l) => l.liberadoSeller && l.sellerId).map((l) => l.sellerId), ...proxima.map((l) => l.sellerId)])];
   const novasContas = [...new Set([...contasLegadoHoje, ...linhas.filter((l) => l.liberadoSeller).map((l) => String(l.clienteContaId)), ...proxima.map((l) => String(l.clienteContaId))])];
