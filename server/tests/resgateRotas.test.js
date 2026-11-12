@@ -89,7 +89,8 @@ function res() { const r = { statusCode: 200, headers: {}, body: null, status(c)
     const src = fs.readFileSync(path.join(__dirname, "..", "controllers", "resgateController.js"), "utf8");
     assert.ok(/somenteAcionaveis = !req\.params\.contaId/.test(src));
     const st = fs.readFileSync(path.join(__dirname, "..", "services", "resgate", "resgateStorePg.js"), "utf8");
-    assert.ok(/acao <> 'NENHUMA'/.test(st));
+    assert.ok(/acao = 'REVISAR_PRECO'/.test(st) && /unidades_30d,0\) > 0/.test(st));
+    assert.ok(/LIMITE_GLOBAL_POR_CONTA = 1500/.test(src));
   });
   console.log(`\n${ok} verificações das rotas do Resgate`);
 })();

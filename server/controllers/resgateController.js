@@ -17,6 +17,9 @@ const { simularLote } = require("../services/resgate/resgateDryRun");
 const { clientesAutorizadosSet } = require("../services/squads/authorizationService");
 const repo = require("../services/resgate/resgateLeituraRepository");
 
+// Teto por conta na planilha global do servidor (memória do Render); a CLI exporta tudo.
+const LIMITE_GLOBAL_POR_CONTA = 1500;
+
 const deps = { db: pool, criarFetch: () => criarFetchSomenteLeitura({ minIntervalMs: 150 }), clientesAutorizados: clientesAutorizadosSet, lerAoVivo: lerAnuncioAoVivo };
 function configurar(novas) { Object.assign(deps, novas); }
 
@@ -182,7 +185,7 @@ async function planoXlsx(req, res) {
     // Exportação global no servidor: só anúncios com ação (memória limitada no Render);
     // a planilha de UMA conta traz todos. A exportação global completa é feita pela CLI.
     const somenteAcionaveis = !req.params.contaId;
-    for (const l of linhas) itensPorConta.set(Number(l.cliente_conta_id), await store.lerItens(exec.id, Number(l.cliente_conta_id), { somenteAcionaveis }));
+    for (const l of linhas) itensPorConta.set(Number(l.cliente_conta_id), await store.lerItens(exec.id, Number(l.cliente_conta_id), { somenteAcionaveis, limite: somenteAcionaveis ? LIMITE_GLOBAL_POR_CONTA : null }));
     const buf = planoParaBuffer({ contas: linhas.map((l) => ({ resumo: l.resumo, matriz: l.matriz })), itensPorConta, execucao: { id: exec.id, iniciadaEm: exec.iniciada_em, finalizadaEm: exec.finalizada_em } });
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="venforce-resgate-${exec.id}${req.params.contaId ? `-conta-${req.params.contaId}` : ""}.xlsx"`);

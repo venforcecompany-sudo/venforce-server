@@ -65,10 +65,16 @@ function criarStorePg(db) {
           [id, contaId, JSON.stringify(lote)]);
       }
     },
-    async lerItens(id, contaId, { somenteAcionaveis = false } = {}) {
+    // somenteAcionaveis (exportação global do servidor): revisar preço, inflada, prejuízo e
+    // pendências COM venda nos últimos 30 dias, por prioridade, até `limite` por conta.
+    async lerItens(id, contaId, { somenteAcionaveis = false, limite = null } = {}) {
       const { rows } = await db.query(
-        `SELECT resultado, revisao_status, revisao_nota FROM resgate_itens WHERE execucao_id = $1 AND cliente_conta_id = $2 AND (NOT $3 OR acao <> 'NENHUMA') ORDER BY item_id`,
-        [id, contaId, somenteAcionaveis]);
+        `SELECT resultado, revisao_status, revisao_nota FROM resgate_itens
+          WHERE execucao_id = $1 AND cliente_conta_id = $2
+            AND (NOT $3 OR acao = 'REVISAR_PRECO' OR situacao IN ('MARGEM_ANTIGA_INFLADA','PREJUIZO')
+                 OR (acao IN ('COMPLETAR_DADOS','VERIFICAR_FRETE','VERIFICAR_SUBSIDIO') AND COALESCE(unidades_30d,0) > 0))
+          ORDER BY ${somenteAcionaveis ? "prioridade DESC, item_id" : "item_id"} LIMIT $4`,
+        [id, contaId, somenteAcionaveis, limite || null]);
       return rows.map((r) => ({ ...r.resultado, revisao: { status: r.revisao_status, nota: r.revisao_nota } }));
     },
     async salvarConta(id, contaId, { resumo, matriz }) {

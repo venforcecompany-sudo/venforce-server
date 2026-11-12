@@ -161,6 +161,10 @@ Para ligar a escrita é preciso outra entrega, com revisão. Ela deve incluir: l
 
 Sem a migration `20261112_venforce_resgate.sql`, todas as rotas respondem 503. A migration não é aplicada no boot.
 
+**Como a tela recebe dados:** a auditoria roda pela CLI em modo somente leitura e grava em arquivo. Depois, `scripts/resgate/importarParaPg.js --dados <dir> --confirmar` carrega o resultado. Esse importador **escreve**, e só nas tabelas `resgate_*`; por isso exige autorização. Validação no PostgreSQL local: 39.968 anúncios importados em 12,6 s.
+
+**XLSX global do servidor:** inclui só os anúncios que exigem ação imediata, isto é, revisar preço, margem inflada, prejuízo e pendências com venda nos últimos 30 dias. São até 1.500 por conta, em ordem de prioridade. Medição: 3,2 MB e 2.925 linhas, contra 1,3 GB de RSS sem o filtro. A planilha completa sai pela CLI ou pelo XLSX por conta.
+
 **Tela:** `Portal/resgate.html` (menu Execução → Resgate). Fluxo:
 
 1. Visão global: KPIs e contas.
