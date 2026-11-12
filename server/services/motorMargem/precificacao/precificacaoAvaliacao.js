@@ -17,6 +17,7 @@
 // Núcleo puro (calcularCenario/DEFAULT_TARGET_MARGIN): carregado no topo — sem I/O.
 const core = require("../core");
 const margemConfiavel = require("../margemConfiavel");
+const { resumoDoFrete } = require("../../shared/freteCotacaoConfiavel");
 // Fonte única dos tipos de promoção em que o VenForce escreve (a mesma de /anuncios). Pura.
 const tiposSuportados = require("../../meliAnuncios/promocaoTiposSuportados");
 
@@ -154,6 +155,8 @@ async function carregarContexto({ clienteSlug, clienteContaId, itemId }, deps = 
     listingTypeId: body.listing_type_id || null,
     categoryId: body.category_id || null,
     logisticType: (body.shipping && body.shipping.logistic_type) || "",
+    // Tags do envio da MESMA leitura: a recotação não precisa reler o anúncio.
+    shippingTags: body.shipping && Array.isArray(body.shipping.tags) ? body.shipping.tags : null,
   };
   const contaCorreta = anuncio.sellerId !== null && anuncio.sellerId === mlUserId;
 
@@ -182,6 +185,8 @@ async function carregarContexto({ clienteSlug, clienteContaId, itemId }, deps = 
     comissao: valor(item.marketplaceCosts.commissionProjected),
     comissaoTaxa: valor(item.marketplaceCosts.commissionRate),
     frete: valor(item.marketplaceCosts.freightProjected),
+    // Nível/fonte do frete do Motor (estimado × cotado), quando o seller tem a verificação ligada.
+    freteQualidade: (item.diagnostico && item.diagnostico.freteQualidade) || null,
     metaMargem: num(target.marginTarget),
     breakEven: num(target.breakEvenPrice),
     precoAlvo: num(target.price),
@@ -210,7 +215,7 @@ async function recotar(base, preco, deps = {}) {
   const d = defaults(deps);
   const m = base.motor;
   if (mesmoPreco(preco, m.precoAtual)) {
-    return { comissao: m.comissao, comissaoFonte: "motor", frete: m.frete, freteFonte: "motor" };
+    return { comissao: m.comissao, comissaoFonte: "motor", frete: m.frete, freteFonte: "motor", freteQualidade: m.freteQualidade || null };
   }
   let cotacao = { comissaoValor: null, fretePrevisto: null };
   // Prazo real também nas cotações (listing_prices / shipping_options).
@@ -227,6 +232,7 @@ async function recotar(base, preco, deps = {}) {
       sellerId: base.anuncio.sellerId,
       logisticType: base.anuncio.logisticType,
       mlUserId: base.conta.mlUserId,
+      shippingTags: base.anuncio.shippingTags || null,
     }, ...(fetchComPrazo ? [fetchComPrazo] : []));
   } catch (_) {
     cotacao = { comissaoValor: null, fretePrevisto: null };
@@ -255,7 +261,8 @@ async function recotar(base, preco, deps = {}) {
       freteFonte = "indisponivel";
     }
   }
-  return { comissao, comissaoFonte, frete, freteFonte };
+  // Só acompanha o valor quando ele veio DESTA cotação (nunca do fallback).
+  return { comissao, comissaoFonte, frete, freteFonte, freteQualidade: freteFonte === "recotado" ? (cotacao.freteQualidade || null) : null };
 }
 
 /**
@@ -399,6 +406,8 @@ function avaliar({ base, tipo, novoPreco, precoVisto, recote, promocao = null, p
     (recote.comissaoFonte === "recotada" || recote.comissaoFonte === "motor");
   const freteConfirmado = recote.freteFonte === "nao_aplicavel" ||
     (recote.frete !== null && recote.frete !== undefined && (recote.freteFonte === "recotado" || recote.freteFonte === "motor"));
+  const resumoFrete = resumoDoFrete({ fretePrevisto: recote.frete, freteQualidade: recote.freteQualidade || null });
+  const freteEstimado = freteConfirmado && resumoFrete.estimado;
   if (comissaoConfirmada) {
     gates.push(gate("comissao", "DADOS", "ok", "Comissão do Mercado Livre no novo preço", brl(recote.comissao)));
   } else if (escritaReal) {
@@ -412,7 +421,10 @@ function avaliar({ base, tipo, novoPreco, precoVisto, recote, promocao = null, p
   if (freteConfirmado) {
     gates.push(recote.freteFonte === "nao_aplicavel"
       ? gate("frete", "DADOS", "ok", "Frete combinável", "Sem custo de frete previsto pelo Mercado Livre.")
-      : gate("frete", "DADOS", "ok", "Frete previsto no novo preço", brl(recote.frete)));
+      : freteEstimado
+        // Estimativa validada contra cobranças reais, mas não é cotação do anúncio nem cobrança: avisa, não bloqueia.
+        ? gate("frete", "DADOS", "warn", "Frete estimado no novo preço", `${brl(recote.frete)} — ${resumoFrete.texto}`)
+        : gate("frete", "DADOS", "ok", "Frete previsto no novo preço", brl(recote.frete)));
   } else if (escritaReal) {
     gates.push(gate("frete", "DADOS", "block", "Frete não recotado — escrita bloqueada",
       "O Mercado Livre não confirmou o frete para o novo preço. Frete do preço anterior ou zero não são aceitos para escrita real."));
@@ -600,6 +612,8 @@ function avaliar({ base, tipo, novoPreco, precoVisto, recote, promocao = null, p
       comissaoFonte: recote.comissaoFonte,
       frete: recote.frete,
       freteFonte: recote.freteFonte,
+      // null = seller sem a verificação de frete ligada (cotação do ML sem avaliação).
+      freteDetalhe: recote.freteQualidade ? resumoFrete : null,
       rebate: rebate || 0,
       margem: depois.computable ? depois.margin : null,
       lucro: depois.computable ? depois.profit : null,
