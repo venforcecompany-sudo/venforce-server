@@ -6,6 +6,10 @@ const pool = require("../../config/database");
 const { mlFetch } = require("../../utils/mlClient");
 const { exigirContextoPronto, criarErroHttp } = require("./contextoPrecificacaoService");
 const { resolverPrecosItem } = require("./precoItemService");
+// Comissão e frete: a MESMA cotação da Central de Margem (frete confiável por
+// seller, P0 12/11/2026) — este arquivo não consulta mais o ML por conta própria.
+const { buscarComissaoEFrete } = require("../shared/marketplaceCurrentQuoteService");
+const { resumoDoFrete, MOTIVO_NAO_CONFIAVEL } = require("../shared/freteCotacaoConfiavel");
 
 function extrairSkuMl(body) {
   const direto = [body?.seller_custom_field, body?.sku]
@@ -87,8 +91,11 @@ function diagClassificarItem({ temBase, lc, mc, frete, comissao, margemAlvo }) {
   return "saudavel";
 }
 
-function diagAcaoRecomendada({ diagnostico, precoEfetivo, precoAlvo }) {
+function diagAcaoRecomendada({ diagnostico, precoEfetivo, precoAlvo, freteMotivo = null }) {
   if (diagnostico === "sem_base") return "Cadastrar item na base de custos.";
+  if (diagnostico === "sem_frete" && freteMotivo === MOTIVO_NAO_CONFIAVEL) {
+    return "Frete desconhecido: a cotação do Mercado Livre para este anúncio não é confiável. Declarar as medidas da embalagem no anúncio.";
+  }
   if (diagnostico === "sem_frete") return "Verificar configuração de frete grátis no anúncio.";
   if (diagnostico === "sem_comissao") return "Verificar listing_type e categoria do anúncio.";
   if (diagnostico === "sem_dados") return "Revisar dados de entrada (custo, imposto, taxa).";
@@ -121,46 +128,22 @@ async function diagEnriquecerItem({ clienteId, body, baseRow, margemAlvo, mlUser
     precoEfetivo,
   } = await resolverPrecosItem({ clienteId, itemId, precoListaFallback, mlUserId });
 
-  const [listingPricesResp, shippingResp] = await Promise.all([
-    (async () => {
-      if (precoEfetivo === null || !listingTypeId || !categoryId) return null;
-      try {
-        return await mlFetch(
-          clienteId,
-          `/sites/MLB/listing_prices?price=${encodeURIComponent(precoEfetivo)}&listing_type_id=${encodeURIComponent(listingTypeId)}&category_id=${encodeURIComponent(categoryId)}`,
-          { mlUserId }
-        );
-      } catch (_) { return null; }
-    })(),
-    (async () => {
-      const logisticType = body?.shipping?.logistic_type || "";
-      const isCombinable = ["not_specified", "custom", ""].includes(logisticType);
-      if (isCombinable) return null;
-      if (precoEfetivo === null || !sellerId || !listingTypeId || !itemId) return null;
-      try {
-        return await mlFetch(
-          clienteId,
-          `/users/${encodeURIComponent(sellerId)}/shipping_options/free?item_id=${encodeURIComponent(itemId)}&verbose=true&item_price=${encodeURIComponent(precoEfetivo)}&listing_type_id=${encodeURIComponent(listingTypeId)}&mode=me2`,
-          { mlUserId }
-        );
-      } catch (_) { return null; }
-    })(),
-  ]);
-
-  const lpData = listingPricesResp && listingPricesResp.ok ? listingPricesResp.data : null;
-  const lpRoot = Array.isArray(lpData)
-    ? lpData[0]
-    : Array.isArray(lpData?.results) ? lpData.results[0] : lpData;
-  const comissao = lpRoot?.sale_fee_amount != null ? Number(lpRoot.sale_fee_amount) : null;
-  const comissaoPercentual =
-    lpRoot?.sale_fee_details?.percentage_fee != null
-      ? Number(lpRoot.sale_fee_details.percentage_fee)
-      : null;
-
-  const frete =
-    shippingResp && shippingResp.ok && shippingResp.data?.coverage?.all_country?.list_cost != null
-      ? Number(shippingResp.data.coverage.all_country.list_cost)
-      : null;
+  // Falha de leitura continua virando `null` (nunca 0), como sempre foi aqui.
+  let cotacao = { comissaoValor: null, comissaoPercentualMl: null, fretePrevisto: null, freteQualidade: null, diagnostico: null };
+  try {
+    cotacao = await buscarComissaoEFrete({
+      clienteId, itemId, precoEfetivo, listingTypeId, categoryId, sellerId,
+      logisticType: body?.shipping?.logistic_type || "", mlUserId,
+      shippingTags: Array.isArray(body?.shipping?.tags) ? body.shipping.tags : null,
+    }, mlFetch);
+  } catch (_) { /* mantém tudo null */ }
+  const comissao = cotacao.comissaoValor;
+  const comissaoPercentual = cotacao.comissaoPercentualMl ?? null;
+  const frete = cotacao.fretePrevisto;
+  const freteDetalhe = resumoDoFrete({
+    fretePrevisto: frete, freteQualidade: cotacao.freteQualidade,
+    motivo: cotacao.diagnostico && cotacao.diagnostico.frete ? cotacao.diagnostico.frete.motivo : null,
+  });
 
   const custoProduto = baseRow ? baseRow.custoProduto : null;
   const impostoPercentual = baseRow ? baseRow.impostoPercentual : null;
@@ -194,7 +177,7 @@ async function diagEnriquecerItem({ clienteId, body, baseRow, margemAlvo, mlUser
   const diagnostico = diagClassificarItem({
     temBase, lc, mc, frete, comissao, margemAlvo,
   });
-  const acao = diagAcaoRecomendada({ diagnostico, precoEfetivo, precoAlvo });
+  const acao = diagAcaoRecomendada({ diagnostico, precoEfetivo, precoAlvo, freteMotivo: freteDetalhe.motivo });
   const diferencaPreco =
     precoAlvo !== null && precoEfetivo !== null ? precoAlvo - precoEfetivo : null;
 
@@ -219,7 +202,10 @@ async function diagEnriquecerItem({ clienteId, body, baseRow, margemAlvo, mlUser
     preco_sugerido: precoAlvo,
     diferenca_preco: diferencaPreco,
     acao_recomendada: acao,
-    explicacao_calculo: null,
+    // Origem do frete quando o seller tem a verificação ligada (vai para a
+    // coluna já existente do relatório e das planilhas); fora dela, null.
+    explicacao_calculo: freteDetalhe.avaliado ? freteDetalhe.texto : null,
+    frete_detalhe: freteDetalhe,
     diagnostico,
     tem_base: temBase,
   };
