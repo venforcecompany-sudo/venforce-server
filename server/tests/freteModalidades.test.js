@@ -43,7 +43,7 @@ function mundo(spec) {
   const pedidos = (spec.pedidos || []).map((p, i) => {
     const envioId = `${spec.id}-${i}`;
     envios[envioId] = { logistic_type: spec.logistica || "cross_docking", dimensions: spec.dimsPorEnvio ? spec.dimsPorEnvio[i] : null, custo: spec.custos ? spec.custos[i] : null };
-    return { id: 100 + i, status: "paid", date_created: `2026-11-0${(i % 9) + 1}T10:00:00.000-04:00`, pack_id: null,
+    return { id: 100 + i, status: "paid", date_created: spec.dataPedidos || new Date(Date.now() - ((i % 9) + 1) * 86400000).toISOString(), pack_id: null,
       order_items: [{ item: { id: spec.id }, quantity: 1, unit_price: spec.precoVenda || 99.9 }], shipping: { id: envioId }, ...(p || {}) };
   });
   function atributosDeclarados() {
@@ -66,7 +66,7 @@ function mundo(spec) {
         const dm = decodeURIComponent(p.match(/dimensions=([^&]+)/)[1]);
         const valida = spec.dimsCotaveis ? spec.dimsCotaveis.includes(dm) : dm === spec.dimsNormalizadas || dm === spec.dims;
         if (!valida) return { ok: true, status: 200, data: { coverage: { all_country: NONE() } } };
-        return { ok: true, status: 200, data: { coverage: { all_country: (spec.tabela || tabelaDimensoes)(preco, p.includes("free_shipping=true")) } } };
+        return { ok: true, status: 200, data: { coverage: { all_country: (spec.tabela || tabelaDimensoes)(preco, p.includes("free_shipping=true"), dm) } } };
       }
       return { ok: true, status: 200, data: { coverage: { all_country: spec.cotacaoItem(preco) } } };
     }
@@ -165,6 +165,57 @@ cenario("ordem preservada: com envios históricos concordantes vale o passo 1 (n
   eq(r.freteQualidade.nivel, NIVEIS.DIMENSOES);
   eq(r.freteQualidade.dimensions, "28x23x4,324");
   ok(!m.chamadas.some((c) => c.p.includes("include_attributes")), "atributos só depois dos passos com envios reais");
+}));
+
+// ── Histórico antigo (MLB5872175430: envios de dez/2025 → 14,45; declaradas hoje → 13,85) ──
+// Fixture SIMULADO no formato do caso real: a tabela devolve 14,45 para a medida antiga e 13,85
+// para a declarada. Não há venda recente que diga qual o ML cobraria.
+const ANTIGO = { id: "MLB5872175430", seller: S86, tags: TAGS_PROX, cotacaoItem: () => NONE(), dataPedidos: "2025-12-10T10:00:00.000-04:00",
+  pedidos: [{}, {}, {}], dimsPorEnvio: ["30x23x5,530", "30x23x5,530", "30x23x5,530"], dims: "28x23x4,324", dimsCotaveis: ["30x23x5,530", "28x23x4,324"],
+  tabela: (preco, forcado, dm) => MANDATORY(dm === "30x23x5,530" ? 14.45 : 13.85) };
+
+cenario("histórico antigo (> 90 dias) não prevalece: a medida declarada hoje passa na frente e o histórico fica registrado", () => comEnv(S86, async () => {
+  const { r } = await cotar(ANTIGO, 99.9);
+  eq(r.fretePrevisto, 13.85);
+  eq(r.freteQualidade.nivel, NIVEIS.DECLARADAS);
+  eq(r.freteQualidade.historicoAntigo.amostras, 3);
+  ok(String(r.freteQualidade.historicoAntigo.periodo.ate).startsWith("2025-12-10"), "período do histórico preterido fica auditável");
+}));
+
+cenario("histórico antigo sem medida declarada: ainda é usado, mas com confiança baixa e marcado", () => comEnv(S86, async () => {
+  const { r } = await cotar({ ...ANTIGO, dims: null }, 99.9);
+  eq(r.fretePrevisto, 14.45);
+  eq(r.freteQualidade.nivel, NIVEIS.DIMENSOES);
+  eq(r.freteQualidade.confianca, "baixa");
+  eq(r.freteQualidade.historicoAntigo, true);
+}));
+
+cenario("histórico recente continua em primeiro lugar mesmo com medida declarada diferente", () => comEnv(S86, async () => {
+  const { r, m } = await cotar({ ...ANTIGO, dataPedidos: undefined }, 99.9);
+  eq(r.fretePrevisto, 14.45);
+  eq(r.freteQualidade.nivel, NIVEIS.DIMENSOES);
+  eq(r.freteQualidade.confianca, "media");
+  ok(!("historicoAntigo" in r.freteQualidade));
+  ok(!m.chamadas.some((c) => c.p.includes("include_attributes")), "sem leitura extra");
+}));
+
+cenario("resumoDoFrete: contrato único de leitura (estimado ≠ confirmado; desconhecido sem valor; Flex fora da margem; seller não avaliado)", () => comEnv(S86, async () => {
+  const { resumoDoFrete } = require("../services/shared/freteCotacaoConfiavel");
+  const est = await cotar({ ...FERNANDO, passarTags: true }, 84.9);
+  const a = resumoDoFrete({ fretePrevisto: est.r.fretePrevisto, freteQualidade: est.r.freteQualidade });
+  eq([a.valor, a.avaliado, a.estimado, a.confirmado, a.confianca, a.cotacaoRejeitada], [13.85, true, true, false, "media", 7.75]);
+  eq(a.custosForaDaMargem, ["entregador_flex"]);
+  ok(/ESTIMADO/.test(a.texto) && /7,75/.test(a.texto) && /Flex/.test(a.texto), a.texto);
+  const desc = await cotar({ ...FERNANDO, dims: null }, 84.9);
+  const b = resumoDoFrete({ fretePrevisto: desc.r.fretePrevisto, freteQualidade: desc.r.freteQualidade, motivo: desc.r.diagnostico.frete.motivo });
+  eq([b.valor, b.estimado, b.motivo, b.nivel], [null, false, "frete_cotacao_nao_confiavel", NIVEIS.DESCONHECIDO]);
+  const ctrl = await cotar({ id: "MLB2", seller: S86, tags: TAGS_CTRL, passarTags: true, cotacaoItem: () => MANDATORY(14.45) }, 99.9);
+  const c = resumoDoFrete({ fretePrevisto: ctrl.r.fretePrevisto, freteQualidade: ctrl.r.freteQualidade });
+  eq([c.valor, c.estimado, c.confirmado, c.nivel, c.cotacaoRejeitada], [14.45, false, false, NIVEIS.COTADO, null]);
+  const fora = resumoDoFrete({ fretePrevisto: 7.75, freteQualidade: null });
+  eq([fora.valor, fora.avaliado, fora.nivel, fora.texto], [7.75, false, null, null]);
+  const falha = resumoDoFrete({ fretePrevisto: null, freteQualidade: null, motivo: "ml_rate_limit" });
+  eq([falha.valor, falha.motivo], [null, "ml_rate_limit"]);
 }));
 
 cenario("cotação confiável (mandatory) nunca chega ao passo 4: controle e Full ficam iguais, sem GET extra", () => comEnv(`${S86},${S87}`, async () => {

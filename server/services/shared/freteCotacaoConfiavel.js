@@ -23,6 +23,11 @@
 //      cotação por `dimensions` (nível "estimado_dimensoes_declaradas");
 //   4. nada disso → `null` + motivo `frete_cotacao_nao_confiavel` (frete
 //      desconhecido: a margem não é calculada, mesmo caminho do frete ausente).
+// HISTÓRICO ANTIGO (P0 12/11/2026): quando o envio mais recente da amostra tem
+// mais de HISTORICO_RECENTE_DIAS, os passos 1 e 2 deixam de ter precedência —
+// tenta-se antes o passo 3 (a medida que o vendedor declara HOJE); sem medida
+// declarada válida, o histórico antigo ainda é usado, com confiança "baixa" e
+// marcado `historicoAntigo`. Histórico recente continua em primeiro lugar.
 // Nenhuma estimativa é "cobrança confirmada". SOMENTE LEITURA (GET).
 
 const TAG_PROXIMITY = "proximity";
@@ -41,6 +46,12 @@ const MIN_DIMENSOES_CONCORDANTES = 2;
 const MIN_AMOSTRAS_CUSTO = 3;
 const TOLERANCIA_PRECO = 0.03;
 const DISPERSAO_MAXIMA_CUSTO = 0.10;
+// Toda a validação (envio × cobrado, 162/162 em coleta) é de envios com até 8
+// dias; o único histórico antigo observado (MLB5872175430, dez/2025) diverge da
+// medida declarada hoje (14,45 × 13,85) e não tem venda recente que desempate.
+// 90 dias é um limite de PRUDÊNCIA, não uma medição: além dele a embalagem pode
+// ter mudado e a declaração atual do vendedor (61/62 = cobrado) é preferida.
+const HISTORICO_RECENTE_DIAS = 90;
 
 function num(v) {
   if (v === null || v === undefined || v === "") return null;
@@ -184,6 +195,13 @@ function dimensoesDeclaradas(args) {
   });
 }
 
+/** true quando o envio mais recente da amostra está dentro da janela (sem data = não recente). */
+function historicoRecente(amostras, agora) {
+  const datas = (amostras || []).map((a) => Date.parse(a.data)).filter((t) => Number.isFinite(t));
+  if (!datas.length) return false;
+  return agora().getTime() - Math.max(...datas) <= HISTORICO_RECENTE_DIAS * 86400000;
+}
+
 function periodo(amostras) {
   const ds = amostras.map((a) => a.data).filter(Boolean).sort();
   return ds.length ? { de: ds[0], ate: ds[ds.length - 1] } : null;
@@ -264,26 +282,30 @@ async function avaliarFrete({
   }
 
   const amostras = await coletarAmostras({ fetchFn, clienteId, sellerId, itemId, opcoes, memo });
-  const dims = dimensoesConcordantes(amostras);
-  if (dims) {
+  const cotarDimensoes = async (dimensions) => {
     try {
-      const r = lerResposta(await fetchFn(clienteId, urlCotacaoPorDimensoes({ sellerId, dimensions: dims.dimensions, precoEfetivo, listingTypeId, logisticType }), opcoes));
-      if (r.listCost !== null && descontoObrigatorio(r)) {
-        return {
-          fretePrevisto: r.listCost,
-          qualidade: {
-            nivel: NIVEIS.DIMENSOES, confirmado: false, confianca: "media", fonte: "shipping_options/free?dimensions (envios historicos)",
-            dimensions: dims.dimensions, amostras: dims.amostras, concordantes: dims.concordantes, periodo: periodo(amostras),
-            cotacaoRejeitada: resposta.listCost, ...base,
-          },
-          motivo: null,
-        };
-      }
-    } catch (_) { /* tenta o custo cobrado */ }
-  }
+      const r = lerResposta(await fetchFn(clienteId, urlCotacaoPorDimensoes({ sellerId, dimensions, precoEfetivo, listingTypeId, logisticType }), opcoes));
+      return r.listCost !== null && descontoObrigatorio(r) ? r.listCost : null;
+    } catch (_) { return null; }
+  };
 
-  const custo = await custoCobrado({ fetchFn, clienteId, sellerId, opcoes, amostras, precoEfetivo, logisticType });
-  if (custo) {
+  // Passos 1 e 2 — envios reais do MLB.
+  const porHistorico = async () => {
+    const dims = dimensoesConcordantes(amostras);
+    const valorDims = dims ? await cotarDimensoes(dims.dimensions) : null;
+    if (valorDims !== null) {
+      return {
+        fretePrevisto: valorDims,
+        qualidade: {
+          nivel: NIVEIS.DIMENSOES, confirmado: false, confianca: "media", fonte: "shipping_options/free?dimensions (envios historicos)",
+          dimensions: dims.dimensions, amostras: dims.amostras, concordantes: dims.concordantes, periodo: periodo(amostras),
+          cotacaoRejeitada: resposta.listCost, ...base,
+        },
+        motivo: null,
+      };
+    }
+    const custo = await custoCobrado({ fetchFn, clienteId, sellerId, opcoes, amostras, precoEfetivo, logisticType });
+    if (!custo) return null;
     return {
       fretePrevisto: custo.valor,
       qualidade: {
@@ -292,23 +314,42 @@ async function avaliarFrete({
       },
       motivo: null,
     };
-  }
-  const declaradas = await dimensoesDeclaradas({ fetchFn, clienteId, itemId, opcoes, memo });
-  if (declaradas) {
-    try {
-      const r = lerResposta(await fetchFn(clienteId, urlCotacaoPorDimensoes({ sellerId, dimensions: declaradas.dimensions, precoEfetivo, listingTypeId, logisticType }), opcoes));
-      if (r.listCost !== null && descontoObrigatorio(r)) {
-        return {
-          fretePrevisto: r.listCost,
-          qualidade: {
-            nivel: NIVEIS.DECLARADAS, confirmado: false, confianca: "media",
-            fonte: "shipping_options/free?dimensions (SELLER_PACKAGE_* declaradas no anuncio)",
-            dimensions: declaradas.dimensions, amostrasEncontradas: amostras.length, cotacaoRejeitada: resposta.listCost, ...base,
-          },
-          motivo: null,
-        };
-      }
-    } catch (_) { /* desconhecido */ }
+  };
+
+  // Passo 3 — medidas declaradas HOJE no anúncio.
+  const porDeclaradas = async () => {
+    const declaradas = await dimensoesDeclaradas({ fetchFn, clienteId, itemId, opcoes, memo });
+    const valor = declaradas ? await cotarDimensoes(declaradas.dimensions) : null;
+    if (valor === null) return null;
+    return {
+      fretePrevisto: valor,
+      qualidade: {
+        nivel: NIVEIS.DECLARADAS, confirmado: false, confianca: "media",
+        fonte: "shipping_options/free?dimensions (SELLER_PACKAGE_* declaradas no anuncio)",
+        dimensions: declaradas.dimensions, amostrasEncontradas: amostras.length, cotacaoRejeitada: resposta.listCost, ...base,
+      },
+      motivo: null,
+    };
+  };
+
+  const recente = amostras.length === 0 || historicoRecente(amostras, agora);
+  if (recente) {
+    const r = (await porHistorico()) || (await porDeclaradas());
+    if (r) return r;
+  } else {
+    // Histórico antigo: a declaração atual passa na frente; o histórico fica
+    // como último recurso, rebaixado e marcado.
+    const d = await porDeclaradas();
+    if (d) {
+      d.qualidade.historicoAntigo = { periodo: periodo(amostras), amostras: amostras.length };
+      return d;
+    }
+    const h = await porHistorico();
+    if (h) {
+      h.qualidade.confianca = "baixa";
+      h.qualidade.historicoAntigo = true;
+      return h;
+    }
   }
   return {
     fretePrevisto: null,
@@ -317,7 +358,53 @@ async function avaliarFrete({
   };
 }
 
+// ── Contrato de leitura para consumidores (texto + campos estáveis) ─────────
+// Resume `fretePrevisto` + `freteQualidade` + motivo num objeto único, para
+// quem exibe/exporta (Automações, Diagnóstico, planilhas) não reinterpretar os
+// níveis. `avaliado:false` = seller fora de FRETE_COTACAO_CONFIAVEL_SELLERS: o
+// valor é a cotação por item_id como veio do ML, SEM verificação.
+const TEXTO_NIVEL = Object.freeze({
+  [NIVEIS.COTADO]: "Frete cotado pelo Mercado Livre para o anúncio",
+  [NIVEIS.DIMENSOES]: "Frete ESTIMADO: cotação pelas medidas de envios anteriores do anúncio",
+  [NIVEIS.CUSTO_COBRADO]: "Frete ESTIMADO: mediana do que o Mercado Livre cobrou em envios anteriores",
+  [NIVEIS.DECLARADAS]: "Frete ESTIMADO: cotação pelas medidas de embalagem declaradas no anúncio",
+  [NIVEIS.DESCONHECIDO]: "Frete DESCONHECIDO: a cotação do Mercado Livre para este anúncio não é confiável e não há medidas para recalcular",
+});
+
+function resumoDoFrete({ fretePrevisto = null, freteQualidade = null, motivo = null } = {}) {
+  const q = freteQualidade && typeof freteQualidade === "object" ? freteQualidade : null;
+  const valor = num(fretePrevisto);
+  const fora = q && q.modalidade && Array.isArray(q.modalidade.custosForaDaMargem) ? q.modalidade.custosForaDaMargem : [];
+  const partes = [];
+  if (q) {
+    partes.push(TEXTO_NIVEL[q.nivel] || `Frete: ${q.nivel}`);
+    if (q.cotacaoRejeitada !== null && q.cotacaoRejeitada !== undefined && q.nivel !== NIVEIS.COTADO) {
+      partes.push(`cotação por anúncio rejeitada: R$ ${Number(q.cotacaoRejeitada).toFixed(2).replace(".", ",")}`);
+    }
+    if (q.historicoAntigo) partes.push("envios anteriores antigos");
+    if (fora.includes("entregador_flex")) partes.push("vendas pelo Flex têm o custo do entregador próprio, fora deste valor");
+  } else if (valor === null && motivo) {
+    partes.push(`Frete indisponível (${motivo})`);
+  }
+  return {
+    valor,
+    avaliado: Boolean(q),
+    nivel: q ? q.nivel : null,
+    confirmado: false, // frete previsto nunca é cobrança realizada
+    estimado: Boolean(q && q.nivel !== NIVEIS.COTADO && q.nivel !== NIVEIS.DESCONHECIDO),
+    confianca: q ? (q.confianca || (q.nivel === NIVEIS.COTADO ? "alta" : null)) : null,
+    fonte: q ? (q.fonte || (q.nivel === NIVEIS.COTADO ? "shipping_options/free?item_id" : null)) : null,
+    motivo: valor === null ? (motivo || (q && q.motivo) || null) : null,
+    cotacaoRejeitada: q && q.nivel !== NIVEIS.COTADO ? (q.cotacaoRejeitada ?? null) : null,
+    modalidade: q ? (q.modalidade || null) : null,
+    custosForaDaMargem: fora,
+    avaliadoEm: q ? (q.avaliadoEm || null) : null,
+    texto: partes.length ? `${partes.join("; ")}.` : null,
+  };
+}
+
 module.exports = {
   freteConfiavelHabilitado, cotacaoNaoConfiavel, lerResposta, descontoObrigatorio, avaliarFrete,
-  dimensoesConcordantes, lerDimensoesDeclaradas, modalidadeDoAnuncio, MOTIVO_NAO_CONFIAVEL, NIVEIS,
+  dimensoesConcordantes, lerDimensoesDeclaradas, modalidadeDoAnuncio, resumoDoFrete, historicoRecente,
+  MOTIVO_NAO_CONFIAVEL, NIVEIS, HISTORICO_RECENTE_DIAS,
 };
