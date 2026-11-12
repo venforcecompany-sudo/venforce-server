@@ -40,6 +40,7 @@ import { montarPayloadFechamento } from "../utils/fechamentoPayload.js";
 import { buscarEntrega } from "../services/entregasApi.js";
 import { useBaseVinculada } from "./useBaseVinculada.js";
 import { useAdsMercadoAds, origemDoAds } from "./useAdsMercadoAds.js";
+import { useFullMercadoLivre, origemDoFull } from "./useFullMercadoLivre.js";
 import { useStatusFechamentoApi } from "./useStatusFechamentoApi.js";
 import { useSyncCentral } from "./useSyncCentral.js";
 
@@ -169,6 +170,31 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteId = null
     if (ads.valorCampo !== null) setAjustes((a) => ({ ...a, ads: ads.valorCampo }));
   }, [ads.valorCampo]);
   const adsOrigem = origemDoAds(ajustes.ads, ads);
+
+  // Campo FULL: o custo do Full (faturamento do ML) entra sozinho, com a
+  // mesma regra do ADS — nunca por cima do que a pessoa digitou.
+  const full = useFullMercadoLivre({
+    clienteSlug,
+    clienteContaId,
+    periodo,
+    habilitado: mkt === "meli",
+  });
+  const ultimoFullDaApiRef = useRef(null);
+  useEffect(() => {
+    if (full.status !== "ok" || full.valorCampo === null) return;
+    const anterior = ultimoFullDaApiRef.current;
+    const novo = full.valorCampo;
+    ultimoFullDaApiRef.current = novo;
+    setAjustes((a) => {
+      const atual = String(a.fullCost ?? "").trim();
+      if (atual === "" || (anterior !== null && atual === anterior)) return { ...a, fullCost: novo };
+      return a;
+    });
+  }, [full.status, full.valorCampo]);
+  const usarFullDaApi = useCallback(() => {
+    if (full.valorCampo !== null) setAjustes((a) => ({ ...a, fullCost: full.valorCampo }));
+  }, [full.valorCampo]);
+  const fullOrigem = origemDoFull(ajustes.fullCost, full);
 
   const abortRef = useRef(null);
   const contextoDoProcessamentoRef = useRef(null);
@@ -487,6 +513,14 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteId = null
         adsOrigem: adsOrigem === "mercado_ads"
           ? { origem: "mercado_ads", consultadoEm: ads.dados?.consultadoEm || null }
           : adsOrigem === "manual" ? { origem: "manual" } : null,
+        fullCostOrigem: fullOrigem === "ml_billing"
+          ? {
+              origem: "ml_billing",
+              consultadoEm: full.dados?.consultadoEm || null,
+              definitivo: full.dados?.definitivo === true,
+              componentes: (full.dados?.componentes || []).map(({ grupo, valor }) => ({ grupo, valor })),
+            }
+          : fullOrigem === "manual" ? { origem: "manual" } : null,
       });
 
       // Substituir NÃO pode apagar a apresentação (destaques/prioridades) que
@@ -535,7 +569,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteId = null
         setEstado("preview");
       }
     },
-    [processamento, divergente, confirmouDivergencia, syncIncompleto, confirmouSyncIncompleto, clienteSlug, clienteNome, clienteContaId, periodo, mkt, fonteVendas, baseSalva, ajustes, onSalvo, duplicidade, adsOrigem, ads.dados]
+    [processamento, divergente, confirmouDivergencia, syncIncompleto, confirmouSyncIncompleto, clienteSlug, clienteNome, clienteContaId, periodo, mkt, fonteVendas, baseSalva, ajustes, onSalvo, duplicidade, adsOrigem, ads.dados, fullOrigem, full.dados]
   );
 
   const substituir = useCallback(() => salvar({ substituir: true }), [salvar]);
@@ -543,10 +577,13 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteId = null
   // Há trabalho que uma troca de competência jogaria fora? Arquivos
   // escolhidos, ajustes digitados ou um resultado processado.
   const temArquivo = !!(arquivos.sales || arquivos.costs || arquivos.ordersAll);
-  // O ADS que o Mercado Ads preencheu sozinho não é trabalho da pessoa: a
-  // troca de competência traz o do mês novo.
+  // O ADS e o FULL que a API preencheu sozinha não são trabalho da pessoa:
+  // a troca de competência traz os do mês novo.
   const temAjuste = Object.entries(ajustes).some(
-    ([campo, v]) => String(v ?? "").trim() !== "" && !(campo === "ads" && adsOrigem === "mercado_ads")
+    ([campo, v]) =>
+      String(v ?? "").trim() !== "" &&
+      !(campo === "ads" && adsOrigem === "mercado_ads") &&
+      !(campo === "fullCost" && fullOrigem === "ml_billing")
   );
   const temResultado = !!processamento && estado !== "form" && estado !== "processando";
   const trabalho = useMemo(
@@ -624,6 +661,7 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteId = null
     arquivos, setArquivo,
     ajustes, setAjuste,
     ads, adsOrigem, usarAdsDaApi,
+    full, fullOrigem, usarFullDaApi,
     base,
     baseCobreCustos,
     custosObrigatorios,

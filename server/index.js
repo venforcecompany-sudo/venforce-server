@@ -138,6 +138,7 @@ const {
   ensurePromoSnapshotSchema,
   ensurePromocoesRebateSchema,
   ensureFinanceiroAdsCacheSchema,
+  ensureFinanceiroFullCacheSchema,
   ensureShopeeGrantsSchema,
 } = require("./services/schema/schemaEnsure");
 const { logReadinessNoBoot, verificarSchemaV3 } = require("./services/schema/schemaReadiness");
@@ -2248,6 +2249,12 @@ function etapasDeBoot() {
       nome: "financeiro-ads-cache",
       executar: () => ensureFinanceiroAdsCacheSchema(),
       aoFalhar: (err) => console.error("[schema] erro ao garantir schema de financeiro_ads_cache no boot:", err.message),
+    },
+    {
+      // Financeiro V3 — cache do custo do Full (billing do ML) do campo FULL do Fechamento.
+      nome: "financeiro-full-cache",
+      executar: () => ensureFinanceiroFullCacheSchema(),
+      aoFalhar: (err) => console.error("[schema] erro ao garantir schema de financeiro_full_cache no boot:", err.message),
     },
     {
       // Shopee LIVE — grants por Conta (tokens cifrados).

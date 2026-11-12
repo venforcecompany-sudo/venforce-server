@@ -12,6 +12,7 @@ import { MesaFechamento } from "./MesaFechamento.jsx";
 import { montarPayloadFechamento, parseMoedaBR, cardsDoSummary } from "../../utils/fechamentoPayload.js";
 import { FechamentoApiError } from "../../services/financeiroFechamentoApi.js";
 import { formatarValorCampo, origemDoAds } from "../../hooks/useAdsMercadoAds.js";
+import { origemDoFull } from "../../hooks/useFullMercadoLivre.js";
 
 const api = vi.hoisted(() => ({ processar: vi.fn(), salvar: vi.fn() }));
 vi.mock("../../services/financeiroFechamentoApi.js", async (orig) => ({
@@ -603,6 +604,136 @@ describe("Mesa · ADS do Mercado Ads (modelo B)", () => {
     const meta = api.salvar.mock.calls[0][0].payload_json.metadados;
     expect(meta.ads).toBe(4812.4);
     expect(meta.adsOrigem).toEqual({ origem: "mercado_ads", consultadoEm: "2026-09-04T03:12:00Z" });
+  });
+});
+
+// GET /financeiro/:cliente/full responde o faturamento do ML; /ads fica
+// indisponível para não misturar os dois campos.
+function redeComFull(full, vinculos = vinculosCom({ marketplace: "meli", contaId: 42 })) {
+  rede.requisitar.mockImplementation(async (caminho, opcoes = {}) => {
+    if (/\/financeiro\/[^/]+\/full$/.test(caminho)) return typeof full === "function" ? full(opcoes) : full;
+    if (/\/financeiro\/[^/]+\/ads$/.test(caminho)) return { ok: true, disponivel: false, codigo: "NO_ADVERTISER_FOUND" };
+    return vinculos;
+  });
+}
+const FULL_OK = {
+  ok: true,
+  disponivel: true,
+  fonte: "cache",
+  custoFull: 1005.78,
+  lancamentos: 1493,
+  componentes: [
+    { grupo: "armazenagem", rotulo: "Armazenagem", tipos: ["CFWA"], valor: 593.17, lancamentos: 1439 },
+    { grupo: "armazenamento_prolongado", rotulo: "Armazenamento prolongado", tipos: ["CFBA"], valor: 121, lancamentos: 9 },
+    { grupo: "coleta", rotulo: "Coleta", tipos: ["CFCBI", "CFCBE"], valor: 291.61, lancamentos: 45 },
+    { grupo: "retirada", rotulo: "Retirada ou descarte", tipos: ["CFRS"], valor: 0, lancamentos: 0 },
+  ],
+  faturas: [{ key: "2026-08-01", status: "CLOSED" }, { key: "2026-09-01", status: "CLOSED" }],
+  definitivo: true,
+  consultadoEm: "2026-09-04T03:12:00Z",
+};
+const campoFull = () => screen.getByLabelText("FULL");
+const chamadasFull = () => rede.requisitar.mock.calls.filter(([c]) => /\/full$/.test(c));
+
+describe("Mesa · FULL do faturamento do ML", () => {
+  it("origemDoFull", () => {
+    const full = { status: "ok", valorCampo: "1.005,78" };
+    expect(origemDoFull("1.005,78", full)).toBe("ml_billing");
+    expect(origemDoFull("900,00", full)).toBe("manual");
+    expect(origemDoFull("", full)).toBeNull();
+    expect(origemDoFull("10,00", { status: "indisponivel" })).toBe("manual");
+  });
+
+  it("MELI: o campo já vem com o custo do Full da conta e da competência, com a composição", async () => {
+    redeComFull(FULL_OK);
+    const usuario = userEvent.setup();
+    await renderPlanilha(<MesaFechamento {...props} />);
+    await within(painel()).findByText("Base Zenite · vinculada");
+    await abrirPreparo(usuario);
+    await waitFor(() => expect(campoFull()).toHaveValue("1.005,78"));
+    expect(screen.getByText("Faturamento ML")).toBeInTheDocument();
+    expect(screen.getByText(/Armazenagem R\$\s593,17 · Prolongado R\$\s121,00 · Coleta R\$\s291,61/)).toBeInTheDocument();
+    expect(screen.queryByText(/Retirada/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/mês ainda aberto/)).not.toBeInTheDocument();
+    const [caminho, opcoes] = chamadasFull()[0];
+    expect(caminho).toBe("/financeiro/zenite/full");
+    expect(opcoes.params).toMatchObject({ conta: 42, periodo: "2026-08" });
+  });
+
+  it("mês aberto no ML aparece na legenda", async () => {
+    redeComFull({ ...FULL_OK, definitivo: false });
+    const usuario = userEvent.setup();
+    await renderPlanilha(<MesaFechamento {...props} />);
+    await abrirPreparo(usuario);
+    expect(await screen.findByText(/mês ainda aberto no ML/)).toBeInTheDocument();
+  });
+
+  it("editar vira Manual; 'Usar o da API' volta; ↻ não passa por cima do digitado", async () => {
+    redeComFull((opcoes) => (opcoes.params?.atualizar ? { ...FULL_OK, fonte: "ao_vivo", custoFull: 1010 } : FULL_OK));
+    const usuario = userEvent.setup();
+    await renderPlanilha(<MesaFechamento {...props} />);
+    await abrirPreparo(usuario);
+    await waitFor(() => expect(campoFull()).toHaveValue("1.005,78"));
+    await usuario.clear(campoFull());
+    await usuario.type(campoFull(), "800,00");
+    expect(screen.getByText(/Editado à mão · Faturamento ML: R\$\s1\.005,78/)).toBeInTheDocument();
+    await usuario.click(screen.getByRole("button", { name: "Atualizar do faturamento do ML agora" }));
+    await screen.findByText(/Editado à mão · Faturamento ML: R\$\s1\.010,00/);
+    expect(campoFull()).toHaveValue("800,00");
+    expect(chamadasFull().at(-1)[1].params.atualizar).toBe(1);
+    await usuario.click(screen.getByRole("button", { name: "Usar o da API" }));
+    expect(campoFull()).toHaveValue("1.010,00");
+  });
+
+  it("faturamento lento: campo vazio e manual, a legenda diz o que fazer", async () => {
+    redeComFull({ ok: true, disponivel: false, codigo: "ML_BILLING_LENTO", motivo: "x" });
+    const usuario = userEvent.setup();
+    await renderPlanilha(<MesaFechamento {...props} />);
+    await abrirPreparo(usuario);
+    expect(await screen.findByText(/faturamento do Mercado Livre está lento/)).toBeInTheDocument();
+    expect(campoFull()).toHaveValue("");
+    expect(screen.queryByText("Faturamento ML")).not.toBeInTheDocument();
+  });
+
+  it("Shopee: não há campo FULL nem consulta ao faturamento do ML", async () => {
+    redeComFull(FULL_OK, vinculosCom({ marketplace: "shopee", contaId: 42 }));
+    const usuario = userEvent.setup();
+    await renderPlanilha(<MesaFechamento {...props} marketplace="shopee" />);
+    await within(painel()).findByText("Base Zenite · vinculada");
+    await abrirPreparo(usuario);
+    expect(screen.queryByLabelText("FULL")).not.toBeInTheDocument();
+    expect(chamadasFull()).toHaveLength(0);
+  });
+
+  it("o fechamento envia o FULL da API e guarda a origem", async () => {
+    redeComFull(FULL_OK);
+    api.processar.mockResolvedValue(respostaOk());
+    api.salvar.mockResolvedValue({ id: 5, publicado: false, token_publico: null });
+    const usuario = userEvent.setup();
+    await renderPlanilha(<MesaFechamento {...props} />);
+    await within(painel()).findByText("Base Zenite · vinculada");
+    const drawer = await abrirPreparo(usuario);
+    await waitFor(() => expect(campoFull()).toHaveValue("1.005,78"));
+    await subirVendas(usuario);
+    await usuario.click(within(drawer).getByRole("button", { name: "Processar fechamento" }));
+    await waitFor(() => expect(api.processar).toHaveBeenCalled());
+    expect(api.processar.mock.calls[0][0].get("fullCost")).toBe("1.005,78");
+    await within(painel()).findByText(/competência confere/);
+    await usuario.click(within(painel()).getByRole("button", { name: "Salvar como rascunho" }));
+    await waitFor(() => expect(api.salvar).toHaveBeenCalledTimes(1));
+    const meta = api.salvar.mock.calls[0][0].payload_json.metadados;
+    expect(meta.fullCost).toBe(1005.78);
+    expect(meta.fullCostOrigem).toEqual({
+      origem: "ml_billing",
+      consultadoEm: "2026-09-04T03:12:00Z",
+      definitivo: true,
+      componentes: [
+        { grupo: "armazenagem", valor: 593.17 },
+        { grupo: "armazenamento_prolongado", valor: 121 },
+        { grupo: "coleta", valor: 291.61 },
+        { grupo: "retirada", valor: 0 },
+      ],
+    });
   });
 });
 

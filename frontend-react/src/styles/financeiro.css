@@ -315,9 +315,12 @@
 
 /* ADS do Mercado Ads (modelo B): linha inteira para a legenda caber; o
    campo continua com a largura dos outros ajustes. */
-.vf-fin-ajuste--ads { grid-column: 1 / -1; }
-.vf-fin-ajuste__campo--ads { max-width: 260px; }
-.vf-fin-ajuste__campo--ads .vf-input { padding-right: 34px; }
+.vf-fin-ajuste--ads,
+.vf-fin-ajuste--full { grid-column: 1 / -1; }
+.vf-fin-ajuste__campo--ads,
+.vf-fin-ajuste__campo--full { max-width: 260px; }
+.vf-fin-ajuste__campo--ads .vf-input,
+.vf-fin-ajuste__campo--full .vf-input { padding-right: 34px; }
 .vf-fin-ajuste__selo {
   position: absolute;
   left: 2.1rem;

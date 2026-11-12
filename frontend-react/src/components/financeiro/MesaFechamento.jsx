@@ -828,6 +828,9 @@ export function MesaFechamento({
                 ads={f.ads}
                 adsOrigem={f.adsOrigem}
                 onUsarAdsDaApi={f.usarAdsDaApi}
+                full={f.full}
+                fullOrigem={f.fullOrigem}
+                onUsarFullDaApi={f.usarFullDaApi}
               />
             </section>
             <p className="vf-field__hint">

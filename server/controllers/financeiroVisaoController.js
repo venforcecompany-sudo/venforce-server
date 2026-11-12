@@ -4,6 +4,7 @@
 // processamento, intocado, montado em /fechamentos).
 const { obterFinanceiro } = require("../services/financeiroVisaoService");
 const { obterAdsDoFechamento } = require("../services/financeiroAdsService");
+const { obterFullDoFechamento } = require("../services/financeiroFullService");
 const { obterMiniaturas } = require("../services/financeiroMiniaturasService");
 const {
   obterStatusFechamentoViaApi,
@@ -36,6 +37,26 @@ async function financeiro(req, res) {
 async function ads(req, res) {
   try {
     const dados = await obterAdsDoFechamento({
+      clienteSlugRaw: req.params.cliente,
+      clienteContaIdRaw: req.query.conta,
+      periodoRaw: req.query.periodo,
+      atualizarRaw: req.query.atualizar,
+    });
+    return res.json({ ok: true, ...dados });
+  } catch (err) {
+    if (err?.code === "MULTIPLE_MARKETPLACE_ACCOUNTS") {
+      return res.status(409).json({ ok: false, code: err.code, erro: err.message, contas: err.contas });
+    }
+    return responderErro(res, err);
+  }
+}
+
+// GET /financeiro/:cliente/full?conta=&periodo=YYYY-MM[&atualizar=1] — campo
+// FULL do Fechamento (armazenagem/coleta/retirada do Full, billing do ML).
+// Ver services/financeiroFullService.js.
+async function full(req, res) {
+  try {
+    const dados = await obterFullDoFechamento({
       clienteSlugRaw: req.params.cliente,
       clienteContaIdRaw: req.query.conta,
       periodoRaw: req.query.periodo,
@@ -111,4 +132,4 @@ async function fechamentoApi(req, res) {
   }
 }
 
-module.exports = { financeiro, ads, miniaturas, fechamentoApiStatus, fechamentoApi };
+module.exports = { financeiro, ads, full, miniaturas, fechamentoApiStatus, fechamentoApi };
