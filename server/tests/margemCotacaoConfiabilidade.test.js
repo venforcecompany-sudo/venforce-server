@@ -402,9 +402,23 @@ cenario("'Você recebe' e POST simular-margem: sem comissão/frete → sem marge
 
     const bom = await itemAoVivo();
     motorMargem.montarItens = async () => ({ itens: [bom] });
+    // P0 12/11/2026: no preço ATUAL a simulação usa a cotação completa do Motor;
+    // num preço diferente comissão/frete são cotados em P' (ver
+    // meliAnunciosSimularMargem.test.js) — sem cotação (aqui: anúncio fora do
+    // banco), bloqueia em vez de herdar os valores do preço atual.
+    const precoAtual = bom.pricing.current.value;
     const res2 = { statusCode: 200, body: null, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } };
-    await ctrl.simularMargem({ params: { itemId: "MLB201" }, body: { clienteSlug: "alianza_jeans", clienteContaId: 87, preco: 45 } }, res2);
+    await ctrl.simularMargem({ params: { itemId: "MLB201" }, body: { clienteSlug: "alianza_jeans", clienteContaId: 87, preco: precoAtual } }, res2);
     ok(res2.body.resultado.computable === true && res2.body.resultado.marginPercent !== null, "com a cotação completa a simulação continua");
+    const origObter = anunciosService.obterAnuncio;
+    anunciosService.obterAnuncio = async () => null;
+    try {
+      const res3 = { statusCode: 200, body: null, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } };
+      await ctrl.simularMargem({ params: { itemId: "MLB201" }, body: { clienteSlug: "alianza_jeans", clienteContaId: 87, preco: 45 } }, res3);
+      ok(res3.body.resultado.computable === false && res3.body.resultado.motivoCotacao === "anuncio_sem_conta_ml", JSON.stringify(res3.body.resultado));
+    } finally {
+      anunciosService.obterAnuncio = origObter;
+    }
   } finally {
     motorMargem.montarItens = origMontar;
     anunciosService.resolverCliente = origResolver;
