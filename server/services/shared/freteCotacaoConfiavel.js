@@ -13,21 +13,21 @@
 // Nada além disso é reclassificado. Nunca se troca o valor por constante.
 //
 // Quando não confiável, nesta ordem:
-//   1. dimensões de envios históricos (item único, ≥2 envios concordantes) →
+//   1. nova consulta por item_id com as tags da modalidade regular (sem proximity).
+//      A consulta implícita pode selecionar Envios Agora (7,75); a regular usa
+//      as medidas que o ML já conhece, mesmo quando o painel não permite editá-las;
+//   2. medidas ATUAIS do anúncio: shipping.dimensions ou SELLER_PACKAGE_* →
+//      cotação nova no preço atual, sem item_id;
+//   3. dimensões de envios históricos (item único, ≥2 envios concordantes) →
 //      nova cotação por `dimensions` (nível "estimado_dimensoes_historicas");
-//   2. custo efetivamente cobrado do vendedor em envios de item único comparáveis
+//   4. custo efetivamente cobrado do vendedor em envios de item único comparáveis
 //      (≥3 amostras, mesmo MLB/logística, preço ±3%, dispersão ≤10%) →
 //      nível "estimado_custo_cobrado" (confiança baixa);
-//   3. dimensões de embalagem DECLARADAS no próprio anúncio (atributos
-//      SELLER_PACKAGE_HEIGHT/WIDTH/LENGTH/WEIGHT do ML, P0 12/11/2026) → nova
-//      cotação por `dimensions` (nível "estimado_dimensoes_declaradas");
-//   4. nada disso → `null` + motivo `frete_cotacao_nao_confiavel` (frete
+//   5. nada disso → `null` + motivo `frete_cotacao_nao_confiavel` (frete
 //      desconhecido: a margem não é calculada, mesmo caminho do frete ausente).
-// HISTÓRICO ANTIGO (P0 12/11/2026): quando o envio mais recente da amostra tem
-// mais de HISTORICO_RECENTE_DIAS, os passos 1 e 2 deixam de ter precedência —
-// tenta-se antes o passo 3 (a medida que o vendedor declara HOJE); sem medida
-// declarada válida, o histórico antigo ainda é usado, com confiança "baixa" e
-// marcado `historicoAntigo`. Histórico recente continua em primeiro lugar.
+// O histórico só é consultado se a cotação pelas medidas atuais não resolver.
+// Os envios recentes são tentados antes dos antigos. Medidas antigas geram uma
+// NOVA cotação do ML, com confiança baixa pela idade da embalagem observada.
 // Nenhuma estimativa é "cobrança confirmada". SOMENTE LEITURA (GET).
 
 const TAG_PROXIMITY = "proximity";
@@ -189,11 +189,24 @@ function lerDimensoesDeclaradas(atributos) {
   return { dimensions: `${h}x${w}x${l},${p}` };
 }
 
+function lerDimensoesDoAnuncio(item) {
+  const dimensions = item && item.shipping && item.shipping.dimensions;
+  if (typeof dimensions === "string") {
+    const partes = dimensions.split(",");
+    const lados = partes[0].split("x").map(num);
+    if (partes.length === 2 && lados.length === 3 && lados.every((n) => n > 0) && num(partes[1]) > 0) {
+      return { dimensions, origem: "shipping.dimensions" };
+    }
+  }
+  const declaradas = lerDimensoesDeclaradas(item && item.attributes);
+  return declaradas ? { ...declaradas, origem: "SELLER_PACKAGE_*" } : null;
+}
+
 function dimensoesDeclaradas(args) {
   return memoizar(args.memo, "declaradas", async () => {
     try {
       const r = await args.fetchFn(args.clienteId, `/items/${encodeURIComponent(args.itemId)}?include_attributes=all`, args.opcoes);
-      return r && r.ok && r.data ? lerDimensoesDeclaradas(r.data.attributes) : null;
+      return r && r.ok && r.data ? lerDimensoesDoAnuncio(r.data) : null;
     } catch (_) { return null; }
   });
 }
@@ -216,9 +229,23 @@ function periodo(amostras) {
 
 function dimensoesConcordantes(amostras) {
   const cont = new Map();
-  for (const a of amostras) if (a.dimensions) cont.set(a.dimensions, (cont.get(a.dimensions) || 0) + 1);
+  for (const a of amostras) {
+    if (!a.dimensions) continue;
+    // O mesmo pacote pode vir girado no envio: 32x23x5 e 5x23x32.
+    // Compara os três lados e o peso, mantendo a medida original para cotar.
+    // Mesmo volume com lados diferentes, ou peso diferente, não se agrupam.
+    const partes = String(a.dimensions).split(",");
+    const lados = partes[0].split("x").map(Number);
+    const peso = num(partes[1]);
+    const chave = partes.length === 2 && lados.length === 3 && lados.every((n) => Number.isFinite(n) && n > 0) && peso > 0
+      ? `${lados.sort((x, y) => x - y).join("x")},${peso}`
+      : a.dimensions;
+    const grupo = cont.get(chave) || { dimensions: a.dimensions, n: 0 };
+    grupo.n += 1;
+    cont.set(chave, grupo);
+  }
   let melhor = null;
-  for (const [dimensions, n] of cont) if (!melhor || n > melhor.n) melhor = { dimensions, n };
+  for (const grupo of cont.values()) if (!melhor || grupo.n > melhor.n) melhor = grupo;
   if (!melhor || melhor.n < MIN_DIMENSOES_CONCORDANTES) return null;
   const usadas = amostras.filter((a) => a.dimensions);
   if (melhor.n / usadas.length < 0.6) return null;
@@ -290,7 +317,38 @@ async function avaliarFrete({
     return { fretePrevisto: resposta.listCost, qualidade: { nivel: NIVEIS.COTADO, confirmado: false, ...base }, motivo: null };
   }
 
-  const amostras = await coletarAmostras({ fetchFn, clienteId, sellerId, itemId, opcoes, memo });
+  // Cotar a modalidade regular não altera as modalidades habilitadas no anúncio.
+  // Mantém as demais tags e exige uma resposta com desconto obrigatório válido.
+  // Medido no MLB3596426877: com proximity = 7,75; sem proximity = 19,05,
+  // igual ao painel do vendedor. Não depende de dimensões nem de vendas passadas.
+  const tagsCotacao = tagsEnvio.filter((t) => t !== TAG_PROXIMITY);
+  try {
+    const params = new URLSearchParams({
+      item_id: itemId, verbose: "true", item_price: String(precoEfetivo),
+      listing_type_id: listingTypeId, mode: "me2", tags: tagsCotacao.join(","),
+    });
+    if (logisticType) params.set("logistic_type", logisticType);
+    const cotacao = await fetchFn(clienteId, `/users/${encodeURIComponent(sellerId)}/shipping_options/free?${params}`, opcoes);
+    const regular = lerResposta(cotacao);
+    base.cotacaoRegular = { status: cotacao && cotacao.status != null ? cotacao.status : null,
+      descontoTipo: regular.descontoTipo, descontoTaxa: regular.descontoTaxa };
+    if (regular.listCost !== null && descontoObrigatorio(regular)) {
+      return {
+        fretePrevisto: regular.listCost,
+        qualidade: {
+          nivel: NIVEIS.COTADO, confirmado: false,
+          fonte: "shipping_options/free?item_id&tags (Mercado Envios regular)",
+          modalidadeCotada: "mercado_envios_regular", tagsCotacao,
+          cotacaoRejeitada: resposta.listCost, ...base, descontoTipo: regular.descontoTipo,
+        },
+        motivo: null,
+      };
+    }
+  } catch (err) {
+    base.cotacaoRegular = { status: null, erro: (err && (err.code || err.name)) || "erro" };
+  }
+
+  let amostras = [];
   const cotarDimensoes = async (dimensions) => {
     try {
       const r = lerResposta(await fetchFn(clienteId, urlCotacaoPorDimensoes({ sellerId, dimensions, precoEfetivo, listingTypeId, logisticType }), opcoes));
@@ -325,7 +383,7 @@ async function avaliarFrete({
     };
   };
 
-  // Passo 3 — medidas declaradas HOJE no anúncio.
+  // Medidas atuais sempre precedem o histórico, inclusive o recente.
   const porDeclaradas = async () => {
     const declaradas = await dimensoesDeclaradas({ fetchFn, clienteId, itemId, opcoes, memo });
     const valor = declaradas ? await cotarDimensoes(declaradas.dimensions) : null;
@@ -334,26 +392,25 @@ async function avaliarFrete({
       fretePrevisto: valor,
       qualidade: {
         nivel: NIVEIS.DECLARADAS, confirmado: false, confianca: "media",
-        fonte: "shipping_options/free?dimensions (SELLER_PACKAGE_* declaradas no anuncio)",
-        dimensions: declaradas.dimensions, amostrasEncontradas: amostras.length, cotacaoRejeitada: resposta.listCost, ...base,
+        fonte: `shipping_options/free?dimensions (${declaradas.origem} atuais do anuncio)`,
+        dimensions: declaradas.dimensions, fonteMedidas: declaradas.origem,
+        historicoConsultado: false, cotacaoRejeitada: resposta.listCost, ...base,
       },
       motivo: null,
     };
   };
+
+  const atual = await porDeclaradas();
+  if (atual) return atual;
+  amostras = await coletarAmostras({ fetchFn, clienteId, sellerId, itemId, opcoes, memo });
 
   // Cada passo histórico enxerga SÓ os envios recentes: uma venda nova não "reabilita" medidas
   // antigas que concordam entre si. Os antigos ficam como último recurso, rebaixados e marcados.
   const recentes = amostras.filter((a) => amostraRecente(a, agora));
   const antigas = amostras.filter((a) => !amostraRecente(a, agora));
   if (recentes.length) {
-    const r = (await porHistorico(recentes)) || (await porDeclaradas());
+    const r = await porHistorico(recentes);
     if (r) return r;
-  } else {
-    const d = await porDeclaradas();
-    if (d) {
-      if (antigas.length) d.qualidade.historicoAntigo = { periodo: periodo(antigas), amostras: antigas.length };
-      return d;
-    }
   }
   if (antigas.length) {
     const h = await porHistorico(antigas);
@@ -380,9 +437,9 @@ async function avaliarFrete({
 // valor é a cotação por item_id como veio do ML, SEM verificação.
 const TEXTO_NIVEL = Object.freeze({
   [NIVEIS.COTADO]: "Frete cotado pelo Mercado Livre para o anúncio",
-  [NIVEIS.DIMENSOES]: "Frete ESTIMADO: cotação pelas medidas de envios anteriores do anúncio",
+  [NIVEIS.DIMENSOES]: "Frete ESTIMADO: cotação atual do Mercado Livre pelas medidas de envios anteriores do anúncio",
   [NIVEIS.CUSTO_COBRADO]: "Frete ESTIMADO: mediana do que o Mercado Livre cobrou em envios anteriores",
-  [NIVEIS.DECLARADAS]: "Frete ESTIMADO: cotação pelas medidas de embalagem declaradas no anúncio",
+  [NIVEIS.DECLARADAS]: "Frete ESTIMADO: cotação atual do Mercado Livre pelas medidas atuais da embalagem do anúncio",
   [NIVEIS.DESCONHECIDO]: "Frete DESCONHECIDO: a cotação do Mercado Livre para este anúncio não é confiável e não há medidas para recalcular",
 });
 
@@ -393,10 +450,11 @@ function resumoDoFrete({ fretePrevisto = null, freteQualidade = null, motivo = n
   const partes = [];
   if (q) {
     partes.push(TEXTO_NIVEL[q.nivel] || `Frete: ${q.nivel}`);
+    if (q.modalidadeCotada === "mercado_envios_regular") partes.push("modalidade regular, sem Envios Agora");
     if (q.cotacaoRejeitada !== null && q.cotacaoRejeitada !== undefined && q.nivel !== NIVEIS.COTADO) {
       partes.push(`cotação por anúncio rejeitada: R$ ${Number(q.cotacaoRejeitada).toFixed(2).replace(".", ",")}`);
     }
-    if (q.historicoAntigo) partes.push("envios anteriores antigos");
+    if (q.historicoAntigo) partes.push("medidas obtidas de envios antigos");
     if (fora.includes("entregador_flex")) partes.push("vendas pelo Flex têm o custo do entregador próprio, fora deste valor");
   } else if (valor === null && motivo) {
     partes.push(`Frete indisponível (${motivo})`);
@@ -420,6 +478,6 @@ function resumoDoFrete({ fretePrevisto = null, freteQualidade = null, motivo = n
 
 module.exports = {
   freteConfiavelHabilitado, cotacaoNaoConfiavel, lerResposta, descontoObrigatorio, avaliarFrete,
-  dimensoesConcordantes, lerDimensoesDeclaradas, modalidadeDoAnuncio, resumoDoFrete, historicoRecente,
+  dimensoesConcordantes, lerDimensoesDeclaradas, lerDimensoesDoAnuncio, modalidadeDoAnuncio, resumoDoFrete, historicoRecente,
   MOTIVO_NAO_CONFIAVEL, NIVEIS, HISTORICO_RECENTE_DIAS,
 };

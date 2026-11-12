@@ -52,6 +52,8 @@ if (process.argv[2] === "filho") {
   const comFlag = rodar("87");
   ok(comFlag.antiga.margemIncompleta === true && comFlag.antiga.marginPercent === null && comFlag.antiga.profit === null && comFlag.antiga.computable === false,
     "linha antiga da conta 87 não é confiável");
+  ok(comFlag.antiga.status === "SUSPECT_DATA", "frete invalidado na leitura não mantém o status saudável do snapshot");
+  ok(comFlag.avaliada.status === "HEALTHY" && comFlag.outra.status === "HEALTHY", "status saudável preservado para fretes válidos e contas fora da regra");
   ok(comFlag.avaliada.margemIncompleta === false && comFlag.avaliada.marginPercent === 30, "linha já avaliada (frete válido) continua visível");
   ok(comFlag.estimada.margemIncompleta === false && comFlag.estimada.freteNivel === "estimado_dimensoes_historicas", "estimada visível e rotulada");
   ok(comFlag.outra.margemIncompleta === false && comFlag.outra.marginPercent === 18, "outra conta intocada");

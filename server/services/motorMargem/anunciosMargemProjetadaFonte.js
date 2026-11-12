@@ -111,7 +111,9 @@ async function lerMarginSnapshotPorItens({ clienteId, clienteContaId = null, ite
       assumidos,
       // 'fresh' | 'stale' | 'failed' | … — valor de um run anterior não revalidado.
       refreshStatus: r.refresh_status || null,
-      status: r.status || null,
+      // A validação de leitura pode invalidar um snapshot antes saudável.
+      // O rótulo deve acompanhar a mesma decisão que suprimiu o número.
+      status: custoMarketplaceAusente && r.status !== "UNVALIDATED" ? "SUSPECT_DATA" : (r.status || null),
       calculadoEm: r.calculated_at || null,
       origemJob: ORIGEM_MARGIN_SNAPSHOT,
       fonte: FONTE_MARGIN_SNAPSHOT,

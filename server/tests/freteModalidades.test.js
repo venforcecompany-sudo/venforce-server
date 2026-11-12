@@ -10,7 +10,7 @@
 process.env.DATABASE_URL = process.env.DATABASE_URL || "postgres://nobody@127.0.0.1:1/teste-sem-banco";
 const assert = require("assert");
 const { buscarComissaoEFrete } = require("../services/shared/marketplaceCurrentQuoteService");
-const { NIVEIS } = require("../services/shared/freteCotacaoConfiavel");
+const { NIVEIS, dimensoesConcordantes } = require("../services/shared/freteCotacaoConfiavel");
 
 const S86 = "1587129755";
 const S87 = "2433262404";
@@ -59,9 +59,12 @@ function mundo(spec) {
     const p = String(path);
     chamadas.push({ p, mlUserId: opts.mlUserId || null });
     if (p.startsWith(`/items/${spec.id}?attributes=id,shipping`)) return { ok: true, status: 200, data: { id: spec.id, shipping: { tags: spec.tags } } };
-    if (p.startsWith(`/items/${spec.id}?include_attributes=all`)) return { ok: true, status: 200, data: { id: spec.id, shipping: { tags: spec.tags }, attributes: atributosDeclarados() } };
+    if (p.startsWith(`/items/${spec.id}?include_attributes=all`)) return { ok: true, status: 200, data: { id: spec.id, shipping: { tags: spec.tags, dimensions: spec.shippingDimensions }, attributes: atributosDeclarados() } };
     if (p.includes("/shipping_options/free")) {
-      const preco = Number(new URLSearchParams(p.split("?")[1]).get("item_price"));
+      const params = new URLSearchParams(p.split("?")[1]);
+      const preco = Number(params.get("item_price"));
+      if (params.has("tags") && spec.falhaCotacaoRegular) return spec.falhaCotacaoRegular;
+      if (params.has("tags") && spec.cotacaoRegular) return { ok: true, status: 200, data: { coverage: { all_country: spec.cotacaoRegular(preco, params) } } };
       if (p.includes("dimensions=")) {
         const dm = decodeURIComponent(p.match(/dimensions=([^&]+)/)[1]);
         const valida = spec.dimsCotaveis ? spec.dimsCotaveis.includes(dm) : dm === spec.dimsNormalizadas || dm === spec.dims;
@@ -124,6 +127,53 @@ cenario("dimensões históricas de R$ 79 para cima: valor inalterado (13,85 em 8
 // Caso do Fernando (conta 86): sem nenhuma venda, "Envios Agora" (proximity), 7,75 no item_id.
 const FERNANDO = { id: "MLB4445939340", seller: S86, tags: TAGS_PROX, cotacaoItem: () => NONE(), dims: "28x23x4,324", pedidos: [] };
 
+cenario("modalidade regular recupera os 7 MLBs sem dimensões: usa o item_id com tags sem proximity, sem histórico", () => comEnv(S86, async () => {
+  // Consultas reais em 12/11/2026: a consulta implícita devolvia 7,75;
+  // as tags da modalidade regular retornaram os valores abaixo no preço vigente.
+  for (const [id, preco, custo] of [
+    ["MLB3596426877", 128.8, 19.05], ["MLB4445876846", 79.9, 14.45],
+    ["MLB4454087502", 136.8, 19.05], ["MLB3596401769", 122.99, 19.05],
+    ["MLB3596414529", 102.88, 16.15], ["MLB5619920790", 105.9, 16.85],
+    ["MLB5965203530", 89.9, 12.95],
+  ]) {
+    const { r, m } = await cotar({ id, seller: S86, tags: TAGS_PROX, cotacaoItem: () => NONE(), pedidos: [],
+      cotacaoRegular: (p, params) => {
+        eq(p, preco);
+        eq(params.get("tags"), "self_service_in,mandatory_free_shipping");
+        eq(params.get("item_id"), id);
+        eq(params.get("logistic_type"), "cross_docking");
+        ok(!params.has("dimensions") && !params.has("free_shipping"), "seleciona modalidade sem inventar medidas nem forçar frete grátis");
+        return MANDATORY(custo);
+      } }, preco);
+    eq(r.fretePrevisto, custo, id);
+    eq(r.freteQualidade.nivel, NIVEIS.COTADO);
+    eq(r.freteQualidade.modalidadeCotada, "mercado_envios_regular");
+    eq(r.freteQualidade.confirmado, false, "cotação não é cobrança realizada");
+    ok(!m.chamadas.some((c) => c.p.includes("include_attributes") || c.p.startsWith("/orders/") || c.p.startsWith("/shipments/")), "não exige embalagem cadastrada nem vendas");
+    ok(m.chamadas.every((c) => c.mlUserId === S86), "usa a conta selecionada");
+  }
+}));
+
+cenario("cotação regular respeita a faixa de preço retornada pelo ML", () => comEnv(S86, async () => {
+  const spec = { id: "MLB3596426877", seller: S86, tags: TAGS_PROX, cotacaoItem: () => NONE(),
+    cotacaoRegular: (p) => p < 79 ? MANDATORY(8.45, 0.3) : MANDATORY(p < 100 ? 14.45 : 19.05) };
+  for (const [preco, frete] of [[78.99, 8.45], [79, 14.45], [128.8, 19.05]]) {
+    const { r } = await cotar(spec, preco);
+    eq(r.fretePrevisto, frete);
+    eq(r.freteQualidade.nivel, NIVEIS.COTADO);
+  }
+}));
+
+cenario("falha ou resposta ainda suspeita na modalidade regular permite recuperar por medidas atuais", () => comEnv(S86, async () => {
+  const falha = await cotar({ ...FERNANDO, falhaCotacaoRegular: { ok: false, status: 429, data: null } }, 84.9);
+  eq(falha.r.fretePrevisto, 13.85);
+  eq(falha.r.freteQualidade.nivel, NIVEIS.DECLARADAS);
+  eq(falha.r.freteQualidade.cotacaoRegular.status, 429);
+  const suspeita = await cotar({ ...FERNANDO, cotacaoRegular: () => NONE() }, 84.9);
+  eq(suspeita.r.fretePrevisto, 13.85);
+  eq(suspeita.r.freteQualidade.nivel, NIVEIS.DECLARADAS);
+}));
+
 cenario("conta 86 — MLB4445939340 sem vendas: 7,75 rejeitado, declaradas 28x23x4,324 → 13,85 em 84,90 e em 82,29", () => comEnv(S86, async () => {
   for (const p of [84.9, 82.29]) {
     const { r, m } = await cotar(FERNANDO, p);
@@ -160,11 +210,24 @@ cenario("declaradas cuja cotação não volta com desconto obrigatório → desc
   eq(r.freteQualidade.nivel, NIVEIS.DESCONHECIDO);
 }));
 
-cenario("ordem preservada: com envios históricos concordantes vale o passo 1 (não lê os atributos)", () => comEnv(S86, async () => {
-  const { r, m } = await cotar({ ...HIST_86, dims: "99x99x99,9999" }, 84.9);
-  eq(r.freteQualidade.nivel, NIVEIS.DIMENSOES);
-  eq(r.freteQualidade.dimensions, "28x23x4,324");
-  ok(!m.chamadas.some((c) => c.p.includes("include_attributes")), "atributos só depois dos passos com envios reais");
+cenario("medidas atuais precedem envios históricos concordantes, sem consultar pedidos", () => comEnv(S86, async () => {
+  const { r, m } = await cotar({ ...HIST_86, dims: "30x24x5,400", dimsCotaveis: ["28x23x4,324", "30x24x5,400"] }, 84.9);
+  eq(r.freteQualidade.nivel, NIVEIS.DECLARADAS);
+  eq(r.freteQualidade.dimensions, "30x24x5,400");
+  eq(r.freteQualidade.fonteMedidas, "SELLER_PACKAGE_*");
+  ok(!m.chamadas.some((c) => c.p.startsWith("/orders/") || c.p.startsWith("/shipments/")), "sem leitura de histórico quando há cotação pelas medidas atuais");
+}));
+
+cenario("shipping.dimensions atual é usado antes dos atributos e cotado sem item_id", () => comEnv(S86, async () => {
+  const { r, m } = await cotar({ ...FERNANDO, shippingDimensions: "9x17x22,462", dimsCotaveis: ["9x17x22,462"], tabela: () => MANDATORY(14.45) }, 99.9);
+  eq(r.fretePrevisto, 14.45);
+  eq(r.freteQualidade.fonteMedidas, "shipping.dimensions");
+  eq(r.freteQualidade.dimensions, "9x17x22,462");
+  const query = m.chamadas.find((c) => c.p.includes("dimensions="));
+  ok(query && !new URLSearchParams(query.p.split("?")[1]).has("item_id"), "ML recebe medidas em vez do item_id");
+  ok(!m.chamadas.some((c) => c.p.startsWith("/orders/")), "sem dependência de vendas");
+  const invalida = await cotar({ ...FERNANDO, shippingDimensions: "0x17x22,462" }, 99.9);
+  eq(invalida.r.freteQualidade.fonteMedidas, "SELLER_PACKAGE_*", "dimensão inválida não esconde atributos válidos");
 }));
 
 // ── Histórico antigo (MLB5872175430: envios de dez/2025 → 14,45; declaradas hoje → 13,85) ──
@@ -174,12 +237,12 @@ const ANTIGO = { id: "MLB5872175430", seller: S86, tags: TAGS_PROX, cotacaoItem:
   pedidos: [{}, {}, {}], dimsPorEnvio: ["30x23x5,530", "30x23x5,530", "30x23x5,530"], dims: "28x23x4,324", dimsCotaveis: ["30x23x5,530", "28x23x4,324"],
   tabela: (preco, forcado, dm) => MANDATORY(dm === "30x23x5,530" ? 14.45 : 13.85) };
 
-cenario("histórico antigo (> 90 dias) não prevalece: a medida declarada hoje passa na frente e o histórico fica registrado", () => comEnv(S86, async () => {
-  const { r } = await cotar(ANTIGO, 99.9);
+cenario("histórico antigo não é consultado quando a cotação pelas medidas atuais resolve", () => comEnv(S86, async () => {
+  const { r, m } = await cotar(ANTIGO, 99.9);
   eq(r.fretePrevisto, 13.85);
   eq(r.freteQualidade.nivel, NIVEIS.DECLARADAS);
-  eq(r.freteQualidade.historicoAntigo.amostras, 3);
-  ok(String(r.freteQualidade.historicoAntigo.periodo.ate).startsWith("2025-12-10"), "período do histórico preterido fica auditável");
+  eq(r.freteQualidade.historicoConsultado, false);
+  ok(!m.chamadas.some((c) => c.p.startsWith("/orders/")), "não precisa ler histórico para obter preço atual");
 }));
 
 cenario("histórico antigo sem medida declarada: ainda é usado, mas com confiança baixa e marcado", () => comEnv(S86, async () => {
@@ -190,20 +253,20 @@ cenario("histórico antigo sem medida declarada: ainda é usado, mas com confian
   eq(r.freteQualidade.historicoAntigo, true);
 }));
 
-cenario("histórico recente continua em primeiro lugar mesmo com medida declarada diferente", () => comEnv(S86, async () => {
+cenario("medidas atuais também precedem o histórico recente quando as embalagens divergem", () => comEnv(S86, async () => {
   const { r, m } = await cotar({ ...ANTIGO, dataPedidos: undefined }, 99.9);
-  eq(r.fretePrevisto, 14.45);
-  eq(r.freteQualidade.nivel, NIVEIS.DIMENSOES);
+  eq(r.fretePrevisto, 13.85);
+  eq(r.freteQualidade.nivel, NIVEIS.DECLARADAS);
   eq(r.freteQualidade.confianca, "media");
   ok(!("historicoAntigo" in r.freteQualidade));
-  ok(!m.chamadas.some((c) => c.p.includes("include_attributes")), "sem leitura extra");
+  ok(!m.chamadas.some((c) => c.p.startsWith("/orders/")), "sem leitura de histórico");
 }));
 
 cenario("429 na leitura dos envios: não inventa nem repete em rajada — usa a medida declarada; sem ela, desconhecido com a falha registrada", () => comEnv(S86, async () => {
   const falha = { ok: false, status: 429, data: null, retryAfter: 60 };
   const a = await cotar({ ...HIST_86, dims: "28x23x4,324", falhaPedidos: falha }, 84.9);
   eq([a.r.fretePrevisto, a.r.freteQualidade.nivel], [13.85, NIVEIS.DECLARADAS]);
-  eq(a.m.chamadas.filter((c) => c.p.startsWith("/orders/search")).length, 1, "uma tentativa, sem retry");
+  eq(a.m.chamadas.filter((c) => c.p.startsWith("/orders/search")).length, 0, "medida atual não depende do endpoint de pedidos");
   const b = await cotar({ ...HIST_86, falhaPedidos: falha }, 84.9);
   eq([b.r.fretePrevisto, b.r.freteQualidade.nivel, b.r.freteQualidade.historicoNaoLido], [null, NIVEIS.DESCONHECIDO, 429]);
   eq(b.r.diagnostico.frete.motivo, "frete_cotacao_nao_confiavel");
@@ -319,6 +382,33 @@ cenario("modalidade rastreável: Flex/Envios Agora sinalizados, custo do entrega
   const semTags = await cotar({ id: "MLB2", seller: S86, tags: TAGS_CTRL, cotacaoItem: () => MANDATORY(14.45) }, 99.9);
   eq(semTags.r.freteQualidade.modalidade.flexHabilitado, null, "tags não lidas = desconhecido, nunca 'não'");
 }));
+
+cenario("MLB4454087502: lados invertidos do mesmo pacote contam juntos; cotação no preço atual usa os 5 envios concordantes", () => comEnv(S86, async () => {
+  const dims = ["32x23x5,680", "32x23x5,680", "5x23x32,680", "5x23x32,680", "5x23x32,680", "5x23x32,660"];
+  const spec = { id: "MLB4454087502", seller: S86, tags: TAGS_PROX, cotacaoItem: () => NONE(),
+    pedidos: [{}, {}, {}, {}, {}, {}], dimsPorEnvio: dims, dimsCotaveis: [dims[0]],
+    dataPedidos: "2026-07-10T14:25:34.000-04:00", precoVenda: 141.62, custos: [18.45, 18.45, 18.45, 18.45, 18.45, 18.45],
+    tabela: () => MANDATORY(19.05) };
+  const { r, m } = await cotar(spec, 136.8);
+  eq(r.fretePrevisto, 19.05);
+  eq(r.freteQualidade.nivel, NIVEIS.DIMENSOES);
+  eq(r.freteQualidade.concordantes, 5);
+  eq(r.freteQualidade.amostras, 6);
+  eq(r.freteQualidade.confirmado, false);
+  eq(r.freteQualidade.confianca, "baixa");
+  eq(r.freteQualidade.historicoAntigo, true);
+  ok(!m.chamadas.some((c) => c.p.endsWith("/costs")), "usa cotação atual pelas medidas em vez do custo antigo");
+}));
+
+cenario("concordância exige os mesmos lados e peso; uma única amostra e caixas de mesmo volume não bastam", () => {
+  const amostras = (dims) => dims.map((dimensions) => ({ dimensions }));
+  eq(dimensoesConcordantes(amostras(["32x23x5,680"])), null);
+  eq(dimensoesConcordantes(amostras(["32x23x5,680", "5x32x23,660"])), null);
+  eq(dimensoesConcordantes(amostras(["1x2x6,100", "1x3x4,100"])), null);
+  const r = dimensoesConcordantes(amostras(["32x23x5,680", "5x32x23,680"]));
+  eq(r.concordantes, 2);
+  eq(r.dimensions, "32x23x5,680", "preserva medida observada para a cotação");
+});
 
 cenario("seller fora de FRETE_COTACAO_CONFIAVEL_SELLERS: comportamento antigo (7,75, sem avaliação) — liberação continua por seller", () => comEnv(S87, async () => {
   const { r, m } = await cotar(FERNANDO, 84.9);
