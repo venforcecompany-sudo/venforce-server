@@ -633,6 +633,7 @@ const FULL_OK = {
   consultadoEm: "2026-09-04T03:12:00Z",
 };
 const campoFull = () => screen.getByLabelText("FULL");
+const seloFull = () => document.querySelector(".vf-fin-ajuste--full .vf-fin-ajuste__selo--api");
 const chamadasFull = () => rede.requisitar.mock.calls.filter(([c]) => /\/full$/.test(c));
 
 describe("Mesa · FULL do faturamento do ML", () => {
@@ -651,10 +652,15 @@ describe("Mesa · FULL do faturamento do ML", () => {
     await within(painel()).findByText("Base Zenite · vinculada");
     await abrirPreparo(usuario);
     await waitFor(() => expect(campoFull()).toHaveValue("1.005,78"));
-    expect(screen.getByText("Faturamento ML")).toBeInTheDocument();
-    expect(screen.getByText(/Armazenagem R\$\s593,17 · Prolongado R\$\s121,00 · Coleta R\$\s291,61/)).toBeInTheDocument();
-    expect(screen.queryByText(/Retirada/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/mês ainda aberto/)).not.toBeInTheDocument();
+    // Selo "FULL" dentro da caixa (além do rótulo do campo).
+    expect(seloFull()).toBeInTheDocument();
+    const rotulos = [...document.querySelectorAll(".vf-fin-ajustes__grid .vf-fin-ajuste__label")].map((e) => e.textContent);
+    expect(rotulos.slice(0, 2)).toEqual(["ADS", "FULL"]);
+    // Legenda de uma linha; a composição fica no title.
+    const legenda = screen.getByText(/^Mercado Livre · consultado/).closest("p");
+    expect(legenda.textContent).not.toMatch(/Armazenagem|mês aberto/);
+    expect(legenda.getAttribute("title")).toMatch(/Armazenagem R\$\s593,17 · Prolongado R\$\s121,00 · Coleta R\$\s291,61/);
+    expect(legenda.getAttribute("title")).not.toMatch(/Retirada R/);
     const [caminho, opcoes] = chamadasFull()[0];
     expect(caminho).toBe("/financeiro/zenite/full");
     expect(opcoes.params).toMatchObject({ conta: 42, periodo: "2026-08" });
@@ -665,7 +671,7 @@ describe("Mesa · FULL do faturamento do ML", () => {
     const usuario = userEvent.setup();
     await renderPlanilha(<MesaFechamento {...props} />);
     await abrirPreparo(usuario);
-    expect(await screen.findByText(/mês ainda aberto no ML/)).toBeInTheDocument();
+    expect(await screen.findByText(/Mercado Livre · consultado .* · mês aberto/)).toBeInTheDocument();
   });
 
   it("editar vira Manual; 'Usar o da API' volta; ↻ não passa por cima do digitado", async () => {
@@ -676,9 +682,9 @@ describe("Mesa · FULL do faturamento do ML", () => {
     await waitFor(() => expect(campoFull()).toHaveValue("1.005,78"));
     await usuario.clear(campoFull());
     await usuario.type(campoFull(), "800,00");
-    expect(screen.getByText(/Editado à mão · Faturamento ML: R\$\s1\.005,78/)).toBeInTheDocument();
+    expect(screen.getByText(/Editado à mão · Mercado Livre: R\$\s1\.005,78/)).toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Atualizar do faturamento do ML agora" }));
-    await screen.findByText(/Editado à mão · Faturamento ML: R\$\s1\.010,00/);
+    await screen.findByText(/Editado à mão · Mercado Livre: R\$\s1\.010,00/);
     expect(campoFull()).toHaveValue("800,00");
     expect(chamadasFull().at(-1)[1].params.atualizar).toBe(1);
     await usuario.click(screen.getByRole("button", { name: "Usar o da API" }));
@@ -692,7 +698,7 @@ describe("Mesa · FULL do faturamento do ML", () => {
     await abrirPreparo(usuario);
     expect(await screen.findByText(/faturamento do Mercado Livre está lento/)).toBeInTheDocument();
     expect(campoFull()).toHaveValue("");
-    expect(screen.queryByText("Faturamento ML")).not.toBeInTheDocument();
+    expect(seloFull()).toBeNull();
   });
 
   it("Shopee: não há campo FULL nem consulta ao faturamento do ML", async () => {
