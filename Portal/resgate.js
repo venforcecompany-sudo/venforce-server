@@ -195,6 +195,7 @@
 
   function abrirItem(itemId) {
     $("rg-drawer").hidden = false; $("rg-drawer-backdrop").hidden = false;
+    $("rg-drawer").classList.add("is-open"); $("rg-drawer-backdrop").classList.add("is-open");
     $("rg-drawer-title").textContent = itemId; $("rg-drawer-corpo").innerHTML = '<div class="vf-loading-state"><span class="vf-spinner vf-spinner--sm"></span></div>';
     return chamar("/resgate/contas/" + estado.contaId + "/itens/" + encodeURIComponent(itemId)).then(function (r) {
       if (!r.ok) { $("rg-drawer-corpo").innerHTML = esc(r.data && r.data.motivo || "Erro."); return; }
@@ -203,7 +204,10 @@
       $("rg-drawer-corpo").innerHTML = detalheItem(r.data.item);
     });
   }
-  function fecharItem() { $("rg-drawer").hidden = true; $("rg-drawer-backdrop").hidden = true; estado.itemAberto = null; }
+  function fecharItem() {
+    $("rg-drawer").classList.remove("is-open"); $("rg-drawer-backdrop").classList.remove("is-open");
+    $("rg-drawer").hidden = true; $("rg-drawer-backdrop").hidden = true; estado.itemAberto = null;
+  }
 
   function simular() {
     var x = estado.itemAberto; if (!x) return null;
