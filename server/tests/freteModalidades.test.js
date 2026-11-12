@@ -202,6 +202,16 @@ cenario("conta 87 — casos proximity comprovados continuam iguais (envios hist�
   eq(r.freteQualidade.nivel, NIVEIS.DECLARADAS);
 }));
 
+cenario("modalidade rastreável: Flex/Envios Agora sinalizados, custo do entregador Flex fora da margem; Full/coleta sem Flex não", () => comEnv(S86, async () => {
+  const prox = await cotar({ ...FERNANDO, passarTags: true }, 84.9);
+  eq(prox.r.freteQualidade.modalidade, { logistica: "cross_docking", flexHabilitado: true, enviosAgora: true, custosForaDaMargem: ["entregador_flex"] });
+  const full = await cotar({ id: "MLB1", seller: S86, tags: ["mandatory_free_shipping"], passarTags: true, logistica: "fulfillment", cotacaoItem: () => MANDATORY(19.05) }, 137.33);
+  eq(full.r.fretePrevisto, 19.05, "Full mantém a cotação");
+  eq(full.r.freteQualidade.modalidade, { logistica: "fulfillment", flexHabilitado: false, enviosAgora: false, custosForaDaMargem: [] });
+  const semTags = await cotar({ id: "MLB2", seller: S86, tags: TAGS_CTRL, cotacaoItem: () => MANDATORY(14.45) }, 99.9);
+  eq(semTags.r.freteQualidade.modalidade.flexHabilitado, null, "tags não lidas = desconhecido, nunca 'não'");
+}));
+
 cenario("seller fora de FRETE_COTACAO_CONFIAVEL_SELLERS: comportamento antigo (7,75, sem avaliação) — liberação continua por seller", () => comEnv(S87, async () => {
   const { r, m } = await cotar(FERNANDO, 84.9);
   eq(r.fretePrevisto, 7.75);

@@ -222,6 +222,27 @@ async function custoCobrado({ fetchFn, clienteId, sellerId, opcoes, amostras, pr
   return { valor: Math.round(mediana * 100) / 100, amostras: custos.length, periodo: periodo(comparaveis) };
 }
 
+// ── Modalidade (rastreabilidade; NÃO muda o valor) ──────────────────────────
+// O frete projetado é o da logística do anúncio (`logistic_type`). Um mesmo
+// anúncio pode vender por outra modalidade, com outro custo (medido em
+// 12/11/2026, contas 86/87, 286 vendas):
+//  - Flex (`self_service_in` no anúncio; envio `self_service`): o ML cobra do
+//    vendedor ~R$ 7,19–9,89 (mandatory 0,1) em /shipments/{id}/costs, e o
+//    vendedor paga o PRÓPRIO entregador — custo externo que o ML não informa e
+//    que a margem NÃO inclui (nunca tratado como zero: fica sinalizado aqui).
+//  - Envios Agora (`proximity`): entrega em até 1 h; nenhum envio dessa
+//    modalidade nas amostras, todas as vendas do anúncio saíram como coleta
+//    (cross_docking) com a tarifa normal.
+function modalidadeDoAnuncio(logisticType, tags) {
+  const t = Array.isArray(tags) ? tags : null;
+  return {
+    logistica: logisticType || null,
+    flexHabilitado: t ? t.includes("self_service_in") : null,
+    enviosAgora: t ? t.includes(TAG_PROXIMITY) : null,
+    custosForaDaMargem: t && t.includes("self_service_in") ? ["entregador_flex"] : [],
+  };
+}
+
 /**
  * Avalia a resposta de frete de `item_id` e, se não confiável, tenta recuperar.
  * @returns {Promise<{fretePrevisto:number|null, qualidade:object, motivo:string|null}>}
@@ -237,6 +258,7 @@ async function avaliarFrete({
   if (!descontoObrigatorio(resposta) && !Array.isArray(tagsEnvio)) {
     tagsEnvio = await tagsDoEnvio({ fetchFn, clienteId, itemId, opcoes, memo });
   }
+  base.modalidade = modalidadeDoAnuncio(logisticType, tagsEnvio);
   if (!cotacaoNaoConfiavel({ resposta, tags: tagsEnvio })) {
     return { fretePrevisto: resposta.listCost, qualidade: { nivel: NIVEIS.COTADO, confirmado: false, ...base }, motivo: null };
   }
@@ -297,5 +319,5 @@ async function avaliarFrete({
 
 module.exports = {
   freteConfiavelHabilitado, cotacaoNaoConfiavel, lerResposta, descontoObrigatorio, avaliarFrete,
-  dimensoesConcordantes, lerDimensoesDeclaradas, MOTIVO_NAO_CONFIAVEL, NIVEIS,
+  dimensoesConcordantes, lerDimensoesDeclaradas, modalidadeDoAnuncio, MOTIVO_NAO_CONFIAVEL, NIVEIS,
 };
