@@ -209,6 +209,22 @@ cenario("429 na leitura dos envios: não inventa nem repete em rajada — usa a 
   eq(b.r.diagnostico.frete.motivo, "frete_cotacao_nao_confiavel");
 }));
 
+// Descontos: 50% (coleta ≥ 79) e 30% (< 79) e 10% (Flex) são MEDIDOS nas contas 86/87. 40% (reputação) NÃO
+// apareceu em nenhuma das 286 vendas: o caso abaixo é SIMULADO, só para travar que a taxa nunca é presumida.
+cenario("desconto vem da resposta do ML, nunca presumido: 50%, 40% (simulado), 30% e 10% aceitos como vieram; taxa 0 ou tipo não obrigatório, não", () => comEnv(S86, async () => {
+  for (const [rate, valor] of [[0.5, 13.85], [0.4, 16.62], [0.3, 8.25], [0.1, 9.8]]) {
+    const direto = await cotar({ id: "MLB3", seller: S86, tags: TAGS_PROX, passarTags: true, cotacaoItem: () => MANDATORY(valor, rate) }, 99.9);
+    eq([direto.r.fretePrevisto, direto.r.freteQualidade.nivel], [valor, NIVEIS.COTADO], `item_id mandatory ${rate}: confiável mesmo com proximity`);
+    eq(direto.m.chamadas.filter((c) => c.p.includes("shipping_options")).length, 1, "sem recotação");
+    const porDims = await cotar({ ...FERNANDO, tabela: () => MANDATORY(valor, rate) }, 99.9);
+    eq(porDims.r.fretePrevisto, valor, `dimensões mandatory ${rate}: valor da resposta, sem ajuste`);
+  }
+  for (const all of [MANDATORY(13.85, 0), { list_cost: 13.85, discount: { rate: 0.5, type: "fs_optional", promoted_amount: 13.85 } }, { list_cost: 13.85 }]) {
+    const r = (await cotar({ ...FERNANDO, tabela: () => all }, 99.9)).r;
+    eq([r.fretePrevisto, r.freteQualidade.nivel], [null, NIVEIS.DESCONHECIDO], "resposta sem desconto obrigatório não vira frete");
+  }
+}));
+
 cenario("resumoDoFrete: contrato único de leitura (estimado ≠ confirmado; desconhecido sem valor; Flex fora da margem; seller não avaliado)", () => comEnv(S86, async () => {
   const { resumoDoFrete } = require("../services/shared/freteCotacaoConfiavel");
   const est = await cotar({ ...FERNANDO, passarTags: true }, 84.9);
