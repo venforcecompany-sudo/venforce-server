@@ -31,3 +31,15 @@ export function obterMiniaturasProdutos(clienteSlug, { clienteContaId, itens, si
     signal,
   });
 }
+
+// GET /financeiro/:cliente/full?conta=&periodo=YYYY-MM[&atualizar=1] — custo
+// do Full da conta na competência (armazenagem, armazenamento prolongado,
+// coleta, retirada), lido do faturamento do ML, para o campo FULL do
+// Fechamento. A 1ª consulta de um mês pode levar ~1 min (limite do ML).
+// Ver server/services/financeiroFullService.js.
+export function obterFullFechamento(clienteSlug, { clienteContaId, periodo, atualizar = false, signal } = {}) {
+  return requisitar(`/financeiro/${encodeURIComponent(clienteSlug)}/full`, {
+    params: { conta: clienteContaId, periodo, atualizar: atualizar ? 1 : undefined },
+    signal,
+  });
+}

@@ -68,6 +68,9 @@ export function montarPayloadFechamento({
   marketplace,
   ajustes = {},
   adsOrigem = null,
+  // De onde veio o FULL: { origem: "ml_billing", consultadoEm, definitivo,
+  // componentes } ou { origem: "manual" }. Auditoria, como o adsOrigem.
+  fullCostOrigem = null,
   // "api" = pedidos sincronizados da API do ML; "planilha" = upload (padrão,
   // para quem não informa — mantém o comportamento de antes do modo API).
   fonteVendas = "planilha",
@@ -126,6 +129,7 @@ export function montarPayloadFechamento({
       venforce: parseMoedaBR(ajustes.venforce),
       affiliates: parseMoedaBR(ajustes.affiliates),
       fullCost: parseMoedaBR(ajustes.fullCost),
+      fullCostOrigem: fullCostOrigem || null,
       additionalCosts: parseMoedaBR(ajustes.additionalCosts),
       // Origem dos custos DECLARADA pelo backend: "base" (base vinculada),
       // "upload" (planilha enviada) ou, no modo API, "sync" (custos gravados

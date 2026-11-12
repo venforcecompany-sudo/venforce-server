@@ -349,6 +349,22 @@ async function ensureFinanceiroAdsCacheSchema(db = pool) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Financeiro V3 — cache do custo do Full (billing do ML) por conta+competência
+// (campo FULL do Fechamento). Mesmo desenho do cache de Ads.
+const FINANCEIRO_FULL_CACHE_MIGRATION = "20261112_financeiro_full_cache.sql";
+const FINANCEIRO_FULL_CACHE_LOCK_KEY = "vf:schema:financeiro_full_cache";
+const financeiroFullCacheEmCurso = new WeakMap();
+
+function financeiroFullCacheDdl() {
+  return fs.readFileSync(path.join(migrationsDir, FINANCEIRO_FULL_CACHE_MIGRATION), "utf8");
+}
+
+async function ensureFinanceiroFullCacheSchema(db = pool) {
+  return singleFlight(financeiroFullCacheEmCurso, db, (chave) =>
+    aplicarMigrationSerializada(chave, financeiroFullCacheDdl(), FINANCEIRO_FULL_CACHE_LOCK_KEY));
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Shopee LIVE — grants (tokens cifrados) por Conta. Mesmo desenho das trilhas acima.
 const SHOPEE_GRANTS_MIGRATION = "20261029_shopee_grants.sql";
 // Metadados do refresh (colunas anuláveis): aplicada na MESMA trilha, depois da
@@ -571,6 +587,21 @@ const MIGRATIONS_INVENTARIO = [
     rollback: "DROP TABLE financeiro_ads_cache (nenhuma tabela existente é alterada)",
   },
   {
+    arquivo: FINANCEIRO_FULL_CACHE_MIGRATION,
+    descricao:
+      "cria financeiro_full_cache — custo do Full (billing do ML: armazenagem, coleta, " +
+      "retirada) por conta ML e competência, lido pelo campo FULL do Fechamento (Financeiro V3)",
+    tipo: "estrutural-aditiva",
+    auto: true,
+    runner: "schemaEnsure.ensureFinanceiroFullCacheSchema",
+    idempotente: true,
+    risco: "baixo",
+    prerequisito:
+      "nenhum (sem FKs). Serializado por pg_advisory_xact_lock: seguro com duas instâncias " +
+      "subindo ao mesmo tempo",
+    rollback: "DROP TABLE financeiro_full_cache (nenhuma tabela existente é alterada)",
+  },
+  {
     arquivo: SHOPEE_GRANTS_MIGRATION,
     descricao:
       "cria shopee_grants — autorização Shopee LIVE por Conta (shop_id + tokens cifrados " +
@@ -624,6 +655,7 @@ module.exports = {
   PROMOCOES_REBATE_MIGRATION,
   PROMOCOES_REBATE_LOCK_KEY,
   ensureFinanceiroAdsCacheSchema,
+  ensureFinanceiroFullCacheSchema,
   financeiroAdsCacheDdl,
   FINANCEIRO_ADS_CACHE_MIGRATION,
   FINANCEIRO_ADS_CACHE_LOCK_KEY,

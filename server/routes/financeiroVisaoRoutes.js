@@ -38,6 +38,8 @@ function receberPlanilhaCustos(req, res, next) {
 router.get("/:cliente", authMiddleware, requireAutomacoesAccess, requireClienteNaCarteira("cliente"), controller.financeiro);
 // Campo ADS do Fechamento — investimento do Mercado Ads da conta na competência.
 router.get("/:cliente/ads", authMiddleware, requireAutomacoesAccess, requireClienteNaCarteira("cliente"), controller.ads);
+// Campo FULL do Fechamento — armazenagem, coleta e retirada do Full no faturamento do ML.
+router.get("/:cliente/full", authMiddleware, requireAutomacoesAccess, requireClienteNaCarteira("cliente"), controller.full);
 // Foto dos produtos da lista (Mercado Livre), lida da base do sync de Anúncios ML.
 router.get("/:cliente/miniaturas", authMiddleware, requireAutomacoesAccess, requireClienteNaCarteira("cliente"), controller.miniaturas);
 // Fechamento pela API do Mercado Livre (Central de Vendas, sem planilha):

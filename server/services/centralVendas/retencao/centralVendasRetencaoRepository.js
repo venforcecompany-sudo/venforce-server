@@ -107,7 +107,8 @@ async function carregarRunsReferenciadosForaDoEscopo(db, { runIds = [], escopo =
 //     desligada, é lida como citação INFORMATIVA (relatório do dry-run).
 //   entregas_cliente.payload_json → nenhum gravador de importId hoje; varrido
 //     por garantia (o Financeiro exibe motor.importId e poderia salvá-lo).
-//   margin_snapshot_*, sentinel_*, fechamento_incidentes, financeiro_ads_cache
+//   margin_snapshot_*, sentinel_*, fechamento_incidentes, financeiro_ads_cache,
+//   financeiro_full_cache
 //     → nenhuma coluna/campo de import (sem busca em runtime).
 // A extração é GENÉRICA por chave em qualquer profundidade (importId,
 // importIds[], centralImportIds[], import_id): um campo novo com esses nomes

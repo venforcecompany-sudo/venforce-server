@@ -164,6 +164,39 @@ confirmação antes de salvar.
 Base vinculada sem nenhum custo cadastrado com `custosOrigem=base` não é erro (igual
 ao sync): as vendas ficam sem custo e a nota do `summary` avisa.
 
+### `GET /financeiro/:cliente/full?conta=<clienteContaId>&periodo=YYYY-MM[&atualizar=1]`
+
+Valor sugerido para o ajuste **FULL** (o mesmo `fullCost` acima e do fechamento por
+planilha). O drawer preenche o campo sozinho, com o selo "Faturamento ML", igual ao
+ADS (`/ads`). Editar o campo vira "Manual". O payload salvo guarda
+`metadados.fullCostOrigem`. Código: `server/services/financeiroFullService.js`.
+
+- **Fonte:** API de billing do ML da conta exata (identidade estrita),
+  `/billing/integration/periods/key/{key}/group/ML/details?document_type=BILL`.
+- **Entram** (lista fechada; o prefixo `CF` sozinho não serve, porque `CFONPN` é
+  taxa de parcelamento): `CFWA` armazenagem diária, `CFBA` armazenamento
+  prolongado, `CFCBI`/`CFCBE` coleta e `CFRS` retirada/descarte. O resumo da
+  fatura rotula o `CFWA` como "Estorno por Fulfillment Warehousing", mas cada
+  lançamento é `CHARGE` "Tarifa pelo serviço de armazenamento Full": é custo.
+- **Não entram** `CFFE`/`CFFI` (nem os estornos `BFFE`/`BFFI`): são o frete de cada
+  venda Full, igual ao `senders[].cost` que o fechamento já desconta por venda.
+  Conferido em 12/11/2026 (shopping_86, 5 vendas: valores iguais centavo por
+  centavo).
+- **Competência ≠ fatura:** a fatura `2026-10-01` cobre ~10/set a 09/out. O mês M
+  soma os lançamentos com `creation_date_time` em M, lidos das faturas M e M+1.
+  Sobras atrasadas que caem em M+2 ficam de fora (R$ 0,72 em out/2026 na
+  shopping_86). O mês fica `definitivo` quando M e M+1 estão `CLOSED`; antes disso
+  o cache (`financeiro_full_cache`) vale 6 h. `atualizar=1` ignora o cache.
+- **Ritmo:** o `/details` aceita ~1 chamada a cada 14 s e no máximo 1000 itens por
+  página. Uma conta grande leva ~1 min na primeira consulta (shopping_86 out/2026:
+  4 páginas, 54 s, **R$ 1.005,78**).
+- **Paginação instável:** a ordem entre páginas não é estável. Cada fatura é lida
+  até os `detail_id` únicos fecharem com o `total` (até 3 passadas). Se não
+  fechar, a resposta é `ML_BILLING_INCOMPLETO`, nunca um valor a menor.
+- **Sem dado** (`disponivel:false`, nada cacheado): `NO_TOKEN`,
+  `ML_BILLING_SEM_PERMISSAO` (401/403), `ML_BILLING_LENTO` (prazo de 120 s),
+  `ML_BILLING_INCOMPLETO` ou `ML_BILLING_API_ERROR`. O campo fica manual.
+
 ## Seleção do import (fonte canônica)
 
 Não há "pegar o mais recente" próprio. A seleção é a mesma da leitura da Central
