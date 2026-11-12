@@ -701,14 +701,44 @@ describe("Mesa · FULL do faturamento do ML", () => {
     expect(seloFull()).toBeNull();
   });
 
-  it("Shopee: não há campo FULL nem consulta ao faturamento do ML", async () => {
+  it("Shopee: FULL manual ao lado do ADS, sem consultar o faturamento do ML", async () => {
     redeComFull(FULL_OK, vinculosCom({ marketplace: "shopee", contaId: 42 }));
     const usuario = userEvent.setup();
     await renderPlanilha(<MesaFechamento {...props} marketplace="shopee" />);
     await within(painel()).findByText("Base Zenite · vinculada");
     await abrirPreparo(usuario);
-    expect(screen.queryByLabelText("FULL")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^FULL/)).toHaveValue("");
+    const rotulos = [...document.querySelectorAll(".vf-fin-ajustes__grid .vf-fin-ajuste__label")].map((e) => e.textContent);
+    expect(rotulos).toEqual(["ADS", "FULL", "Venforce", "Afiliados"]);
+    expect(seloFull()).toBeNull();
+    expect(screen.queryByRole("button", { name: "Atualizar do faturamento do ML agora" })).not.toBeInTheDocument();
     expect(chamadasFull()).toHaveLength(0);
+  });
+
+  it("Shopee: o FULL digitado vai para o processamento e fica salvo, como o ADS", async () => {
+    redeComFull(FULL_OK, vinculosCom({ marketplace: "shopee", contaId: 42 }));
+    api.processar.mockResolvedValue(respostaOk());
+    api.salvar.mockResolvedValue({ id: 5, publicado: false, token_publico: null });
+    const usuario = userEvent.setup();
+    await renderPlanilha(<MesaFechamento {...props} marketplace="shopee" />);
+    await within(painel()).findByText("Base Zenite · vinculada");
+    const drawer = await abrirPreparo(usuario);
+    await usuario.type(screen.getByLabelText(/^ADS/), "11.407,13");
+    await usuario.type(screen.getByLabelText(/^FULL/), "350,00");
+    await subirVendas(usuario);
+    await usuario.click(within(drawer).getByRole("button", { name: "Processar fechamento" }));
+    await waitFor(() => expect(api.processar).toHaveBeenCalled());
+    const form = api.processar.mock.calls[0][0];
+    expect(form.get("fullCost")).toBe("350,00");
+    expect(form.get("ads")).toBe("11.407,13");
+    expect(form.get("additionalCosts")).toBeNull();
+    await within(painel()).findByText(/competência confere/);
+    await usuario.click(within(painel()).getByRole("button", { name: "Salvar como rascunho" }));
+    await waitFor(() => expect(api.salvar).toHaveBeenCalledTimes(1));
+    const meta = api.salvar.mock.calls[0][0].payload_json.metadados;
+    expect(meta.fullCost).toBe(350);
+    expect(meta.fullCostOrigem).toEqual({ origem: "manual" });
+    expect(meta.ads).toBe(11407.13);
   });
 
   it("o fechamento envia o FULL da API e guarda a origem", async () => {

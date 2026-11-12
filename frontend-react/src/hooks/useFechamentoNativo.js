@@ -436,10 +436,9 @@ export function useFechamentoNativo({ clienteSlug, clienteNome, clienteId = null
         form.append("ads", String(ajustes.ads || "0"));
         form.append("venforce", String(ajustes.venforce || "0"));
         form.append("affiliates", String(ajustes.affiliates || "0"));
-        if (mkt === "meli") {
-          form.append("fullCost", String(ajustes.fullCost || "0"));
-          form.append("additionalCosts", String(ajustes.additionalCosts || "0"));
-        }
+        // FULL: Mercado Livre e Shopee (manual na Shopee). Custos adicionais: só MELI.
+        if (mkt === "meli" || mkt === "shopee") form.append("fullCost", String(ajustes.fullCost || "0"));
+        if (mkt === "meli") form.append("additionalCosts", String(ajustes.additionalCosts || "0"));
         resposta = await processarFechamento(form, { signal: controlador.signal });
       }
       if (controlador.signal.aborted) return;

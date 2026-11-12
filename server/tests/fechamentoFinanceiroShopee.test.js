@@ -371,6 +371,14 @@ console.log("\n▸ Teste 2 — receita sem custo é preservada (Shopee)");
   eq("revenueWithoutCost = 100", r.summary.revenueWithoutCost, 100);
   eq("tacos = 0.10", round2(r.summary.tacos * 100) / 100, 0.1);
   eq("financialConfidence = parcial", r.summary.financialConfidence, "parcial");
+  eq("sem FULL informado: fullCostTotal = 0", r.summary.fullCostTotal, 0);
+
+  // FULL manual (Shopee): sai só do resultado final, como no Mercado Livre.
+  const comFull = processShopeeFinancialOrders({ salesRowsRaw: rows, costMap, ads: 20, fullCost: 15.5 });
+  eq("FULL desconta do resultado final", comFull.summary.finalResult, round2(r.summary.finalResult - 15.5));
+  eq("fullCostTotal no resumo", comFull.summary.fullCostTotal, 15.5);
+  eq("FULL não mexe no LC", comFull.summary.contributionProfitTotal, r.summary.contributionProfitTotal);
+  eq("FULL não mexe no TACoX", comFull.summary.tacox, r.summary.tacox);
 
   const semCusto = r.detailedRows.find((row) => row["ID do pedido"] === "S-2");
   ok("Produto B não desaparece", !!semCusto);
@@ -471,6 +479,10 @@ console.log("\n▸ Motor de performance segue disponível e marcado como estimad
   eq("receita sem custo", r.summary.revenueWithoutCost, 100);
   eq("confiança parcial", r.summary.financialConfidence, "parcial");
   eq("TACoS sobre o faturamento total", round2(r.summary.tacos * 100), 10);
+  // FULL manual no motor de performance (8º argumento, opcional).
+  const comFull = processShopee(perfRows, costRows, 30, 0, 0, null, null, 12);
+  eq("performance: FULL desconta do resultado final", comFull.summary.finalResult, round2(r.summary.finalResult - 12));
+  eq("performance: fullCostTotal no resumo", comFull.summary.fullCostTotal, 12);
   ok(
     "nota executiva avisa que é estimativa",
     r.summary.executiveNotes.some((note) => note.includes("Estimativa por performance"))

@@ -2349,6 +2349,9 @@ function processShopeeFinancialOrders({
   ads = 0,
   venforce = 0,
   affiliates = 0,
+  // FULL informado à mão no fechamento (a Shopee ainda não tem API de
+  // custos de fulfillment). Entra só no resultado final, como no Mercado Livre.
+  fullCost = 0,
   // Opcional — só existe vindo do Debug Financeiro. Sem ele, resultado idêntico.
   debugCollector = null,
 }) {
@@ -2848,7 +2851,7 @@ function processShopeeFinancialOrders({
   const coveragePercent = (value) =>
     recognizedRevenue > 0 ? round2((value / recognizedRevenue) * 100) : 0;
 
-  const finalResult = round2(contributionProfitTotal - ads - venforce - affiliates);
+  const finalResult = round2(contributionProfitTotal - ads - venforce - affiliates - (Number(fullCost) || 0));
 
   return {
     summary: {
@@ -2891,6 +2894,7 @@ function processShopeeFinancialOrders({
       adsTotal: round2(ads),
       venforceTotal: round2(venforce),
       affiliatesTotal: round2(affiliates),
+      fullCostTotal: round2(Number(fullCost) || 0),
       grossProfitTotal: contributionProfitTotal,
       grossMargin: legacyRatio(contributionProfitTotal, revenueWithCost),
       ordersTotalCount: orders.size,

@@ -965,7 +965,9 @@ function buildShopeeCostMap(costRowsRaw) {
 
 // debugCollector é opcional (só vem do Debug Financeiro). Sem ele, o
 // resultado de processShopee() é IDÊNTICO ao anterior.
-function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ordersAllRowsRaw, debugCollector) {
+// fullCost (opcional, último para não mexer nas chamadas existentes): FULL
+// informado à mão; entra só no resultado final, como no Mercado Livre.
+function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ordersAllRowsRaw, debugCollector, fullCost = 0) {
   const detectedColumns =
     salesRowsRaw.length > 0 ? Object.keys(salesRowsRaw[0]) : [];
   const executiveNotes = [];
@@ -989,6 +991,7 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ord
       ads,
       venforce,
       affiliates,
+      fullCost,
       debugCollector,
     });
   }
@@ -1005,6 +1008,7 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ord
       ads,
       venforce,
       affiliates,
+      fullCost,
       debugCollector,
     });
   }
@@ -1159,7 +1163,7 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ord
   // TACoS/TACoX sobre o faturamento TOTAL; TACoX inclui afiliados.
   const tacos = computeTacos(ads, paidRevenueTotal);
   const tacox = computeTacox(ads, venforce, affiliates, paidRevenueTotal);
-  const finalResult = round2(contributionProfitTotal - ads - venforce - affiliates);
+  const finalResult = round2(contributionProfitTotal - ads - venforce - affiliates - (Number(fullCost) || 0));
 
   executiveNotes.push(
     "Estimativa por performance: taxas calculadas por faixa de tarifa, não por repasse financeiro real. Não é um fechamento financeiro definitivo."
@@ -1281,6 +1285,7 @@ function processShopee(salesRowsRaw, costRowsRaw, ads, venforce, affiliates, ord
       adsTotal: round2(ads),
       venforceTotal: round2(venforce),
       affiliatesTotal: round2(affiliates),
+      fullCostTotal: round2(Number(fullCost) || 0),
       grossProfitTotal: round2(contributionProfitTotal),
       grossMargin: legacyRatio(contributionProfitTotal, revenueWithCost),
       executiveNotes,

@@ -40,7 +40,8 @@ function processFechamentoFinanceiro({
       venforce,
       affiliates,
       ordersAllRowsRaw,
-      debugCollector
+      debugCollector,
+      fullCost
     );
   }
 
