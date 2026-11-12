@@ -186,11 +186,19 @@ function nomeDaPasta(pastaId) {
   return pasta?.nome || `Pasta ${pastaId}`;
 }
 
+// null/""/undefined = DESCONHECIDO. Number(null) é 0 e Number.isFinite(0) é true: um frete nulo
+// aparecia como "tem frete" e como R$ 0 na ordenação (P0 12/11/2026).
+function numOuNulo(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 // Diagnóstico do item salvo (apenas apresentação — não recalcula nada)
 function diagnosticoItemSalvo(item) {
   const temBase = item?.tem_base === true || item?.tem_base === 1 || item?.tem_base === "1";
-  const freteNum = Number(item?.frete);
-  const comissaoNum = Number(item?.comissao);
+  const freteNum = numOuNulo(item?.frete) ?? NaN;
+  const comissaoNum = numOuNulo(item?.comissao) ?? NaN;
 
   if (!temBase) return { key: "sem_base", label: "Sem base", tone: "" };
   if (!Number.isFinite(freteNum)) return { key: "sem_frete", label: "Sem frete", tone: "warning" };
@@ -1493,11 +1501,11 @@ const RD_SORT_GETTERS = {
   sku: (it) => String(it.sku || "") || null,
   titulo: (it) => String(it.titulo || "") || null,
   status_anuncio: (it) => String(it.status_anuncio || "") || null,
-  preco_efetivo: (it) => { const n = Number(it.preco_efetivo); return Number.isFinite(n) ? n : null; },
-  custo: (it) => { const n = Number(it.custo); return Number.isFinite(n) ? n : null; },
-  frete: (it) => { const n = Number(it.frete); return Number.isFinite(n) ? n : null; },
-  comissao: (it) => { const n = Number(it.comissao); return Number.isFinite(n) ? n : null; },
-  lc: (it) => { const n = Number(it.lc); return Number.isFinite(n) ? n : null; },
+  preco_efetivo: (it) => numOuNulo(it.preco_efetivo),
+  custo: (it) => numOuNulo(it.custo),
+  frete: (it) => numOuNulo(it.frete),
+  comissao: (it) => numOuNulo(it.comissao),
+  lc: (it) => numOuNulo(it.lc),
   mc: (it) => { const n = Number(it.mc); return Number.isFinite(n) ? n : null; },
   preco_alvo: (it) => { const n = Number(it.preco_alvo); return Number.isFinite(n) ? n : null; },
   diferenca_preco: (it) => { const n = Number(it.diferenca_preco); return Number.isFinite(n) ? n : null; },
@@ -1539,8 +1547,8 @@ function itensDetalheFiltradosOrdenados() {
 
     if (s.temAlvo && !Number.isFinite(Number(it.preco_alvo))) return false;
     if (s.temAcao && !String(it.acao_recomendada || "").trim()) return false;
-    if (s.semFrete && Number.isFinite(Number(it.frete))) return false;
-    if (s.semComissao && Number.isFinite(Number(it.comissao))) return false;
+    if (s.semFrete && numOuNulo(it.frete) !== null) return false;
+    if (s.semComissao && numOuNulo(it.comissao) !== null) return false;
 
     if (q) {
       const tier = nivelDeCorrespondencia(it, q);
