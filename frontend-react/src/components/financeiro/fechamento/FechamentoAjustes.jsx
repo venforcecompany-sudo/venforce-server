@@ -13,8 +13,9 @@
 //
 // FULL no Mercado Livre: mesmo desenho, com o custo do Full da conta na
 // competência lido do faturamento do ML (armazenagem, armazenamento
-// prolongado, coleta, retirada; selo "Faturamento ML"). O frete das vendas
-// Full não entra — já é descontado em cada venda.
+// prolongado, coleta, retirada; selo "FULL"), logo abaixo do ADS — os dois
+// são custos extras vindos da API. O frete das vendas Full não entra — já é
+// descontado em cada venda.
 
 import { useId } from "react";
 import { formatarMoeda } from "../../../utils/currency.js";
@@ -93,7 +94,7 @@ function LegendaFull({ full, origem, onUsarFullDaApi }) {
   if (full.status === "carregando") {
     return (
       <p className="vf-fin-ajuste__legenda" role="status">
-        Buscando no faturamento do ML… a primeira consulta do mês pode levar até 1 minuto.
+        Buscando no Mercado Livre… pode levar 1 min.
       </p>
     );
   }
@@ -109,29 +110,32 @@ function LegendaFull({ full, origem, onUsarFullDaApi }) {
     return (
       <p className="vf-fin-ajuste__legenda">
         <span className="vf-fin-ajuste__ponto vf-fin-ajuste__ponto--manual" aria-hidden="true" />
-        <span>Editado à mão · Faturamento ML: {formatarMoeda(full.dados.custoFull)}</span>
+        <span>Editado à mão · Mercado Livre: {formatarMoeda(full.dados.custoFull)}</span>
         <button type="button" className="vf-fin-ajuste__link" onClick={onUsarFullDaApi}>
           Usar o da API
         </button>
       </p>
     );
   }
+  // Uma linha só, como a do ADS. A composição fica no title (passar o mouse).
   const componentes = (full.dados.componentes || [])
     .filter((c) => Number(c.valor) > 0)
     .map((c) => `${ROTULO_COMPONENTE_FULL[c.grupo] || c.rotulo} ${formatarMoeda(c.valor)}`);
   const quando = quandoFoiConsultado(full.dados);
   const partes = [
-    ...(componentes.length ? componentes : ["sem cobranças do Full no mês"]),
     quando ? `consultado ${quando}` : null,
-    full.dados.definitivo ? null : "mês ainda aberto no ML",
+    componentes.length ? null : "sem cobranças no mês",
+    full.dados.definitivo ? null : "mês aberto",
   ].filter(Boolean);
+  const detalhe = [
+    componentes.length ? componentes.join(" · ") : "Sem cobranças do Full no mês.",
+    "Armazenagem, coleta e retirada do Full pela data do lançamento; o frete das vendas Full já entra em cada venda.",
+    full.dados.definitivo ? null : "O mês ainda está aberto no faturamento do ML.",
+  ].filter(Boolean).join("\n");
   return (
-    <p
-      className="vf-fin-ajuste__legenda"
-      title="Armazenagem, armazenamento prolongado, coleta e retirada do Full, pela data do lançamento. O frete das vendas Full já entra em cada venda."
-    >
+    <p className="vf-fin-ajuste__legenda" title={detalhe}>
       <span className="vf-fin-ajuste__ponto" aria-hidden="true" />
-      <span>Faturamento ML · {partes.join(" · ")}</span>
+      <span>Mercado Livre · {partes.join(" · ")}</span>
     </p>
   );
 }
@@ -228,9 +232,8 @@ function CampoFull({ valor, onChange, full, origem, onUsarFullDaApi }) {
       estado={full}
       origem={origem}
       origemApi="ml_billing"
-      seloApi="Faturamento ML"
+      seloApi="FULL"
       tituloAtualizar="Atualizar do faturamento do ML agora"
-      secundario
     >
       <LegendaFull full={full} origem={origem} onUsarFullDaApi={onUsarFullDaApi} />
     </CampoDaApi>
@@ -255,21 +258,22 @@ export function FechamentoAjustes({ marketplace, ajustes, onAjuste, ads, adsOrig
         ) : (
           <CampoMoeda rotulo="ADS" valor={ajustes.ads} onChange={(v) => onAjuste("ads", v)} />
         )}
+        {ehMeli &&
+          (fullDaApi ? (
+            <CampoFull
+              valor={ajustes.fullCost}
+              onChange={(v) => onAjuste("fullCost", v)}
+              full={full}
+              origem={fullOrigem}
+              onUsarFullDaApi={onUsarFullDaApi}
+            />
+          ) : (
+            <CampoMoeda rotulo="FULL" valor={ajustes.fullCost} onChange={(v) => onAjuste("fullCost", v)} />
+          ))}
         <CampoMoeda rotulo="Venforce" valor={ajustes.venforce} onChange={(v) => onAjuste("venforce", v)} />
         <CampoMoeda rotulo="Afiliados" valor={ajustes.affiliates} onChange={(v) => onAjuste("affiliates", v)} />
         {ehMeli && (
           <>
-            {fullDaApi ? (
-              <CampoFull
-                valor={ajustes.fullCost}
-                onChange={(v) => onAjuste("fullCost", v)}
-                full={full}
-                origem={fullOrigem}
-                onUsarFullDaApi={onUsarFullDaApi}
-              />
-            ) : (
-              <CampoMoeda rotulo="FULL" valor={ajustes.fullCost} onChange={(v) => onAjuste("fullCost", v)} secundario />
-            )}
             <CampoMoeda
               rotulo="Custos adicionais"
               valor={ajustes.additionalCosts}
