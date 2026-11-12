@@ -132,6 +132,18 @@ async function lerAmostras({ fetchFn, clienteId, sellerId, itemId, opcoes }) {
   return saida;
 }
 
+// Cotação por DIMENSÕES. Sem `free_shipping=true` forçado (P0 12/11/2026): o ML
+// decide a faixa pelo preço. Medido nas contas 86/87: de R$ 79 para cima o
+// resultado é idêntico com ou sem o parâmetro (mandatory 0,5); abaixo de R$ 79
+// forçar o parâmetro devolvia a tarifa da faixa ≥ 79 (13,85 em vez de 8,25 em
+// R$ 78,99), enquanto a cotação confiável por item_id do controle devolve a
+// faixa < 79 (mandatory 0,3) — a mesma que esta URL devolve sem o parâmetro.
+function urlCotacaoPorDimensoes({ sellerId, dimensions, precoEfetivo, listingTypeId, logisticType }) {
+  return `/users/${encodeURIComponent(sellerId)}/shipping_options/free?dimensions=${encodeURIComponent(dimensions)}` +
+    `&verbose=true&item_price=${encodeURIComponent(precoEfetivo)}&listing_type_id=${encodeURIComponent(listingTypeId)}` +
+    `&mode=me2&condition=new&logistic_type=${encodeURIComponent(logisticType)}`;
+}
+
 function periodo(amostras) {
   const ds = amostras.map((a) => a.data).filter(Boolean).sort();
   return ds.length ? { de: ds[0], ate: ds[ds.length - 1] } : null;
@@ -193,10 +205,7 @@ async function avaliarFrete({
   const dims = dimensoesConcordantes(amostras);
   if (dims) {
     try {
-      const url = `/users/${encodeURIComponent(sellerId)}/shipping_options/free?dimensions=${encodeURIComponent(dims.dimensions)}` +
-        `&verbose=true&item_price=${encodeURIComponent(precoEfetivo)}&listing_type_id=${encodeURIComponent(listingTypeId)}` +
-        `&mode=me2&condition=new&logistic_type=${encodeURIComponent(logisticType)}&free_shipping=true`;
-      const r = lerResposta(await fetchFn(clienteId, url, opcoes));
+      const r = lerResposta(await fetchFn(clienteId, urlCotacaoPorDimensoes({ sellerId, dimensions: dims.dimensions, precoEfetivo, listingTypeId, logisticType }), opcoes));
       if (r.listCost !== null && descontoObrigatorio(r)) {
         return {
           fretePrevisto: r.listCost,
