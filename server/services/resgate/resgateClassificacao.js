@@ -161,7 +161,7 @@ function exposicao({ contrato, situacao, unidades30d = null, faturamento30d = nu
   const u = num(unidades30d), fat = num(faturamento30d);
   const res = (contrato && contrato.resultado) || {};
   const preco = contrato && contrato.componentes ? num(contrato.componentes.precoVigente.valor) : null;
-  if (!res.calculavel || preco === null) {
+  if (!res.calculavel || preco === null || situacao === SITUACAO.MARGEM_DESCONHECIDA || situacao === SITUACAO.DADOS_INSUFICIENTES) {
     return { tipo: "faturamento_exposto", valor: fat, texto: fat === null ? "Sem vendas registradas na Central de Vendas." : "Faturamento de 30 dias com margem desconhecida (não é perda calculada)." };
   }
   const lucroReal = num(res.lucro);

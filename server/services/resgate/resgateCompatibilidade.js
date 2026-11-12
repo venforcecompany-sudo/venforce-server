@@ -15,7 +15,7 @@ const MIN_COMPARACOES_MODALIDADE = 5;
 const CONCORDANCIA_VALIDA = 0.9;
 const CONCORDANCIA_DIVERGENTE = 0.8;
 
-const STATUS_MODALIDADE = Object.freeze({ VALIDADA: "VALIDADA", DIVERGENTE: "DIVERGENTE", SEM_EVIDENCIA: "SEM_EVIDENCIA", PARCIAL: "PARCIAL", NAO_APLICAVEL: "NAO_APLICAVEL" });
+const STATUS_MODALIDADE = Object.freeze({ VALIDADA: "VALIDADA", INCONCLUSIVA: "INCONCLUSIVA", DIVERGENTE: "DIVERGENTE", SEM_EVIDENCIA: "SEM_EVIDENCIA", PARCIAL: "PARCIAL", NAO_APLICAVEL: "NAO_APLICAVEL" });
 const DECISAO = Object.freeze({
   LIBERAVEL: "LIBERAVEL",
   LIBERAVEL_COM_RESSALVAS: "LIBERAVEL_COM_RESSALVAS",
@@ -80,25 +80,36 @@ function montarMatriz({ conta = {}, itens = [], liberadaHoje = false, resumo = {
     else if (m.comparacoes < MIN_COMPARACOES_MODALIDADE) status = STATUS_MODALIDADE.SEM_EVIDENCIA;
     else if (taxa >= CONCORDANCIA_VALIDA) status = STATUS_MODALIDADE.VALIDADA;
     else if (taxa < CONCORDANCIA_DIVERGENTE) status = STATUS_MODALIDADE.DIVERGENTE;
-    else status = STATUS_MODALIDADE.SEM_EVIDENCIA;
+    else status = STATUS_MODALIDADE.INCONCLUSIVA; // 80–90%: mede, mas não basta para validar
     modalidades[fam] = { ...m, concordancia: taxa === null ? null : Math.round(taxa * 1000) / 1000, status };
   }
 
   // Modalidades com volume (≥ 5% das unidades vendidas) decidem a validação.
   const unidadesTotal = Object.values(porModalidade).reduce((a, m) => a + m.unidades30d, 0);
-  const relevantes = Object.entries(modalidades).filter(([fam, m]) => fam !== "a_combinar" && (unidadesTotal ? m.unidades30d / unidadesTotal >= 0.05 : m.ativos > 0));
+  // Logística desconhecida (anúncio fora do cadastro sincronizado) não decide a validação.
+  const relevantes = Object.entries(modalidades).filter(([fam, m]) => fam !== "a_combinar" && fam !== "desconhecida" && (unidadesTotal ? m.unidades30d / unidadesTotal >= 0.05 : m.ativos > 0));
   const comparacoesTotal = Object.values(modalidades).reduce((a, m) => a + m.comparacoes, 0);
   const divergentes = relevantes.filter(([, m]) => m.status === STATUS_MODALIDADE.DIVERGENTE).map(([f]) => f);
   const semEvidencia = relevantes.filter(([, m]) => m.status === STATUS_MODALIDADE.SEM_EVIDENCIA).map(([f]) => f);
+  const inconclusivas = relevantes.filter(([, m]) => m.status === STATUS_MODALIDADE.INCONCLUSIVA).map(([f]) => `${f} (${Math.round(modalidades[f].concordancia * 100)}% de ${modalidades[f].comparacoes})`);
   const validadas = relevantes.filter(([, m]) => m.status === STATUS_MODALIDADE.VALIDADA).map(([f]) => f);
 
   const motivos = [];
   let decisao;
-  if (liberadaHoje) { decisao = DECISAO.JA_LIBERADA; motivos.push("Seller já está na liberação do frete confiável."); }
+  if (liberadaHoje) {
+    decisao = DECISAO.JA_LIBERADA; motivos.push("Seller já está na liberação do frete confiável.");
+    if (divergentes.length) motivos.push(`Mesmo liberada, a cotação diverge do cobrado em: ${divergentes.join(", ")}.`);
+    if (inconclusivas.length) motivos.push(`Concordância entre 80% e 90% em: ${inconclusivas.join(", ")}.`);
+  }
   else if (!itens.length || (comparacoesTotal < MIN_COMPARACOES_MODALIDADE && aoVivo === 0)) { decisao = DECISAO.SEM_DADOS; motivos.push("Sem vendas comparáveis nem amostra ao vivo suficientes para medir a conta."); }
   else if (divergentes.length) { decisao = DECISAO.NAO_LIBERAVEL; motivos.push(`Cotação diverge do cobrado em: ${divergentes.join(", ")}. Investigar antes de liberar.`); }
   else if (relevantes.length && validadas.length === relevantes.length) { decisao = DECISAO.LIBERAVEL; motivos.push(`Cotações batem com o cobrado em todas as modalidades com volume (${validadas.join(", ")}).`); }
-  else { decisao = DECISAO.LIBERAVEL_COM_RESSALVAS; motivos.push(semEvidencia.length ? `Sem evidência suficiente em: ${semEvidencia.join(", ")}.` : "Evidência parcial."); }
+  else {
+    decisao = DECISAO.LIBERAVEL_COM_RESSALVAS;
+    if (inconclusivas.length) motivos.push(`Concordância cotação × cobrado entre 80% e 90% em: ${inconclusivas.join(", ")}.`);
+    if (semEvidencia.length) motivos.push(`Menos de ${MIN_COMPARACOES_MODALIDADE} vendas comparáveis em: ${semEvidencia.join(", ")}.`);
+    if (!inconclusivas.length && !semEvidencia.length) motivos.push("Evidência parcial.");
+  }
   if (cotacaoRejeitadaAoVivo) motivos.push(`${cotacaoRejeitadaAoVivo} anúncio(s) da amostra ao vivo têm cotação por anúncio rejeitada (Envios Agora/proximity).`);
   if (desconhecidoAoVivo) motivos.push(`${desconhecidoAoVivo} anúncio(s) ficariam com frete desconhecido após a liberação (margem bloqueada até declarar medidas).`);
 

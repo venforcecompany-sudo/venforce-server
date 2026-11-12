@@ -221,6 +221,18 @@ const completo = (extra = {}) => ({
     const m = montarMatriz({ conta: {}, itens: [...Array.from({ length: 10 }, () => item("coleta", true)), ...Array.from({ length: 10 }, () => item("flex", true))] });
     assert.strictEqual(m.modalidades.flex.status, "PARCIAL"); assert.strictEqual(m.financeiramenteValidada, false);
   });
+  await t("80–90% de concordância = INCONCLUSIVA (não 'sem evidência'), decisão com ressalvas e motivo com a taxa", () => {
+    const m = montarMatriz({ conta: {}, itens: [...Array.from({ length: 17 }, () => item("coleta", true)), ...Array.from({ length: 3 }, () => item("coleta", false))] });
+    assert.strictEqual(m.modalidades.coleta.status, "INCONCLUSIVA"); assert.strictEqual(m.decisao, DECISAO.LIBERAVEL_COM_RESSALVAS);
+    assert.ok(m.motivos.some((x) => /85% de 20/.test(x)));
+    const lib = montarMatriz({ conta: {}, liberadaHoje: true, itens: Array.from({ length: 10 }, () => item("coleta", false)) });
+    assert.strictEqual(lib.decisao, DECISAO.JA_LIBERADA); assert.ok(lib.motivos.some((x) => /Mesmo liberada/.test(x)));
+  });
+  await t("exposição de margem desconhecida é faturamento exposto, mesmo com contrato calculável (limite inferior)", () => {
+    const c = montarContratoFinanceiro(completo({ custo: { valor: 45 }, precos: { cheio: 120, vigente: 100, promocional: 100 }, promocao: { ativa: true } }));
+    const e = exposicao({ contrato: c, situacao: SITUACAO.MARGEM_DESCONHECIDA, unidades30d: 4, faturamento30d: 400 });
+    assert.strictEqual(e.tipo, "faturamento_exposto"); assert.strictEqual(e.valor, 400);
+  });
   await t("plano de ativação: listas explícitas (sem *), as duas variáveis juntas, alerta de inconsistência", () => {
     const contas = [
       { resumo: { clienteContaId: 87, sellerId: "2433", riscoFinanceiro30d: 10 }, matriz: { decisao: DECISAO.JA_LIBERADA, motivos: [], totais: {} } },

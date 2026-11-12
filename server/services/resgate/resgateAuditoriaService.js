@@ -99,9 +99,10 @@ async function auditarConta({ db, conta, resumoBanco = {}, store, execucaoId, op
   const o = { ...PADROES, ...opcoes };
   const agora = o.agora || new Date();
   const log = o.logger || (() => {});
-  const liberadaHoje = freteConfiavelHabilitado(conta.sellerId);
-  // Conta já avaliada em produção (há linhas com freteQualidade): linhas sem ela são legado.
-  const contaLiberada = liberadaHoje || (resumoBanco.freteAvaliado || 0) > 0;
+  // Liberada = flag DESTE processo OU evidência no banco (linhas com freteQualidade gravadas
+  // pela produção): a flag do Render não é visível daqui. Linhas sem ela, nessa conta, são legado.
+  const liberadaHoje = freteConfiavelHabilitado(conta.sellerId) || (resumoBanco.freteAvaliado || 0) > 0;
+  const contaLiberada = liberadaHoje;
 
   const meta = await resolverMeta(db, conta, o.metas || {});
   const desdeVendas = new Date(agora.getTime() - o.janelaVendasDias * 86400000).toISOString().slice(0, 10);
