@@ -37,6 +37,15 @@ function freteLegadoNaoVerificado({ clienteContaId, freteQualidade }, contas = C
   return !(freteQualidade && typeof freteQualidade === "object");
 }
 
+/**
+ * A mesma regra em SQL, para quem lê `margin_projection_snapshots` direto
+ * (ranking de Promoções). `alias` = alias da tabela. Sem contas: FALSE.
+ */
+function sqlFreteLegadoNaoVerificado(alias, contas = CONTAS_FRETE_LEGADO) {
+  if (!contas.length) return "FALSE";
+  return `(${alias}.cliente_conta_id IN (${contas.join(",")}) AND COALESCE(jsonb_typeof(${alias}.quality_json->'freteQualidade'), '') <> 'object')`;
+}
+
 /** true/false pela logística do anúncio; null quando a logística é desconhecida. */
 function freteAplicavelDaLogistica(logisticType) {
   if (logisticType === undefined) return null;
@@ -121,6 +130,7 @@ const NOTA_MARGEM_INCOMPLETA =
 module.exports = {
   freteAplicavelDaLogistica,
   freteLegadoNaoVerificado,
+  sqlFreteLegadoNaoVerificado,
   contasFreteLegadoBloqueado,
   custoMarketplaceAusente,
   custoMarketplaceAusenteNosValores,

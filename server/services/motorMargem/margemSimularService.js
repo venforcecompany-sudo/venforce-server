@@ -25,6 +25,7 @@
 
 const pool = require("../../config/database");
 const core = require("./core");
+const margemConfiavel = require("./margemConfiavel");
 const { criarCotadorEmP, cotacaoParaNucleo, evidenciaDaCotacao } = require("./margemCotacaoEmP");
 const { carregarRebatesAtivos, margemAtualComRebate, MOTIVO_REBATE } = require("./margemAtualRebate");
 const { classificarPromocao, urlPromocoesMl } = require("./precificacao/promocaoClassificacao");
@@ -663,7 +664,11 @@ async function simular({ user, body } = {}, deps = {}) {
         aliquota: snapshot.taxRate,
         taxa_fixa: snapshot.fixedFee,
         comissao: snapshot.commission,
-        frete: snapshot.freight,
+        // Snapshot gravado antes da verificação do frete, em conta com bloqueio
+        // de legado: frete ausente (o "hoje" bloqueia, igual à tabela da Central).
+        frete: margemConfiavel.freteLegadoNaoVerificado({
+          clienteContaId: escopo.conta.id, freteQualidade: snapshot.quality ? snapshot.quality.freteQualidade : null,
+        }) ? null : snapshot.freight,
         rebate: atualRebate.rebate === null ? 0 : atualRebate.rebate,
       };
   const meta = metaDoSnapshot(snapshot);
