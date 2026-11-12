@@ -1,0 +1,21 @@
+/* VenForce Resgate — só composição sobre a Fundação V2 (tokens e componentes). */
+.vf-page-resgate .rg-tabs { margin: var(--vf-sp-4) 0; overflow-y: hidden; }
+.vf-page-resgate .rg-kpis { margin-bottom: var(--vf-sp-4); }
+.vf-page-resgate .rg-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vf-page-resgate .rg-sub { color: var(--vf-text-muted); font-size: 0.85em; }
+.vf-page-resgate .rg-linha[data-rg-conta], .vf-page-resgate .rg-linha[data-rg-item] { cursor: pointer; }
+.vf-page-resgate .rg-linha:focus-visible { outline: 2px solid var(--vf-primary); outline-offset: -2px; }
+.vf-page-resgate .rg-linha--muda td { color: var(--vf-text-muted); }
+.vf-page-resgate .rg-anuncio { display: flex; flex-direction: column; max-width: 320px; }
+.vf-page-resgate .rg-exec { color: var(--vf-text-muted); margin-right: var(--vf-sp-3); }
+.vf-page-resgate .rg-conta-topo { margin-bottom: var(--vf-sp-3); }
+.vf-page-resgate .rg-h3 { font-size: 0.95rem; margin: var(--vf-sp-4) 0 var(--vf-sp-2); }
+.vf-page-resgate .rg-lista { margin: 0; padding-left: 1.2em; }
+.vf-page-resgate .rg-timeline { margin: 0; padding-left: 1.2em; font-size: 0.9em; }
+.vf-page-resgate .rg-componentes td:nth-child(3) { max-width: 260px; }
+.vf-page-resgate .vf-card { margin-bottom: var(--vf-sp-4); }
+.vf-page-resgate code { font-family: "IBM Plex Mono", monospace; font-size: 0.85em; word-break: break-all; }
+@media (max-width: 720px) { .vf-page-resgate .rg-anuncio { max-width: 180px; } }
+.vf-page-resgate .rg-filtros .vf-toolbar__filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vf-sp-2); }
+.vf-page-resgate .rg-filtros .vf-select, .vf-page-resgate .rg-filtros .vf-input { width: auto; min-width: 180px; }
+.vf-page-resgate .rg-filtros .vf-input { min-width: 220px; }

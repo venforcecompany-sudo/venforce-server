@@ -72,3 +72,114 @@ Regras:
 - `null`, vazio ou ausente nunca vira 0.
 - O subsídio do ML entra uma única vez, como `rebate` do núcleo.
 - Comissão e frete são **recotados em cada preço simulado** (`resgateRecomendacao`). A faixa de R$ 79 e as tarifas por faixa são respeitadas.
+
+## 5. Classificação
+
+A classificação tem dois eixos, independentes.
+
+**Origem do preço** (`resgateHistorico`, nada inventado):
+
+- `SEM_ALTERACAO_REGISTRADA`, sempre com uma ressalva: até esta versão, o PUT de preço em /anuncios não deixava log.
+- `ALTERADO_MANUAL`: há log `anuncios_meli.preco.alterar`.
+- `ALTERADO_AUTOMACAO`: Central de Margem (`margem_precificacao_aplicacoes`), rebate ou transferência de promoção.
+- `ALTERADO_ORIGEM_INDETERMINADA`: o preço observado mudou entre fontes datadas, sem evento que explique.
+- `HISTORICO_INSUFICIENTE`.
+
+As fontes do histórico são snapshot do Motor, cadastro sincronizado, relatórios salvos, leitura ao vivo, `items/{id}/prices.last_updated` e o preço unitário das vendas reais.
+
+**Situação financeira:**
+
+- `DADOS_INSUFICIENTES`: componente essencial desconhecido.
+- `MARGEM_DESCONHECIDA`: frete não verificado, subsídio desconhecido com margem abaixo da meta, ou snapshot legado.
+- `MARGEM_ANTIGA_INFLADA`: a margem exibida passa a real em mais de 1 p.p.
+- `SNAPSHOT_DESATUALIZADO`.
+- `PROMOCAO_SUBSIDIADA`.
+- `ABAIXO_DA_META`: a meta é por conta. Ficar abaixo dela não é erro de cálculo.
+- `PREJUIZO`.
+- `PRECO_OK`.
+
+**Meta da conta**, em ordem de prioridade:
+
+1. Configurada (`resgate_config_contas`, ou `--metas` na CLI).
+2. Último relatório salvo do cliente.
+3. Padrão do Motor (10%), marcado como "não validada".
+
+## 6. Auditoria: escala e segurança do PostgreSQL
+
+`resgateAuditoriaService` audita **uma conta por vez**. Isso vale para a CLI e, no servidor, para a única execução `em_andamento`, garantida por um índice único.
+
+- **Camada 1 (só banco):** páginas de 300 linhas por keyset `(cliente_conta_id, item_id)`. As vendas usam o import publicado canônico por competência e os eventos são agregados por conta. Nenhum join cartesiano. Sessão com `statement_timeout`.
+- **Camada 2 (ao vivo, limitada a N anúncios por conta):**
+  - Prioriza mudança recente, margem inflada, prejuízo, abaixo da meta, desconhecida e dados insuficientes com venda.
+  - `criarFetchSomenteLeitura`: recusa método diferente de GET e qualquer corpo. Espaçamento mínimo entre chamadas e pausa global com Retry-After após 429. Falha vira motivo, não exceção.
+  - Na CLI local, `noRefresh`: o processo **nunca** renova o token de produção.
+- **Retomada:** checkpoint por conta (`aposItemId`, camada). Conta concluída não é relida.
+- **Cancelamento:** `AbortSignal` (Ctrl+C na CLI, `cancelar=true` no servidor).
+- **Abrir a tela não recalcula nada:** ela só lê a última execução concluída.
+- **Retenção:** as três últimas execuções.
+
+## 7. XLSX de recuperação (`resgatePlanoXlsx`)
+
+O arquivo tem as abas **Resumo**, **Plano de preços**, **Pendências**, **Todos os anúncios** e **Contas** (matriz).
+
+- O topo de cada aba identifica a auditoria (execução e datas) e avisa que os dados não vêm de relatório salvo e que a proposta só vale para o preço visto.
+- As fórmulas exigem `ISNUMBER` em cada entrada. Célula vazia significa desconhecido.
+- A coluna **Confere com backend** compara a margem calculada pela fórmula com a do contrato. O teste recalcula no LibreOffice.
+- **Status da revisão** aceita PENDENTE, APROVADO, REJEITADO, AJUSTADO ou INVALIDADO.
+- As correções de `fix/xlsx-frete-integridade` estão na base desta branch e não foram duplicadas: a Matriz das Automações continua com o próprio arquivo corrigido.
+
+## 8. Dry-run e futura execução em lote (`resgateDryRun`)
+
+`ESCRITA_REAL_DISPONIVEL = false` é uma constante, não depende de variável de ambiente. `executarLote()` sempre lança erro.
+
+O dry-run aplica, a cada proposta:
+
+1. Exige aprovação humana.
+2. Recusa restrições (promoção ativa, variações).
+3. Aplica o limite de variação (30%), o limite por lote (20) e o limite por conta (100).
+4. Revalida o preço atual com GET. **Se o preço mudou desde a análise, a proposta é invalidada e nada é sobrescrito.**
+5. Reconfere a meta no preço proposto com cotação ao vivo.
+6. Descreve a escrita que seria feita, a verificação pós-escrita (GET `sale_price`) e a compensação (PUT com o preço visto).
+
+O tratamento de 429 e de falha parcial vem do fetch somente leitura.
+
+Para ligar a escrita é preciso outra entrega, com revisão. Ela deve incluir: lease por item (reaproveitando o fencing do cockpit `margem_precificacao_aplicacoes`), idempotência, `antesDeEscrever` do `meliPrecoService` e auditoria em `activity_logs`.
+
+## 9. API e tela
+
+**API** em `/resgate`, com JWT, acesso de automações e carteira em toda rota por conta:
+
+- `GET /visao-global`
+- `GET /contas/:id`
+- `GET /contas/:id/itens` (paginada, com filtros)
+- `GET /contas/:id/itens/:mlb`
+- `POST /contas/:id/itens/:mlb/simular` (GET ao vivo)
+- `POST /contas/:id/itens/:mlb/revisao` (exige o preço visto; se divergir, responde 409)
+- `GET /plano.xlsx` (global: só os anúncios com ação)
+- `GET /contas/:id/plano.xlsx`
+- `POST /contas/:id/dry-run`
+
+Sem a migration `20261112_venforce_resgate.sql`, todas as rotas respondem 503. A migration não é aplicada no boot.
+
+**Tela:** `Portal/resgate.html` (menu Execução → Resgate). Fluxo:
+
+1. Visão global: KPIs e contas.
+2. Conta: matriz, filtros e tabela paginada.
+3. Gaveta do anúncio: componentes com fonte e confiança, bloqueios, histórico, simulação ao vivo e revisão.
+4. Aba Ativação.
+
+## 10. Ativação por conta (sem hotfix por seller)
+
+`resgateAtivacao.planoDeAtivacao` lê as matrizes e propõe a próxima onda, com até 5 contas: primeiro as `LIBERAVEL`, depois as `LIBERAVEL_COM_RESSALVAS`, ordenadas por risco. Ele devolve os valores **explícitos** das duas variáveis existentes, sempre juntas:
+
+- `FRETE_COTACAO_CONFIAVEL_SELLERS` (ml_user_id)
+- `FRETE_LEGADO_BLOQUEAR_CONTAS` (cliente_conta_id)
+
+Procedimento:
+
+1. Atualizar as duas variáveis no Render e reiniciar.
+2. Recalcular **só** as contas da onda, uma por vez.
+3. Acompanhar no Resgate a porcentagem de linhas com frete avaliado, as falhas e os desconhecidos.
+4. Rodar a próxima onda.
+
+Para reverter, remover os ids das duas listas e reiniciar. **Nunca usar `*`.**

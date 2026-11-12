@@ -99,6 +99,8 @@ const motorMargemRoutes = require("./routes/motorMargemRoutes");
 const margemPrecificacaoRoutes = require("./routes/margemPrecificacaoRoutes");
 const margemSimularRoutes = require("./routes/margemSimularRoutes");
 const promoSnapshotRoutes = require("./routes/promoSnapshotRoutes");
+// VenForce Resgate: auditoria financeira multiconta (somente leitura no ML; 503 sem a migration).
+const resgateRoutes = require("./routes/resgateRoutes");
 const diagnosticoInicialRoutes = require("./routes/diagnosticoInicialRoutes");
 const adsRoutes = require("./routes/adsRoutes");
 const designImageRoutes = require("./routes/designImageRoutes");
@@ -906,6 +908,7 @@ app.use("/api/margem", margemSimularRoutes);
 // Central de Margem — Promo Snapshot por conta (lê o banco; POST /sync só
 // enfileira leitura no ML, nunca aplica promoção).
 app.use("/operacao/central-margem", promoSnapshotRoutes);
+app.use("/resgate", resgateRoutes);
 // V3: Visão (composicao read-only de fontes existentes) e leitura do
 // Financeiro por periodo/conta — nao confundir com /fechamentos (upload).
 app.use("/operacao/visao", visaoRoutes);

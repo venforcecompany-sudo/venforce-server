@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VenForce — Resgate</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/vf-tokens-v2.css">
+  <link rel="stylesheet" href="css/vf-components-v2.css">
+  <link rel="stylesheet" href="css/vf-shell.css">
+  <link rel="stylesheet" href="resgate.css">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+</head>
+<!-- VenForce Resgate — auditoria financeira de TODAS as contas (scope global).
+     A tela só LÊ o resultado salvo da última auditoria (abrir a página nunca
+     dispara varredura). Simular faz GET ao vivo no ML; nenhuma ação escreve no
+     Mercado Livre. Fluxo: carteira → conta → anúncio → simular → revisar → exportar. -->
+<body class="vf-page vf-page-resgate" data-vf-density="compact" data-vf-scope="global" data-vf-module="resgate">
+  <main class="vf-content" id="rg-app" aria-label="VenForce Resgate">
+    <div class="vf-page-shell">
+      <div class="vf-page-container vf-page-container--wide">
+        <div class="vf-page-header">
+          <div class="vf-page-header__main">
+            <div class="vf-page-header__eyebrow">Integridade financeira</div>
+            <h1 class="vf-page-header__title">VenForce Resgate</h1>
+            <p class="vf-page-header__description">Audita preços e margens de todas as contas, mostra o que precisa ser revisto e o que falta para calcular. Nada aqui altera o Mercado Livre.</p>
+          </div>
+          <div class="vf-page-header__actions">
+            <span class="rg-exec" id="rg-exec" role="status"></span>
+            <a class="vf-btn vf-btn--secondary vf-btn--sm" id="rg-xlsx-global" href="#" download>Baixar plano (XLSX)</a>
+          </div>
+        </div>
+
+        <nav class="vf-tabs rg-tabs" role="tablist" aria-label="Seções do Resgate">
+          <button class="vf-tab is-active" role="tab" type="button" data-rg-tab="global" aria-selected="true">Visão global</button>
+          <button class="vf-tab" role="tab" type="button" data-rg-tab="conta" aria-selected="false">Conta</button>
+          <button class="vf-tab" role="tab" type="button" data-rg-tab="ativacao" aria-selected="false">Ativação</button>
+        </nav>
+
+        <div id="rg-estado" aria-live="polite"></div>
+
+        <!-- Visão global -->
+        <section class="rg-painel" data-rg-painel="global">
+          <div class="vf-kpi-grid rg-kpis" id="rg-kpis"></div>
+          <div class="vf-table-wrap">
+            <table class="vf-table vf-table--compact rg-tabela" aria-label="Contas auditadas">
+              <thead><tr>
+                <th>Cliente / conta</th><th>Seller</th><th class="rg-num">Auditados</th><th class="rg-num">Corretos</th><th class="rg-num">Revisar</th>
+                <th class="rg-num">Sem margem confiável</th><th class="rg-num">Alterados recentes</th><th class="rg-num">Risco 30d</th><th>Cotador</th><th>Validada</th>
+              </tr></thead>
+              <tbody id="rg-contas"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Conta -->
+        <section class="rg-painel" data-rg-painel="conta" hidden>
+          <div class="rg-conta-topo" id="rg-conta-topo"></div>
+          <div class="vf-toolbar rg-filtros">
+            <div class="vf-toolbar__filters">
+              <label class="vf-visually-hidden" for="rg-f-situacao">Classificação</label>
+              <select class="vf-select vf-select--sm" id="rg-f-situacao"></select>
+              <label class="vf-visually-hidden" for="rg-f-acao">Ação</label>
+              <select class="vf-select vf-select--sm" id="rg-f-acao"></select>
+              <label class="vf-visually-hidden" for="rg-f-origem">Origem do preço</label>
+              <select class="vf-select vf-select--sm" id="rg-f-origem"></select>
+              <label class="vf-check"><input type="checkbox" id="rg-f-recentes"> Alterados recentemente</label>
+              <label class="vf-visually-hidden" for="rg-f-busca">Buscar</label>
+              <input class="vf-input vf-input--sm" id="rg-f-busca" type="search" placeholder="MLB, SKU ou título">
+            </div>
+            <div class="vf-toolbar__actions">
+              <button class="vf-btn vf-btn--secondary vf-btn--sm" type="button" id="rg-dry-run">Dry-run das aprovadas</button>
+              <a class="vf-btn vf-btn--secondary vf-btn--sm" id="rg-xlsx-conta" href="#" download>XLSX da conta</a>
+            </div>
+          </div>
+          <div class="vf-table-wrap">
+            <table class="vf-table vf-table--compact rg-tabela" aria-label="Anúncios da conta">
+              <thead><tr>
+                <th>Anúncio</th><th class="rg-num">Preço</th><th class="rg-num">Margem real</th><th class="rg-num">Margem exibida</th><th>Frete</th>
+                <th>Classificação</th><th>Origem do preço</th><th class="rg-num">Un. 30d</th><th class="rg-num">Exposição</th><th>Proposta</th><th>Revisão</th>
+              </tr></thead>
+              <tbody id="rg-itens"></tbody>
+            </table>
+          </div>
+          <div class="vf-pagination" id="rg-paginacao"></div>
+        </section>
+
+        <!-- Ativação -->
+        <section class="rg-painel" data-rg-painel="ativacao" hidden>
+          <div id="rg-ativacao"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <div class="vf-drawer-backdrop" id="rg-drawer-backdrop" hidden></div>
+  <aside class="vf-drawer vf-drawer--lg" id="rg-drawer" role="dialog" aria-modal="true" aria-labelledby="rg-drawer-title" hidden>
+    <div class="vf-drawer__header">
+      <div class="vf-drawer__heading"><h2 class="vf-drawer__title" id="rg-drawer-title">Anúncio</h2><p class="vf-drawer__subtitle" id="rg-drawer-sub"></p></div>
+      <button class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" type="button" id="rg-drawer-fechar" aria-label="Fechar">✕</button>
+    </div>
+    <div class="vf-drawer__body" id="rg-drawer-corpo"></div>
+  </aside>
+  <div class="vf-toast-stack" id="rg-toasts" aria-live="polite"></div>
+
+  <script type="module" src="vf-shell.js"></script>
+  <script src="resgate.js"></script>
+</body>
+</html>
