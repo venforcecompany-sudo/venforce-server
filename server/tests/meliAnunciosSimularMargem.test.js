@@ -6,12 +6,14 @@
 //
 // O que este teste protege:
 //
-//  1. é simulação PURA: nunca chama o Mercado Livre, nunca grava na Base de
+//  1. é simulação SEM ESCRITA: nunca grava no Mercado Livre nem na Base de
 //     Custos, nunca persiste preço/custo/custos adicionais em lugar nenhum —
 //     só invoca o MESMO núcleo puro do Motor (marginEngine.computeMargin),
-//     nunca uma segunda fórmula;
-//  2. comissão, frete e imposto são SEMPRE os do Motor (somente leitura) —
-//     não existe override para eles, só para preço, custo e custos
+//     nunca uma segunda fórmula. Sem preço simulado, nenhuma chamada ao ML;
+//  2. comissão, frete e imposto não têm override. Com PREÇO simulado ≠ atual
+//     (P0 12/11/2026), comissão e frete são COTADOS no preço simulado (GET,
+//     token da conta do anúncio) — nunca herdados do preço atual; sem cotação
+//     a margem é bloqueada. Overrides só para preço, custo e custos
 //     adicionais (que no contrato do Motor é o campo `fixedFee`);
 //  3. sem override, o resultado bate com o que a composição já mostraria
 //     (mesmos insumos, mesma fórmula);
@@ -30,6 +32,9 @@ const Module = require("module");
 let margemHandler = null;
 let chamadasMargem = [];
 let chamadasMl = [];
+let mlHandler = null;
+// Linha de meli_anuncios do item (conta 10, seller 111) — o cotador em P' a usa.
+let anuncioRow = { id: 7, cliente_id: 1, item_id: "MLB-A", cliente_conta_id: 10, ml_user_id: "111", listing_type_id: "gold_special", category_id: "MLB1", logistic_type: "cross_docking" };
 
 const originalLoad = Module._load;
 Module._load = function loadWithStubs(request, parent, isMain) {
@@ -45,8 +50,9 @@ Module._load = function loadWithStubs(request, parent, isMain) {
   if (request === "../../utils/mlClient" || request === "../utils/mlClient") {
     return {
       async mlFetch(clienteId, path, options = {}) {
-        chamadasMl.push({ clienteId, path, metodo: options.method || "GET" });
-        return { ok: true, status: 200, data: {} };
+        const chamada = { clienteId, path, metodo: options.method || "GET", mlUserId: options.mlUserId || null };
+        chamadasMl.push(chamada);
+        return mlHandler ? mlHandler(chamada) : { ok: true, status: 200, data: {} };
       },
     };
   }
@@ -73,6 +79,9 @@ class MockDb {
       return { rows: cliente.slug === params[0] ? [cliente] : [] };
     }
     if (q.includes("base_cliente_vinculos")) return { rows: [] };
+    if (q.startsWith("SELECT * FROM meli_anuncios WHERE cliente_id = $1 AND item_id = $2")) {
+      return { rows: anuncioRow && anuncioRow.cliente_id === params[0] && anuncioRow.item_id === String(params[1]) ? [anuncioRow] : [] };
+    }
     if (q.startsWith("CREATE TABLE") || q.startsWith("ALTER TABLE") || q.startsWith("CREATE INDEX")) {
       return { rows: [] };
     }
@@ -107,6 +116,7 @@ function reset() {
   chamadasMargem = [];
   chamadasMl = [];
   margemHandler = null;
+  mlHandler = null;
 }
 
 // Mesmo shape de item que o Motor de Margem produz (ver meliAnunciosPerformance.test.js).
@@ -152,10 +162,17 @@ async function run() {
     ok("sem overrides: mesma fórmula do Motor, zero chamada ao Mercado Livre");
   });
 
-  // 2. Override só de preço: comissão/frete/imposto/custo continuam do item.
+  // 2. Override de preço (P0 12/11/2026): comissão e frete COTADOS no preço
+  //    simulado — nunca herdados do preço atual (tarifa é % do preço; frete muda
+  //    de faixa). Imposto e custo continuam do Motor. Só GET, com o token da conta.
   await withMockDb(async () => {
     reset();
     margemHandler = () => ({ itens: [itemFixture({ itemId: "MLB-A", venda: 100, custo: 40, imposto: 0.05, comissao: 12, frete: 8 })] });
+    mlHandler = (c) => (String(c.path).includes("listing_prices")
+      ? { ok: true, status: 200, data: { sale_fee_amount: 21, sale_fee_details: { percentage_fee: 14 } } }
+      : String(c.path).includes("shipping_options/free")
+        ? { ok: true, status: 200, data: { coverage: { all_country: { list_cost: 18, discount: { type: "mandatory", rate: 0.5 } } } } }
+        : { ok: false, status: 404, data: null });
 
     const res = fakeRes();
     await ctrl.simularMargem(
@@ -163,9 +180,49 @@ async function run() {
       res
     );
 
-    // lucro = 150 - 150*0.05 - 12 - 8 - 40 = 82.5
-    assert.strictEqual(res.corpo.resultado.profit, 82.5, JSON.stringify(res.corpo));
-    ok("override de preço: recalcula mantendo comissão/frete/imposto/custo do Motor");
+    // lucro = 150 - 150*0.05 - 21 - 18 - 40 = 63.5
+    assert.strictEqual(res.corpo.resultado.profit, 63.5, JSON.stringify(res.corpo));
+    assert.strictEqual(res.corpo.entradas.commission, 21);
+    assert.strictEqual(res.corpo.entradas.freight, 18);
+    assert.strictEqual(res.corpo.cotacaoEmP.preco, 150);
+    assert.ok(chamadasMl.length >= 2 && chamadasMl.every((c) => c.metodo === "GET" && c.mlUserId === "111"), JSON.stringify(chamadasMl));
+    assert.ok(chamadasMl.some((c) => /[?&]price=150(&|$)/.test(c.path)) && chamadasMl.some((c) => /item_price=150(&|$)/.test(c.path)));
+    ok("override de preço: comissão e frete cotados no preço simulado (só GET, token da conta do anúncio)");
+  });
+
+  // 2b. Preço simulado igual ao atual: nenhuma cotação, valores do Motor.
+  await withMockDb(async () => {
+    reset();
+    margemHandler = () => ({ itens: [itemFixture({ itemId: "MLB-A", venda: 100, custo: 40, imposto: 0.05, comissao: 12, frete: 8 })] });
+    const res = fakeRes();
+    await ctrl.simularMargem({ params: { itemId: "MLB-A" }, body: { clienteSlug: "cliente-a", preco: 100 } }, res);
+    assert.strictEqual(res.corpo.resultado.profit, 35);
+    assert.strictEqual(chamadasMl.length, 0);
+    ok("preço simulado = preço atual: valores do Motor, sem chamada ao ML");
+  });
+
+  // 2c. Cotação indisponível no preço simulado ou anúncio de OUTRA conta: margem bloqueada.
+  await withMockDb(async () => {
+    reset();
+    margemHandler = () => ({ itens: [itemFixture({ itemId: "MLB-A", venda: 100, custo: 40, imposto: 0.05, comissao: 12, frete: 8 })] });
+    mlHandler = (c) => (String(c.path).includes("listing_prices")
+      ? { ok: true, status: 200, data: { sale_fee_amount: 21 } }
+      : { ok: false, status: 429, data: null });
+    const res = fakeRes();
+    await ctrl.simularMargem({ params: { itemId: "MLB-A" }, body: { clienteSlug: "cliente-a", preco: 150 } }, res);
+    assert.strictEqual(res.corpo.resultado.computable, false, JSON.stringify(res.corpo));
+    assert.strictEqual(res.corpo.resultado.profit, null);
+    assert.strictEqual(res.corpo.resultado.motivoCotacao, "ml_rate_limit");
+    assert.notStrictEqual(res.corpo.entradas.freight, 8, "nunca cai no frete do preço atual");
+
+    reset();
+    margemHandler = () => ({ itens: [itemFixture({ itemId: "MLB-A", venda: 100, custo: 40, imposto: 0.05, comissao: 12, frete: 8 })] });
+    const res2 = fakeRes();
+    await ctrl.simularMargem({ params: { itemId: "MLB-A" }, body: { clienteSlug: "cliente-a", clienteContaId: 99, preco: 150 } }, res2);
+    assert.strictEqual(res2.corpo.resultado.computable, false);
+    assert.strictEqual(res2.corpo.resultado.motivoCotacao, "anuncio_de_outra_conta");
+    assert.strictEqual(chamadasMl.length, 0, "não cota com o token de outra conta");
+    ok("sem cotação em P' (429) ou anúncio de outra conta: margem bloqueada, nunca o frete/comissão do preço atual");
   });
 
   // 3. Override de custo e de custos adicionais (mapeado para fixedFee).

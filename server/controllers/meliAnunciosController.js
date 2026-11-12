@@ -42,6 +42,8 @@ const marginEngine = require("../services/motorMargem/core/marginEngine");
 const margemConfiavel = require("../services/motorMargem/margemConfiavel");
 const { reclassificarStatus } = require("../services/motorMargem/margemAtualRebate");
 const { mlFetch } = require("../utils/mlClient");
+const { buscarComissaoEFrete } = require("../services/shared/marketplaceCurrentQuoteService");
+const { criarCotadorEmP } = require("../services/motorMargem/margemCotacaoEmP");
 const { assertClienteNaCarteira } = require("../services/squads/authorizationService");
 const tituloEngine = require("../services/meliAnuncios/seo/tituloEngine");
 const termosComplementaresEngine = require("../services/meliAnuncios/seo/termosComplementaresEngine");
@@ -2034,20 +2036,42 @@ async function anexarVoceRecebe({ cliente, clienteContaId, itemId, promocoesItem
     base = null;
   }
 
+  // P0 12/11/2026: comissão/frete COTADOS no preço da promoção (mesmo cotador
+  // da Central), nunca os do preço atual. Preço igual ao atual reaproveita a base.
+  let cotacoes = new Map();
+  let motivoSemCotador = null;
+  if (base) {
+    const precos = promocoesItem.map((p) => p.precoFinal)
+      .filter((v) => v != null && !(base.price != null && Math.abs(Number(v) - base.price) < PRECO_IGUAL_TOLERANCIA));
+    if (precos.length) {
+      try {
+        const { cotador, motivo } = await criarCotadorDoAnuncio({ cliente, clienteContaId, itemId });
+        motivoSemCotador = motivo;
+        if (cotador) cotacoes = await cotador.cotarVarios(precos);
+      } catch (_) {
+        cotacoes = new Map();
+      }
+    }
+  }
+
   return promocoesItem.map((p) => {
     if (!base || p.precoFinal == null) return { ...p, voceRecebe: null };
+    const mesmoPreco = base.price != null && Math.abs(Number(p.precoFinal) - base.price) < PRECO_IGUAL_TOLERANCIA;
+    const custosP = mesmoPreco ? null : custosDaCotacaoEmP(cotacoes.get(Number(p.precoFinal).toFixed(2)) || null, motivoSemCotador);
+    const commission = custosP ? custosP.comissao : base.commission;
+    const freight = custosP ? custosP.frete : base.freight;
     // Sem comissão/frete do ML não há "Você recebe": o núcleo assumiria 0 e a
     // promoção pareceria lucrativa (P0 04/11/2026).
-    if (margemConfiavel.custoMarketplaceAusenteNosValores(base)) {
-      return { ...p, voceRecebe: { computable: false, profit: null, marginPercent: null, motivo: margemConfiavel.MOTIVO_MARGEM_INCOMPLETA } };
+    if ((custosP && custosP.motivo) || margemConfiavel.custoMarketplaceAusenteNosValores({ commission, freight, freteAplicavel: base.freteAplicavel })) {
+      return { ...p, voceRecebe: { computable: false, profit: null, marginPercent: null, motivo: margemConfiavel.MOTIVO_MARGEM_INCOMPLETA, motivoCotacao: custosP ? custosP.motivo : null } };
     }
     const resultado = marginEngine.computeMargin({
       price: p.precoFinal,
       cost: base.cost,
       taxRate: base.taxRate,
       fixedFee: base.fixedFee,
-      commission: base.commission,
-      freight: base.freight,
+      commission,
+      freight,
       rebate: p.subsidioMl,
     });
     return {
@@ -2056,6 +2080,9 @@ async function anexarVoceRecebe({ cliente, clienteContaId, itemId, promocoesItem
         computable: resultado.computable,
         profit: resultado.profit,
         marginPercent: resultado.margin != null ? resultado.margin * 100 : null,
+        comissao: commission,
+        frete: freight,
+        freteQualidade: custosP && custosP.evidencia ? custosP.evidencia.frete_qualidade : null,
       },
     };
   });
@@ -3103,7 +3130,47 @@ async function atualizarPreco(req, res) {
 // Comissão, frete e imposto NÃO têm override: são sempre os do Motor. Só
 // preço, custo (`cost`) e "custos adicionais" (contrato existente `fixedFee`
 // do Motor, só renomeado na UI) podem ser simulados.
+//
+// P0 12/11/2026: com PREÇO simulado ≠ preço atual, comissão e frete são
+// COTADOS no preço simulado (GET listing_prices + shipping_options, o mesmo
+// cotador da Bancada/Promoções da Central, com a avaliação de frete
+// confiável), nunca herdados do preço atual — a tarifa é % do preço e o frete
+// muda de faixa (ex.: < R$ 79). Cotação indisponível bloqueia a margem.
 // ----------------------------------------------------------------------------
+const PRECO_IGUAL_TOLERANCIA = 0.005;
+
+/** Cotador em P' do anúncio, com o token da PRÓPRIA conta do anúncio (contas isoladas). */
+async function criarCotadorDoAnuncio({ cliente, clienteContaId, itemId }) {
+  const anuncio = await anunciosService.obterAnuncio(cliente.id, itemId);
+  if (!anuncio || !anuncio.ml_user_id) return { cotador: null, motivo: "anuncio_sem_conta_ml" };
+  if (clienteContaId != null && anuncio.cliente_conta_id != null && Number(anuncio.cliente_conta_id) !== Number(clienteContaId)) {
+    return { cotador: null, motivo: "anuncio_de_outra_conta" };
+  }
+  const seller = String(anuncio.ml_user_id);
+  return {
+    cotador: criarCotadorEmP({
+      clienteId: cliente.id, itemId: String(itemId), anuncio, sellerId: seller, mlUserId: seller,
+      buscarComissaoEFrete, mlFetch, maxCotacoes: 12,
+    }),
+    motivo: null,
+  };
+}
+
+/** Comissão/frete cotados em P'; `motivo` quando faltar algum (margem bloqueada). */
+function custosDaCotacaoEmP(cot, motivoSemCotador) {
+  if (!cot) return { comissao: null, frete: null, motivo: motivoSemCotador || "cotacao_indisponivel", evidencia: null };
+  const faltaFrete = cot.frete_aplicavel && cot.frete === null;
+  return {
+    comissao: cot.comissao,
+    frete: cot.frete_aplicavel ? cot.frete : null,
+    motivo: cot.comissao === null ? (cot.motivos.comissao || "ml_sem_tarifa") : faltaFrete ? (cot.motivos.frete || "ml_sem_frete") : null,
+    evidencia: {
+      preco: cot.preco, comissao: cot.comissao, frete: cot.frete, frete_aplicavel: cot.frete_aplicavel,
+      frete_qualidade: cot.frete_qualidade || null, motivos: cot.motivos, fonte: cot.fonte, consultado_em: cot.consultado_em,
+    },
+  };
+}
+
 const SIMULACAO_CAMPOS = [
   ["preco", "price"],
   ["custoProduto", "cost"],
@@ -3188,22 +3255,46 @@ async function simularMargem(req, res) {
       rebate,
     };
 
+    // Preço simulado ≠ atual (projetado): comissão e frete do preço SIMULADO.
+    let cotacaoEmP = null;
+    let motivoCotacao = null;
+    const precoMudou = origem === "projected" && overrides.price !== undefined &&
+      !(base.price != null && Math.abs(overrides.price - base.price) < PRECO_IGUAL_TOLERANCIA);
+    if (precoMudou) {
+      let cot = null;
+      let motivoSemCotador = null;
+      try {
+        const { cotador, motivo } = await criarCotadorDoAnuncio({ cliente, clienteContaId, itemId });
+        motivoSemCotador = motivo;
+        cot = cotador ? await cotador.cotar(overrides.price) : null;
+      } catch (_) {
+        cot = null;
+      }
+      const custosP = custosDaCotacaoEmP(cot, motivoSemCotador);
+      entrada.commission = custosP.comissao;
+      entrada.freight = custosP.frete;
+      cotacaoEmP = custosP.evidencia;
+      motivoCotacao = custosP.motivo;
+    }
+
     // Sem comissão/frete do ML a simulação não devolve margem: o núcleo
     // assumiria 0 (preço R$ 45 → 41%). P0 04/11/2026.
     const freteAplicavel = margemConfiavel.freteAplicavelDaLogistica(
       item.diagnostico && item.diagnostico.logisticType !== undefined ? item.diagnostico.logisticType : undefined
     );
-    if (margemConfiavel.custoMarketplaceAusenteNosValores({ commission: entrada.commission, freight: entrada.freight, freteAplicavel })) {
+    if (motivoCotacao || margemConfiavel.custoMarketplaceAusenteNosValores({ commission: entrada.commission, freight: entrada.freight, freteAplicavel })) {
       return res.json({
         ok: true,
         simulado: true,
         origem,
         entradas: entrada,
+        cotacaoEmP,
         resultado: {
           computable: false, profit: null, margin: null, marginPercent: null,
-          missing: [entrada.commission == null ? "commission" : null, entrada.freight == null ? "freight" : null].filter(Boolean),
+          missing: [entrada.commission == null ? "commission" : null, entrada.freight == null && freteAplicavel !== false ? "freight" : null].filter(Boolean),
           assumed: [],
           motivo: margemConfiavel.MOTIVO_MARGEM_INCOMPLETA,
+          motivoCotacao,
           nota: margemConfiavel.NOTA_MARGEM_INCOMPLETA,
         },
       });
@@ -3216,6 +3307,7 @@ async function simularMargem(req, res) {
       simulado: true,
       origem,
       entradas: entrada,
+      cotacaoEmP,
       resultado: {
         computable: resultado.computable,
         profit: resultado.profit,
