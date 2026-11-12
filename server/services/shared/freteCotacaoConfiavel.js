@@ -118,6 +118,9 @@ async function lerAmostras({ fetchFn, clienteId, sellerId, itemId, opcoes }) {
   try {
     const os = await fetchFn(clienteId,
       `/orders/search?seller=${encodeURIComponent(sellerId)}&q=${encodeURIComponent(itemId)}&sort=date_desc&limit=20`, opcoes);
+    // Leitura que falhou (429/5xx/403) ≠ anúncio sem vendas: fica registrado
+    // para o "desconhecido" não esconder um rate limit. Sem retry aqui.
+    if (!os || !os.ok) saida.falhaLeitura = (os && os.status) || "erro";
     const pedidos = (os && os.ok && os.data && os.data.results) || [];
     for (const o of pedidos) {
       if (saida.length >= MAX_AMOSTRAS) break;
@@ -143,7 +146,7 @@ async function lerAmostras({ fetchFn, clienteId, sellerId, itemId, opcoes }) {
         dimensions: h > 0 && w > 0 && l > 0 && p > 0 ? `${h}x${w}x${l},${p}` : null,
       });
     }
-  } catch (_) { /* sem amostras: cai em desconhecido */ }
+  } catch (err) { saida.falhaLeitura = saida.falhaLeitura || (err && (err.code || err.name)) || "erro"; }
   return saida;
 }
 
@@ -353,7 +356,10 @@ async function avaliarFrete({
   }
   return {
     fretePrevisto: null,
-    qualidade: { nivel: NIVEIS.DESCONHECIDO, confirmado: false, motivo: MOTIVO_NAO_CONFIAVEL, amostrasEncontradas: amostras.length, cotacaoRejeitada: resposta.listCost, ...base },
+    qualidade: {
+      nivel: NIVEIS.DESCONHECIDO, confirmado: false, motivo: MOTIVO_NAO_CONFIAVEL, amostrasEncontradas: amostras.length, cotacaoRejeitada: resposta.listCost,
+      ...(amostras.falhaLeitura ? { historicoNaoLido: amostras.falhaLeitura } : {}), ...base,
+    },
     motivo: MOTIVO_NAO_CONFIAVEL,
   };
 }

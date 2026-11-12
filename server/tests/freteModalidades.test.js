@@ -74,7 +74,7 @@ function mundo(spec) {
       const preco = Number(new URLSearchParams(p.split("?")[1]).get("price"));
       return { ok: true, status: 200, data: { sale_fee_amount: Math.round(preco * 0.14 * 100) / 100, sale_fee_details: { percentage_fee: 14 } } };
     }
-    if (p.startsWith("/orders/search")) return { ok: true, status: 200, data: { results: pedidos } };
+    if (p.startsWith("/orders/search")) return spec.falhaPedidos || { ok: true, status: 200, data: { results: pedidos } };
     const sh = p.match(/^\/shipments\/([^/?]+)(\/costs)?/);
     if (sh) {
       const e = envios[sh[1]];
@@ -197,6 +197,16 @@ cenario("histórico recente continua em primeiro lugar mesmo com medida declarad
   eq(r.freteQualidade.confianca, "media");
   ok(!("historicoAntigo" in r.freteQualidade));
   ok(!m.chamadas.some((c) => c.p.includes("include_attributes")), "sem leitura extra");
+}));
+
+cenario("429 na leitura dos envios: não inventa nem repete em rajada — usa a medida declarada; sem ela, desconhecido com a falha registrada", () => comEnv(S86, async () => {
+  const falha = { ok: false, status: 429, data: null, retryAfter: 60 };
+  const a = await cotar({ ...HIST_86, dims: "28x23x4,324", falhaPedidos: falha }, 84.9);
+  eq([a.r.fretePrevisto, a.r.freteQualidade.nivel], [13.85, NIVEIS.DECLARADAS]);
+  eq(a.m.chamadas.filter((c) => c.p.startsWith("/orders/search")).length, 1, "uma tentativa, sem retry");
+  const b = await cotar({ ...HIST_86, falhaPedidos: falha }, 84.9);
+  eq([b.r.fretePrevisto, b.r.freteQualidade.nivel, b.r.freteQualidade.historicoNaoLido], [null, NIVEIS.DESCONHECIDO, 429]);
+  eq(b.r.diagnostico.frete.motivo, "frete_cotacao_nao_confiavel");
 }));
 
 cenario("resumoDoFrete: contrato único de leitura (estimado ≠ confirmado; desconhecido sem valor; Flex fora da margem; seller não avaliado)", () => comEnv(S86, async () => {
