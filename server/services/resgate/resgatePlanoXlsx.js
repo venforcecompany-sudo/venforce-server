@@ -170,7 +170,8 @@ function construirPlanoXlsx({ contas = [], itensPorConta = new Map(), execucao =
 }
 
 function planoParaBuffer(args) {
-  return XLSX.write(construirPlanoXlsx(args), { type: "buffer", bookType: "xlsx" });
+  // compression: o padrão do SheetJS grava sem compressão (124 MB na carteira inteira).
+  return XLSX.write(construirPlanoXlsx(args), { type: "buffer", bookType: "xlsx", compression: true });
 }
 
 module.exports = { construirPlanoXlsx, planoParaBuffer, COLUNAS_PLANO, ROTULO_SITUACAO, ROTULO_ORIGEM, STATUS_REVISAO, ORIGEM };
