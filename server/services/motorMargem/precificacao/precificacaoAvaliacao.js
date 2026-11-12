@@ -408,6 +408,11 @@ function avaliar({ base, tipo, novoPreco, precoVisto, recote, promocao = null, p
     (recote.frete !== null && recote.frete !== undefined && (recote.freteFonte === "recotado" || recote.freteFonte === "motor"));
   const resumoFrete = resumoDoFrete({ fretePrevisto: recote.frete, freteQualidade: recote.freteQualidade || null });
   const freteEstimado = freteConfirmado && resumoFrete.estimado;
+  // Estimativa de confiança BAIXA (mediana de custos cobrados) ou apoiada em envios antigos: serve para
+  // simular, não para gravar preço/promoção no Mercado Livre sem o operador revisar a embalagem.
+  const freteFracoParaEscrita = freteEstimado && (resumoFrete.confianca === "baixa" || Boolean(recote.freteQualidade && recote.freteQualidade.historicoAntigo));
+  // Flex: o custo do entregador próprio não está em NENHUMA margem calculada aqui.
+  const foraDaMargem = freteConfirmado && resumoFrete.custosForaDaMargem.length > 0;
   if (comissaoConfirmada) {
     gates.push(gate("comissao", "DADOS", "ok", "Comissão do Mercado Livre no novo preço", brl(recote.comissao)));
   } else if (escritaReal) {
@@ -421,10 +426,15 @@ function avaliar({ base, tipo, novoPreco, precoVisto, recote, promocao = null, p
   if (freteConfirmado) {
     gates.push(recote.freteFonte === "nao_aplicavel"
       ? gate("frete", "DADOS", "ok", "Frete combinável", "Sem custo de frete previsto pelo Mercado Livre.")
+      : freteFracoParaEscrita && escritaReal
+        ? gate("frete", "DADOS", "block", "Frete estimado com pouca confiança — escrita bloqueada",
+          `${brl(recote.frete)} — ${resumoFrete.texto} Declare as medidas da embalagem no anúncio ou revise o frete antes de gravar.`)
       : freteEstimado
         // Estimativa validada contra cobranças reais, mas não é cotação do anúncio nem cobrança: avisa, não bloqueia.
         ? gate("frete", "DADOS", "warn", "Frete estimado no novo preço", `${brl(recote.frete)} — ${resumoFrete.texto}`)
-        : gate("frete", "DADOS", "ok", "Frete previsto no novo preço", brl(recote.frete)));
+        : foraDaMargem
+          ? gate("frete", "DADOS", "warn", "Frete previsto; entregador Flex fora da margem", `${brl(recote.frete)} — ${resumoFrete.texto}`)
+          : gate("frete", "DADOS", "ok", "Frete previsto no novo preço", brl(recote.frete)));
   } else if (escritaReal) {
     gates.push(gate("frete", "DADOS", "block", "Frete não recotado — escrita bloqueada",
       "O Mercado Livre não confirmou o frete para o novo preço. Frete do preço anterior ou zero não são aceitos para escrita real."));

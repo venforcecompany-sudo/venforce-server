@@ -209,6 +209,37 @@ cenario("429 na leitura dos envios: não inventa nem repete em rajada — usa a 
   eq(b.r.diagnostico.frete.motivo, "frete_cotacao_nao_confiavel");
 }));
 
+// Revisão independente (12/11): uma venda recente NÃO pode reabilitar 2 envios antigos que concordam entre si.
+cenario("histórico misto: 2 envios antigos concordantes + 1 recente diferente → vale só o recente/declarada, nunca a medida antiga", () => comEnv(S86, async () => {
+  const antigo = "2025-01-10T10:00:00.000-04:00";
+  const spec = { ...HIST_86, dims: "28x23x4,324", pedidos: [{ date_created: antigo }, { date_created: antigo }, {}],
+    dimsPorEnvio: ["10x10x10,500", "10x10x10,500", "20x20x20,900"], dimsCotaveis: ["10x10x10,500", "20x20x20,900", "28x23x4,324"],
+    tabela: (preco, f, dm) => MANDATORY(dm === "10x10x10,500" ? 8.25 : 13.85) };
+  const { r } = await cotar(spec, 99.9);
+  ok(r.freteQualidade.dimensions !== "10x10x10,500", "medida antiga não prevalece");
+  eq(r.fretePrevisto, 13.85);
+  eq(r.freteQualidade.nivel, NIVEIS.DECLARADAS, "1 recente não concorda com nada: cai na declarada");
+}));
+
+cenario("custo cobrado: 1 leitura de /shipments/{id}/costs por envio, mesmo cotando vários preços; amostra sem logística não entra", () => comEnv(S86, async () => {
+  const spec = { id: "MLB5", seller: S86, tags: TAGS_PROX, cotacaoItem: () => NONE(), precoVenda: 99.9, pedidos: [{}, {}, {}, {}],
+    dimsPorEnvio: [null, null, null, null], custos: [14.45, 14.45, 14.45, 14.45] };
+  const m = mundo(spec);
+  const memo = {};
+  for (const preco of [99.9, 99.5, 100.2]) {
+    const r = await buscarComissaoEFrete({ clienteId: 133, itemId: spec.id, precoEfetivo: preco, listingTypeId: "gold_special", categoryId: "MLB1",
+      sellerId: S86, logisticType: "cross_docking", mlUserId: S86, shippingTags: TAGS_PROX, memoFrete: memo }, m.mlFetch);
+    eq([r.fretePrevisto, r.freteQualidade.nivel], [14.45, NIVEIS.CUSTO_COBRADO]);
+  }
+  eq(m.chamadas.filter((c) => /\/shipments\/[^/]+\/costs/.test(c.p)).length, 4, "4 envios = 4 leituras, não 12");
+  const semLog = mundo({ ...spec, id: "MLB6", pedidos: [{}, {}, {}, {}], dimsPorEnvio: [null, null, null, null] });
+  const orig = semLog.mlFetch;
+  const r2 = await buscarComissaoEFrete({ clienteId: 133, itemId: "MLB6", precoEfetivo: 99.9, listingTypeId: "gold_special", categoryId: "MLB1",
+    sellerId: S86, logisticType: "cross_docking", mlUserId: S86, shippingTags: TAGS_PROX },
+  async (c, p, o) => { const x = await orig(c, p, o); if (/^\/shipments\/[^/?]+$/.test(String(p)) && x.data) x.data.logistic_type = null; return x; });
+  eq(r2.fretePrevisto, null, "sem logística conhecida nas amostras, o custo cobrado não é comparável");
+}));
+
 // Descontos: 50% (coleta ≥ 79) e 30% (< 79) e 10% (Flex) são MEDIDOS nas contas 86/87. 40% (reputação) NÃO
 // apareceu em nenhuma das 286 vendas: o caso abaixo é SIMULADO, só para travar que a taxa nunca é presumida.
 cenario("desconto vem da resposta do ML, nunca presumido: 50%, 40% (simulado), 30% e 10% aceitos como vieram; taxa 0 ou tipo não obrigatório, não", () => comEnv(S86, async () => {

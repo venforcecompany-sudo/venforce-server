@@ -198,11 +198,15 @@ function dimensoesDeclaradas(args) {
   });
 }
 
-/** true quando o envio mais recente da amostra está dentro da janela (sem data = não recente). */
+/** Envio dentro da janela (sem data = não recente). */
+function amostraRecente(a, agora) {
+  const t = Date.parse(a && a.data);
+  return Number.isFinite(t) && agora().getTime() - t <= HISTORICO_RECENTE_DIAS * 86400000;
+}
+
+/** true quando HÁ envio recente na amostra (a decisão de cada passo usa só os recentes). */
 function historicoRecente(amostras, agora) {
-  const datas = (amostras || []).map((a) => Date.parse(a.data)).filter((t) => Number.isFinite(t));
-  if (!datas.length) return false;
-  return agora().getTime() - Math.max(...datas) <= HISTORICO_RECENTE_DIAS * 86400000;
+  return (amostras || []).some((a) => amostraRecente(a, agora));
 }
 
 function periodo(amostras) {
@@ -221,15 +225,17 @@ function dimensoesConcordantes(amostras) {
   return { dimensions: melhor.dimensions, concordantes: melhor.n, amostras: usadas.length };
 }
 
-async function custoCobrado({ fetchFn, clienteId, sellerId, opcoes, amostras, precoEfetivo, logisticType }) {
+async function custoCobrado({ fetchFn, clienteId, sellerId, opcoes, amostras, precoEfetivo, logisticType, memo = null }) {
+  // Amostra sem logística conhecida não é comparável: não entra (P0 12/11/2026, revisão).
   const comparaveis = amostras.filter((a) =>
     a.precoUnitario !== null && Math.abs(a.precoUnitario - precoEfetivo) <= precoEfetivo * TOLERANCIA_PRECO &&
-    (!logisticType || !a.logistica || a.logistica === logisticType));
+    (!logisticType || a.logistica === logisticType));
   if (comparaveis.length < MIN_AMOSTRAS_CUSTO) return null;
   const custos = [];
   for (const a of comparaveis) {
     try {
-      const c = await fetchFn(clienteId, `/shipments/${encodeURIComponent(a.envioId)}/costs`, opcoes);
+      // O custo de um envio não depende do preço cotado: 1 leitura por envio na requisição inteira.
+      const c = await memoizar(memo, `custo:${a.envioId}`, () => fetchFn(clienteId, `/shipments/${encodeURIComponent(a.envioId)}/costs`, opcoes));
       const senders = (c && c.ok && c.data && c.data.senders) || [];
       const s = senders.find((x) => String(x.user_id) === String(sellerId));
       const v = s ? num(s.cost) : null;
@@ -293,21 +299,21 @@ async function avaliarFrete({
   };
 
   // Passos 1 e 2 — envios reais do MLB.
-  const porHistorico = async () => {
-    const dims = dimensoesConcordantes(amostras);
+  const porHistorico = async (lista) => {
+    const dims = dimensoesConcordantes(lista);
     const valorDims = dims ? await cotarDimensoes(dims.dimensions) : null;
     if (valorDims !== null) {
       return {
         fretePrevisto: valorDims,
         qualidade: {
           nivel: NIVEIS.DIMENSOES, confirmado: false, confianca: "media", fonte: "shipping_options/free?dimensions (envios historicos)",
-          dimensions: dims.dimensions, amostras: dims.amostras, concordantes: dims.concordantes, periodo: periodo(amostras),
+          dimensions: dims.dimensions, amostras: dims.amostras, concordantes: dims.concordantes, periodo: periodo(lista),
           cotacaoRejeitada: resposta.listCost, ...base,
         },
         motivo: null,
       };
     }
-    const custo = await custoCobrado({ fetchFn, clienteId, sellerId, opcoes, amostras, precoEfetivo, logisticType });
+    const custo = await custoCobrado({ fetchFn, clienteId, sellerId, opcoes, amostras: lista, precoEfetivo, logisticType, memo });
     if (!custo) return null;
     return {
       fretePrevisto: custo.valor,
@@ -335,19 +341,22 @@ async function avaliarFrete({
     };
   };
 
-  const recente = amostras.length === 0 || historicoRecente(amostras, agora);
-  if (recente) {
-    const r = (await porHistorico()) || (await porDeclaradas());
+  // Cada passo histórico enxerga SÓ os envios recentes: uma venda nova não "reabilita" medidas
+  // antigas que concordam entre si. Os antigos ficam como último recurso, rebaixados e marcados.
+  const recentes = amostras.filter((a) => amostraRecente(a, agora));
+  const antigas = amostras.filter((a) => !amostraRecente(a, agora));
+  if (recentes.length) {
+    const r = (await porHistorico(recentes)) || (await porDeclaradas());
     if (r) return r;
   } else {
-    // Histórico antigo: a declaração atual passa na frente; o histórico fica
-    // como último recurso, rebaixado e marcado.
     const d = await porDeclaradas();
     if (d) {
-      d.qualidade.historicoAntigo = { periodo: periodo(amostras), amostras: amostras.length };
+      if (antigas.length) d.qualidade.historicoAntigo = { periodo: periodo(antigas), amostras: antigas.length };
       return d;
     }
-    const h = await porHistorico();
+  }
+  if (antigas.length) {
+    const h = await porHistorico(antigas);
     if (h) {
       h.qualidade.confianca = "baixa";
       h.qualidade.historicoAntigo = true;

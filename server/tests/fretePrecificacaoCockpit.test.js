@@ -68,9 +68,20 @@ const avaliarPreco = (b, recote, modo) => av.avaliar({ base: b, tipo: "PRICE", n
   eq([rec5.freteFonte, rec5.frete, rec5.freteQualidade.nivel], ["motor", 13.85, "estimado_dimensoes_historicas"]);
 
   // 6. Cotação confiável do ML (controle/Full) e seller sem verificação: gate ok, texto de sempre.
-  for (const q of [QUALI("cotado_ml", { cotacaoRejeitada: undefined }), null]) {
+  for (const q of [QUALI("cotado_ml", { cotacaoRejeitada: undefined, modalidade: { logistica: "fulfillment", flexHabilitado: false, enviosAgora: false, custosForaDaMargem: [] } }), null]) {
     const r6 = avaliarPreco(base(), { comissao: 11.52, comissaoFonte: "recotada", frete: 14.45, freteFonte: "recotado", freteQualidade: q }, "escrita");
     eq([gateFrete(r6).tom, gateFrete(r6).titulo, r6.bloqueado], ["ok", "Frete previsto no novo preço", false]);
   }
+  // 7. Confiança baixa / histórico antigo: simula (aviso), mas a escrita real é bloqueada.
+  for (const q of [QUALI("estimado_custo_cobrado", { confianca: "baixa" }), QUALI("estimado_dimensoes_historicas", { confianca: "baixa", historicoAntigo: true })]) {
+    const rr = { comissao: 11.52, comissaoFonte: "recotada", frete: 14.45, freteFonte: "recotado", freteQualidade: q };
+    eq(gateFrete(avaliarPreco(base(), rr, "simulacao")).tom, "warn", "simulação: aviso");
+    const e = avaliarPreco(base(), rr, "escrita");
+    eq([gateFrete(e).tom, e.bloqueado], ["block", true], "escrita: bloqueada");
+  }
+  // 8. Flex habilitado com frete cotado normal: aviso do entregador fora da margem (não bloqueia).
+  const flex = avaliarPreco(base(), { comissao: 11.52, comissaoFonte: "recotada", frete: 14.45, freteFonte: "recotado", freteQualidade: QUALI("cotado_ml", { cotacaoRejeitada: undefined }) }, "escrita");
+  eq([gateFrete(flex).tom, flex.bloqueado], ["warn", false]);
+  ok(/Flex/.test(gateFrete(flex).detalhe), gateFrete(flex).detalhe);
   console.log(`fretePrecificacaoCockpit: ${checks} checks`);
 })().catch((e) => { console.error(e); process.exit(1); });
