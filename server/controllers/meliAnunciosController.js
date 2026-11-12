@@ -3093,10 +3093,30 @@ async function atualizarPreco(req, res) {
       mlUserId,
     });
 
+    // VenForce Resgate (12/11/2026): até aqui a alteração manual de preço não
+    // deixava rastro — impossível separar "preço alterado pela equipe" de
+    // "nunca alterado". Registra tentativa e resultado (sem bloquear a resposta).
+    const logPreco = (status, extra) => registrarLog({
+      ...dadosUsuarioDeReq(req),
+      acao: "anuncios_meli.preco.alterar",
+      status,
+      ip: req.headers ? extrairIp(req) : null,
+      detalhes: {
+        cliente_slug: clienteSlug,
+        cliente_conta_id: anuncio.cliente_conta_id != null ? String(anuncio.cliente_conta_id) : (clienteContaId != null ? String(clienteContaId) : null),
+        item_id: itemId,
+        preco_anterior: anuncio.preco != null ? Number(anuncio.preco) : null,
+        preco_solicitado: Number(body.preco),
+        ...extra,
+      },
+    }).catch(() => {});
+
     // Recusa (ou confirmação frustrada): 200 com ok:false, snapshot intacto.
     if (!r.ok) {
+      logPreco("erro", { codigo: r.codigo || "PRECO_NAO_ALTERADO", preco_confirmado: null, incerto: Boolean(r.incerto) });
       return res.json({ ok: false, codigo: r.codigo, motivo: r.motivo });
     }
+    logPreco("sucesso", { codigo: null, preco_confirmado: r.preco });
 
     const atualizado = await anunciosService.atualizarCamposConfirmados(cliente.id, itemId, {
       preco: r.preco,

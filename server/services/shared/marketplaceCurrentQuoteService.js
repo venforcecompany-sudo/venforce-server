@@ -55,7 +55,7 @@ function numOrNull(value) {
  * de 429 para o racional completo.
  */
 async function buscarComissaoEFrete(
-  { clienteId, itemId, precoEfetivo, listingTypeId, categoryId, sellerId, logisticType, mlUserId = null, shippingTags = null, memoFrete = null },
+  { clienteId, itemId, precoEfetivo, listingTypeId, categoryId, sellerId, logisticType, mlUserId = null, shippingTags = null, memoFrete = null, avaliarFreteSempre = false },
   fetchFn = mlFetch
 ) {
   // P0 04/11/2026 (Alianza Jeans 2): o resultado de cada GET fica registrado
@@ -134,9 +134,12 @@ async function buscarComissaoEFrete(
   // P0 10/11/2026: cotação por item_id comprovadamente subestimada (tag
   // `proximity` + desconto não obrigatório). Liberação gradual por seller
   // (FRETE_COTACAO_CONFIAVEL_SELLERS); fora dela este bloco não existe.
+  // `avaliarFreteSempre` (VenForce Resgate, 12/11/2026): a AUDITORIA, que só lê,
+  // avalia qualquer seller com as MESMAS regras para medir a compatibilidade da
+  // conta antes da liberação. Nenhum consumidor de produção passa este parâmetro.
   let freteQualidade = null;
   let motivoFreteNaoConfiavel = null;
-  if (fretePrevisto !== null && freteConfiavelHabilitado(sellerId)) {
+  if (fretePrevisto !== null && (avaliarFreteSempre === true || freteConfiavelHabilitado(sellerId))) {
     const av = await avaliarFrete({
       fetchFn, clienteId, sellerId, itemId, listingTypeId, precoEfetivo, logisticType,
       respostaMl: shippingResp, tags: shippingTags, opcoes: opcoesConta, memo: memoFrete,
@@ -195,7 +198,7 @@ async function buscarComissaoEFrete(
  * @returns {Promise<object>}
  */
 async function obterCotacaoAtual(
-  { clienteId, itemId, precoListaFallback = null, listingTypeId, categoryId, sellerId, logisticType, mlUserId = null, shippingTags = null },
+  { clienteId, itemId, precoListaFallback = null, listingTypeId, categoryId, sellerId, logisticType, mlUserId = null, shippingTags = null, memoFrete = null, avaliarFreteSempre = false },
   deps = {}
 ) {
   const fetchFn = deps.mlFetchFn || mlFetch;
@@ -209,7 +212,7 @@ async function obterCotacaoAtual(
   });
 
   const { comissaoValor, comissaoPercentual, fretePrevisto, freteQualidade, diagnostico } = await buscarComissaoEFrete(
-    { clienteId, itemId, precoEfetivo, listingTypeId, categoryId, sellerId, logisticType, mlUserId, shippingTags },
+    { clienteId, itemId, precoEfetivo, listingTypeId, categoryId, sellerId, logisticType, mlUserId, shippingTags, memoFrete, avaliarFreteSempre },
     fetchFn
   );
 
