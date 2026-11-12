@@ -66,7 +66,9 @@ function montarHistoricoItem({ eventos = [], snapshot = null, sync = null, aoViv
   const pontos = [];
   const ponto = (serie, preco, em, fonte, rotulo) => { if (num(preco) !== null && iso(em)) pontos.push({ serie, em: iso(em), preco: num(preco), fonte, rotulo }); };
   if (snapshot) { ponto("efetivo", snapshot.preco, snapshot.em, "margin_projection_snapshots", "preço efetivo no snapshot"); ponto("cheio", snapshot.precoCheio, snapshot.em, "margin_projection_snapshots", "preço cheio no snapshot"); if (num(snapshot.preco) !== null) fontes.push("snapshot_motor"); }
-  if (sync && num(sync.preco) !== null) { ponto("cheio", sync.preco, sync.em, "meli_anuncios", "preço de cadastro sincronizado"); fontes.push("cadastro_sincronizado"); }
+  // Cadastro sincronizado (meli_anuncios.preco): medido em produção, ora é o preço cheio, ora o
+  // promocional — entra só na linha do tempo, NUNCA na detecção de mudança.
+  if (sync && num(sync.preco) !== null && iso(sync.em)) { fontes.push("cadastro_sincronizado"); linha.push({ em: iso(sync.em), preco: num(sync.preco), fonte: "meli_anuncios", tipo: "preco_cadastro", descricao: "preço do cadastro sincronizado (informativo)", alteraPreco: false }); }
   for (const r of relatorios || []) if (num(r.preco) !== null && iso(r.em)) { if (!fontes.includes("relatorios_salvos")) fontes.push("relatorios_salvos"); ponto("efetivo", r.preco, r.em, "relatorio_itens", "preço efetivo em relatório salvo"); }
   if (aoVivo && num(aoVivo.preco) !== null) { fontes.push("mercado_livre_ao_vivo"); ponto("efetivo", aoVivo.preco, aoVivo.em, "sale_price (ao vivo)", "preço efetivo ao vivo"); ponto("cheio", aoVivo.precoCheio, aoVivo.em, "sale_price (ao vivo)", "preço cheio ao vivo"); }
   // Com promoção em andamento, o preço vendido oscila por desenho: não vira sinal de mudança.
@@ -100,7 +102,13 @@ function montarHistoricoItem({ eventos = [], snapshot = null, sync = null, aoViv
     mudanca ? mudanca.em : null, precoBaseEm, trocaVendas ? trocaVendas.em : null,
   ].filter(Boolean).sort();
   const ultimaMudancaEm = sinais.length ? sinais[sinais.length - 1] : null;
-  const recente = ultimaMudancaEm ? (agora.getTime() - Date.parse(ultimaMudancaEm)) <= janelaDias * 86400000 : false;
+  // "Recente" exige que a mudança tenha CERTAMENTE ocorrido dentro da janela: para uma
+  // diferença entre duas observações, conta o instante MAIS ANTIGO possível (a 1ª observação).
+  const dentro = (d) => d && (agora.getTime() - Date.parse(d)) <= janelaDias * 86400000;
+  const recente = [
+    ...evs.filter((e) => e.alteraPreco).map((e) => e.em),
+    mudanca ? mudanca.entre[0] : null, precoBaseEm, trocaVendas ? trocaVendas.em : null,
+  ].some(dentro);
 
   // Mudança observada sem evento VenForce que a explique → origem indeterminada.
   let mudancaDetectada = null;

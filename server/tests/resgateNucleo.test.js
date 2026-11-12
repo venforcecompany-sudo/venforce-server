@@ -202,8 +202,13 @@ const completo = (extra = {}) => ({
     // cadastro (cheio) 139,90 × snapshot efetivo 113,78 com promoção: séries diferentes, nada mudou.
     const series = montarHistoricoItem({ snapshot: { preco: 113.78, precoCheio: 139.9, em: "2026-11-12T20:00:00Z" }, sync: { preco: 139.9, em: "2026-11-12T18:00:00Z" }, agora });
     assert.strictEqual(series.mudancaDetectada, null); assert.strictEqual(classificarOrigem(series).origem, ORIGEM.SEM_ALTERACAO_REGISTRADA);
-    const cheioMudou = montarHistoricoItem({ snapshot: { preco: 120, precoCheio: 120, em: "2026-11-10T20:00:00Z" }, sync: { preco: 129.9, em: "2026-11-12T18:00:00Z" }, agora });
+    const cadastro = montarHistoricoItem({ snapshot: { preco: 120, precoCheio: 120, em: "2026-11-10T20:00:00Z" }, sync: { preco: 43.9, em: "2026-11-12T18:00:00Z" }, agora });
+    assert.strictEqual(cadastro.mudancaDetectada, null, "cadastro sincronizado é só informativo");
+    const cheioMudou = montarHistoricoItem({ snapshot: { preco: 120, precoCheio: 120, em: "2026-11-10T20:00:00Z" }, aoVivo: { preco: 129.9, precoCheio: 129.9, em: "2026-11-12T18:00:00Z" }, agora });
     assert.strictEqual(classificarOrigem(cheioMudou).origem, ORIGEM.ALTERADO_ORIGEM_INDETERMINADA);
+    // Diferença entre um relatório de agosto e o snapshot de novembro: mudou, mas a data é desconhecida → não "recente".
+    const antigo = montarHistoricoItem({ relatorios: [{ em: "2026-08-01T00:00:00Z", preco: 75.9 }], snapshot: { preco: 74.67, em: "2026-11-11T00:00:00Z" }, agora });
+    assert.strictEqual(classificarOrigem(antigo).origem, ORIGEM.ALTERADO_ORIGEM_INDETERMINADA); assert.strictEqual(antigo.mudancaRecente, false);
   });
 
   console.log("Matriz de compatibilidade e ativação");
