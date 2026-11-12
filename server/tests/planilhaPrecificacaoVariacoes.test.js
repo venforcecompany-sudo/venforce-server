@@ -281,18 +281,21 @@ async function run() {
     ok("Resumo conta o MLB legado multivariante", valorResumo(legado.resumoRows, "MLBs legados multivariantes") === 1);
     ok("Resumo expõe a quantidade de linhas sem SKU", valorResumo(legado.resumoRows, "Linhas sem SKU") === 0);
 
+    // P0 12/11/2026: a matemática é a mesma (lucro = P − P·imposto − P·comissão − frete − custo − taxa; sugerido =
+    // (custo+frete+taxa)/(1−imposto−comissão−alvo)), mas agora só calcula com TODAS as entradas numéricas: célula vazia
+    // é desconhecido, não zero (ver xlsxMatrizFreteIntegridade.test.js, que recalcula num motor de planilha real).
     const formulasEsperadas = {
-      R4: 'IFERROR(P4-P4*I4-P4*K4-J4-H4-L4,"")',
-      S4: 'IFERROR(R4/P4,"")',
-      V4: 'IFERROR((H4+J4+L4)/(1-I4-K4-U4),"")',
-      W4: 'IFERROR(V4*U4,"")',
-      Y4: 'IF(AC4="sem_base","Revisar custo/base",IF(AC4="sem_frete","Revisar frete",IF(AC4="sem_comissao","Revisar comissão",IF(P4<V4,"Subir preço",IF(P4>V4,"Avaliar redução","Manter")))))',
-      Z4: 'IF(Y4="Subir preço",V4,P4)',
-      AA4: 'IFERROR(Z4-P4,"")',
-      AB4: 'IFERROR(AA4/P4,"")',
+      R4: 'IFERROR(IF(AND(ISNUMBER(P4),ISNUMBER(H4),ISNUMBER(I4),ISNUMBER(J4),ISNUMBER(K4),ISNUMBER(L4)),IF(P4>0,P4-P4*I4-P4*K4-J4-H4-L4,""),""),"")',
+      S4: 'IFERROR(IF(ISNUMBER(R4),R4/P4,""),"")',
+      V4: 'IFERROR(IF(AND(ISNUMBER(H4),ISNUMBER(I4),ISNUMBER(J4),ISNUMBER(K4),ISNUMBER(L4),ISNUMBER(U4)),IF(1-I4-K4-U4>0,(H4+J4+L4)/(1-I4-K4-U4),""),""),"")',
+      W4: 'IFERROR(IF(AND(ISNUMBER(V4),ISNUMBER(U4)),V4*U4,""),"")',
+      Y4: 'IF(NOT(ISNUMBER(P4)),"Revisar preço",IF(NOT(ISNUMBER(H4)),"Revisar custo/base",IF(NOT(ISNUMBER(J4)),"Revisar frete",IF(NOT(ISNUMBER(K4)),"Revisar comissão",IF(OR(NOT(ISNUMBER(I4)),NOT(ISNUMBER(L4))),"Revisar imposto/taxa fixa",IF(NOT(ISNUMBER(V4)),"Defina a margem alvo",IF(P4<V4,"Subir preço",IF(P4>V4,"Avaliar redução","Manter"))))))))',
+      Z4: 'IF(Y4="Subir preço",V4,IF(ISNUMBER(P4),P4,""))',
+      AA4: 'IF(AND(ISNUMBER(Z4),ISNUMBER(P4)),Z4-P4,"")',
+      AB4: 'IF(AND(ISNUMBER(AA4),ISNUMBER(P4)),IF(P4<>0,AA4/P4,""),"")',
     };
     Object.entries(formulasEsperadas).forEach(([address, formula]) => {
-      ok(`fórmula ${address} preserva a mesma matemática nas novas colunas`, legado.matriz[address]?.f === formula);
+      ok(`fórmula ${address} mantém a matemática e exige entradas numéricas`, legado.matriz[address]?.f === formula);
     });
     const formulas = Object.values(legado.matriz).map((cell) => cell?.f).filter(Boolean);
     ok("não há SUM/AVG/COUNT financeiro sobre linhas", formulas.every((formula) => !/\b(?:SUM|AVG|COUNT)\s*\(/i.test(formula)));
