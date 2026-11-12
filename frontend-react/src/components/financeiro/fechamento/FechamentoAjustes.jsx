@@ -2,8 +2,8 @@
 //
 // "Ajustes do período" — valores adicionais que afetam o resultado deste
 // fechamento. Prefixo R$, largura contida, zero confortável (placeholder
-// "0,00", campo vazio vale zero no backend). FULL e Custos adicionais só
-// aparecem no Mercado Livre.
+// "0,00", campo vazio vale zero no backend). FULL aparece no Mercado Livre
+// (da API) e na Shopee (manual); Custos adicionais só no Mercado Livre.
 //
 // ADS no Mercado Livre (modelo B): o campo já vem com o investimento do
 // Mercado Ads da conta na competência (selo "Mercado Ads"). ↻ consulta de
@@ -244,6 +244,9 @@ export function FechamentoAjustes({ marketplace, ajustes, onAjuste, ads, adsOrig
   const ehMeli = marketplace === "meli";
   const adsDaApi = ehMeli && ads && ads.status !== "inativo";
   const fullDaApi = ehMeli && full && full.status !== "inativo";
+  // Shopee ainda não tem API de custos do fulfillment: FULL manual, salvo
+  // como o ADS e descontado do resultado final.
+  const temFull = ehMeli || marketplace === "shopee";
   return (
     <div className="vf-fin-ajustes">
       <div className="vf-fin-ajustes__grid">
@@ -258,7 +261,7 @@ export function FechamentoAjustes({ marketplace, ajustes, onAjuste, ads, adsOrig
         ) : (
           <CampoMoeda rotulo="ADS" valor={ajustes.ads} onChange={(v) => onAjuste("ads", v)} />
         )}
-        {ehMeli &&
+        {temFull &&
           (fullDaApi ? (
             <CampoFull
               valor={ajustes.fullCost}

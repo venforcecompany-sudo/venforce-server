@@ -77,7 +77,7 @@ export function kpisPrincipais(summary = {}) {
 // do período (adsTotal, venforceTotal...). O Resultado Final é o
 // `finalResult` do motor — NÃO é somado aqui. A composição foi confirmada
 // no código dos motores: MELI = LC − ADS − Venforce − Afiliados − FULL −
-// adicionais; Shopee = LC − ADS − Venforce − Afiliados.
+// adicionais; Shopee = LC − ADS − Venforce − Afiliados − FULL.
 export function composicaoResultado(summary = {}) {
   const s = summary || {};
   const despesas = limpar([

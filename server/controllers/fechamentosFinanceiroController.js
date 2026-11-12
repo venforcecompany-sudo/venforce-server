@@ -274,7 +274,8 @@ async function processarFechamentoFinanceiroController(req, res) {
     const ads = parseFinancialInput(req.body, "ads", "ADS");
     const venforce = parseFinancialInput(req.body, "venforce", "Venforce");
     const affiliates = parseFinancialInput(req.body, "affiliates", "Afiliados");
-    // Opcionais, só Mercado Livre. Campo vazio/ausente vale zero.
+    // Opcionais. FULL: Mercado Livre e Shopee; custos adicionais: só Mercado
+    // Livre. Campo vazio/ausente vale zero.
     const fullCost = parseFinancialInput(req.body, "fullCost", "FULL");
     const additionalCosts = parseFinancialInput(req.body, "additionalCosts", "Custos adicionais");
 
