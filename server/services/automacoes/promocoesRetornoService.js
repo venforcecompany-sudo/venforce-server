@@ -446,6 +446,14 @@ async function enriquecerItem({
     comissaoValor: round2OrNull(comissaoValor),
     impostoValor: round2OrNull(impostoValor),
     frete: round2OrNull(frete),
+    // O frete é o do último relatório (cotado no preço efetivo DAQUELE relatório)
+    // e NÃO é recotado no preço da promoção: cruzar a faixa de frete grátis muda
+    // o custo. Dito na saída para a decisão não parecer mais firme do que é.
+    freteReferencia: frete === null ? null : {
+      fonte: "relatorio_itens",
+      precoCotado: round2OrNull(precoEfetivoRelatorio),
+      recotadoNoPrecoDaPromocao: false,
+    },
     custo: round2OrNull(custoProduto),
     impostoPercentual,
     taxaFixa: round2OrNull(taxaFixa),

@@ -13,10 +13,9 @@
 // Esta é a extração da MENOR abstração compartilhada segura: só a cotação
 // corrente (preço + comissão + frete previstos), reaproveitando
 // `precoItemService.resolverPrecosItem` (que já era compartilhado) para o
-// preço. NESTA RODADA só o Motor foi migrado para este helper — Automações e
-// Diagnóstico continuam com suas implementações próprias. Migrá-los também é
-// simples em teoria, mas amplia o raio de teste para rotas de precificação
-// ativamente usadas; ver proposta de Fase 2 no relatório de entrega.
+// preço. Desde o P0 de 12/11/2026 os TRÊS consumidores acima usam
+// `buscarComissaoEFrete`: não existe mais consulta de comissão/frete fora
+// deste arquivo (teste `freteFonteUnica.test.js` trava isso).
 //
 // SOMENTE LEITURA: toda chamada ao Mercado Livre aqui é GET.
 
@@ -174,6 +173,8 @@ async function buscarComissaoEFrete(
     // O ML devolve o percentual em escala 0–100; o resto do backend trabalha
     // em decimal (0.12 = 12%) — mesma convenção de `custos.imposto_percentual`.
     comissaoPercentual: comissaoPercentualBruta === null ? null : comissaoPercentualBruta / 100,
+    // Como o ML devolve (0–100), para consumidores que já trabalham nessa escala.
+    comissaoPercentualMl: comissaoPercentualBruta,
     fretePrevisto,
     freteQualidade,
     diagnostico,

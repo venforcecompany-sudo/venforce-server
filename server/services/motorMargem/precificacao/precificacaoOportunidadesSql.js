@@ -22,12 +22,19 @@
 // promo_preco_original (preço cheio da própria promoção) — demais colunas passam adiante
 // como estão — e usa os parâmetros $1..$n de `paramsFonte`.
 
+const { sqlFreteLegadoNaoVerificado } = require("../margemConfiavel");
+
 function sqlOportunidadesElegiveis({ fonteSql, paramsFonte = [], clienteContaId, clienteId }) {
   const k = paramsFonte.length;
   const sql = `
     WITH promos AS (${fonteSql})
     SELECT pr.*, s.titulo AS snap_titulo, s.image_url, s.price, s.cost, s.tax_rate, s.fixed_fee,
-           s.commission_rate, s.freight, s.margin, s.commission AS snap_commission, s.profit AS snap_profit,
+           s.commission_rate,
+           -- Frete gravado ANTES da verificação numa conta com bloqueio de legado
+           -- (FRETE_LEGADO_BLOQUEAR_CONTAS): ausente, como na tabela da Central —
+           -- a linha sai bloqueada em vez de comparar com um frete subestimado.
+           CASE WHEN ${sqlFreteLegadoNaoVerificado("s")} THEN NULL ELSE s.freight END AS freight,
+           s.margin, s.commission AS snap_commission, s.profit AS snap_profit,
            s.quality_json->>'targetMargin' AS snap_target_margin, s.calculated_at AS snap_calculated_at,
            s.list_price AS snap_list_price,
            a.logistic_type AS anuncio_logistic_type

@@ -26,6 +26,11 @@ const Module = require("module");
 // ── stub do cliente ML ──────────────────────────────────────────────────────
 let mlChamadas = [];
 let mlHandler = null;
+let cotacaoChamadas = [];
+const COTACAO_PADRAO = (chamada) => (String(chamada.path).includes("listing_prices")
+  ? { ok: true, status: 200, data: { sale_fee_amount: 12, sale_fee_details: { percentage_fee: 12 } } }
+  : { ok: true, status: 200, data: { coverage: { all_country: { list_cost: 8, discount: { type: "mandatory", rate: 0.5 } } } } });
+let cotacaoHandler = COTACAO_PADRAO;
 
 // ── stub do Motor de Margem — mesmo padrão de meliAnunciosSimularMargem.
 // test.js: evita que "Você recebe" dispare I/O real (banco/ML) por baixo do
@@ -43,6 +48,13 @@ Module._load = function loadWithMlFetchStub(request, parent, isMain) {
     return {
       async mlFetch(clienteId, path, options = {}) {
         const chamada = { clienteId, path, metodo: options.method || "GET", mlUserId: options.mlUserId };
+        // P0 12/11/2026: "Você recebe" cota comissão/frete NO PREÇO DA PROMOÇÃO
+        // (listing_prices + shipping_options). Ficam numa lista própria para não
+        // mudar as auditorias de chamadas das promoções; padrão: 12 e 8 em qualquer preço.
+        if (/\/sites\/MLB\/listing_prices|\/shipping_options\/free/.test(String(path))) {
+          cotacaoChamadas.push(chamada);
+          return cotacaoHandler(chamada);
+        }
         mlChamadas.push(chamada);
         return mlHandler ? mlHandler(chamada) : { ok: true, status: 200, data: [] };
       },
@@ -76,6 +88,7 @@ function anunciosFixture() {
       id: 7, cliente_id: 1, cliente_slug: "cliente-a", item_id: "MLB-X",
       titulo: "Camiseta Azul P", preco: 100, preco_original: 100,
       cliente_conta_id: 10, ml_user_id: "111",
+      listing_type_id: "gold_special", category_id: "MLB1", logistic_type: "cross_docking",
     },
   ];
 }
@@ -860,7 +873,43 @@ async function run() {
     await ctrl.promocoes({ params: { itemId: "MLB-X" }, query: { clienteSlug: "cliente-a" } }, res);
 
     assert.ok(mlChamadas.every((c) => c.metodo === "GET"), "voceRecebe não pode introduzir nenhuma chamada de escrita ao ML");
+    assert.ok(cotacaoChamadas.every((c) => c.metodo === "GET"), "cotação em P' é só leitura");
     ok("Você recebe: continua read-only mesmo com o Motor de Margem ligado no carregamento das promoções");
+  });
+
+  // 26b. P0 12/11/2026 — comissão/frete do PREÇO DA PROMOÇÃO, não do preço atual.
+  //      Preço atual 100 (comissão 12, frete 8); promoção a 82: o ML cota 9,84
+  //      de tarifa e 13,85 de frete. lucro = 82 − 4,10 − 9,84 − 13,85 − 40 = 14,21.
+  await withMockDb({ anuncios: anunciosFixture() }, async () => {
+    mlChamadas = []; chamadasMargem = []; cotacaoChamadas = [];
+    mlHandler = () => ({ ok: true, status: 200, data: [{ id: "P-1", type: "DEAL", status: "started", price: 82, original_price: 100 }] });
+    cotacaoHandler = (c) => (String(c.path).includes("listing_prices")
+      ? { ok: true, status: 200, data: { sale_fee_amount: 9.84, sale_fee_details: { percentage_fee: 12 } } }
+      : { ok: true, status: 200, data: { coverage: { all_country: { list_cost: 13.85, discount: { type: "mandatory", rate: 0.5 } } } } });
+    margemHandler = () => ({ itens: [itemFixtureMotor({ itemId: "MLB-X", venda: 100, custo: 40, imposto: 0.05, comissao: 12, frete: 8 })] });
+
+    const res = fakeRes();
+    await ctrl.promocoes({ params: { itemId: "MLB-X" }, query: { clienteSlug: "cliente-a" } }, res);
+    const v = res.corpo.promocoes[0].voceRecebe;
+    assert.strictEqual(v.computable, true, JSON.stringify(v));
+    assert.ok(Math.abs(v.profit - 14.21) < 0.01, `profit ${v.profit}`);
+    assert.strictEqual(v.comissao, 9.84);
+    assert.strictEqual(v.frete, 13.85);
+    assert.ok(cotacaoChamadas.length >= 2 && cotacaoChamadas.every((c) => c.mlUserId === "111"), "cota com o token da conta do anúncio");
+    assert.ok(cotacaoChamadas.some((c) => /[?&](item_)?price=82(&|$)/.test(c.path)), "cota no preço 82");
+
+    // Cotação de frete indisponível no preço da promoção: bloqueia (não cai no frete atual).
+    cotacaoHandler = (c) => (String(c.path).includes("listing_prices")
+      ? { ok: true, status: 200, data: { sale_fee_amount: 9.84 } }
+      : { ok: false, status: 503, data: null });
+    const res2 = fakeRes();
+    await ctrl.promocoes({ params: { itemId: "MLB-X" }, query: { clienteSlug: "cliente-a" } }, res2);
+    const v2 = res2.corpo.promocoes[0].voceRecebe;
+    assert.strictEqual(v2.computable, false, JSON.stringify(v2));
+    assert.strictEqual(v2.profit, null);
+    assert.ok(v2.motivoCotacao, "motivo da cotação indisponível");
+    cotacaoHandler = COTACAO_PADRAO;
+    ok("Você recebe: comissão/frete cotados no preço da promoção (conta do anúncio); sem cotação, margem bloqueada");
   });
 
   // ── Deduplicação por id+type (auditoria: "Vendex - Setembro" aparecia com

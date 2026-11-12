@@ -20,7 +20,7 @@ const TAGS_PROX = ["self_service_in", "mandatory_free_shipping", "proximity"];
 const TAGS_CTRL = ["self_service_in", "mandatory_free_shipping"];
 
 function ped(id, envio, preco, extra = {}) {
-  return { id, status: "paid", date_created: `2026-11-0${(id % 9) + 1}T10:00:00.000-04:00`, pack_id: null,
+  return { id, status: "paid", date_created: new Date(Date.now() - ((id % 9) + 1) * 86400000).toISOString(), pack_id: null,
     order_items: [{ item: { id: extra.item }, quantity: 1, unit_price: preco }], shipping: { id: envio }, ...extra.o };
 }
 // Mundo: item → { tags, quote7_75, dims, custo, pedidos }

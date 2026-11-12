@@ -299,6 +299,11 @@ function margemNoPreco({ preco, rebate = 0, custo, aliquota, taxaFixa = null, co
   const frete = freteAplicavel ? num(cotacao.frete) : (num(cotacao.frete) ?? 0);
   if (comissao === null) return { ok: false, motivo: (cotacao.motivos && cotacao.motivos.comissao) || "comissao_indisponivel" };
   if (frete === null) return { ok: false, motivo: (cotacao.motivos && cotacao.motivos.frete) || "frete_indisponivel" };
+  // Frete estimado de confiança baixa (custo cobrado) ou apoiado em envios antigos: não decide participação
+  // em promoção no Mercado Livre — mesma regra do cockpit (P0 12/11/2026). O gate vale na análise; a execução
+  // só roda o que a análise guardou.
+  const qf = freteAplicavel ? cotacao.frete_qualidade : null;
+  if (qf && (qf.confianca === "baixa" || qf.historicoAntigo)) return { ok: false, motivo: "frete_confianca_baixa" };
 
   const comp = core.calcularComposicao({ preco: p, custo: num(custo), aliquota: aliq, taxa_fixa: num(taxaFixa), comissao, frete, rebate: reb });
   if (!comp.computavel || comp.lc === null || comp.margem_ratio === null) return { ok: false, motivo: "nao_computavel" };

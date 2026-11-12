@@ -9095,13 +9095,17 @@
         formatMoeda(comp.custoProduto, moeda),
         margemSimInputHtml("custoProduto", custoSim, itemId, "Custo do produto"), "am-margem-sim__linha--campo");
 
+    // Com preço simulado o servidor COTA comissão e frete no preço simulado
+    // (P0 12/11/2026): a coluna mostra o que veio em `entradas` — inclusive
+    // "—" quando a cotação falhou —, nunca o valor de hoje como se valesse no
+    // preço novo.
     if (comp.comissaoMl != null) {
       linhas += margemSimLinhaHtml("Comissão Mercado Livre", formatMoeda(comp.comissaoMl, moeda),
-        margemSimValorHtml(ent && ent.commission != null ? ent.commission : comp.comissaoMl, comp.comissaoMl, moeda));
+        margemSimValorHtml(ent ? ent.commission : comp.comissaoMl, comp.comissaoMl, moeda));
     }
     if (comp.frete != null) {
       linhas += margemSimLinhaHtml("Frete", formatMoeda(comp.frete, moeda),
-        margemSimValorHtml(ent && ent.freight != null ? ent.freight : comp.frete, comp.frete, moeda));
+        margemSimValorHtml(ent ? ent.freight : comp.frete, comp.frete, moeda));
     }
     linhas += margemSimLinhaHtml(
       "Custos adicionais" + infoDotHtml("Embalagem, operação ou outro custo extra — simulação, não é cobrado pelo Mercado Livre.", "Sobre custos adicionais"),

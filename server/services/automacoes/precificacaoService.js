@@ -6,6 +6,15 @@ const pool = require("../../config/database");
 const { mlFetch } = require("../../utils/mlClient");
 const { exigirContextoPronto } = require("./contextoPrecificacaoService");
 const { resolverPrecosItem } = require("./precoItemService");
+// Comissão e frete: a MESMA cotação da Central de Margem (frete confiável por
+// seller, P0 12/11/2026) — este arquivo não consulta mais o ML por conta própria.
+const { buscarComissaoEFrete } = require("../shared/marketplaceCurrentQuoteService");
+const { resumoDoFrete, freteConfiavelHabilitado } = require("../shared/freteCotacaoConfiavel");
+const { mapComLimite } = require("../motorMargem/margemCotacaoEmP");
+
+// Seller com frete confiável ligado pode custar leituras extras por anúncio
+// (envios anteriores / medidas declaradas): a página deixa de sair em rajada.
+const CONCORRENCIA_FRETE_CONFIAVEL = 4;
 
 function criarErroHttp(statusCode, payload) {
   const err = new Error(payload?.erro || "Erro");
@@ -129,7 +138,8 @@ async function gerarPreviewPrecificacaoMl({
     details = Array.isArray(batch.data) ? batch.data : [];
   }
 
-  const linhas = await Promise.all(details.map(async (entry) => {
+  const concorrencia = freteConfiavelHabilitado(mlUserId) ? CONCORRENCIA_FRETE_CONFIAVEL : Math.max(1, details.length);
+  const linhas = await mapComLimite(details, concorrencia, async (entry) => {
     const body = entry?.body || null;
     const itemId = String(body?.id || entry?.id || "").trim();
     const itemNorm = itemId.toUpperCase();
@@ -179,48 +189,22 @@ async function gerarPreviewPrecificacaoMl({
       precoEfetivo,
     } = await resolverPrecosItem({ clienteId: cliente.id, itemId, precoListaFallback, mlUserId });
 
-    const [listingPricesResp, shippingResp] = await Promise.all([
-      (async () => {
-        if (precoEfetivo === null || !listingTypeId || !categoryId) return null;
-        const query = `/sites/MLB/listing_prices?price=${encodeURIComponent(precoEfetivo)}&listing_type_id=${encodeURIComponent(listingTypeId)}&category_id=${encodeURIComponent(categoryId)}`;
-        try {
-          return await mlFetch(cliente.id, query, { mlUserId });
-        } catch (_) {
-          return null;
-        }
-      })(),
-      (async () => {
-        const logisticType = body?.shipping?.logistic_type || "";
-        const isCombinable = ["not_specified", "custom", ""].includes(logisticType);
-        if (isCombinable) return null;
-        if (precoEfetivo === null || !sellerId || !listingTypeId || !itemId) return null;
-        const query = `/users/${encodeURIComponent(sellerId)}/shipping_options/free?item_id=${encodeURIComponent(itemId)}&verbose=true&item_price=${encodeURIComponent(precoEfetivo)}&listing_type_id=${encodeURIComponent(listingTypeId)}&mode=me2`;
-        try {
-          // Path seller-scoped: propaga a conta ML resolvida para não cair no
-          // token principal (mesmo bug que o fix de Automações corrigiu).
-          return await mlFetch(cliente.id, query, { mlUserId });
-        } catch (_) {
-          return null;
-        }
-      })(),
-    ]);
-
-    const listingPricesData =
-      listingPricesResp && listingPricesResp.ok ? listingPricesResp.data : null;
-    const listingPriceRoot = Array.isArray(listingPricesData)
-      ? listingPricesData[0]
-      : (Array.isArray(listingPricesData?.results) ? listingPricesData.results[0] : listingPricesData);
-    const comissaoMarketplace =
-      listingPriceRoot?.sale_fee_amount != null ? Number(listingPriceRoot.sale_fee_amount) : null;
-    const comissaoPercentual =
-      listingPriceRoot?.sale_fee_details?.percentage_fee != null
-        ? Number(listingPriceRoot.sale_fee_details.percentage_fee)
-        : null;
-
-    const frete =
-      shippingResp && shippingResp.ok && shippingResp.data?.coverage?.all_country?.list_cost != null
-        ? Number(shippingResp.data.coverage.all_country.list_cost)
-        : null;
+    // Falha de leitura continua virando `null` (nunca 0), como sempre foi aqui.
+    let cotacao = { comissaoValor: null, comissaoPercentualMl: null, fretePrevisto: null, freteQualidade: null, diagnostico: null };
+    try {
+      cotacao = await buscarComissaoEFrete({
+        clienteId: cliente.id, itemId, precoEfetivo, listingTypeId, categoryId, sellerId,
+        logisticType: body?.shipping?.logistic_type || "", mlUserId,
+        shippingTags: Array.isArray(body?.shipping?.tags) ? body.shipping.tags : null,
+      }, mlFetch);
+    } catch (_) { /* mantém tudo null */ }
+    const comissaoMarketplace = cotacao.comissaoValor;
+    const comissaoPercentual = cotacao.comissaoPercentualMl ?? null;
+    const frete = cotacao.fretePrevisto;
+    const freteDetalhe = resumoDoFrete({
+      fretePrevisto: frete, freteQualidade: cotacao.freteQualidade,
+      motivo: cotacao.diagnostico && cotacao.diagnostico.frete ? cotacao.diagnostico.frete.motivo : null,
+    });
     const impostoNumero = Number(impostoPercentual);
     const impostoAliquota =
       Number.isFinite(impostoNumero) && impostoNumero >= 0
@@ -271,7 +255,13 @@ async function gerarPreviewPrecificacaoMl({
 
     if (!baseRow) observacoes.push("Sem correspondência na base (produto_id não encontrado).");
     if (comissaoMarketplace === null) observacoes.push("comissaoMarketplace=null (não foi possível obter no ML para este item).");
-    if (frete === null) observacoes.push("frete=null (não foi possível obter no ML para este item).");
+    if (frete === null) {
+      observacoes.push(freteDetalhe.avaliado && freteDetalhe.texto
+        ? `frete=null — ${freteDetalhe.texto}`
+        : "frete=null (não foi possível obter no ML para este item).");
+    } else if (freteDetalhe.estimado || freteDetalhe.custosForaDaMargem.length) {
+      observacoes.push(freteDetalhe.texto);
+    }
     if (lucroContribuicaoPreview === null || margemContribuicaoPreview === null) {
       observacoes.push("lucro/margem=null (faltam dados de custo/comissão/frete para este item).");
     }
@@ -293,6 +283,8 @@ async function gerarPreviewPrecificacaoMl({
       comissaoMarketplace,
       comissaoPercentual,
       frete,
+      // Origem e confiança do frete (null/avaliado:false = cotação do ML sem verificação).
+      freteDetalhe,
       lucroContribuicao,
       margemContribuicao,
       precoAlvo,
@@ -302,7 +294,7 @@ async function gerarPreviewPrecificacaoMl({
       temBase: Boolean(baseRow),
       observacoes,
     };
-  }));
+  });
 
   return {
     ok: true,
