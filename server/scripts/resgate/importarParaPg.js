@@ -4,7 +4,8 @@
 // resgate_* para a API/tela /resgate lerem. ESCREVE no banco indicado — só
 // nas tabelas do Resgate (nunca em outra tabela, nunca no Mercado Livre).
 // Exige a migration 20261112_venforce_resgate.sql aplicada e --confirmar.
-//   DATABASE_URL=… node server/scripts/resgate/importarParaPg.js --dados <dir> --confirmar [--sem-ssl]
+//   DATABASE_URL=… node server/scripts/resgate/importarParaPg.js --dados <dir> --confirmar [--sem-ssl] [--contas 86,87]
+// --contas limita a importação às contas indicadas (V1: só as que serão usadas; menos volume no banco).
 const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
@@ -12,8 +13,9 @@ const { args } = require("./lib");
 
 const a = args();
 const dir = path.resolve(a.dados || ".");
+const soContas = a.contas ? new Set(String(a.contas).split(",").map((x) => Number(x.trim())).filter((n) => n > 0)) : null;
 if (!a.confirmar) {
-  console.log(`PLANO (nada foi gravado): importar ${dir} → resgate_execucoes / resgate_contas_resultado / resgate_itens em lotes de 200.`);
+  console.log(`PLANO (nada foi gravado): importar ${dir}${soContas ? ` (só contas ${[...soContas].join(", ")})` : " (todas as contas)"} → resgate_execucoes / resgate_contas_resultado / resgate_itens em lotes de 200.`);
   console.log("Repita com --confirmar. Requer a migration aplicada; falha se já houver execução em andamento.");
   process.exit(0);
 }
@@ -30,7 +32,7 @@ if (!a.confirmar) {
   const id = await pg.iniciarExecucao({ origem: "importacao_cli", execucaoArquivo: exec.id, iniciadaEmArquivo: exec.iniciadaEm });
   let itens = 0;
   try {
-    for (const c of await arq.listarContas()) {
+    for (const c of (await arq.listarContas()).filter((x) => !soContas || soContas.has(Number(x.resumo.clienteContaId)))) {
       const contaId = Number(c.resumo.clienteContaId);
       const lista = await arq.lerItens(null, contaId);
       await pg.salvarItens(id, contaId, lista);
