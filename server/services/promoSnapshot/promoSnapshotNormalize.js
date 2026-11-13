@@ -40,7 +40,8 @@ function fontePrecoFinal(bruta, precoFinal) {
   if (precoFinal === null || precoFinal === undefined) return null;
   const status = String((bruta && bruta.status) || "").toLowerCase().trim();
   if (status === "candidate") {
-    return fin(bruta && bruta.suggested_discounted_price) !== null ? "sugerido_ml" : "calculado_percentuais";
+    if (fin(bruta && bruta.suggested_discounted_price) > 0) return "sugerido_ml";
+    return fin(bruta && bruta.price) > 0 ? "ml" : "calculado_percentuais";
   }
   return "ml";
 }

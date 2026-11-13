@@ -572,6 +572,20 @@ cenario("promoção sem preço: fica gravada com preco_final null (nunca inventa
   assert.strictEqual(calc.precoFinalFonte, "calculado_percentuais");
 });
 
+cenario("Alianza Jeans: snapshot preserva preço oficial da candidata e sua origem ML", async () => {
+  const [linha] = normalizarPromocoesDoItem({
+    itemId: "MLB6414829980", observedAt: "2026-11-13T03:30:52Z",
+    lista: [{
+      id: "P-MLB18211016", type: "SMART", status: "candidate", name: "Novembro Feminino",
+      original_price: 139.99, price: 99, suggested_discounted_price: null,
+      meli_percentage: 4.5, seller_percentage: 24.7,
+    }],
+  });
+  assert.strictEqual(linha.precoFinal, 99);
+  assert.strictEqual(linha.precoFinalFonte, "ml");
+  assert.strictEqual(linha.subsidioMl, 6.3);
+});
+
 cenario("promoção sem subsídio: meli_percentage ausente → subsidio_ml null (nunca zero)", async () => {
   const [l] = normalizarPromocoesDoItem({ itemId: "MLB1", observedAt: "x", lista: [F.promo({ id: "P-1", status: "started", price: 90 })] });
   assert.strictEqual(l.subsidioMl, null);
