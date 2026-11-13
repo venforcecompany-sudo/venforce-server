@@ -9480,9 +9480,16 @@
       var ativa = sel.statusExibicao === "ATIVA";
       // Já participa: sempre "Deixar de participar"; "Alterar" só quando o
       // preço é do vendedor (PRECO) — nas ACEITE o Mercado Livre define.
-      if (promocaoParticipa(sel) && (sel.modoEscrita === "ACEITE" || sel.modoEscrita === "PRECO")) {
+      if (promocaoParticipa(sel)) {
         var naoForma = ativa ? null
           : "Esta promoção não está formando o preço agora — a simulação mostra a margem se ela passar a valer.";
+        if (sel.modoEscrita !== "PRECO" && sel.modoEscrita !== "ACEITE") {
+          return {
+            nota: "Você pode solicitar a saída desta promoção. O Mercado Livre valida as regras de cancelamento da oferta.",
+            tom: "texto",
+            botoes: [BOTAO_SAIR],
+          };
+        }
         if (sel.modoEscrita === "ACEITE") {
           return {
             nota: "O preço é definido pelo Mercado Livre — você só escolhe continuar ou deixar de participar." +
@@ -10084,12 +10091,12 @@
   }
 
   // Participar sem preço (ACEITE — o Mercado Livre define) ou deixar de
-  // participar (ACEITE e PRECO). Nenhum preço é enviado. Mesma régua de
+  // participar de qualquer tipo. Nenhum preço é enviado. Mesma régua de
   // margemAcaoAtual.
   function abrirConfirmacaoAceite(itemId, linha, sair) {
     if (!DET || DET.itemId !== itemId || !linha) return;
     if (sair) {
-      if (!promocaoParticipa(linha) || (linha.modoEscrita !== "ACEITE" && linha.modoEscrita !== "PRECO")) return;
+      if (!promocaoParticipa(linha)) return;
     } else if (linha.modoEscrita !== "ACEITE" || linha.status !== "candidate") {
       return;
     }
