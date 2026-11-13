@@ -639,7 +639,7 @@ async function simular({ user, body } = {}, deps = {}) {
   const infoRebate = rebates.porItem.get(pedido.mlb);
   const atualRebate = semSnapshot
     ? { rebate: null, rebateMotivo: null }
-    : margemAtualComRebate(snapshot, infoRebate, rebates.indisponivel);
+    : margemAtualComRebate(snapshot, infoRebate, rebates.indisponivel, { promoSnapshot: rebates.porItem.promoSnapshot });
 
   const cotador = criarCotadorEmP({
     clienteId: escopo.clienteId,

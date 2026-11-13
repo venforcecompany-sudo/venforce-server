@@ -263,7 +263,15 @@ cenario("margem atual com retorno ML da promoção em andamento: ΔLC parte da M
   const snaps = [snapRow("MLB1"), snapRow("MLB2")];
   const sem = await listarOportunidades({ clienteSlug: "loja-a", clienteContaId: 7 }, deps(fakeDb({ itens, snaps })));
   const db = fakeDb({ itens, snaps });
-  db.rebates = [{ item_id: "MLB1", promocoes: 1, subsidio: "3.30" }, { item_id: "MLB2", promocoes: 2, subsidio: "5.00" }];
+  // Promo Snapshot real: MLB1 com a SMART que forma o preço (100) cofinanciada
+  // em 3% de 110 = 3,30; MLB2 com duas iniciadas no MESMO preço e financiamento
+  // diferente (nenhuma confirmada pelo sale_price) → ambíguo.
+  const promo = (o) => ({ current_run_id: 41, snapshot_at: "2026-11-12T18:00:00Z", status: "started", promotion_type: "SMART", preco_final: "100", preco_original: "110", seller_percentage: null, observed_at: "2026-11-12T18:00:00Z", ...o });
+  db.rebates = [
+    promo({ item_id: "MLB1", promotion_id: "P-1", ativa: true, meli_percentage: "3", subsidio_ml: "3.30" }),
+    promo({ item_id: "MLB2", promotion_id: "P-2", ativa: null, meli_percentage: "3", subsidio_ml: "3.30" }),
+    promo({ item_id: "MLB2", promotion_id: "P-3", ativa: null, meli_percentage: "5", subsidio_ml: "5.50" }),
+  ];
   const com = await listarOportunidades({ clienteSlug: "loja-a", clienteContaId: 7, veredito: "todos" }, deps(db));
   const a = Object.fromEntries(sem.oportunidades.map((o) => [o.itemId, o]));
   const b = Object.fromEntries(com.oportunidades.map((o) => [o.itemId, o]));

@@ -41,7 +41,7 @@
 
 const pool = require("../../../config/database");
 const core = require("../core");
-const { carregarRebatesDaConta, MOTIVO_REBATE } = require("../margemAtualRebate");
+const { carregarRebatesDaConta, rebateAplicavel, MOTIVO_REBATE } = require("../margemAtualRebate");
 const { sqlOportunidadesElegiveis, lerLinhas } = require("./precificacaoOportunidadesSql");
 const { criarCotadorEmP, cotacaoParaNucleo, evidenciaDaCotacao, mapComLimite } = require("../margemCotacaoEmP");
 const { classificarPromocao } = require("./promocaoClassificacao");
@@ -185,14 +185,17 @@ function precoCheioDaLinha(snap, precoOriginalPromo) {
 // Uma candidata a partir de (promoção, snapshot de margem) — mesma régua para
 // as duas fontes. null = fora do ranking (ativa / sem desconto efetivo).
 function montarCandidata(args) {
-  const { itemId, promocao, precoPromo, precoOriginalPromo = null, retornoMl, snap, titulo, vendasPorMlb, vendasIndisponivel = false, rebateAtual = null, rebateIndisponivel = null, cotacaoReal = null, listaFonte = "promo_snapshot", listaObservadaEm = null } = args;
+  const { itemId, promocao, precoPromo, precoOriginalPromo = null, retornoMl, snap, titulo, vendasPorMlb, vendasIndisponivel = false, rebateAtual = null, rebateIndisponivel = null, rebatePromoSnapshot = undefined, cotacaoReal = null, listaFonte = "promo_snapshot", listaObservadaEm = null } = args;
   if (motivoForaDoRanking({ status: promocao && promocao.status, precoPromo, precoAtual: snap.price })) return null;
 
   // Composição de hoje: a mesma da tabela (snapshot + retorno ML em andamento).
-  const rebateEmAndamento = rebateAtual && rebateAtual.rebate !== null && rebateAtual.rebate !== undefined && !(rebateAtual.promocoes > 1)
-    ? Number(rebateAtual.rebate)
-    : null;
-  const rebateAmbiguo = Boolean(rebateAtual && rebateAtual.promocoes > 1);
+  // O retorno de hoje sai do MESMO classificador da tabela: só o da promoção
+  // que forma o preço do snapshot, com financiamento comprovado.
+  const decisaoRebate = rebateAtual
+    ? rebateAplicavel({ price: snap.price, listPrice: snap.list_price }, rebateAtual, { promoSnapshot: rebatePromoSnapshot })
+    : { rebate: null, ambiguo: false };
+  const rebateEmAndamento = decisaoRebate.rebate === null || decisaoRebate.rebate === undefined ? null : Number(decisaoRebate.rebate);
+  const rebateAmbiguo = decisaoRebate.ambiguo === true;
   const logistica = snap.anuncio_logistic_type === undefined || snap.anuncio_logistic_type === null ? null : String(snap.anuncio_logistic_type);
   // Logística combinável não tem frete previsto: zero declarado. Tipo desconhecido (sem
   // cadastro do anúncio) não é "combinável": frete ausente continua ausente.
@@ -568,6 +571,7 @@ function candidataDaLinha(r, promocao, vendasPorMlb, vendasIndisponivel, rebates
     vendasIndisponivel,
     rebateAtual: rebates ? rebates.porItem.get(String(r.item_id)) || null : null,
     rebateIndisponivel: rebates ? rebates.indisponivel : null,
+    rebatePromoSnapshot: rebates && rebates.porItem ? rebates.porItem.promoSnapshot : undefined,
   });
 }
 

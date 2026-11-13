@@ -31,11 +31,63 @@
 
 const core = require("./core");
 const { logEvento } = require("./marginSnapshotLog");
+const { classificarPrecoVigente, STATUS: STATUS_PRECO, MOTIVO: MOTIVO_PRECO } = require("./precoVigenteComposicao");
 
 const MOTIVO_REBATE = {
   AMBIGUO: "REBATE_AMBIGUO",
   PROMO_SNAPSHOT_INDISPONIVEL: "PROMO_SNAPSHOT_INDISPONIVEL",
+  // P0 12/11/2026: composição do preço não comprovada (promoção não lida, não
+  // identificada, DEAL sem participação do ML…) ou leituras de momentos
+  // diferentes — o retorno não é somado e a margem não é confiável.
+  PRECO_PROMOCAO_NAO_COMPROVADO: "PRECO_PROMOCAO_NAO_COMPROVADO",
+  PRECO_PROMOCAO_DESATUALIZADO: "PRECO_PROMOCAO_DESATUALIZADO",
 };
+
+/**
+ * Composição do preço da linha (quem forma, quem financia, quanto o ML
+ * compensa) pelo classificador único. `info` = entrada do mapa do repositório
+ * ({ linhas }); `mapa` traz `promoSnapshot` (estado da leitura da conta).
+ * Entrada sem `linhas` (formato antigo, fakes) → null: não há como compor.
+ */
+function composicaoDoPreco(linha, info, { promoSnapshot, indisponivel = null } = {}) {
+  if (indisponivel) return classificarPrecoVigente({ linha, promocoes: null, contexto: { indisponivel } });
+  if (info && !Array.isArray(info.linhas)) return null;
+  return classificarPrecoVigente({ linha, promocoes: info ? info.linhas : [], contexto: { promoSnapshot } });
+}
+
+/**
+ * Retorno ML aplicável a uma linha (preço/lista do snapshot) — o que a tabela,
+ * o drawer, os KPIs, o simulador e as oportunidades somam. Mesmo contrato para
+ * todos: { rebate, motivo, ambiguo, composicao }.
+ */
+function rebateAplicavel(linha, info, ctx = {}) {
+  if (ctx.indisponivel) return { rebate: null, motivo: ctx.indisponivel, ambiguo: false, composicao: composicaoDoPreco(linha, null, ctx) };
+  if (info && !Array.isArray(info.linhas)) {
+    // Formato pré-decidido { promocoes, rebate } (fakes/legado): mantido.
+    if (info.promocoes > 1 || info.rebate === null || info.rebate === undefined) {
+      return { rebate: null, motivo: info.promocoes > 1 ? MOTIVO_REBATE.AMBIGUO : null, ambiguo: info.promocoes > 1, composicao: null };
+    }
+    return { rebate: Number(info.rebate), motivo: null, ambiguo: false, composicao: null };
+  }
+  const composicao = composicaoDoPreco(linha, info, ctx);
+  if (!composicao || composicao.status === STATUS_PRECO.SEM_PRECO) return { rebate: null, motivo: null, ambiguo: false, composicao };
+  if (composicao.status === STATUS_PRECO.CONFIRMADO) {
+    return { rebate: composicao.rebate, motivo: null, ambiguo: false, composicao };
+  }
+  const ambiguo = composicao.motivo === MOTIVO_PRECO.PROMO_AMBIGUA;
+  const motivo = ambiguo ? MOTIVO_REBATE.AMBIGUO
+    : composicao.status === STATUS_PRECO.DESATUALIZADO ? MOTIVO_REBATE.PRECO_PROMOCAO_DESATUALIZADO
+    : MOTIVO_REBATE.PRECO_PROMOCAO_NAO_COMPROVADO;
+  return { rebate: null, motivo, ambiguo, composicao };
+}
+
+// Mapa vazio com o estado da leitura da conta: `null` = sem leitura de
+// promoções (sem seller/tabela) — diferente de `undefined` (desconhecido).
+function mapaVazio(promoSnapshot = null) {
+  const m = new Map();
+  Object.defineProperty(m, "promoSnapshot", { value: promoSnapshot, enumerable: false });
+  return m;
+}
 
 function num(v) {
   if (v === null || v === undefined || v === "") return null;
@@ -50,14 +102,15 @@ function num(v) {
  * @returns {Promise<{ porItem: Map, indisponivel: string|null }>}
  */
 async function carregarRebatesAtivos({ clienteContaId, sellerId, itemIds, db, promoRepo, logger = null }) {
-  if (!sellerId || !itemIds || !itemIds.length) return { porItem: new Map(), indisponivel: null };
+  if (!itemIds || !itemIds.length) return { porItem: new Map(), indisponivel: null };
+  if (!sellerId) return { porItem: mapaVazio(null), indisponivel: null };
   try {
     const repo = promoRepo || require("../promoSnapshot/promoSnapshotRepository");
     const porItem = await repo.mapRebatesAtivosPorItem({ clienteContaId, sellerId, itemIds }, db);
     return { porItem, indisponivel: null };
   } catch (err) {
     // Conta/tabela sem Promo Snapshot (42P01) não é falha: não há promoção conhecida.
-    if (err && err.code === "42P01") return { porItem: new Map(), indisponivel: null };
+    if (err && err.code === "42P01") return { porItem: mapaVazio(null), indisponivel: null };
     logEvento(logger, "error", "margin_snapshot.rebate_indisponivel", {
       motivo: MOTIVO_REBATE.PROMO_SNAPSHOT_INDISPONIVEL,
       clienteContaId,
@@ -75,12 +128,12 @@ async function carregarRebatesAtivos({ clienteContaId, sellerId, itemIds, db, pr
  * @param {string|null} indisponivel  motivo global de leitura (carregarRebatesAtivos)
  * @returns {{ margin, profit, rebate:number|null, rebateMotivo:string|null }}
  */
-function margemAtualComRebate(linha, info, indisponivel = null) {
-  const original = { margin: linha.margin ?? null, profit: linha.profit ?? null, rebate: null, rebateMotivo: null };
-  if (indisponivel) return { ...original, rebateMotivo: indisponivel };
-  if (!info) return original;
-  if (info.promocoes > 1 || info.rebate === null || info.rebate === undefined) {
-    return { ...original, rebateMotivo: info.promocoes > 1 ? MOTIVO_REBATE.AMBIGUO : null };
+function margemAtualComRebate(linha, info, indisponivel = null, ctx = {}) {
+  const original = { margin: linha.margin ?? null, profit: linha.profit ?? null, rebate: null, rebateMotivo: null, precoVigente: null };
+  const decisao = rebateAplicavel(linha, info, { ...ctx, indisponivel });
+  const precoVigente = decisao.composicao || null;
+  if (decisao.rebate === null || decisao.rebate === undefined) {
+    return { ...original, rebateMotivo: decisao.motivo, precoVigente };
   }
   const calc = core.computeMargin({
     price: num(linha.price),
@@ -89,11 +142,11 @@ function margemAtualComRebate(linha, info, indisponivel = null) {
     fixedFee: num(linha.fixedFee),
     commission: num(linha.commission),
     freight: num(linha.freight),
-    rebate: info.rebate,
+    rebate: decisao.rebate,
   });
   // Insumos incompletos: a margem do snapshot (que também não os tinha) fica.
-  if (!calc.computable) return original;
-  return { margin: calc.margin, profit: calc.profit, rebate: info.rebate, rebateMotivo: null };
+  if (!calc.computable) return { ...original, precoVigente };
+  return { margin: calc.margin, profit: calc.profit, rebate: decisao.rebate, rebateMotivo: null, precoVigente };
 }
 
 const STATUS_PELA_MARGEM = ["LOSS", "LOW_MARGIN", "HEALTHY"];
@@ -134,13 +187,13 @@ function reclassificarStatus(linha, atual) {
  * carregarRebatesAtivos (nunca derruba a leitura).
  */
 async function carregarRebatesDaConta({ clienteContaId, sellerId, db, promoRepo, logger = null }) {
-  if (!sellerId) return { porItem: new Map(), indisponivel: null };
+  if (!sellerId) return { porItem: mapaVazio(null), indisponivel: null };
   try {
     const repo = promoRepo || require("../promoSnapshot/promoSnapshotRepository");
     const porItem = await repo.mapRebatesAtivosDaConta({ clienteContaId, sellerId }, db);
     return { porItem, indisponivel: null };
   } catch (err) {
-    if (err && err.code === "42P01") return { porItem: new Map(), indisponivel: null };
+    if (err && err.code === "42P01") return { porItem: mapaVazio(null), indisponivel: null };
     logEvento(logger, "error", "margin_snapshot.rebate_indisponivel", {
       motivo: MOTIVO_REBATE.PROMO_SNAPSHOT_INDISPONIVEL,
       clienteContaId,
@@ -158,7 +211,11 @@ async function carregarRebatesDaConta({ clienteContaId, sellerId, db, promoRepo,
  * @returns {Promise<{ itemIds: string[], statuses: string[] }>}
  */
 async function calcularStatusOverrides({ clienteId, clienteContaId, rebates, snapshotRepo, db }) {
-  const comRebate = Array.from(rebates.entries()).filter(([, info]) => info && info.rebate !== null && info.rebate !== undefined);
+  // Candidatos: entradas com linhas (o classificador decide com a linha do
+  // snapshot) ou, no formato pré-decidido, com rebate.
+  const comRebate = Array.from(rebates.entries()).filter(([, info]) => info &&
+    (Array.isArray(info.linhas) ? info.promocoes > 0 : info.rebate !== null && info.rebate !== undefined));
+  const ctx = { promoSnapshot: rebates.promoSnapshot };
   if (!comRebate.length) return { itemIds: [], statuses: [], rebateEmPrejuizo: 0 };
   const linhas = await snapshotRepo.listProjectionSnapshotsByItemIds({
     clienteId, clienteContaId, itemIds: comRebate.map(([itemId]) => itemId), db,
@@ -169,7 +226,7 @@ async function calcularStatusOverrides({ clienteId, clienteContaId, rebates, sna
   // quem sai de Prejuízo deixa de entrar na soma do prejuízo, então não entra aqui.
   let rebateEmPrejuizo = 0;
   for (const linha of linhas) {
-    const atual = margemAtualComRebate(linha, rebates.get(String(linha.itemId)));
+    const atual = margemAtualComRebate(linha, rebates.get(String(linha.itemId)), null, ctx);
     const novo = reclassificarStatus(linha, atual);
     if (novo) { itemIds.push(String(linha.itemId)); statuses.push(novo.status); }
     else if (linha.status === "LOSS" && atual.rebate !== null && atual.rebate !== undefined) rebateEmPrejuizo += Number(atual.rebate);
@@ -178,6 +235,8 @@ async function calcularStatusOverrides({ clienteId, clienteContaId, rebates, sna
 }
 
 module.exports = {
+  rebateAplicavel,
+  composicaoDoPreco,
   carregarRebatesAtivos,
   carregarRebatesDaConta,
   calcularStatusOverrides,

@@ -84,15 +84,25 @@ cenario("Promo Snapshot ilegível: margem do snapshot + motivo; a falha vai ao l
   assert.strictEqual(semTabela.porItem.size, 0);
 });
 
-cenario("repositório: UMA consulta para o lote, só started/active com subsídio > 0, só do snapshot atual da conta+seller", async () => {
+cenario("repositório: UMA consulta para o lote (conta + promoções do run atual); a decisão do retorno é do classificador", async () => {
   const chamadas = [];
-  const db = { query: async (sql, params) => { chamadas.push({ sql, params }); return { rows: [{ item_id: "MLB1", promocoes: 1, subsidio: "3.30" }, { item_id: "MLB2", promocoes: 2, subsidio: "5.00" }] }; } };
+  const smart = { current_run_id: 41, snapshot_at: "2026-11-12T18:44:00Z", item_id: "MLB1", promotion_id: "P-1", ref_id: "OFFER-MLB1-1", promotion_type: "SMART",
+    nome: "Impulsione", status: "started", ativa: true, preco_final: "89.77", preco_original: "100", meli_percentage: "3.3", seller_percentage: "6.93", subsidio_ml: "3.30", observed_at: "2026-11-12T18:44:00Z", herdado: false };
+  const rows = [smart, { ...smart, item_id: "MLB2", promotion_id: "P-2", ativa: null }, { ...smart, item_id: "MLB2", promotion_id: "P-3", ativa: null }];
+  const db = { query: async (sql, params) => { chamadas.push({ sql, params }); return { rows }; } };
   const mapa = await promoRepo.mapRebatesAtivosPorItem({ clienteContaId: 5, sellerId: "555", itemIds: ["MLB1", "MLB1", "MLB2", "MLB3"] }, db);
-  assert.strictEqual(chamadas.length, 1);
-  assert.ok(/current_run_id/.test(chamadas[0].sql) && /IN \('started', 'active'\)/.test(chamadas[0].sql) && /subsidio_ml > 0/.test(chamadas[0].sql));
+  assert.strictEqual(chamadas.length, 1, "UMA consulta");
+  assert.ok(/FROM promo_snapshot_contas c/.test(chamadas[0].sql) && /current_run_id/.test(chamadas[0].sql) && /IN \('started', 'active'\)/.test(chamadas[0].sql));
   assert.deepStrictEqual(chamadas[0].params, [5, "meli", "555", ["MLB1", "MLB2", "MLB3"]]);
-  assert.deepStrictEqual(mapa.get("MLB1"), { promocoes: 1, rebate: 3.3 });
-  assert.deepStrictEqual(mapa.get("MLB2"), { promocoes: 2, rebate: null }, "2 promoções = ambíguo");
+  assert.deepStrictEqual(mapa.promoSnapshot, { runId: 41, snapshotAt: "2026-11-12T18:44:00Z" });
+  assert.strictEqual(mapa.get("MLB1").linhas.length, 1);
+  assert.strictEqual(mapa.get("MLB1").linhas[0].ativa, true);
+  assert.strictEqual(mapa.get("MLB1").linhas[0].subsidioMl, 3.3);
+  assert.strictEqual(mapa.get("MLB2").promocoes, 2);
+  // Conta sem linha em promo_snapshot_contas = sem leitura de promoções (null, ≠ desconhecido).
+  const vazia = await promoRepo.mapRebatesAtivosPorItem({ clienteContaId: 5, sellerId: "555", itemIds: ["MLB1"] }, { query: async () => ({ rows: [] }) });
+  assert.strictEqual(vazia.size, 0);
+  assert.strictEqual(vazia.promoSnapshot, null);
   assert.strictEqual((await promoRepo.mapRebatesAtivosPorItem({ clienteContaId: 5, sellerId: null, itemIds: ["MLB1"] }, db)).size, 0, "sem seller não consulta");
   assert.strictEqual(chamadas.length, 1);
 });
@@ -119,7 +129,10 @@ cenario("promo started com subsídio 3,30: tabela, drawer e Oportunidades têm a
     async query(sql, params) {
       this.queries.push(sql);
       if (/FROM promocoes_diagnosticos\b/.test(sql)) return { rows: [{ id: 11, created_at: new Date().toISOString(), parcial: false, itens_scaneados: 1 }] };
-      if (/FROM promo_snapshot_contas c/.test(sql)) return { rows: [{ item_id: "MLB1", promocoes: 1, subsidio: "3.30" }] };
+      if (/FROM promo_snapshot_contas c/.test(sql)) {
+        return { rows: [{ current_run_id: 41, snapshot_at: "2026-10-13T06:00:00Z", item_id: "MLB1", promotion_id: "P-1", ref_id: "OFFER-MLB1-1", promotion_type: "SMART",
+          status: "started", ativa: true, preco_final: "89.77", preco_original: "100", meli_percentage: "3.3", seller_percentage: "6.93", subsidio_ml: "3.30", observed_at: "2026-10-13T06:00:00Z" }] };
+      }
       if (/WITH promos AS/.test(sql)) {
         // Candidata: outra promoção, ainda não ativa, com preço menor que o atual (89,77).
         const promos = [{ item_id: "MLB1", chave: "000001", preco_promo: 80, retorno: 0, promo_status: "candidate", promo_id: "P2" }];
