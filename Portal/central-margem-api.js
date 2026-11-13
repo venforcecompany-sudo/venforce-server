@@ -741,7 +741,26 @@
         // (margemAtualRebate). A tela só o exibe e o repassa à Composição.
         rebate: numberOrNull(projectedBlock.rebate),
         rebateReason: firstValue(projectedBlock.rebateMotivo, null),
+        // CONFIAVEL | ESTIMADA | DESATUALIZADA | BLOQUEADA, decidido no backend
+        // (marginSnapshotReadService.confiancaDaMargem). null = contrato antigo.
+        confidenceLevel: firstValue(projectedBlock.confianca, null),
+        confidenceReasons: arrayOf(projectedBlock.confiancaMotivos),
+        lowerBound: projectedBlock.limiteInferior === true,
       },
+      // Composição do preço vigente (precoVigenteComposicao): preço cheio,
+      // comprador e vendedor, promoção, financiador e retorno ML comprovado.
+      // Só exibição — nenhum número é recalculado no navegador.
+      priceComposition: normalizePriceComposition(raw.precoVigente),
+      // Frete considerado no cálculo, com nível e texto (resumoDoFrete).
+      freightSummary: raw.diagnostico && raw.diagnostico.frete ? {
+        value: numberOrNull(raw.diagnostico.frete.valor),
+        level: raw.diagnostico.frete.nivel || null,
+        estimated: raw.diagnostico.frete.estimado === true,
+        verified: raw.diagnostico.frete.verificado === true,
+        confidence: raw.diagnostico.frete.confianca || null,
+        text: raw.diagnostico.frete.texto || null,
+        applicable: typeof raw.diagnostico.frete.aplicavel === "boolean" ? raw.diagnostico.frete.aplicavel : null,
+      } : null,
       realized: {
         margin: realizedMargin,
         profit: numberOrNull(firstValue(realizedBlock.profit, realizedBlock.lucro, raw.realizedProfit, raw.lucroRealizado)),
@@ -1607,6 +1626,46 @@
       } : null,
       activeRun: snapshotRun(refresh.runAtivo),
       lastRun: snapshotRun(refresh.ultimoRun),
+    };
+  }
+
+  function normalizePriceComposition(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    var promo = raw.promocao || null;
+    var leituras = raw.leituras || {};
+    var subsidio = raw.subsidioMl || {};
+    return {
+      status: raw.status || null,
+      reason: raw.motivo || null,
+      text: raw.texto || null,
+      calcPrice: numberOrNull(raw.precoCalculo),
+      fullPrice: numberOrNull(raw.precoCheio),
+      buyerPrice: numberOrNull(raw.precoComprador),
+      sellerPrice: numberOrNull(raw.precoVendedor),
+      hasPromotion: raw.temPromocao === true,
+      funder: raw.financiador || null,
+      subsidy: numberOrNull(subsidio.valor),
+      subsidyStatus: subsidio.status || null,
+      rebate: numberOrNull(raw.rebate),
+      promotion: promo ? {
+        id: promo.id || null,
+        type: promo.tipo || null,
+        typeLabel: promo.tipoLabel || promo.tipo || null,
+        name: promo.nome || null,
+        status: promo.status || null,
+        confirmedActive: promo.ativaConfirmada === true,
+        finalPrice: numberOrNull(promo.precoFinal),
+        originalPrice: numberOrNull(promo.precoOriginal),
+        meliPercentage: numberOrNull(promo.meliPercentage),
+        sellerPercentage: numberOrNull(promo.sellerPercentage),
+        observedAt: promo.observadoEm || null,
+        inherited: promo.herdada === true,
+      } : null,
+      priceReadAt: leituras.precoEm || null,
+      priceSource: leituras.precoFonte || null,
+      promotionReadAt: leituras.promocaoEm || null,
+      differentMoments: raw.momentosDiferentes === true,
+      financialBase: raw.baseFinanceira || null,
     };
   }
 

@@ -2965,16 +2965,146 @@
       "</tr>";
   }
 
+  // ---------------------------------------------------------------------------
+  // Preço vigente e confiança da margem — só EXIBE o que o backend decidiu
+  // (precoVigenteComposicao + confiancaDaMargem). Nenhum número é calculado aqui.
+  // ---------------------------------------------------------------------------
+
+  var FUNDER_COPY = {
+    VENDEDOR: "vendedor 100%",
+    COFINANCIADA: "cofinanciada pelo ML",
+    NAO_DETERMINADO: "financiamento não informado",
+  };
+
+  var MARGIN_CONFIDENCE = {
+    CONFIAVEL: { label: "Confiável", tone: "is-success" },
+    ESTIMADA: { label: "Estimada", tone: "is-info" },
+    DESATUALIZADA: { label: "Desatualizada", tone: "is-warning" },
+    BLOQUEADA: { label: "Bloqueada", tone: "is-danger" },
+  };
+
+  var PRICE_STATUS_COPY = {
+    REVISAR: { label: "Revisar preço/promoção", tone: "is-warning" },
+    DESATUALIZADO: { label: "Preço mudou: recalcular", tone: "is-warning" },
+    SEM_PRECO: { label: "Sem preço", tone: "is-danger" },
+  };
+
+  function readMoment(value) {
+    var texto = value ? formatShortDateTime(value) : "—";
+    return texto === "—" ? "sem horário" : texto;
+  }
+
+  /** Texto completo (title) da composição do preço: cada preço, quem financia, fontes e horários. */
+  function priceCompositionTitle(pc) {
+    var linhas = [];
+    if (pc.text) linhas.push(pc.text);
+    linhas.push("Preço usado no cálculo: " + (formatMoney(pc.calcPrice) || "—") + " (preço do comprador)");
+    if (pc.fullPrice !== null && pc.fullPrice !== pc.calcPrice) linhas.push("Preço cheio (configurado pelo vendedor): " + formatMoney(pc.fullPrice));
+    if (pc.sellerPrice !== null && pc.sellerPrice !== pc.calcPrice) linhas.push("Valor reconhecido ao vendedor (comprador + retorno ML): " + formatMoney(pc.sellerPrice));
+    if (pc.promotion) {
+      var p = pc.promotion;
+      var pct = [];
+      if (p.meliPercentage !== null) pct.push("ML " + String(p.meliPercentage).replace(".", ",") + "%");
+      if (p.sellerPercentage !== null) pct.push("vendedor " + String(p.sellerPercentage).replace(".", ",") + "%");
+      linhas.push("Promoção: " + (p.name || p.typeLabel || p.type || "sem nome") + (p.typeLabel && p.name ? " — " + p.typeLabel : "") +
+        (p.finalPrice !== null ? " a " + formatMoney(p.finalPrice) : "") + (pct.length ? " (" + pct.join(" + ") + ")" : ""));
+    }
+    if (pc.subsidyStatus === "COMPROVADO") linhas.push("Retorno ML comprovado: " + formatMoney(pc.subsidy) + "/un (compensação na tarifa, somada uma vez ao lucro)");
+    else if (pc.subsidyStatus === "ZERO") linhas.push("Retorno ML: nenhum (o vendedor banca o desconto)");
+    else if (pc.subsidyStatus === "DESCONHECIDO") linhas.push("Retorno ML: desconhecido — não somado");
+    linhas.push("Leitura do preço: " + (pc.priceSource || "fonte não informada") + " · " + readMoment(pc.priceReadAt));
+    if (pc.promotionReadAt) linhas.push("Leitura das promoções: " + readMoment(pc.promotionReadAt));
+    if (pc.differentMoments) linhas.push("Atenção: preço e promoção vêm de leituras com mais de 12 h de diferença.");
+    return linhas.join("\n");
+  }
+
+  /** Célula PREÇO (fonte Mercado Livre): preço do cálculo + promoção + financiador + leitura. */
+  function priceCellHtml(item, entry) {
+    var pc = item.priceComposition;
+    var linhas = [];
+    var aviso = PRICE_STATUS_COPY[pc.status];
+    if (aviso) {
+      linhas.push('<span class="vf-status ' + aviso.tone + ' cm-price-status" data-cm-price-status="' + escapeHtml(pc.status) + '">' + escapeHtml(aviso.label) + "</span>");
+    } else if (pc.promotion) {
+      var nome = pc.promotion.name || pc.promotion.typeLabel || "Promoção";
+      linhas.push('<span class="cm-cell-meta cm-price-promo" data-cm-promo="' + escapeHtml(pc.promotion.type || "") + '">' + escapeHtml(nome) + "</span>");
+    } else {
+      linhas.push('<span class="cm-cell-meta" data-cm-promo="none">sem promoção</span>');
+    }
+    if (pc.funder && pc.status === "CONFIRMADO") {
+      var quem = FUNDER_COPY[pc.funder] || pc.funder;
+      if (pc.funder === "COFINANCIADA" && pc.subsidy !== null) quem += " · retorno " + formatMoney(pc.subsidy);
+      linhas.push('<span class="cm-cell-meta" data-cm-funder="' + escapeHtml(pc.funder) + '">' + escapeHtml(quem) + "</span>");
+    }
+    if (pc.fullPrice !== null && pc.calcPrice !== null && pc.fullPrice !== pc.calcPrice) {
+      linhas.push('<span class="cm-cell-meta" data-cm-full-price>cheio ' + escapeHtml(formatMoney(pc.fullPrice)) + "</span>");
+    }
+    linhas.push('<span class="cm-cell-meta" data-cm-price-read>' + escapeHtml((entry ? entry.sourceShort : "ML") + " · " + readMoment(pc.priceReadAt)) + "</span>");
+    return '<td class="num cm-var-cell cm-price-cell" title="' + escapeHtml(priceCompositionTitle(pc)) + '">' +
+      '<span class="cm-cell-value">' + escapeHtml(formatByVariable("price", entry.value)) + "</span>" +
+      linhas.map(function (l) { return '<span class="cm-cell-sub">' + l + "</span>"; }).join("") + "</td>";
+  }
+
+  var FREIGHT_LEVEL_COPY = {
+    cotado_ml: "cotado ML",
+    estimado_dimensoes_historicas: "estimado (envios anteriores)",
+    estimado_custo_cobrado: "estimado (custo cobrado)",
+    estimado_dimensoes_declaradas: "estimado (medidas do anúncio)",
+    desconhecido: "desconhecido",
+  };
+
+  function freightLevelLabel(fs) {
+    if (fs.applicable === false) return "não se aplica";
+    if (!fs.verified) return "não verificado";
+    return FREIGHT_LEVEL_COPY[fs.level] || fs.level || "cotado";
+  }
+
+  /** Margem do preset Projetado: confiança + retorno ML + fórmula (title). */
+  function marginConfidenceHtml(item) {
+    var p = item.projected || {};
+    var conf = MARGIN_CONFIDENCE[p.confidenceLevel];
+    var partes = [];
+    if (p.rebate !== null && p.rebate !== undefined) {
+      partes.push('<span class="cm-cell-sub"><span class="cm-cell-meta" data-cm-rebate="' + escapeHtml(String(p.rebate)) + '">+ retorno ML ' + escapeHtml(formatMoney(p.rebate)) + "</span></span>");
+    }
+    if (conf) {
+      partes.push('<span class="cm-cell-sub"><span class="vf-status ' + conf.tone + ' cm-margin-conf" data-cm-margin-conf="' + escapeHtml(p.confidenceLevel) + '" title="' +
+        escapeHtml((p.confidenceReasons || []).join("\n") || conf.label) + '">' + escapeHtml(conf.label) + "</span></span>");
+    }
+    return partes.join("");
+  }
+
+  /** Decomposição conceitual (title): preço − imposto − comissão − frete − taxa fixa − custo + retorno = LC. */
+  function marginFormulaTitle(item, composition) {
+    var v = composition.values || {};
+    var parte = function (rotulo, valor, formato) {
+      return rotulo + " " + (valor === null || valor === undefined ? "?" : formato === "percent" ? formatPercent(valor) : formatMoney(valor));
+    };
+    var texto = parte("Preço", v.price) + " − " + parte("imposto", v.tax, "percent") + " do preço − " + parte("comissão", v.commission) +
+      " − " + parte("frete", v.freight) + " − " + parte("taxa fixa", v.fixedFee) + " − " + parte("custo", v.cost) +
+      (v.rebate !== null && v.rebate !== undefined ? " + retorno ML " + formatMoney(v.rebate) : "") +
+      " = LC " + (composition.profit === null || composition.profit === undefined ? "?" : formatMoney(composition.profit));
+    var p = item.projected || {};
+    if (p.rebate !== null && p.rebate !== undefined) texto += "\nO retorno ML entra uma vez: a comissão projetada é a cheia no preço do comprador.";
+    return texto;
+  }
+
   function valueCell(item, variableKey) {
     var source = state.selection[variableKey];
     var entry = contract.sourceEntry(item, variableKey, source);
     if (!entry || !entry.available) {
       return '<td class="num cm-var-cell">' + unavailable("Indisponível", explainUnavailable(variableKey, source)) + "</td>";
     }
+    if (variableKey === "price" && source === "MELI_API" && item.priceComposition) return priceCellHtml(item, entry);
     var differs = contract.hasSourceDisagreement(item, variableKey, source);
+    var freightLine = variableKey === "freight" && source === "MELI_API" && item.freightSummary
+      ? '<span class="cm-cell-sub"><span class="cm-cell-meta" data-cm-freight-level="' + escapeHtml(item.freightSummary.level || (item.freightSummary.verified ? "" : "nao_verificado")) + '" title="' +
+        escapeHtml(item.freightSummary.text || (item.freightSummary.verified ? "Frete cotado pelo Mercado Livre." : "Frete cotado direto pelo Mercado Livre, sem verificação da modalidade logística.")) + '">' +
+        escapeHtml(freightLevelLabel(item.freightSummary)) + "</span></span>"
+      : "";
     return '<td class="num cm-var-cell"><span class="cm-cell-value">' + escapeHtml(formatByVariable(variableKey, entry.value)) + "</span>" +
       '<span class="cm-cell-sub"><span class="cm-cell-meta">' + escapeHtml(entry.sourceShort) + "</span>" +
-      (differs ? '<span class="cm-cell-diff" title="Outra fonte disponível diverge deste valor."></span>' : "") + "</span></td>";
+      (differs ? '<span class="cm-cell-diff" title="Outra fonte disponível diverge deste valor."></span>' : "") + "</span>" + freightLine + "</td>";
   }
 
   function marginClass(margin, item) {
@@ -2998,6 +3128,13 @@
     }
     if (integrity.key === "RECONCILING") {
       return { title: "Aguardar conciliação", detail: "Não tratar o realizado como fechado." };
+    }
+    var pc = item.priceComposition;
+    if (pc && pc.status === "REVISAR") {
+      return { title: "Revisar preço/promoção", detail: pc.text || "Composição do preço não comprovada: a margem não é confiável." };
+    }
+    if (pc && pc.status === "DESATUALIZADO") {
+      return { title: "Recalcular margem", detail: pc.text || "Preço e promoção vêm de leituras diferentes." };
     }
     if (composition.pending) {
       return { title: "Calculando composição", detail: "O Motor está calculando LC e margem desta seleção de fontes." };
@@ -3144,6 +3281,11 @@
       ? '<span class="cm-cell-meta">assumido 0: ' + escapeHtml(composition.assumed.map(variableLabel).join(", ")) + "</span>"
       : "";
 
+    // Confiança da margem só vale para a composição Projetada (a do backend).
+    var projectedPreset = composition.preset === "projected";
+    var lowerBound = Boolean(item.projected && item.projected.lowerBound);
+    var stale = Boolean(item.projected && item.projected.confidenceLevel === "DESATUALIZADA");
+
     // Margem: MC é o número que importa (principal, maior); LC é o valor em
     // R$ que sustenta a MC (secundário). Os dois continuam presentes — só
     // compartilham uma coluna em vez de duas.
@@ -3151,10 +3293,17 @@
       ? '<span class="cm-cell-meta" data-cm-calc-pending title="LC e margem desta composição são calculados pelo Motor no backend.">Calculando…</span>'
       : composition.failed
         ? unavailable("Indisponível", composition.failureReason || "Não foi possível calcular esta composição agora.")
-        : composition.computable
-          ? '<span class="cm-cell-value cm-mc-value ' + marginClass(composition.margin, item) + '">' + escapeHtml(formatPercent(composition.margin)) + "</span>" +
-            '<span class="cm-cell-sub cm-lc-value"><span class="cm-cell-meta">LC ' + escapeHtml(formatMoney(composition.profit)) + "</span></span>" + assumed
-          : unavailable("Indisponível", "Falta " + composition.missing.map(variableLabel).join(", ") + " na composição selecionada.")) +
+        : composition.computable && projectedPreset && lowerBound
+          // Composição do preço não comprovada: o número é só LIMITE INFERIOR
+          // (sem o retorno ML que pode existir) — nunca a margem confiável.
+          ? '<span class="cm-cell-value cm-mc-value cm-muted" data-cm-lower-bound title="' + escapeHtml(marginFormulaTitle(item, composition)) + '">≥ ' + escapeHtml(formatPercent(composition.margin)) + "</span>" +
+            '<span class="cm-cell-sub cm-lc-value"><span class="cm-cell-meta">sem retorno ML</span></span>' + marginConfidenceHtml(item)
+          : composition.computable
+          ? '<span class="cm-cell-value cm-mc-value ' + (projectedPreset && stale ? "cm-muted" : marginClass(composition.margin, item)) + '" title="' + escapeHtml(marginFormulaTitle(item, composition)) + '">' + escapeHtml(formatPercent(composition.margin)) + "</span>" +
+            '<span class="cm-cell-sub cm-lc-value"><span class="cm-cell-meta">LC ' + escapeHtml(formatMoney(composition.profit)) + "</span></span>" + assumed +
+            (projectedPreset ? marginConfidenceHtml(item) : "")
+          : unavailable("Indisponível", "Falta " + composition.missing.map(variableLabel).join(", ") + " na composição selecionada.") +
+            (projectedPreset ? marginConfidenceHtml(item) : "")) +
       comparisonLineHtml(item);
 
     // Estado: resultado financeiro + integridade do dado continuam sendo DOIS
@@ -3167,7 +3316,10 @@
     var snapshotNote = item.snapshot && item.snapshot.refreshStatus === "failed"
       ? '<p class="cm-diag-problem" data-cm-refresh-failed title="' + escapeHtml(item.snapshot.lastError || "") + '">Valor da leitura anterior: a última atualização não recalculou este item.</p>'
       : "";
-    var diagCellHtml = snapshotNote + '<p class="cm-diag-problem">' + escapeHtml(item.problem || "Sem problema informado") + "</p>" +
+    var pcProblem = item.priceComposition && (item.priceComposition.status === "REVISAR" || item.priceComposition.status === "DESATUALIZADO")
+      ? '<p class="cm-diag-problem" data-cm-price-problem title="' + escapeHtml(item.priceComposition.text || "") + '">' + escapeHtml(item.priceComposition.text || "") + "</p>"
+      : "";
+    var diagCellHtml = snapshotNote + pcProblem + '<p class="cm-diag-problem">' + escapeHtml(item.problem || "Sem problema informado") + "</p>" +
       '<div class="cm-diag-action" title="' + escapeHtml(action.detail) + '"><span class="cm-diag-arrow" aria-hidden="true">→</span><strong>' +
       escapeHtml(action.title) + "</strong></div>";
 
@@ -3196,6 +3348,13 @@
       '<th class="cm-op-head cm-next-head"><span class="cm-head-label">Próxima ação</span></th>' +
       '<th class="cm-go-head"><span class="vf-visually-hidden">Abrir produto</span></th>' +
       "</tr>";
+  }
+
+  /** Margem calculada sobre um preço que não é mais o vigente (sem duplicar o aviso de refresh falho). */
+  function staleNoteHtml(item) {
+    var p = item.projected || {};
+    if (p.confidenceLevel !== "DESATUALIZADA" || (item.snapshot && item.snapshot.refreshStatus === "failed")) return "";
+    return '<span class="cm-cell-sub"><span class="cm-refresh-failed" data-cm-stale title="' + escapeHtml((p.confidenceReasons || []).join("\n")) + '">desatualizada</span></span>';
   }
 
   /** Retorno ML já somado à margem atual (promoção em andamento) — ou o porquê de não ter sido. */
@@ -3229,6 +3388,11 @@
     }
     if (integrity.key === "SUSPECT") {
       return { kind: "dados", label: "Revisar dados", tone: "is-warning", variable: variavel(null), title: "Fontes em conflito: compare as evidências antes de decidir o preço." };
+    }
+    var pcOp = item.priceComposition;
+    if (pcOp && (pcOp.status === "REVISAR" || pcOp.status === "DESATUALIZADO")) {
+      return { kind: "dados", label: pcOp.status === "REVISAR" ? "Revisar preço/promoção" : "Recalcular", tone: "is-warning", variable: "price",
+        title: pcOp.text || "Composição do preço não comprovada: a margem não é confiável." };
     }
     if (integrity.key === "RECONCILING") {
       return { kind: "conciliacao", label: "Em conciliação", tone: "is-neutral", title: "Dados ainda conciliando: não trate o realizado como fechado." };
@@ -3275,8 +3439,11 @@
         : '<span class="cm-cell-value ' + (lc < 0 ? "cm-negative" : "") + '">' + escapeHtml(formatMoney(lc)) + "</span>") + "</td>" +
       '<td class="num" data-cm-margem>' + (projected === null || projected === undefined
         ? unavailable("Indisponível", item.problem || "Margem projetada não calculável.")
-        : '<span class="cm-cell-value cm-mc-value ' + marginClass(projected, item) + '">' + escapeHtml(formatPercent(projected)) + "</span>" +
-          rebateNoteHtml(item)) + refreshFailed + "</td>" +
+        : item.projected.lowerBound
+          ? '<span class="cm-cell-value cm-mc-value cm-muted" data-cm-lower-bound title="' + escapeHtml((item.projected.confidenceReasons || []).join("\n")) + '">≥ ' + escapeHtml(formatPercent(projected)) + "</span>" +
+            '<span class="cm-cell-sub"><span class="cm-cell-meta">sem retorno ML</span></span>'
+          : '<span class="cm-cell-value cm-mc-value ' + marginClass(projected, item) + '">' + escapeHtml(formatPercent(projected)) + "</span>" +
+          rebateNoteHtml(item) + staleNoteHtml(item)) + refreshFailed + "</td>" +
       '<td class="cm-next-cell">' + nextChipHtml(item, action) + "</td>" +
       '<td class="cm-go" aria-hidden="true">›</td></tr>';
   }
@@ -5051,6 +5218,11 @@
       '<p class="cm-adv__warn"><strong>Somente simulação.</strong> Não grava na Base, não muda comissão, não muda o custo real e não altera nada no Mercado Livre. Só o <strong>preço</strong> pode virar escrita real.</p>' +
       '<div class="vf-table-wrap"><table class="vf-table vf-table--compact cm-scenario-table"><thead><tr><th>Variável</th><th>Hipótese</th><th>Fonte atual</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
       resultado +
+      // Preço trocado aqui NÃO recota: comissão e frete continuam os do preço
+      // atual (e o retorno ML sai). A cotação real em P' é a da Bancada.
+      (simulation.changed.indexOf("price") !== -1
+        ? '<p class="cm-adv__warn" data-cm-adv-price-warn>Preço hipotético: a comissão e o frete acima continuam os do preço atual e o retorno ML da promoção sai do cálculo. Para comissão e frete recotados pelo Mercado Livre no preço novo, use o preço manual da Bancada.</p>'
+        : "") +
       '<button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" id="cm-scenario-reset"' + (simulation.changed.length ? "" : " disabled") + ">Restaurar hipótese</button>" +
       "</details>";
   }
