@@ -13,97 +13,54 @@
   <link rel="stylesheet" href="resgate.css">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
 </head>
-<!-- VenForce Resgate — central de recuperação de preço e margem por anúncio.
-     Fluxo: conta → anúncio → margem → simular → revisar → confirmar.
-     A tela só EXIBE a bancada calculada no servidor (nenhuma fórmula aqui).
-     Ações reais usam os endpoints existentes de /anuncios-meli e ficam
-     DESLIGADAS até o servidor dizer o contrário (GET /resgate/config). -->
+<!-- VenForce Resgate — operação rápida: lista compacta + bancada lateral.
+     A tela só EXIBE o que o servidor calculou (nenhuma fórmula financeira aqui).
+     Simulação preliminar e recotação pelo servidor; ações reais pelos endpoints
+     existentes de /anuncios-meli, DESLIGADAS até o servidor dizer o contrário. -->
 <body class="vf-page vf-page-resgate" data-vf-density="compact" data-vf-scope="global" data-vf-module="resgate">
   <main class="vf-content" id="rg-app" aria-label="VenForce Resgate">
-    <div class="vf-page-shell">
-      <div class="vf-page-container vf-page-container--wide">
-        <div class="vf-page-header">
-          <div class="vf-page-header__main">
-            <div class="vf-page-header__eyebrow">Integridade financeira</div>
-            <h1 class="vf-page-header__title">VenForce Resgate</h1>
-            <p class="vf-page-header__description">Escolha a conta, abra o anúncio, veja a margem correta e decida o preço ou a promoção.</p>
-          </div>
-          <div class="vf-page-header__actions">
-            <span class="rg-exec" id="rg-exec" role="status"></span>
-            <a class="vf-btn vf-btn--secondary vf-btn--sm" id="rg-xlsx-conta" href="#" download>Planilha da conta</a>
-          </div>
-        </div>
+    <header class="rg-topo">
+      <h1 class="rg-topo__t">Resgate</h1>
+      <label class="vf-visually-hidden" for="rg-conta">Conta</label>
+      <select class="vf-select vf-select--sm rg-topo__conta" id="rg-conta"></select>
+      <label class="rg-topo__meta" title="Margem-alvo">Meta <span class="vf-input-group"><input class="vf-input vf-input--sm" id="rg-meta" type="number" inputmode="decimal" min="1" max="80" step="0.5" value="15" aria-label="Margem-alvo"><span class="vf-input-suffix">%</span></span></label>
+      <label class="vf-visually-hidden" for="rg-busca">Buscar</label>
+      <input class="vf-input vf-input--sm rg-topo__busca" id="rg-busca" type="search" placeholder="Buscar MLB, SKU ou título  ( / )">
+      <label class="vf-visually-hidden" for="rg-ordem">Ordenar</label>
+      <select class="vf-select vf-select--sm rg-topo__ordem" id="rg-ordem"><option value="">Prioridade</option><option value="margem">Pior margem (página)</option><option value="vendas">Mais vendidos (página)</option></select>
+      <span class="rg-topo__dir">
+        <button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" data-rg-ver-propostas>Propostas <span id="rg-n-prop"></span></button>
+        <a class="vf-btn vf-btn--ghost vf-btn--sm" id="rg-xlsx-conta" href="#" download>Planilha</a>
+        <span class="vf-segmented" role="group" aria-label="Visão"><button class="vf-segmented__item is-active" type="button" data-rg-modo="operacao" aria-pressed="true">Operação</button><button class="vf-segmented__item" type="button" data-rg-modo="avancado" aria-pressed="false">Todas as contas</button></span>
+      </span>
+    </header>
+    <div class="rg-modo" id="rg-modo" role="status" hidden></div>
 
-        <div class="rg-modo" id="rg-modo" role="status" hidden></div>
-
-        <div class="rg-topo">
-          <div class="vf-field rg-topo__conta">
-            <label class="vf-field__label" for="rg-conta">Conta</label>
-            <select class="vf-select" id="rg-conta"></select>
-          </div>
-          <div class="vf-field rg-topo__meta">
-            <label class="vf-field__label" for="rg-meta">Margem-alvo</label>
-            <div class="vf-input-group"><input class="vf-input" id="rg-meta" type="number" inputmode="decimal" min="0" max="80" step="0.5" value="15"><span class="vf-input-suffix">%</span></div>
-          </div>
-          <div class="rg-topo__resumo" id="rg-conta-resumo"></div>
-        </div>
-
-        <nav class="vf-tabs rg-tabs" role="tablist" aria-label="Seções do Resgate">
-          <button class="vf-tab is-active" role="tab" type="button" data-rg-tab="anuncios" aria-selected="true">Anúncios</button>
-          <button class="vf-tab" role="tab" type="button" data-rg-tab="avancado" aria-selected="false">Avançado</button>
-        </nav>
-
-        <div id="rg-estado" aria-live="polite"></div>
-
-        <!-- Anúncios da conta -->
-        <section class="rg-painel" data-rg-painel="anuncios">
-          <div class="rg-filtros" role="group" aria-label="Filtros">
-            <button class="vf-chip is-active" type="button" data-rg-filtro="" aria-pressed="true">Todos <span class="rg-cont" data-rg-cont=""></span></button>
-            <button class="vf-chip" type="button" data-rg-filtro="abaixo_meta" aria-pressed="false">Abaixo da meta <span class="rg-cont" data-rg-cont="abaixo_meta"></span></button>
-            <button class="vf-chip" type="button" data-rg-filtro="prejuizo" aria-pressed="false">Prejuízo <span class="rg-cont" data-rg-cont="prejuizo"></span></button>
-            <button class="vf-chip" type="button" data-rg-filtro="desconhecida" aria-pressed="false">Margem desconhecida <span class="rg-cont" data-rg-cont="desconhecida"></span></button>
-            <button class="vf-chip" type="button" data-rg-filtro="promocao" aria-pressed="false">Com promoção <span class="rg-cont" data-rg-cont="promocao"></span></button>
-            <label class="vf-check rg-filtros__check"><input type="checkbox" id="rg-f-recentes"> Alterados recentemente</label>
-            <label class="vf-visually-hidden" for="rg-f-busca">Buscar</label>
-            <input class="vf-input vf-input--sm rg-filtros__busca" id="rg-f-busca" type="search" placeholder="Buscar MLB, SKU ou título">
-          </div>
-          <div class="vf-table-wrap">
-            <table class="vf-table vf-table--compact rg-tabela" aria-label="Anúncios da conta">
-              <thead><tr>
-                <th>Anúncio</th><th class="rg-num">Comprador paga</th><th class="rg-num">Margem</th><th>Promoção</th><th class="rg-num">Preço sugerido</th><th>O que fazer</th>
-              </tr></thead>
-              <tbody id="rg-itens"></tbody>
-            </table>
-          </div>
-          <div class="vf-pagination" id="rg-paginacao"></div>
+    <div id="rg-operacao">
+      <div class="rg-chips" id="rg-chips" role="group" aria-label="Filtros"></div>
+      <div class="rg-split">
+        <section class="rg-lista" aria-label="Anúncios">
+          <table class="vf-table vf-table--compact rg-tab">
+            <thead><tr><th class="rg-col-sel"><input type="checkbox" id="rg-todos" aria-label="Selecionar a página"></th><th>Anúncio</th><th class="rg-n">Comprador paga</th><th class="rg-col-md">Promoção que forma o preço</th><th class="rg-n">Margem</th><th class="rg-n rg-col-md">Preço sugerido</th><th class="rg-col-acao">Próxima ação</th></tr></thead>
+            <tbody id="rg-linhas"></tbody>
+          </table>
+          <div class="rg-pag" id="rg-pag"></div>
         </section>
-
-        <!-- Avançado: todas as contas e ativação do cotador -->
-        <section class="rg-painel" data-rg-painel="avancado" hidden>
-          <div class="vf-kpi-grid rg-kpis" id="rg-kpis"></div>
-          <div class="vf-table-wrap">
-            <table class="vf-table vf-table--compact rg-tabela" aria-label="Contas auditadas">
-              <thead><tr><th>Cliente / conta</th><th class="rg-num">Anúncios</th><th class="rg-num">Revisar</th><th class="rg-num">Sem margem confiável</th><th class="rg-num">Alterados recentes</th><th>Cotador</th></tr></thead>
-              <tbody id="rg-contas"></tbody>
-            </table>
-          </div>
-          <div id="rg-ativacao"></div>
-        </section>
+        <aside class="rg-bancada" id="rg-bancada" aria-label="Bancada do anúncio"></aside>
       </div>
     </div>
+    <section id="rg-avancado" class="rg-avancado" hidden></section>
   </main>
 
-  <!-- Bancada do anúncio -->
-  <div class="vf-drawer-backdrop" id="rg-drawer-backdrop" hidden></div>
-  <aside class="vf-drawer vf-drawer--lg rg-bancada" id="rg-drawer" role="dialog" aria-modal="true" aria-labelledby="rg-drawer-title" hidden>
-    <div class="vf-drawer__header">
-      <div class="vf-drawer__heading"><h2 class="vf-drawer__title" id="rg-drawer-title">Anúncio</h2><p class="vf-drawer__subtitle" id="rg-drawer-sub"></p></div>
-      <button class="vf-btn vf-btn--ghost vf-btn--icon vf-btn--sm" type="button" id="rg-drawer-fechar" aria-label="Fechar">✕</button>
-    </div>
-    <div class="vf-drawer__body" id="rg-drawer-corpo"></div>
-  </aside>
+  <div class="rg-lote-barra" id="rg-lote-barra" hidden><span id="rg-lote-txt"></span><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" id="rg-lote-filtro">Selecionar todo o filtro</button><button class="vf-btn vf-btn--primary vf-btn--sm" type="button" id="rg-lote-ir">Preparar propostas</button><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" id="rg-lote-limpar">Limpar</button></div>
 
-  <!-- Confirmação explícita de ação -->
+  <!-- Painel amplo: lista de propostas -->
+  <div class="rg-painel-fundo" id="rg-painel-fundo" hidden></div>
+  <aside class="rg-painel" id="rg-painel" role="dialog" aria-modal="true" aria-label="Propostas" hidden></aside>
+  <!-- Registrar proposta (nada vai ao ML) -->
+  <div class="rg-dialogo" id="rg-dialogo" hidden></div>
+
+  <!-- Confirmação explícita de ação REAL no ML (desligada por padrão) -->
   <div class="vf-overlay" id="rg-modal" aria-hidden="true">
     <div class="vf-modal" role="dialog" aria-modal="true" aria-labelledby="rg-modal-titulo">
       <div class="vf-modal__header"><h2 class="vf-modal__title" id="rg-modal-titulo">Confirmar ação</h2></div>
