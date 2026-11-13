@@ -4,7 +4,7 @@
 // resgate_* para a API/tela /resgate lerem. ESCREVE no banco indicado — só
 // nas tabelas do Resgate (nunca em outra tabela, nunca no Mercado Livre).
 // Exige a migration 20261112_venforce_resgate.sql aplicada e --confirmar.
-//   DATABASE_URL=… node server/scripts/resgate/importarParaPg.js --dados <dir> --confirmar [--sem-ssl] [--contas 86,87]
+//   DATABASE_URL=… node server/scripts/resgate/importarParaPg.js --dados <dir> --confirmar --contas 86,87 [--sem-ssl]   (ou --todas)
 // --contas limita a importação às contas indicadas (V1: só as que serão usadas; menos volume no banco).
 const fs = require("fs");
 const path = require("path");
@@ -18,6 +18,11 @@ if (!a.confirmar) {
   console.log(`PLANO (nada foi gravado): importar ${dir}${soContas ? ` (só contas ${[...soContas].join(", ")})` : " (todas as contas)"} → resgate_execucoes / resgate_contas_resultado / resgate_itens em lotes de 200.`);
   console.log("Repita com --confirmar. Requer a migration aplicada; falha se já houver execução em andamento.");
   process.exit(0);
+}
+if (!soContas && !a.todas) {
+  // Importar as 88 contas grava ~152 MB (a instância de produção já teve crash-recovery com volume menor).
+  console.error("Recusado: com --confirmar, informe --contas (ex.: --contas 86,87) ou --todas explicitamente.");
+  process.exit(2);
 }
 (async () => {
   // O lib força leitura no ambiente; este script é o ÚNICO que grava, e só nas tabelas resgate_*.
