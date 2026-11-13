@@ -117,6 +117,14 @@ function res() { const r = { statusCode: 200, headers: {}, body: null, status(c)
     assert.strictEqual(r.statusCode, 200); assert.strictEqual(r.body.contexto.clienteSlug, "cliente-x"); assert.strictEqual(r.body.contexto.acoesHabilitadas, false);
     assert.ok(r.body.bancada && r.body.bancada.versao === "resgate-bancada/1"); assert.strictEqual(r.body.bancada.meta.valor, 0.15);
   });
+  await t("preview local: nunca liga ações e, com --shell, a API do Portal aponta para o próprio preview (nunca produção)", () => {
+    const src = fs.readFileSync(path.join(__dirname, "..", "scripts", "resgate", "previewLocal.js"), "utf8");
+    assert.ok(/"\/resgate\/config"\) return json\(res, 200, \{ ok: true, acoesHabilitadas: false/.test(src));
+    assert.ok(/if \(a\.shell\) corpo = corpo\.replace\("<head>", `<head>\\n  <meta name="vf-api-base" content="http:\/\/127\.0\.0\.1:\$\{porta\}">`\)/.test(src));
+    assert.ok(/listen\(porta, "127\.0\.0\.1"/.test(src));
+    const cfg = fs.readFileSync(path.join(__dirname, "..", "..", "Portal", "vf-config.js"), "utf8");
+    assert.ok(/const META_NAME = "vf-api-base"/.test(cfg), "o Shell lê a base desta meta");
+  });
   await t("exportação global do servidor lê só anúncios com ação (memória do Render); a da conta lê todos", () => {
     const src = fs.readFileSync(path.join(__dirname, "..", "controllers", "resgateController.js"), "utf8");
     assert.ok(/somenteAcionaveis = !req\.params\.contaId/.test(src));

@@ -3,8 +3,10 @@
 // Preview LOCAL da tela do Resgate sobre o resultado de uma auditoria da CLI
 // (store de arquivo). Só 127.0.0.1, só leitura do diretório: nenhum banco,
 // nenhum Mercado Livre. Simular/revisar/dry-run respondem 501 aqui (precisam
-// do servidor). O Shell é desligado no preview (sem login).
-//   node server/scripts/resgate/previewLocal.js --dados <dir da auditoria> [--porta 5099]
+// do servidor). O Shell é desligado no preview (sem login); com --shell, o
+// vf-shell.js REAL é servido com um usuário fictício local e carteira vazia,
+// só para ver a tela dentro da moldura do Portal.
+//   node server/scripts/resgate/previewLocal.js --dados <dir da auditoria> [--porta 5099] [--shell]
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
@@ -64,12 +66,20 @@ http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       return res.end(planoParaBuffer({ contas, itensPorConta: ip, execucao: exec() }));
     }
+    if (a.shell && u.pathname === "/me/context") return json(res, 200, { ok: true, clientes: [], squads: [], squadPrincipalId: null });
     if (u.pathname.startsWith("/resgate/")) return json(res, 501, { ok: false, motivo: "Indisponível no preview local (requer o servidor com acesso ao Mercado Livre)." });
-    if (u.pathname === "/vf-shell.js") { res.writeHead(200, { "Content-Type": "text/javascript" }); return res.end("/* shell desligado no preview */"); }
+    if (u.pathname === "/vf-shell.js" && !a.shell) { res.writeHead(200, { "Content-Type": "text/javascript" }); return res.end("/* shell desligado no preview */"); }
     const arq = path.join(portal, u.pathname === "/" ? "resgate.html" : path.normalize(u.pathname));
     if (!arq.startsWith(portal) || !fs.existsSync(arq)) { res.writeHead(404); return res.end(); }
     let corpo = fs.readFileSync(arq);
-    if (arq.endsWith("resgate.html")) corpo = Buffer.from(String(corpo).replace("<script src=\"resgate.js\">", "<script>window.VF_API_BASE=location.origin;try{localStorage.setItem(\"vf-token\",\"preview\")}catch(e){}</script><script src=\"resgate.js\">"));
+    if (arq.endsWith("resgate.html")) {
+      const usuario = a.shell ? 'localStorage.setItem("vf-user",JSON.stringify({nome:"Preview Local",role:"user"}));' : "";
+      const injetado = `<script>window.VF_API_BASE=location.origin;try{localStorage.setItem("vf-token","preview");${usuario}}catch(e){}</script><script src="resgate.js">`;
+      corpo = String(corpo).replace('<script src="resgate.js">', injetado);
+      // Shell real: a API do Portal (vf-config) aponta para ESTE preview, nunca para produção.
+      if (a.shell) corpo = corpo.replace("<head>", `<head>\n  <meta name="vf-api-base" content="http://127.0.0.1:${porta}">`);
+      corpo = Buffer.from(corpo);
+    }
     res.writeHead(200, { "Content-Type": TIPOS[path.extname(arq)] || "application/octet-stream" });
     return res.end(corpo);
   } catch (err) { return json(res, 500, { ok: false, motivo: err.message }); }
