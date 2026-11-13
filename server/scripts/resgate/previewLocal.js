@@ -74,7 +74,7 @@ http.createServer(async (req, res) => {
       const fx = pedidosLocais && pedidosLocais.contas && pedidosLocais.contas[contaId] && pedidosLocais.contas[contaId].itens[itemId];
       if (!fx) return json(res, 501, { ok: false, motivo: pedidosLocais ? "Este anúncio não está no arquivo local de pedidos do preview." : "Preview sem arquivo de pedidos (--pedidos)." });
       const bancada = montarBancada(x, { meta: metaDe(u.searchParams.get("meta")) });
-      if (!m[3]) return json(res, 200, { ok: true, ...montarPedidosDoItem({ itemId, rows: fx.rows, bancada, periodo: fx.periodo || null, completude: fx.completude || null, snapshot: fx.snapshot || null, totalNoPeriodo: fx.pagination ? fx.pagination.total : null }) });
+      if (!m[3]) return json(res, 200, { ok: true, ...montarPedidosDoItem({ itemId, rows: fx.rows, bancada, periodo: { ...(fx.periodo || {}), dias: 60, fonte: "arquivo local extraído da Central de Vendas" }, completude: fx.completude || null, snapshot: fx.snapshot || null, totalNoPeriodo: fx.pagination ? fx.pagination.total : null }) });
       const ped = fx.detalhes && fx.detalhes[decodeURIComponent(m[3])];
       return ped ? json(res, 200, { ok: true, ...montarDetalhePedido({ pedido: ped, itemId, bancada }) }) : json(res, 404, { ok: false, motivo: "Pedido fora do arquivo local do preview." });
     }
