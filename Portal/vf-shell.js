@@ -93,6 +93,9 @@ export const GLOBAIS = [
   // Carteira/Painel de Contas: filtra por Squad/conta na própria tela e aceita
   // ?cliente=&conta= como pré-filtro; a autorização é toda da API /sentinel.
   { id: "sentinel", label: "Sentinel", rota: "sentinel.html", papeis: PAPEIS_SENTINEL },
+  // VenForce Resgate — auditoria financeira multiconta (carteira → conta → anúncio).
+  // GLOBAL: escolhe a conta na própria tela; a API filtra pela carteira.
+  { id: "resgate", label: "Resgate", rota: "resgate.html" },
   // Recuperação de navegação (auditoria forense, seção 6.2/15) — estas 5
   // telas têm arquivo, backend e lógica ativos em ATUAL; só perderam a
   // entrada de menu quando o Shell V3 chegou. Nenhuma delas lê `cliente`/
@@ -204,7 +207,7 @@ const ICONS = {
 export const GRUPOS_NAV = [
   { titulo: "Operação", ids: ["visao", "painel-contas"] },
   { titulo: "Performance", ids: ["financeiro", "ads", "anuncios", "central-full", "curva-abc"] },
-  { titulo: "Execução", ids: ["automacoes", "diagnosticos", "promocoes-ml"] },
+  { titulo: "Execução", ids: ["automacoes", "diagnosticos", "promocoes-ml", "resgate"] },
   { titulo: "Gestão", ids: ["pessoas", "clientes-contas", "relatorios", "bases"] },
   { titulo: "Ferramentas", ids: ["ferramentas"] },
 ];

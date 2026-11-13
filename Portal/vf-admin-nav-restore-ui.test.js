@@ -32,7 +32,7 @@ const PORTAL_DIR = __dirname;
 const PROD_HOST = "venforce-server.onrender.com";
 
 // Menu atual (sidebar) dos perfis NÃO admin — baseline lida da main (61344c17).
-const MENU_NAO_ADMIN = ["visao", "painel-contas", "financeiro", "ads", "anuncios", "central-full", "curva-abc", "automacoes", "diagnosticos", "promocoes-ml", "pessoas", "clientes-contas", "relatorios", "bases", "ferramentas"];
+const MENU_NAO_ADMIN = ["visao", "painel-contas", "financeiro", "ads", "anuncios", "central-full", "curva-abc", "automacoes", "diagnosticos", "promocoes-ml", "resgate", "pessoas", "clientes-contas", "relatorios", "bases", "ferramentas"];
 // Os 4 itens restaurados SÓ para admin, com a rota esperada.
 const ITENS_ADMIN = [
   { id: "cliente-360-v3", rota: "cliente-360-v3.html" },

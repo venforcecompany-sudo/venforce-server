@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VenForce — Resgate</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/vf-tokens-v2.css">
+  <link rel="stylesheet" href="css/vf-components-v2.css">
+  <link rel="stylesheet" href="css/vf-shell.css">
+  <link rel="stylesheet" href="resgate.css">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+</head>
+<!-- VenForce Resgate — operação rápida: lista compacta + bancada lateral.
+     A tela só EXIBE o que o servidor calculou (nenhuma fórmula financeira aqui).
+     Simulação preliminar e recotação pelo servidor; ações reais pelos endpoints
+     existentes de /anuncios-meli, DESLIGADAS até o servidor dizer o contrário. -->
+<body class="vf-page vf-page-resgate" data-vf-density="compact" data-vf-scope="global" data-vf-module="resgate">
+  <main class="vf-content" id="rg-app" aria-label="VenForce Resgate">
+    <header class="rg-topo">
+      <h1 class="rg-topo__t">Resgate</h1>
+      <label class="vf-visually-hidden" for="rg-conta">Conta</label>
+      <select class="vf-select vf-select--sm rg-topo__conta" id="rg-conta"></select>
+      <label class="rg-topo__meta" title="Margem-alvo">Meta <span class="vf-input-group"><input class="vf-input vf-input--sm" id="rg-meta" type="number" inputmode="decimal" min="1" max="80" step="0.5" value="15" aria-label="Margem-alvo"><span class="vf-input-suffix">%</span></span></label>
+      <label class="vf-visually-hidden" for="rg-busca">Buscar</label>
+      <input class="vf-input vf-input--sm rg-topo__busca" id="rg-busca" type="search" placeholder="Buscar MLB, SKU ou título  ( / )">
+      <label class="vf-visually-hidden" for="rg-ordem">Ordenar</label>
+      <select class="vf-select vf-select--sm rg-topo__ordem" id="rg-ordem"><option value="">Prioridade</option><option value="margem">Pior margem (página)</option><option value="vendas">Mais vendidos (página)</option></select>
+      <span class="rg-topo__dir">
+        <button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" data-rg-ver-propostas>Propostas <span id="rg-n-prop"></span></button>
+        <a class="vf-btn vf-btn--ghost vf-btn--sm" id="rg-xlsx-conta" href="#" download>Planilha</a>
+        <span class="vf-segmented" role="group" aria-label="Visão"><button class="vf-segmented__item is-active" type="button" data-rg-modo="operacao" aria-pressed="true">Operação</button><button class="vf-segmented__item" type="button" data-rg-modo="avancado" aria-pressed="false">Todas as contas</button></span>
+      </span>
+    </header>
+    <div class="rg-modo" id="rg-modo" role="status" hidden></div>
+
+    <div id="rg-operacao">
+      <div class="rg-chips" id="rg-chips" role="group" aria-label="Filtros"></div>
+      <div class="rg-split">
+        <section class="rg-lista" aria-label="Anúncios">
+          <table class="vf-table vf-table--compact rg-tab">
+            <thead><tr><th class="rg-col-sel"><input type="checkbox" id="rg-todos" aria-label="Selecionar a página"></th><th>Anúncio</th><th class="rg-n">Comprador paga</th><th class="rg-col-md">Promoção que forma o preço</th><th class="rg-n">Margem</th><th class="rg-n rg-col-md">Preço sugerido</th><th class="rg-col-acao">Próxima ação</th></tr></thead>
+            <tbody id="rg-linhas"></tbody>
+          </table>
+          <div class="rg-pag" id="rg-pag"></div>
+        </section>
+        <aside class="rg-bancada" id="rg-bancada" aria-label="Bancada do anúncio"></aside>
+      </div>
+    </div>
+    <section id="rg-avancado" class="rg-avancado" hidden></section>
+  </main>
+
+  <div class="rg-lote-barra" id="rg-lote-barra" hidden><span id="rg-lote-txt"></span><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" id="rg-lote-filtro">Selecionar todo o filtro</button><button class="vf-btn vf-btn--primary vf-btn--sm" type="button" id="rg-lote-ir">Preparar propostas</button><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" id="rg-lote-limpar">Limpar</button></div>
+
+  <!-- Painel amplo: lista de propostas -->
+  <div class="rg-painel-fundo" id="rg-painel-fundo" hidden></div>
+  <aside class="rg-painel" id="rg-painel" role="dialog" aria-modal="true" aria-label="Propostas" hidden></aside>
+  <!-- Registrar proposta (nada vai ao ML) -->
+  <div class="rg-dialogo" id="rg-dialogo" hidden></div>
+
+  <!-- Confirmação explícita de ação REAL no ML (desligada por padrão) -->
+  <div class="vf-overlay" id="rg-modal" aria-hidden="true">
+    <div class="vf-modal" role="dialog" aria-modal="true" aria-labelledby="rg-modal-titulo">
+      <div class="vf-modal__header"><h2 class="vf-modal__title" id="rg-modal-titulo">Confirmar ação</h2></div>
+      <div class="vf-modal__body" id="rg-modal-corpo"></div>
+      <div class="vf-modal__footer">
+        <button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" id="rg-modal-cancelar">Cancelar</button>
+        <button class="vf-btn vf-btn--primary vf-btn--sm" type="button" id="rg-modal-confirmar" disabled>Confirmar e enviar ao Mercado Livre</button>
+      </div>
+    </div>
+  </div>
+  <div class="vf-toast-stack" id="rg-toasts" aria-live="polite"></div>
+
+  <script type="module" src="vf-shell.js"></script>
+  <script src="resgate.js"></script>
+</body>
+</html>

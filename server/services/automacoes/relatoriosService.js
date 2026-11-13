@@ -18,6 +18,12 @@ function criarErroHttp(statusCode, payload) {
   return err;
 }
 
+// Rótulo único para qualquer exportação de relatório salvo: dado histórico, nunca recotado.
+function textoOrigemHistorica(relatorio) {
+  const quando = relatorio && relatorio.created_at ? new Date(relatorio.created_at).toLocaleString("pt-BR") : "data desconhecida";
+  return `DADOS HISTÓRICOS (relatório salvo em ${quando}): frete, comissão e margens NÃO foram recotados no Mercado Livre.`;
+}
+
 function csvEscape(valor) {
   if (valor === null || valor === undefined) return "";
   const texto = String(valor);
@@ -473,6 +479,8 @@ async function gerarExportRelatorioCsv({ idRaw }) {
   linhas.push(`MC média,${csvEscape(relatorio.mc_media)}`);
   linhas.push(`Observações,${csvEscape(relatorio.observacoes)}`);
   linhas.push(`Criado em,${csvEscape(relatorio.created_at)}`);
+  // Relatório SALVO: valores do dia em que foi gerado. Nada aqui é recotado no Mercado Livre.
+  linhas.push(`Origem dos dados,${csvEscape(textoOrigemHistorica(relatorio))}`);
   linhas.push("");
   linhas.push("Itens");
   linhas.push([
@@ -510,7 +518,7 @@ async function gerarExportRelatorioCsv({ idRaw }) {
 // exportação do relatório salvo (gerarExportRelatorioXlsx) e a planilha de
 // precificação sem base (planilhaPrecificacaoSemBaseService) — mesma
 // estrutura, mesmas fórmulas, mesma formatação em ambos os casos.
-function construirWorkbookMatrizPrecificacao({ resumoRows, resumoPctCells = [], itens, margemAlvoPadrao = null }) {
+function construirWorkbookMatrizPrecificacao({ resumoRows, resumoPctCells = [], itens, margemAlvoPadrao = null, origemTexto = null }) {
   const paraDecimalPct = (v) => {
     if (v === null || v === undefined || v === "") return null;
     const n = Number(v);
@@ -529,7 +537,10 @@ function construirWorkbookMatrizPrecificacao({ resumoRows, resumoPctCells = [], 
   // nenhum cálculo fica vazio.
   const matrizRows = [
     [
-      "Edite custo, frete, comissão, preço ou margem alvo para simular novas decisões.",
+      // Origem dos dados no topo da matriz: recotados agora × relatório salvo (histórico).
+      (origemTexto ? `${origemTexto} ` : "") +
+        "Edite custo, frete, comissão, preço ou margem alvo para simular novas decisões. " +
+        "Lucro, MC e Preço Sugerido só aparecem com TODAS as entradas preenchidas (célula vazia = desconhecido, não zero; digite 0 quando o valor for realmente zero).",
       ...Array(30).fill(""),
     ],
     [
@@ -622,16 +633,23 @@ function construirWorkbookMatrizPrecificacao({ resumoRows, resumoPctCells = [], 
   };
 
   for (let row = 4; row < 4 + itens.length; row++) {
-    // Lucro/MC sempre a partir do preço efetivo (P) — nunca ficam vazios
-    // quando não há promoção, pois nesse caso preço efetivo = preço cheio.
-    setFormula(matrizSheet, `R${row}`, `IFERROR(P${row}-P${row}*I${row}-P${row}*K${row}-J${row}-H${row}-L${row},"")`, "R$ #,##0.00");
-    setFormula(matrizSheet, `S${row}`, `IFERROR(R${row}/P${row},"")`, "0.00%");
-    setFormula(matrizSheet, `V${row}`, `IFERROR((H${row}+J${row}+L${row})/(1-I${row}-K${row}-U${row}),"")`, "R$ #,##0.00");
-    setFormula(matrizSheet, `W${row}`, `IFERROR(V${row}*U${row},"")`, "R$ #,##0.00");
-    setFormula(matrizSheet, `Y${row}`, `IF(AC${row}="sem_base","Revisar custo/base",IF(AC${row}="sem_frete","Revisar frete",IF(AC${row}="sem_comissao","Revisar comissão",IF(P${row}<V${row},"Subir preço",IF(P${row}>V${row},"Avaliar redução","Manter")))))`);
-    setFormula(matrizSheet, `Z${row}`, `IF(Y${row}="Subir preço",V${row},P${row})`, "R$ #,##0.00");
-    setFormula(matrizSheet, `AA${row}`, `IFERROR(Z${row}-P${row},"")`, "R$ #,##0.00");
-    setFormula(matrizSheet, `AB${row}`, `IFERROR(AA${row}/P${row},"")`, "0.00%");
+    // P0 12/11/2026: célula VAZIA é desconhecido, nunca zero. No Excel uma célula em branco entra como 0 na
+    // aritmética: frete vazio inflava o lucro em R$ 15 (18 → 33, MC 18% → 33%), custo vazio chegava a 58% e
+    // preço vazio gerava "Subir preço". Toda fórmula financeira exige ISNUMBER nas entradas; zero digitado vale.
+    const n = (col) => `ISNUMBER(${col}${row})`;
+    const entradasLucro = `AND(${["P", "H", "I", "J", "K", "L"].map(n).join(",")})`;
+    const entradasSugerido = `AND(${["H", "I", "J", "K", "L", "U"].map(n).join(",")})`;
+    setFormula(matrizSheet, `R${row}`, `IFERROR(IF(${entradasLucro},IF(P${row}>0,P${row}-P${row}*I${row}-P${row}*K${row}-J${row}-H${row}-L${row},""),""),"")`, "R$ #,##0.00");
+    setFormula(matrizSheet, `S${row}`, `IFERROR(IF(${n("R")},R${row}/P${row},""),"")`, "0.00%");
+    setFormula(matrizSheet, `V${row}`, `IFERROR(IF(${entradasSugerido},IF(1-I${row}-K${row}-U${row}>0,(H${row}+J${row}+L${row})/(1-I${row}-K${row}-U${row}),""),""),"")`, "R$ #,##0.00");
+    setFormula(matrizSheet, `W${row}`, `IFERROR(IF(AND(${n("V")},${n("U")}),V${row}*U${row},""),"")`, "R$ #,##0.00");
+    setFormula(matrizSheet, `Y${row}`,
+      `IF(NOT(${n("P")}),"Revisar preço",IF(NOT(${n("H")}),"Revisar custo/base",IF(NOT(${n("J")}),"Revisar frete",IF(NOT(${n("K")}),"Revisar comissão",` +
+      `IF(OR(NOT(${n("I")}),NOT(${n("L")})),"Revisar imposto/taxa fixa",IF(NOT(${n("V")}),"Defina a margem alvo",` +
+      `IF(P${row}<V${row},"Subir preço",IF(P${row}>V${row},"Avaliar redução","Manter"))))))))`);
+    setFormula(matrizSheet, `Z${row}`, `IF(Y${row}="Subir preço",V${row},IF(${n("P")},P${row},""))`, "R$ #,##0.00");
+    setFormula(matrizSheet, `AA${row}`, `IF(AND(${n("Z")},${n("P")}),Z${row}-P${row},"")`, "R$ #,##0.00");
+    setFormula(matrizSheet, `AB${row}`, `IF(AND(${n("AA")},${n("P")}),IF(P${row}<>0,AA${row}/P${row},""),"")`, "0.00%");
 
     ["H", "J", "L", "N", "O", "P", "R", "V", "W", "Z", "AA"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "R$ #,##0.00"));
     ["I", "K", "S", "U", "AB"].forEach((col) => setFormat(matrizSheet, `${col}${row}`, "0.00%"));
@@ -743,6 +761,9 @@ async function gerarExportRelatorioXlsx({ idRaw }) {
     ["Saudáveis", numeroOuNulo(relatorio.itens_saudaveis)],
     ["MC média", paraDecimalPct(relatorio.mc_media)],
     ["Data do relatório", relatorio.created_at ? new Date(relatorio.created_at).toLocaleString("pt-BR") : "—"],
+    // Linhas ao FINAL: os endereços de resumoPctCells (B5, B12) não mudam.
+    ["Origem dos dados", "HISTÓRICO — relatório salvo"],
+    ["Recotado agora?", "NÃO — frete, comissão e margens são os do dia do relatório"],
   ];
 
   const buffer = construirWorkbookMatrizPrecificacao({
@@ -750,6 +771,7 @@ async function gerarExportRelatorioXlsx({ idRaw }) {
     resumoPctCells: ["B5", "B12"],
     itens,
     margemAlvoPadrao: relatorio.margem_alvo,
+    origemTexto: textoOrigemHistorica(relatorio),
   });
 
   const filename = montarNomeArquivoRelatorio(relatorio, "xlsx", "matriz-precificacao");
