@@ -155,4 +155,46 @@ t("página no Shell V3 (scope global), menu 'Resgate' e modal/drawer da Fundaç�
   assert.ok(/"promocoes-ml", "resgate"\]/.test(shell));
 });
 
+// ── Aba Pedidos (Margem | Pedidos | Precificar) ───────────────────────────
+const pedidosResp = () => ({ ok: true, itemId: "MLB4427778060", avisos: ["A busca da Central considera o primeiro item de cada pedido."],
+  pedidos: [
+    { rowId: 7, pedidoId: "P7", data: "2026-11-01", unidades: 2, precoUnitario: 129.9, comissao: 49.36, frete: 30, resultado: 20, margemRealizadaPercent: 7.7, comprovado: true, motivoNaoComprovado: null },
+    { rowId: 8, pedidoId: "<b>P8</b>", data: "2026-11-02", unidades: 1, precoUnitario: 129.9, comissao: null, frete: null, resultado: null, margemRealizadaPercent: null, comprovado: false, motivoNaoComprovado: "Resultado parcial na Central de Vendas." }],
+  comparacao: { projetado: { margemPercent: 5.61, limiteInferior: false }, realizado: { pedidos: 1, unidades: 2, faturamento: 259.8, resultado: 20, margemPercent: 7.7, precoMedio: 129.9 },
+    diferencas: [{ rotulo: "Margem", projetado: 5.61, realizado: 7.7, diferenca: 2.09, unidade: "pp" }, { rotulo: "Frete por unidade", projetado: 19.05, realizado: 15, diferenca: -4.05, unidade: "R$" }],
+    faltantes: ["1 de 2 pedido(s) sem resultado comprovado na Central de Vendas (motivo em cada linha)."], conclusao: "Realizado em linha com o projetado (ou melhor).", nota: null } });
+t("bancada: três abas Margem | Pedidos | Precificar; simulação, promoções, sugerido, ações e revisão ficam em Precificar", () => {
+  const html = R.bancadaHtml(det(), CFG_OFF);
+  assert.ok(/data-rg-baba="margem"/.test(html) && /data-rg-baba="pedidos"/.test(html) && /data-rg-baba="precificar"/.test(html));
+  const parte = (id) => { const m = html.match(new RegExp('data-rg-bpainel="' + id + '"[\\s\\S]*?(?=data-rg-bpainel=|$)')); return m ? m[0] : ""; };
+  assert.ok(/Composição da margem/.test(parte("margem")) && !/rg-sim-preco/.test(parte("margem")));
+  assert.ok(/rg-sim-preco/.test(parte("precificar")) && /data-rg-ver-promocoes/.test(parte("precificar")) && /Preço sugerido para a meta/.test(parte("precificar")) && /Revisão/.test(parte("precificar")));
+  assert.ok(/id="rg-pedidos"/.test(parte("pedidos")));
+  assert.ok(/data-rg-bpainel="pedidos" hidden/.test(html) && !/data-rg-bpainel="margem" hidden/.test(html));
+  assert.ok(/data-rg-bpainel="pedidos">/.test(R.bancadaHtml(det(), CFG_OFF, { aba: "pedidos" })));
+});
+t("pedidos: lista com situação, margem só quando comprovada, comparação e dados faltantes; escape de HTML", () => {
+  const html = R.pedidosHtml(pedidosResp(), 90);
+  assert.ok(/Projetado × realizado/.test(html) && /Margem realizada/.test(html) && /Dados faltantes/.test(html) && /Comprovado/.test(html) && /Sem comprovação/.test(html));
+  assert.ok(/data-rg-pedido="7"/.test(html) && /data-rg-pedido="8"/.test(html) && /\+2,09 pp/.test(html));
+  assert.ok(/Resultado parcial na Central de Vendas/.test(html));
+  assert.ok(!/<b>P8/.test(html) && /&lt;b&gt;P8/.test(html));
+  const sem = R.pedidosHtml({ pedidos: [], comparacao: { projetado: null, realizado: null, diferencas: [], faltantes: ["Nenhum pedido deste anúncio no período consultado."], conclusao: "Sem resultado realizado comprovado para comparar." }, avisos: [] }, 90);
+  assert.ok(/Nenhum pedido deste anúncio/.test(sem) && !/0,00%/.test(sem));
+});
+t("pedido: detalhe com preço vendido, quantidade, componentes, conferência, compensações e não comprovado", () => {
+  const d = { pedido: { pedidoId: "P7", data: "2026-11-01", precoUnitario: 129.9, unidades: 2, valor: 259.8, resultado: 20, margemRealizadaPercent: 7.7, comprovado: true },
+    componentes: [{ rotulo: "Comissão cobrada", valor: 49.36, efeito: "debito", incluidoNoResultado: true, fonte: "api", confianca: "alta", itemId: "I1" }, { rotulo: "Receita de envio (conciliação)", valor: 12, efeito: "credito", incluidoNoResultado: false, itemId: null }],
+    conferencia: { somaComponentes: 20, resultadoPedido: 20, diferenca: 0, confere: true }, compensacoes: { receitaEnvio: 12, reembolso: null, observacao: "Não entram no resultado.", descontosEBonusDoMl: "Nenhum ajuste da plataforma sinalizado pela Central." }, dadosFaltantes: [] };
+  const html = R.detalhePedidoHtml(d);
+  assert.ok(/Preço vendido/.test(html) && /129,90/.test(html) && /Comissão cobrada/.test(html) && /informativo/.test(html) && /confere/.test(html) && /receita de envio/.test(html) && /reembolso —/.test(html));
+  const nc = R.detalhePedidoHtml({ ...d, pedido: { ...d.pedido, comprovado: false, resultado: 20, motivoNaoComprovado: "Pedido com 3 itens." }, conferencia: { somaComponentes: 10, resultadoPedido: 20, diferenca: 10, confere: false }, dadosFaltantes: ["frete ausente neste pedido"] });
+  assert.ok(/Resultado não comprovado/.test(nc) && /Pedido com 3 itens/.test(nc) && /diferença de/.test(nc) && /frete ausente/.test(nc));
+});
+t("pedidos: só leitura — o código da aba usa apenas GET e nenhum endpoint de escrita", () => {
+  const src = fs.readFileSync(path.join(__dirname, "resgate.js"), "utf8");
+  const bloco = src.slice(src.indexOf("function carregarPedidos"), src.indexOf("function verPromocoes"));
+  assert.ok(/\/pedidos/.test(bloco) && !/method:/.test(bloco) && !/PATCH|PUT|DELETE|POST/.test(bloco));
+});
+
 (async () => { for (const p of pendentes) await p(); console.log(`\n${ok} verificações da tela do Resgate`); process.exit(process.exitCode || 0); })();

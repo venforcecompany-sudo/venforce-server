@@ -17,6 +17,8 @@ router.get("/plano.xlsx", ...base, c.planoXlsx);
 router.get("/contas/:contaId", ...daConta, c.conta);
 router.get("/contas/:contaId/itens", ...daConta, c.itens);
 router.get("/contas/:contaId/itens/:itemId", ...daConta, c.item);
+router.get("/contas/:contaId/itens/:itemId/pedidos", ...daConta, c.pedidos);
+router.get("/contas/:contaId/itens/:itemId/pedidos/:rowId", ...daConta, c.pedidoDetalhe);
 router.post("/contas/:contaId/itens/:itemId/simular", ...daConta, c.simular);
 router.post("/contas/:contaId/itens/:itemId/revisao", ...daConta, c.revisar);
 router.get("/contas/:contaId/plano.xlsx", ...daConta, c.planoXlsx);

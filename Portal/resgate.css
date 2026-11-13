@@ -32,6 +32,10 @@
 .vf-page-resgate .rg-tabela td { vertical-align: top; }
 
 /* Bancada */
+.rg-bancada .rg-btabs { margin: 0 0 var(--vf-sp-3); }
+.rg-bancada .rg-ped-topo { margin-bottom: var(--vf-sp-3); align-items: center; }
+.rg-bancada .rg-tabela-ped td { vertical-align: top; }
+.rg-bancada .rg-ped-detalhe { margin-top: var(--vf-sp-4); padding: var(--vf-sp-3) var(--vf-sp-4); border: 1px solid var(--vf-border); border-radius: var(--vf-radius); background: var(--vf-surface-2); }
 .rg-bancada .rg-sub { color: var(--vf-text-muted); font-size: 0.85em; }
 .rg-bancada .rg-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rg-bancada .rg-secao { margin-top: var(--vf-sp-5); }

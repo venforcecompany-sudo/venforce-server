@@ -15,6 +15,7 @@ const { criarStoreArquivo } = require("../../services/resgate/resgateStoreArquiv
 const { planoDeAtivacao } = require("../../services/resgate/resgateAtivacao");
 const { planoParaBuffer } = require("../../services/resgate/resgatePlanoXlsx");
 const { montarBancada, passaFiltro, linhaDaLista, metaDe, FILTROS } = require("../../services/resgate/resgateBancada");
+const { montarPedidosDoItem, montarDetalhePedido } = require("../../services/resgate/resgatePedidos");
 
 const a = args();
 const os = require("os");
@@ -29,6 +30,8 @@ const dir = path.resolve(String(a.dados || PADRAO).replace(/^~(?=\/|$)/, os.home
 const portal = path.resolve(__dirname, "..", "..", "..", "Portal");
 const store = criarStoreArquivo(dir);
 const porta = Number(a.porta || 5099);
+// Pedidos: arquivo local OPCIONAL (--pedidos), extraído da Central de Vendas por leitura. O preview nunca consulta a Central.
+const pedidosLocais = a.pedidos ? JSON.parse(fs.readFileSync(path.resolve(String(a.pedidos)), "utf8")) : null;
 const cacheItens = new Map();
 async function itensDa(id) { if (!cacheItens.has(id)) cacheItens.set(id, await store.lerItens(null, id)); return cacheItens.get(id); }
 const exec = () => { try { return JSON.parse(fs.readFileSync(path.join(dir, "execucao.json"), "utf8")); } catch (_) { return { id: "?" }; } };
@@ -59,6 +62,18 @@ http.createServer(async (req, res) => {
       it = it.sort((x, y) => y.prioridade - x.prioridade || (x.itemId < y.itemId ? -1 : 1));
       const pg = it.slice((pag - 1) * lim, pag * lim).map((x) => ({ bancada: linhaDaLista(x, montarBancada(x, { meta })), itemId: x.itemId, sku: x.sku, titulo: x.titulo, statusAnuncio: x.statusAnuncio, situacao: x.situacao, acao: x.acao, prioridade: x.prioridade, origem: x.historico.origem, mudancaRecente: x.historico.mudancaRecente, preco: x.contrato.componentes.precoVigente.valor, margemPercent: x.contrato.resultado.margemPercent, margemExibida: x.snapshot && x.snapshot.margemPercent, frete: x.contrato.componentes.frete.valor, freteNivel: x.contrato.componentes.frete.nivel, confianca: x.contrato.confiancaGeral, unidades30d: x.vendas30d.unidades, exposicao: x.exposicao, recomendacao: x.recomendacao, revisao: { status: "PENDENTE" }, precoVisto: x.fingerprint.precoVisto }));
       return json(res, 200, { ok: true, total: it.length, pagina: pag, limite: lim, itens: pg });
+    }
+    m = u.pathname.match(/^\/resgate\/contas\/(\d+)\/itens\/([^/]+)\/pedidos(?:\/([^/]+))?$/);
+    if (m) {
+      const contaId = Number(m[1]), itemId = decodeURIComponent(m[2]);
+      const x = (await itensDa(contaId)).find((y) => y.itemId === itemId);
+      if (!x) return json(res, 404, { ok: false, motivo: "não auditado" });
+      const fx = pedidosLocais && pedidosLocais.contas && pedidosLocais.contas[contaId] && pedidosLocais.contas[contaId].itens[itemId];
+      if (!fx) return json(res, 501, { ok: false, motivo: pedidosLocais ? "Este anúncio não está no arquivo local de pedidos do preview." : "Preview sem arquivo de pedidos (--pedidos)." });
+      const bancada = montarBancada(x, { meta: metaDe(u.searchParams.get("meta")) });
+      if (!m[3]) return json(res, 200, { ok: true, ...montarPedidosDoItem({ itemId, rows: fx.rows, bancada, periodo: fx.periodo || null, completude: fx.completude || null, snapshot: fx.snapshot || null, totalNoPeriodo: fx.pagination ? fx.pagination.total : null }) });
+      const ped = fx.detalhes && fx.detalhes[decodeURIComponent(m[3])];
+      return ped ? json(res, 200, { ok: true, ...montarDetalhePedido({ pedido: ped, itemId, bancada }) }) : json(res, 404, { ok: false, motivo: "Pedido fora do arquivo local do preview." });
     }
     m = u.pathname.match(/^\/resgate\/contas\/(\d+)\/itens\/([^/]+)$/);
     if (m) {

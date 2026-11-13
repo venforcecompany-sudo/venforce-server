@@ -132,5 +132,35 @@ function res() { const r = { statusCode: 200, headers: {}, body: null, status(c)
     assert.ok(/acao = 'REVISAR_PRECO'/.test(st) && /unidades_30d,0\) > 0/.test(st));
     assert.ok(/LIMITE_GLOBAL_POR_CONTA = 1500/.test(src));
   });
+  await t("pedidos: lê SÓ pelos serviços da Central (slug da conta, período, busca por MLB) e devolve lista + comparação", async () => {
+    const chamadas = [];
+    const row = { rowId: 7, pedidoId: "P7", data: "2026-11-01", status: "pago", entraNoResultado: true, multiItem: false, qtdItens: 1, mlb: "MLB1", unidades: 1, valor: 100, taxas: 14, taxasStatus: "real", frete: 14, freteStatus: "real", custo: 40, custoStatus: "real", imposto: 13, resultado: 19, resultadoStatus: "real", confianca: "confiavel", pendencias: [] };
+    c.configurar({ db: dbFalso(), hoje: () => new Date("2026-11-13T12:00:00Z"),
+      centralLer: async (slug, p) => { chamadas.push(["ler", slug, p]); return { rows: [row, { ...row, rowId: 8, mlb: "MLB9" }], pagination: { total: 2 }, periodo: {}, completude: null, snapshot: null }; } });
+    const r = res(); await c.pedidos({ user: { id: 1 }, contaAutorizada: { clienteSlug: "alianza", clienteId: 133 }, params: { contaId: "86", itemId: "MLB1" }, query: { dias: "30" } }, r);
+    assert.strictEqual(r.statusCode, 200, JSON.stringify(r.body));
+    assert.strictEqual(chamadas[0][1], "alianza"); assert.strictEqual(chamadas[0][2].search, "MLB1"); assert.strictEqual(chamadas[0][2].clienteContaId, 86);
+    assert.strictEqual(chamadas[0][2].dateFrom, "2026-10-14"); assert.strictEqual(chamadas[0][2].dateTo, "2026-11-13");
+    assert.strictEqual(r.body.pedidos.length, 1); assert.strictEqual(r.body.pedidos[0].comprovado, true);
+    assert.ok(r.body.comparacao.projetado && r.body.comparacao.realizado);
+  });
+  await t("pedidos: conta sem cliente → 409; erro da Central → 500 sem vazar detalhe; detalhe de pedido de outro anúncio → 404", async () => {
+    c.configurar({ db: dbFalso(), centralLer: async () => { throw new Error("segredo interno"); }, centralDetalhe: async () => ({ pedido: { itens: [{ mlb: "MLB2" }], componentes: [] } }) });
+    let r = res(); await c.pedidos({ user: { id: 1 }, contaAutorizada: {}, params: { contaId: "86", itemId: "MLB1" }, query: {} }, r);
+    assert.strictEqual(r.statusCode, 409);
+    r = res(); await c.pedidos({ user: { id: 1 }, contaAutorizada: { clienteSlug: "a" }, params: { contaId: "86", itemId: "MLB1" }, query: {} }, r);
+    assert.strictEqual(r.statusCode, 500); assert.ok(!/segredo/.test(JSON.stringify(r.body)));
+    r = res(); await c.pedidoDetalhe({ user: { id: 1 }, contaAutorizada: { clienteSlug: "a" }, params: { contaId: "86", itemId: "MLB1", rowId: "7" }, query: {} }, r);
+    assert.strictEqual(r.statusCode, 404);
+    const e = new Error("x"); e.statusCode = 404;
+    c.configurar({ centralDetalhe: async () => { throw e; } });
+    r = res(); await c.pedidoDetalhe({ user: { id: 1 }, contaAutorizada: { clienteSlug: "a" }, params: { contaId: "86", itemId: "MLB1", rowId: "7" }, query: {} }, r);
+    assert.strictEqual(r.statusCode, 404);
+  });
+  await t("pedidos: as rotas existem, são GET e passam pela carteira; nenhuma query própria de pedidos no Resgate", () => {
+    assert.ok(/router\.get\("\/contas\/:contaId\/itens\/:itemId\/pedidos", \.\.\.daConta/.test(rotas));
+    const src = fs.readFileSync(path.join(__dirname, "..", "services", "resgate", "resgatePedidos.js"), "utf8");
+    assert.ok(!/require\(|pool|\.query\(/.test(src), "serviço de pedidos é puro");
+  });
   console.log(`\n${ok} verificações das rotas do Resgate`);
 })();

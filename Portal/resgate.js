@@ -154,25 +154,78 @@
       "</details>";
   }
 
+  var ABAS_BANCADA = [["margem", "Margem"], ["pedidos", "Pedidos"], ["precificar", "Precificar"]];
   function bancadaHtml(det, cfg, extra) {
     var b = det.bancada || {}, item = det.item || {}, ctx = det.contexto || {};
-    var e = extra || {};
-    return '<div class="rg-bancada__corpo">' +
+    var e = extra || {}, aba = e.aba || "margem";
+    var painel = function (id, html) { return '<div class="rg-baba" data-rg-bpainel="' + id + '"' + (aba === id ? "" : " hidden") + ">" + html + "</div>"; };
+    var nav = '<nav class="vf-tabs rg-btabs" role="tablist" aria-label="Seções do anúncio">' + ABAS_BANCADA.map(function (a) {
+      return '<button class="vf-tab' + (aba === a[0] ? " is-active" : "") + '" role="tab" type="button" data-rg-baba="' + a[0] + '" aria-selected="' + (aba === a[0]) + '">' + a[1] + "</button>"; }).join("") + "</nav>";
+    return '<div class="rg-bancada__corpo">' + nav +
       (b.precoMudou ? '<div class="vf-banner vf-banner--compact"><div class="vf-banner__content"><div class="vf-banner__title">Preço mudou desde a auditoria</div><div class="vf-banner__description">' + esc(b.precoMudou.texto) + "</div></div></div>" : "") +
       (e.aoVivo ? '<div class="rg-sub rg-aovivo">Atualizado ao vivo em ' + data(e.aoVivo) + " (somente leitura).</div>" : "") +
-      precosHtml(b) + resultadoHtml(b) +
-      '<section class="rg-secao"><h3 class="rg-h3">Composição da margem</h3>' + cascataHtml(b) + "</section>" +
-      pendenciasHtml(b) +
-      '<section class="rg-secao"><h3 class="rg-h3">Promoção</h3>' + promocaoHtml(b) +
-        '<div class="vf-cluster rg-promo-acoes"><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" data-rg-ver-promocoes' + (ctx.clienteSlug && !ctx.preview ? "" : ' disabled title="Indisponível neste ambiente"') + ">Ver promoções disponíveis</button></div><div id=\"rg-promocoes\"></div></section>" +
-      '<section class="rg-secao"><h3 class="rg-h3">Preço sugerido para a meta</h3>' + sugeridoHtml(b, cfg) + "</section>" +
-      '<section class="rg-secao"><h3 class="rg-h3">Simular outro preço</h3>' +
-        '<div class="vf-cluster"><label class="vf-visually-hidden" for="rg-sim-preco">Preço do comprador</label><div class="vf-input-group rg-sim-campo"><span class="vf-input-prefix">R$</span><input class="vf-input vf-input--sm" id="rg-sim-preco" inputmode="decimal" placeholder="' + esc(b.sugerido && b.sugerido.preco ? String(b.sugerido.preco).replace(".", ",") : "0,00") + '"></div>' +
-        '<button class="vf-btn vf-btn--secondary vf-btn--sm" type="button" id="rg-sim-ir"' + (cfg && cfg.recotacaoSobDemanda ? "" : ' disabled title="Indisponível neste ambiente (sem leitura ao vivo do ML)"') + ">Simular (recota comissão e frete)</button></div>" +
-        '<div id="rg-sim-saida"></div></section>' +
-      '<section class="rg-secao"><h3 class="rg-h3">Ações</h3>' + acoesHtml(b, ctx, cfg) + "</section>" +
-      '<section class="rg-secao"><h3 class="rg-h3">Revisão</h3>' + revisaoHtml(item) + "</section>" +
-      detalhesTecnicosHtml(item) + "</div>";
+      painel("margem", precosHtml(b) + resultadoHtml(b) +
+        '<section class="rg-secao"><h3 class="rg-h3">Composição da margem</h3>' + cascataHtml(b) + "</section>" +
+        pendenciasHtml(b) +
+        '<section class="rg-secao"><h3 class="rg-h3">Promoção</h3>' + promocaoHtml(b) + "</section>" +
+        detalhesTecnicosHtml(item)) +
+      painel("pedidos", '<div id="rg-pedidos"></div>') +
+      painel("precificar",
+        '<section class="rg-secao"><h3 class="rg-h3">Preço sugerido para a meta</h3>' + sugeridoHtml(b, cfg) + "</section>" +
+        '<section class="rg-secao"><h3 class="rg-h3">Promoções disponíveis</h3><div class="vf-cluster rg-promo-acoes"><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" data-rg-ver-promocoes' + (ctx.clienteSlug && !ctx.preview ? "" : ' disabled title="Indisponível neste ambiente"') + ">Ver promoções disponíveis</button></div><div id=\"rg-promocoes\"></div></section>" +
+        '<section class="rg-secao"><h3 class="rg-h3">Simular outro preço</h3>' +
+          '<div class="vf-cluster"><label class="vf-visually-hidden" for="rg-sim-preco">Preço do comprador</label><div class="vf-input-group rg-sim-campo"><span class="vf-input-prefix">R$</span><input class="vf-input vf-input--sm" id="rg-sim-preco" inputmode="decimal" placeholder="' + esc(b.sugerido && b.sugerido.preco ? String(b.sugerido.preco).replace(".", ",") : "0,00") + '"></div>' +
+          '<button class="vf-btn vf-btn--secondary vf-btn--sm" type="button" id="rg-sim-ir"' + (cfg && cfg.recotacaoSobDemanda ? "" : ' disabled title="Indisponível neste ambiente (sem leitura ao vivo do ML)"') + ">Simular (recota comissão e frete)</button></div>" +
+          '<div id="rg-sim-saida"></div></section>' +
+        '<section class="rg-secao"><h3 class="rg-h3">Ações</h3>' + acoesHtml(b, ctx, cfg) + "</section>" +
+        '<section class="rg-secao"><h3 class="rg-h3">Revisão</h3>' + revisaoHtml(item) + "</section>") +
+      "</div>";
+  }
+
+  // ── Pedidos reais do anúncio (Central de Vendas; somente leitura) ───────
+  var MOTIVO_ERRO_PEDIDOS = { 409: "Esta conta não tem cliente vinculado: os pedidos da Central de Vendas não podem ser consultados.", 501: "Pedidos indisponíveis neste preview: não há fonte de pedidos local.", 503: "A Central de Vendas ainda não está disponível neste ambiente." };
+  var COMP_ROTULO_SINAL = { debito: "−", credito: "+" };
+  function sinalDiferenca(d) { var n = Number(d.diferenca), sg = n > 0 ? "+" : n < 0 ? "−" : ""; var v = Math.abs(n); return sg + (d.unidade === "pp" ? v.toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + " pp" : moeda(v)); }
+  function valorDif(d, v) { return d.unidade === "pp" ? pct(v) : moeda(v); }
+  function comparacaoPedidosHtml(c) {
+    if (!c) return "";
+    var real = c.realizado, proj = c.projetado;
+    var tres = '<div class="rg-precos">' +
+      '<div class="vf-metric"><div class="vf-metric__label">Margem projetada (preço de hoje)</div><div class="vf-metric__value">' + (proj && !vazio(proj.margemPercent) ? pct(proj.margemPercent) : "—") + "</div>" + (proj && proj.limiteInferior ? '<div class="vf-metric__foot">limite inferior</div>' : "") + "</div>" +
+      '<div class="vf-metric"><div class="vf-metric__label">Margem realizada (pedidos comprovados)</div><div class="vf-metric__value">' + (real ? pct(real.margemPercent) : "—") + "</div>" + (real ? '<div class="vf-metric__foot">' + inteiro(real.pedidos) + " pedido(s) · " + inteiro(real.unidades) + " un · " + moeda(real.faturamento) + "</div>" : "") + "</div>" +
+      '<div class="vf-metric"><div class="vf-metric__label">Resultado realizado</div><div class="vf-metric__value">' + (real ? moeda(real.resultado) : "—") + "</div></div>" +
+      '<div class="vf-metric"><div class="vf-metric__label">Preço médio vendido</div><div class="vf-metric__value">' + (real ? moeda(real.precoMedio) : "—") + "</div></div></div>";
+    var dif = (c.diferencas || []).length ? '<table class="vf-table vf-table--compact rg-comparacao"><thead><tr><th>Por unidade</th><th class="rg-num">Projetado</th><th class="rg-num">Realizado</th><th class="rg-num">Diferença</th></tr></thead><tbody>' +
+      c.diferencas.map(function (d) { return "<tr><td>" + esc(d.rotulo) + '</td><td class="rg-num">' + valorDif(d, d.projetado) + '</td><td class="rg-num">' + valorDif(d, d.realizado) + '</td><td class="rg-num"><strong>' + esc(sinalDiferenca(d)) + "</strong></td></tr>"; }).join("") + "</tbody></table>" : "";
+    return '<section class="rg-secao"><h3 class="rg-h3">Projetado × realizado</h3>' + tres +
+      '<p class="rg-sub">' + esc(c.conclusao || "") + (c.nota ? " " + esc(c.nota) : "") + "</p>" + dif +
+      ((c.faltantes || []).length ? '<h4 class="rg-h3">Dados faltantes</h4><ul class="rg-lista">' + c.faltantes.map(function (f) { return "<li>" + esc(f) + "</li>"; }).join("") + "</ul>" : "") + "</section>";
+  }
+  function pedidosHtml(p, dias) {
+    var lista = p.pedidos || [];
+    var seletor = '<div class="vf-cluster rg-ped-topo"><label class="rg-sub" for="rg-ped-dias">Período</label><select class="vf-select vf-select--sm" id="rg-ped-dias">' +
+      [30, 90, 180, 365].map(function (d) { return '<option value="' + d + '"' + (Number(dias) === d ? " selected" : "") + ">últimos " + d + " dias</option>"; }).join("") + "</select>" +
+      '<span class="rg-sub">' + inteiro(lista.length) + " pedido(s) deste anúncio · fonte: Central de Vendas</span></div>";
+    var tab = lista.length ? '<div class="vf-table-wrap"><table class="vf-table vf-table--compact rg-tabela-ped"><thead><tr><th>Data</th><th class="rg-num">Un.</th><th class="rg-num">Preço un.</th><th class="rg-num">Comissão</th><th class="rg-num">Frete</th><th class="rg-num">Resultado</th><th class="rg-num">Margem</th><th>Situação</th></tr></thead><tbody>' +
+      lista.map(function (l) {
+        return '<tr class="rg-linha" tabindex="0" data-rg-pedido="' + esc(l.rowId) + '"><td>' + esc(l.data || "—") + '<div class="rg-sub">' + esc(l.pedidoId || "") + '</div></td><td class="rg-num">' + inteiro(l.unidades) + '</td><td class="rg-num">' + moeda(l.precoUnitario) + '</td><td class="rg-num">' + moeda(l.comissao) + '</td><td class="rg-num">' + moeda(l.frete) + '</td><td class="rg-num">' + moeda(l.resultado) + '</td><td class="rg-num">' + (l.comprovado ? pct(l.margemRealizadaPercent) : "—") + "</td><td>" +
+          (l.comprovado ? tag("Comprovado", "success") : tag("Sem comprovação", "neutral") + '<div class="rg-sub">' + esc(l.motivoNaoComprovado || "") + "</div>") + "</td></tr>"; }).join("") + "</tbody></table></div>" : '<p class="rg-sub">Nenhum pedido deste anúncio no período.</p>';
+    return seletor + comparacaoPedidosHtml(p.comparacao) + '<section class="rg-secao"><h3 class="rg-h3">Pedidos</h3>' + tab + '<div id="rg-pedido-detalhe"></div></section>' +
+      ((p.avisos || []).length ? '<ul class="rg-lista rg-sub">' + p.avisos.map(function (a) { return "<li>" + esc(a) + "</li>"; }).join("") + "</ul>" : "");
+  }
+  function detalhePedidoHtml(d) {
+    var ped = d.pedido || {}, comp = d.componentes || [];
+    var linhas = comp.map(function (c) {
+      return "<tr><td>" + esc(c.rotulo) + (c.itemId ? "" : ' <span class="rg-sub">(do pedido)</span>') + '</td><td class="rg-num">' + esc(COMP_ROTULO_SINAL[c.efeito] || "") + " " + moeda(c.valor === null ? null : Math.abs(c.valor)) + "</td><td>" + (c.incluidoNoResultado === true ? "entra no resultado" : c.incluidoNoResultado === false ? "informativo" : "—") + "</td><td>" + esc(c.fonte || "—") + " " + esc(CONFIANCAS[c.confianca] || c.confianca || "") + "</td></tr>"; }).join("");
+    var cf = d.conferencia;
+    return '<div class="rg-ped-detalhe"><h4 class="rg-h3">Pedido ' + esc(ped.pedidoId) + " · " + esc(ped.data || "") + "</h4>" +
+      '<div class="rg-precos"><div class="vf-metric"><div class="vf-metric__label">Preço vendido (un.)</div><div class="vf-metric__value">' + moeda(ped.precoUnitario) + '</div></div><div class="vf-metric"><div class="vf-metric__label">Quantidade</div><div class="vf-metric__value">' + inteiro(ped.unidades) + '</div></div><div class="vf-metric"><div class="vf-metric__label">Faturamento</div><div class="vf-metric__value">' + moeda(ped.valor) + '</div></div><div class="vf-metric"><div class="vf-metric__label">Resultado</div><div class="vf-metric__value">' + (ped.comprovado ? moeda(ped.resultado) : "não comprovado") + "</div>" + (ped.comprovado ? '<div class="vf-metric__foot">margem ' + pct(ped.margemRealizadaPercent) + "</div>" : "") + "</div></div>" +
+      (ped.comprovado ? "" : '<p class="rg-sub"><strong>Resultado não comprovado:</strong> ' + esc(ped.motivoNaoComprovado || "") + "</p>") +
+      (comp.length ? '<table class="vf-table vf-table--compact"><thead><tr><th>Componente</th><th class="rg-num">Valor</th><th>No resultado</th><th>Origem</th></tr></thead><tbody>' + linhas + "</tbody></table>" : '<p class="rg-sub">A Central de Vendas não tem componentes financeiros neste pedido.</p>') +
+      (cf ? '<p class="rg-sub">Conferência: soma dos componentes ' + moeda(cf.somaComponentes) + " × resultado do pedido " + moeda(cf.resultadoPedido) + (cf.confere ? " — confere." : " — <strong>diferença de " + moeda(cf.diferenca) + "</strong>.") + "</p>" : "") +
+      '<p class="rg-sub">Compensações: receita de envio ' + moeda(d.compensacoes && d.compensacoes.receitaEnvio) + " · reembolso " + moeda(d.compensacoes && d.compensacoes.reembolso) + ". " + esc(d.compensacoes && d.compensacoes.observacao || "") + " Descontos e bônus do ML: " + esc(d.compensacoes && d.compensacoes.descontosEBonusDoMl || "—") + "</p>" +
+      (d.posVenda ? '<p class="rg-sub">Pós-venda: ' + esc(d.posVenda.tipo) + (d.posVenda.motivo ? " — " + esc(d.posVenda.motivo) : "") + "</p>" : "") +
+      ((d.dadosFaltantes || []).length ? '<h4 class="rg-h3">Dados faltantes</h4><ul class="rg-lista">' + d.dadosFaltantes.map(function (f) { return "<li>" + esc(f) + "</li>"; }).join("") + "</ul>" : "") + "</div>";
   }
 
   /** Antes × depois de uma simulação (o "depois" vem do servidor, recotado no preço). */
@@ -260,7 +313,7 @@
   function gravarPreferencia(k, v) { try { if (root.localStorage) root.localStorage.setItem(k, v); } catch (_) { /* sem storage */ } }
 
   // ── Estado e telas ──────────────────────────────────────────────────────
-  var estado = { cfg: { acoesHabilitadas: false, preview: false, recotacaoSobDemanda: false }, global: null, contaId: null, meta: 15, filtro: "", recentes: false, busca: "", pagina: 1, limite: 50, aberto: null, promocoes: null, acaoPendente: null };
+  var estado = { cfg: { acoesHabilitadas: false, preview: false, recotacaoSobDemanda: false }, global: null, contaId: null, meta: 15, filtro: "", recentes: false, busca: "", pagina: 1, limite: 50, aberto: null, promocoes: null, pedidos: null, abaBancada: "margem", pedidosDias: 90, acaoPendente: null };
   function $(id) { return root.document.getElementById(id); }
   function mostrarEstado(html) { $("rg-estado").innerHTML = html || ""; }
   function toast(msg, tom) { var el = root.document.createElement("div"); el.className = "vf-toast"; el.innerHTML = '<div class="vf-toast__content"><div class="vf-toast__title">' + esc(msg) + "</div></div>"; if (tom) el.dataset.tone = tom; $("rg-toasts").appendChild(el); setTimeout(function () { el.remove(); }, 6000); }
@@ -334,14 +387,15 @@
     var det = estado.aberto; if (!det) return;
     $("rg-drawer-title").textContent = det.item.itemId;
     $("rg-drawer-sub").textContent = (det.item.titulo || "") + (det.item.sku ? " · SKU " + det.item.sku : "");
-    $("rg-drawer-corpo").innerHTML = bancadaHtml(det, estado.cfg, extra);
+    $("rg-drawer-corpo").innerHTML = bancadaHtml(det, estado.cfg, Object.assign({ aba: estado.abaBancada }, extra || {}));
+    if (estado.pedidos) $("rg-pedidos").innerHTML = estado.pedidos.html;
     if (estado.promocoes) $("rg-promocoes").innerHTML = promocoesDisponiveisHtml(estado.promocoes, det.contexto, estado.cfg);
   }
   function abrirItem(itemId) {
     $("rg-drawer").hidden = false; $("rg-drawer-backdrop").hidden = false;
     $("rg-drawer").classList.add("is-open"); $("rg-drawer-backdrop").classList.add("is-open");
     $("rg-drawer-title").textContent = itemId; $("rg-drawer-corpo").innerHTML = '<div class="vf-loading-state"><span class="vf-spinner vf-spinner--sm"></span></div>';
-    estado.promocoes = null;
+    estado.promocoes = null; estado.pedidos = null; estado.abaBancada = "margem";
     return chamar("/resgate/contas/" + estado.contaId + "/itens/" + encodeURIComponent(itemId) + buildQuery({ meta: estado.meta })).then(function (r) {
       if (!r.ok) { $("rg-drawer-corpo").innerHTML = esc(r.data && r.data.motivo || "Erro."); return; }
       estado.aberto = r.data; atualizarHash(); renderBancada();
@@ -370,6 +424,32 @@
       if (!r.ok) { $("rg-sim-saida").innerHTML = '<p class="rg-sub">' + esc(r.data && r.data.motivo || "Erro ao simular.") + "</p>"; return; }
       var s = (r.data.simulacoes || [])[0];
       $("rg-sim-saida").innerHTML = s ? comparacaoHtml(r.data.bancada || estado.aberto.bancada, s) : '<p class="rg-sub">Sem resultado.</p>';
+    });
+  }
+  function trocarAbaBancada(aba) {
+    estado.abaBancada = aba;
+    Array.prototype.forEach.call(root.document.querySelectorAll("[data-rg-baba]"), function (b) { var on = b.dataset.rgBaba === aba; b.classList.toggle("is-active", on); b.setAttribute("aria-selected", String(on)); });
+    Array.prototype.forEach.call(root.document.querySelectorAll("[data-rg-bpainel]"), function (p) { p.hidden = p.dataset.rgBpainel !== aba; });
+    if (aba === "pedidos" && !estado.pedidos) carregarPedidos();
+  }
+  function carregarPedidos() {
+    if (!estado.aberto) return null;
+    var itemId = estado.aberto.item.itemId;
+    $("rg-pedidos").innerHTML = '<div class="vf-loading-state"><span class="vf-spinner vf-spinner--sm"></span> Lendo pedidos na Central de Vendas…</div>';
+    return chamar(urlItem("/pedidos") + buildQuery({ dias: estado.pedidosDias, meta: estado.meta })).then(function (r) {
+      if (!estado.aberto || estado.aberto.item.itemId !== itemId) return;
+      if (!r.ok) { $("rg-pedidos").innerHTML = '<p class="rg-sub">' + esc(MOTIVO_ERRO_PEDIDOS[r.status] || (r.data && r.data.motivo) || "Não foi possível ler os pedidos.") + "</p>"; return; }
+      estado.pedidos = { dados: r.data, html: pedidosHtml(r.data, estado.pedidosDias) };
+      $("rg-pedidos").innerHTML = estado.pedidos.html;
+    });
+  }
+  function abrirPedido(rowId) {
+    if (!estado.aberto) return null;
+    var el = $("rg-pedido-detalhe"); if (!el) return null;
+    el.innerHTML = '<div class="vf-loading-state"><span class="vf-spinner vf-spinner--sm"></span></div>';
+    return chamar(urlItem("/pedidos/" + encodeURIComponent(rowId)) + buildQuery({ dias: estado.pedidosDias, meta: estado.meta })).then(function (r) {
+      el.innerHTML = r.ok ? detalhePedidoHtml(r.data) : '<p class="rg-sub">' + esc(MOTIVO_ERRO_PEDIDOS[r.status] || (r.data && r.data.motivo) || "Não foi possível ler o pedido.") + "</p>";
+      if (r.ok && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
     });
   }
   function verPromocoes() {
@@ -432,9 +512,11 @@
     estado.meta = isFinite(metaSalva) && metaSalva >= 0 && metaSalva < 90 ? metaSalva : 15;
     $("rg-meta").value = String(estado.meta);
     root.document.addEventListener("click", function (ev) {
-      var t = ev.target.closest && ev.target.closest("[data-rg-tab],[data-rg-conta],[data-rg-item],[data-rg-pag],[data-rg-filtro],[data-rg-revisar],[data-rg-acao],[data-rg-recotar],[data-rg-ver-promocoes],[data-rg-promo],#rg-drawer-fechar,#rg-drawer-backdrop,#rg-sim-ir,#rg-modal-cancelar,#rg-modal-confirmar");
+      var t = ev.target.closest && ev.target.closest("[data-rg-tab],[data-rg-baba],[data-rg-pedido],[data-rg-conta],[data-rg-item],[data-rg-pag],[data-rg-filtro],[data-rg-revisar],[data-rg-acao],[data-rg-recotar],[data-rg-ver-promocoes],[data-rg-promo],#rg-drawer-fechar,#rg-drawer-backdrop,#rg-sim-ir,#rg-modal-cancelar,#rg-modal-confirmar");
       if (!t || t.disabled) return;
       if (t.dataset.rgTab) trocarAba(t.dataset.rgTab);
+      else if (t.dataset.rgBaba) trocarAbaBancada(t.dataset.rgBaba);
+      else if (t.dataset.rgPedido !== undefined) abrirPedido(t.dataset.rgPedido);
       else if (t.dataset.rgConta) abrirConta(t.dataset.rgConta);
       else if (t.dataset.rgItem) abrirItem(t.dataset.rgItem);
       else if (t.dataset.rgPag) { estado.pagina += Number(t.dataset.rgPag); carregarItens(); }
@@ -453,6 +535,7 @@
       if (ev.key === "Escape") { if ($("rg-modal").classList.contains("is-open")) fecharModal(); else fecharItem(); }
       if (ev.key === "Enter" && ev.target.dataset && (ev.target.dataset.rgConta || ev.target.dataset.rgItem)) ev.target.click();
     });
+    root.document.addEventListener("change", function (ev) { if (ev.target && ev.target.id === "rg-ped-dias") { estado.pedidosDias = Number(ev.target.value) || 90; estado.pedidos = null; carregarPedidos(); } });
     $("rg-conta").addEventListener("change", function () { abrirConta(this.value); });
     $("rg-meta").addEventListener("change", function () {
       var n = lerNumero(this.value); if (n === null || n >= 90) { this.value = String(estado.meta); return; }
@@ -478,13 +561,13 @@
       marcarFiltro(h.get("filtro") || "");
       var conta = h.get("conta") || $("rg-conta").value;
       if (!conta) { mostrarEstado('<div class="vf-empty"><div class="vf-empty__title">Nenhuma conta auditada na sua carteira.</div></div>'); return; }
-      abrirConta(conta).then(function () { if (h.get("item")) abrirItem(h.get("item")); });
+      abrirConta(conta).then(function () { if (h.get("item")) abrirItem(h.get("item")).then(function () { if (h.get("aba") === "pedidos") trocarAbaBancada("pedidos"); }); });
     });
   }
 
   return {
     iniciar: iniciar, moeda: moeda, pct: pct, inteiro: inteiro, esc: esc, buildQuery: buildQuery, lerNumero: lerNumero, lerPrecos: lerPrecos,
-    linhaItem: linhaItem, bancadaHtml: bancadaHtml, cascataHtml: cascataHtml, comparacaoHtml: comparacaoHtml, promocoesDisponiveisHtml: promocoesDisponiveisHtml,
+    linhaItem: linhaItem, bancadaHtml: bancadaHtml, pedidosHtml: pedidosHtml, detalhePedidoHtml: detalhePedidoHtml, comparacaoPedidosHtml: comparacaoPedidosHtml, cascataHtml: cascataHtml, comparacaoHtml: comparacaoHtml, promocoesDisponiveisHtml: promocoesDisponiveisHtml,
     acoesHtml: acoesHtml, planoDaAcao: planoDaAcao, conferirReleitura: conferirReleitura, podeAgir: podeAgir, modalHtml: modalHtml,
     _estado: estado, _prepararAcao: prepararAcao, _executarAcao: executarAcao, STATUS: STATUS,
   };

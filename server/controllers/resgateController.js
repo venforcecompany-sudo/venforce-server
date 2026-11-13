@@ -18,6 +18,8 @@ const { clientesAutorizadosSet } = require("../services/squads/authorizationServ
 const repo = require("../services/resgate/resgateLeituraRepository");
 const { montarBancada, linhaDaLista, normalizarRecotacao, metaDe, FILTROS } = require("../services/resgate/resgateBancada");
 const { montarContratoFinanceiro } = require("../services/resgate/resgateContrato");
+const { montarPedidosDoItem, montarDetalhePedido } = require("../services/resgate/resgatePedidos");
+const centralVendasReadService = require("../services/centralVendas/centralVendasReadService");
 
 // Ações reais (alterar preço / promoção) usam os endpoints EXISTENTES de /anuncios-meli
 // direto da tela, com as travas deles. A tela só as habilita com esta flag explícita
@@ -28,7 +30,11 @@ const acoesHabilitadas = () => process.env.RESGATE_ACOES_ML_HABILITADAS === "1";
 // Teto por conta na planilha global do servidor (memória do Render); a CLI exporta tudo.
 const LIMITE_GLOBAL_POR_CONTA = 1500;
 
-const deps = { db: pool, criarFetch: () => criarFetchSomenteLeitura({ minIntervalMs: 150 }), clientesAutorizados: clientesAutorizadosSet, lerAoVivo: lerAnuncioAoVivo };
+const deps = { db: pool, criarFetch: () => criarFetchSomenteLeitura({ minIntervalMs: 150 }), clientesAutorizados: clientesAutorizadosSet, lerAoVivo: lerAnuncioAoVivo,
+  // Pedidos: SOMENTE os serviços de leitura da Central de Vendas (nenhuma query própria, nenhuma fórmula).
+  centralLer: (...a) => centralVendasReadService.getCentralVendasRead(...a),
+  centralDetalhe: (...a) => centralVendasReadService.getCentralVendasReadOrderDetail(...a),
+  hoje: () => new Date() };
 function configurar(novas) { Object.assign(deps, novas); }
 
 async function storeOu503(res) {
@@ -187,6 +193,53 @@ async function simular(req, res) {
   }
 }
 
+const ISO = (d) => d.toISOString().slice(0, 10);
+function periodoDePedidos(req) {
+  const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 90));
+  const fim = deps.hoje(), ini = new Date(fim.getTime() - dias * 86400000);
+  return { dateFrom: /^\d{4}-\d{2}-\d{2}$/.test(req.query.dateFrom || "") ? req.query.dateFrom : ISO(ini), dateTo: /^\d{4}-\d{2}-\d{2}$/.test(req.query.dateTo || "") ? req.query.dateTo : ISO(fim), dias };
+}
+function erroCentral(res, err, onde) {
+  const code = err && err.statusCode && err.statusCode < 500 ? err.statusCode : 500;
+  if (code === 500) console.error(`[resgate] ${onde}:`, err && err.message);
+  return res.status(code).json({ ok: false, motivo: code === 404 ? "Pedido não encontrado neste período." : code === 500 ? "Erro ao ler pedidos da Central de Vendas." : (err.message || "Pedidos indisponíveis.") });
+}
+
+/** GET /resgate/contas/:contaId/itens/:itemId/pedidos?dias=90&meta= — pedidos reais do MLB (Central de Vendas, só leitura). */
+async function pedidos(req, res) {
+  try {
+    const store = await storeOu503(res); if (!store) return;
+    const exec = await execucaoAtual(store);
+    const contaId = Number(req.params.contaId), itemId = String(req.params.itemId);
+    const x = exec ? await store.item(exec.id, contaId, itemId) : null;
+    if (!x) return res.status(404).json({ ok: false, motivo: "Anúncio não auditado." });
+    const ctx = contaDaRequisicao(req);
+    if (!ctx || !ctx.clienteSlug) return res.status(409).json({ ok: false, motivo: "Conta sem cliente vinculado: pedidos indisponíveis." });
+    const per = periodoDePedidos(req);
+    const r = await deps.centralLer(ctx.clienteSlug, { dateFrom: per.dateFrom, dateTo: per.dateTo, marketplace: "meli", clienteContaId: contaId, search: itemId, limit: 200, sort: "data_desc", page: 1 });
+    const bancada = montarBancada(x, { meta: metaDe(req.query.meta) });
+    return res.json({ ok: true, ...montarPedidosDoItem({ itemId, rows: r.rows, bancada, periodo: { ...per, central: r.periodo || null }, completude: r.completude || null, snapshot: r.snapshot || null, totalNoPeriodo: r.pagination ? r.pagination.total : null }) });
+  } catch (err) { return erroCentral(res, err, "pedidos"); }
+}
+
+/** GET /resgate/contas/:contaId/itens/:itemId/pedidos/:rowId — detalhe financeiro de um pedido. */
+async function pedidoDetalhe(req, res) {
+  try {
+    const store = await storeOu503(res); if (!store) return;
+    const exec = await execucaoAtual(store);
+    const contaId = Number(req.params.contaId), itemId = String(req.params.itemId);
+    const x = exec ? await store.item(exec.id, contaId, itemId) : null;
+    if (!x) return res.status(404).json({ ok: false, motivo: "Anúncio não auditado." });
+    const ctx = contaDaRequisicao(req);
+    if (!ctx || !ctx.clienteSlug) return res.status(409).json({ ok: false, motivo: "Conta sem cliente vinculado: pedidos indisponíveis." });
+    const per = periodoDePedidos(req);
+    const r = await deps.centralDetalhe(ctx.clienteSlug, req.params.rowId, { dateFrom: per.dateFrom, dateTo: per.dateTo, marketplace: "meli", clienteContaId: contaId });
+    const doAnuncio = (r.pedido.itens || []).some((i) => String(i.mlb || "").toUpperCase() === itemId.toUpperCase());
+    if (!doAnuncio) return res.status(404).json({ ok: false, motivo: "Este pedido não contém o anúncio." });
+    return res.json({ ok: true, ...montarDetalhePedido({ pedido: r.pedido, itemId, bancada: montarBancada(x, { meta: metaDe(req.query.meta) }) }) });
+  } catch (err) { return erroCentral(res, err, "pedidoDetalhe"); }
+}
+
 /** GET /resgate/config — o que a tela pode oferecer neste ambiente. */
 function config(_req, res) {
   return res.json({ ok: true, acoesHabilitadas: acoesHabilitadas(), recotacaoSobDemanda: true, preview: false });
@@ -257,4 +310,4 @@ async function dryRun(req, res) {
   }
 }
 
-module.exports = { visaoGlobal, conta, itens, item, simular, revisar, planoXlsx, dryRun, config, configurar };
+module.exports = { visaoGlobal, conta, itens, item, simular, revisar, planoXlsx, dryRun, config, pedidos, pedidoDetalhe, configurar };
