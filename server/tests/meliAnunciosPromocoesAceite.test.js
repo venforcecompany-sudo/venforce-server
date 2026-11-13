@@ -11,10 +11,9 @@
 //  1. a listagem expõe `modoEscrita` (PRECO/ACEITE/null) e `refId` (offer_id);
 //  2. participar só a partir de candidate, SEM preço no corpo, com offer_id
 //     só nos tipos cuja doc pede (MARKETPLACE_CAMPAIGN não leva);
-//  3. sair só de started/active/pending, por DELETE com promotion_type +
-//     promotion_id + offer_id — sem offer_id nada é enviado;
-//  4. tipos PRECO (DEAL/SELLER_CAMPAIGN) e fora do escopo são recusados antes
-//     de escrever;
+//  3. sair de qualquer tipo em started/active/pending, por DELETE com os
+//     parâmetros específicos do tipo, preservando eventuais recusas do ML;
+//  4. participar sem preço continua restrito aos tipos ACEITE;
 //  5. a decisão é sempre pela releitura AO VIVO, e `tipo` desambigua o id.
 
 process.env.DATABASE_URL = process.env.DATABASE_URL || "postgres://localhost/vf-test";
@@ -199,12 +198,12 @@ async function run() {
       const r1 = await chamar("participar", "MLB-X", "P-Z", { tipo });
       const r2 = await chamar("sair", "MLB-X", "P-Z", { tipo });
       assert.strictEqual(r1.corpo.codigo, "TIPO_SEM_ACEITE", tipo);
-      // DEAL aceita sair (preço do vendedor) — aqui recusa só porque é candidate.
-      assert.strictEqual(r2.corpo.codigo, tipo === "DEAL" ? "PROMOCAO_NAO_PARTICIPA" : "TIPO_SEM_ACEITE", tipo);
+      // Sair independe do tipo — aqui recusa porque é candidate.
+      assert.strictEqual(r2.corpo.codigo, "PROMOCAO_NAO_PARTICIPA", tipo);
       assert.strictEqual(escritas().length, 0);
     });
   }
-  ok("participar sem preço recusa DEAL e PRICE_DISCOUNT; sair recusa PRICE_DISCOUNT e DEAL candidate");
+  ok("participar sem preço recusa DEAL e PRICE_DISCOUNT; sair recusa qualquer candidate");
 
   // 6. Sair de SMART started → DELETE com os três parâmetros.
   await withMockDb({ anuncios: anunciosFixture() }, async () => {
@@ -314,8 +313,55 @@ async function runPreco() {
   ok("sair de DEAL/SELLER_CAMPAIGN (mesmo NÃO APLICADA): DELETE sem offer_id, como na doc");
 }
 
+async function runOutrosTipos() {
+  for (const tipo of ["PRICE_DISCOUNT", "DOD", "LIGHTNING", "VOLUME", "BANK", "NOVO_TIPO_ML"]) {
+    for (const status of ["started", "active", "pending"]) {
+      await withMockDb({ anuncios: anunciosFixture() }, async () => {
+        mlChamadas = [];
+        mlHandler = listagem([{ id: "P-OUTRA", type: tipo, status, ref_id: "OFFER-OUTRA", price: 90, original_price: 100 }]);
+        const res = await chamar("sair", "MLB-X", "P-OUTRA", { tipo });
+        assert.strictEqual(res.corpo.ok, true, JSON.stringify(res.corpo));
+        const e = escritas();
+        assert.strictEqual(e.length, 1);
+        assert.strictEqual(e[0].metodo, "DELETE");
+        assert.strictEqual(e[0].body, null);
+        assert.strictEqual(e[0].mlUserId, "111");
+        const parametros = ["PRICE_DISCOUNT", "DOD", "LIGHTNING"].includes(tipo)
+          ? "" : "&promotion_id=P-OUTRA&offer_id=OFFER-OUTRA";
+        assert.strictEqual(e[0].path, `/seller-promotions/items/MLB-X?promotion_type=${tipo}${parametros}&app_version=v2`);
+      });
+    }
+  }
+  ok("saída de tipos sem criação na tela: desconto individual, DOD, LIGHTNING, VOLUME, BANK e novos tipos");
+
+  for (const tipo of ["VOLUME", "BANK"]) {
+    await withMockDb({ anuncios: anunciosFixture() }, async () => {
+      mlChamadas = [];
+      mlHandler = listagem([{ id: "P-OUTRA", type: tipo, status: "started", price: 90, original_price: 100 }]);
+      const res = await chamar("sair", "MLB-X", "P-OUTRA", { tipo });
+      assert.strictEqual(res.corpo.codigo, "OFFER_ID_AUSENTE");
+      assert.strictEqual(escritas().length, 0);
+    });
+  }
+  ok("VOLUME/BANK sem offer_id são recusadas antes do DELETE");
+
+  await withMockDb({ anuncios: anunciosFixture() }, async () => {
+    mlChamadas = [];
+    mlHandler = listagem(
+      [{ id: "P-DOD", type: "DOD", status: "started", price: 90, original_price: 100 }],
+      { escrita: () => ({ ok: false, status: 400, data: { error: "OFFER_STARTED", message: "A oferta já iniciada não pode ser removida." } }) }
+    );
+    const res = await chamar("sair", "MLB-X", "P-DOD", { tipo: "DOD" });
+    assert.strictEqual(res.corpo.ok, false);
+    assert.strictEqual(res.corpo.motivo, "A oferta já iniciada não pode ser removida.");
+    assert.strictEqual(escritas().length, 1);
+  });
+  ok("restrições de cancelamento do ML são devolvidas sem indicar sucesso");
+}
+
 run()
   .then(runPreco)
+  .then(runOutrosTipos)
   .then(() => {
     console.log(`\n✓ ${checks} verificações de participar/sair de promoção (preço do ML)`);
     process.exit(0);

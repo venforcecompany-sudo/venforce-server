@@ -249,12 +249,9 @@ async function aplicarPromocao({ clienteId, itemId, mlUserId, promotionId, preco
 //                 + offer_id da candidatura quando o tipo exige (SMART,
 //                 PRICE_MATCHING, PRE_NEGOTIATED, UNHEALTHY_STOCK — a doc de
 //                 MARKETPLACE_CAMPAIGN não leva offer_id);
-//   sair        → só status started/active/pending; DELETE com
-//                 promotion_type + promotion_id + offer_id (os três
-//                 obrigatórios na doc — sem offer_id, nada é enviado).
-//                 Vale também para DEAL/SELLER_CAMPAIGN (preço do vendedor):
-//                 a doc deles (campanhas-tradicionais, campanhas-do-vendedor)
-//                 faz o DELETE só com promotion_type + promotion_id.
+//   sair        → qualquer tipo em started/active/pending; DELETE com os
+//                 parâmetros do tipo (ver TIPOS_SAIDA_* abaixo), independente
+//                 de o VenForce permitir criar ou alterar essa promoção.
 // (TIPOS_ACEITE_SEM_OFFER_NO_POST vem da fonte única promocaoTiposSuportados.)
 // ---------------------------------------------------------------------------
 
@@ -273,7 +270,7 @@ async function relerPromocaoAceite({ clienteId, itemId, mlUserId, promotionId, t
       ),
     };
   }
-  if (!tiposAceitos.has(promo.tipo)) {
+  if (!promo.tipo || (tiposAceitos && !tiposAceitos.has(promo.tipo))) {
     return {
       falha: falha(
         "TIPO_SEM_ACEITE",
@@ -371,25 +368,28 @@ async function participarPromocaoAceite({ clienteId, itemId, mlUserId, promotion
   };
 }
 
-// Lido na hora (não no load do módulo): testes trocam meliPromocoesService por fakes.
-const TIPOS_PODE_SAIR = { has: (t) => TIPOS_COM_ESCRITA.has(t) || TIPOS_ESCRITA_ACEITE.has(t) };
+// Sair independe do suporte à criação/alteração. O ML valida as restrições
+// da oferta (por exemplo, DOD/LIGHTNING já iniciadas) e devolvemos sua recusa.
+const TIPOS_SAIDA_SO_TIPO = new Set(["PRICE_DISCOUNT", "DOD", "LIGHTNING"]);
+const TIPOS_SAIDA_COM_OFFER = new Set([...TIPOS_ESCRITA_ACEITE, "VOLUME", "BANK"]);
 
 async function sairPromocao({ clienteId, itemId, mlUserId, promotionId, tipo }) {
-  const lido = await relerPromocaoAceite({ clienteId, itemId, mlUserId, promotionId, tipo, tiposAceitos: TIPOS_PODE_SAIR });
+  const lido = await relerPromocaoAceite({ clienteId, itemId, mlUserId, promotionId, tipo, tiposAceitos: null });
   if (lido.falha) return lido.falha;
   const { id, promo } = lido;
 
   if (!STATUS_PODE_SAIR.has(promo.status)) {
     return falha("PROMOCAO_NAO_PARTICIPA", "O anúncio não participa desta promoção. Atualize a tela.");
   }
-  const comOffer = TIPOS_ESCRITA_ACEITE.has(promo.tipo);
-  if (comOffer && !promo.refId) {
+  const soTipo = TIPOS_SAIDA_SO_TIPO.has(promo.tipo);
+  const comOffer = !soTipo && !TIPOS_COM_ESCRITA.has(promo.tipo) && Boolean(promo.refId);
+  if (TIPOS_SAIDA_COM_OFFER.has(promo.tipo) && !promo.refId) {
     return falha("OFFER_ID_AUSENTE", "O Mercado Livre não informou a oferta desta promoção — saia pelo painel do Mercado Livre.");
   }
 
   const qs =
     "promotion_type=" + encodeURIComponent(promo.tipo) +
-    "&promotion_id=" + encodeURIComponent(promo.id) +
+    (soTipo ? "" : "&promotion_id=" + encodeURIComponent(promo.id)) +
     (comOffer ? "&offer_id=" + encodeURIComponent(promo.refId) : "") +
     "&app_version=v2";
   const resp = await mlFetch(clienteId, `/seller-promotions/items/${encodeURIComponent(id)}?${qs}`, {
