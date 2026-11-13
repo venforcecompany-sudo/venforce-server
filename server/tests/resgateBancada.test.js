@@ -145,6 +145,29 @@ const promo4191 = [
     assert.strictEqual(montarBancada(alto(), { promocao: { comprovado: false, pendencia: "PRECO_MUDOU", texto: "mudou" } }).status, STATUS.MARGEM_DESCONHECIDA);
   });
 
+  console.log("Enriquecimento (CLI)");
+  await t("enriquecimento escreve só na pasta nova (origem intacta), recusa saída dentro da origem e grava índice + financiamento", () => {
+    const fs = require("fs"), os = require("os"), path = require("path"), { spawnSync } = require("child_process");
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "rg-enr-")), origem = path.join(base, "aud"), saida = path.join(base, "nova");
+    fs.mkdirSync(path.join(origem, "contas", "86"), { recursive: true }); fs.mkdirSync(path.join(origem, "contas", "10"), { recursive: true });
+    fs.writeFileSync(path.join(origem, "execucao.json"), JSON.stringify({ id: "x", status: "concluida" }));
+    const it = mlb4427(); const linhaOrig = JSON.stringify(it) + "\n";
+    fs.writeFileSync(path.join(origem, "contas", "86", "itens.jsonl"), linhaOrig); fs.writeFileSync(path.join(origem, "contas", "86", "conta.json"), JSON.stringify({ resumo: { clienteContaId: 86 } }));
+    fs.writeFileSync(path.join(origem, "contas", "10", "conta.json"), JSON.stringify({ resumo: { clienteContaId: 10 } }));
+    const ev = path.join(base, "ev.jsonl"); fs.writeFileSync(ev, JSON.stringify({ conta: 86, itemId: "MLB4427778060", lidoEm: "2026-11-12T23:19:04Z", promoStatus: 200, iniciadas: promo4427 }) + "\n");
+    const cli = path.join(__dirname, "..", "scripts", "resgate", "enriquecerPromocoes.js");
+    assert.notStrictEqual(spawnSync(process.execPath, [cli, "--dados", origem, "--saida", path.join(origem, "x"), "--promo", ev], { encoding: "utf8" }).status, 0, "saída dentro da origem é recusada");
+    const r = spawnSync(process.execPath, [cli, "--dados", origem, "--saida", saida, "--promo", ev], { encoding: "utf8" });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(fs.readFileSync(path.join(origem, "contas", "86", "itens.jsonl"), "utf8"), linhaOrig, "origem intacta");
+    assert.ok(fs.lstatSync(path.join(saida, "contas", "10")).isSymbolicLink(), "conta sem evidência = link para a origem");
+    const y = JSON.parse(fs.readFileSync(path.join(saida, "contas", "86", "itens.jsonl"), "utf8").trim());
+    assert.strictEqual(y.promocaoFinanciamento.financiamento, FINANCIAMENTO.VENDEDOR); assert.strictEqual(y.bancadaIndice.confiavel, true); assert.strictEqual(y.bancadaIndice.margem, 0.056066);
+    assert.strictEqual(montarBancada(y).status, STATUS.ABAIXO_DA_META, "bancada usa a evidência gravada no item por padrão");
+    assert.notStrictEqual(spawnSync(process.execPath, [cli, "--dados", origem, "--saida", saida, "--promo", ev], { encoding: "utf8" }).status, 0, "saída existente não é sobrescrita");
+    fs.rmSync(base, { recursive: true, force: true });
+  });
+
   console.log("Leitura ao vivo");
   await t("ao vivo: SMART em andamento que NÃO forma o preço não paga rebate; campanha do vendedor = 0 comprovado", () => {
     const { aplicarFinanciamento } = require("../services/resgate/resgateAoVivo");

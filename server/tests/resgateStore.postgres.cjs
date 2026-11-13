@@ -37,6 +37,26 @@ if (!url || !/127\.0\.0\.1|localhost/.test(url)) { console.log("RESGATE_TEST_DAT
       assert.strictEqual((await store.paginaItens(id, 86, { situacao: "PRECO_OK" })).total, 0);
       assert.strictEqual((await store.paginaItens(id, 87, {})).total, 0, "isolamento por conta");
     });
+    await t("filtros simples da bancada no SQL = montarBancada/passaFiltro item a item (meta da bancada ou do item)", async () => {
+      const { montarContratoFinanceiro } = require("../services/resgate/resgateContrato");
+      const { montarBancada, passaFiltro, FILTROS } = require("../services/resgate/resgateBancada");
+      const mk = (itemId, { cheio, vigente, custo = 40, subsidioMl = null, comissao = 14, frete = 18, metaItem = 0.15 }) => ({
+        itemId, clienteId: 133, situacao: "X", acao: "Y", historico: { origem: "SEM_ALTERACAO_REGISTRADA", mudancaRecente: false }, prioridade: 1, vendas30d: { unidades: 0 }, exposicao: {}, fingerprint: { precoVisto: vigente }, sku: "S", titulo: itemId,
+        meta: { valor: metaItem },
+        contrato: montarContratoFinanceiro({ conta: { clienteContaId: 88 }, anuncio: { itemId, logisticType: "cross_docking" }, precos: { cheio, vigente, promocional: cheio > vigente ? vigente : null },
+          comissao: { valor: comissao, percentual: 0.14, precoBase: vigente }, frete: { valor: frete, freteQualidade: { nivel: "cotado_ml", avaliadoEm: "2026-11-12T00:00:00Z" } }, custo: { valor: custo }, imposto: { percentual: 0.13 }, taxaFixa: { valor: 0 },
+          promocao: cheio > vigente ? { ativa: true, subsidioMl } : { ativa: false } }),
+      });
+      const casos = [mk("OK", { cheio: 100, vigente: 100 }), mk("BAIXO", { cheio: 100, vigente: 100, custo: 50 }), mk("PREJ", { cheio: 80, vigente: 80, custo: 60 }),
+        mk("SEMCUSTO", { cheio: 100, vigente: 100, custo: null }), mk("PROMO_LB_BAIXO", { cheio: 120, vigente: 100, custo: 50 }), mk("PROMO_LB_OK", { cheio: 150, vigente: 130, custo: 40 }),
+        mk("PROMO_SUB", { cheio: 120, vigente: 100, custo: 50, subsidioMl: 2 }), mk("META_ITEM_10", { cheio: 100, vigente: 100, custo: 45, metaItem: 0.1 })];
+      await store.salvarItens(id, 88, casos);
+      for (const meta of [null, 0.15, 0.05]) for (const f of FILTROS) {
+        const sql = (await store.paginaItens(id, 88, { filtro: f, meta, limite: 100 })).itens.map((x) => x.itemId).sort();
+        const js = casos.filter((x) => passaFiltro(montarBancada(x, { meta }), f)).map((x) => x.itemId).sort();
+        assert.deepStrictEqual(sql, js, `filtro ${f} meta ${meta}`);
+      }
+    });
     await t("revisão só aceita o preço visto da proposta; reprocesso com outro preço INVALIDA a revisão", async () => {
       assert.strictEqual(await store.registrarRevisao(id, 86, "MLB1", { status: "APROVADO", precoVisto: 99 }), false);
       assert.strictEqual(await store.registrarRevisao(id, 86, "MLB1", { status: "APROVADO", precoVisto: 100, userId: 7 }), true);

@@ -12,6 +12,7 @@ const { args } = require("./lib");
 const { criarStoreArquivo } = require("../../services/resgate/resgateStoreArquivo");
 const { planoDeAtivacao } = require("../../services/resgate/resgateAtivacao");
 const { planoParaBuffer } = require("../../services/resgate/resgatePlanoXlsx");
+const { montarBancada, passaFiltro, linhaDaLista, metaDe, FILTROS } = require("../../services/resgate/resgateBancada");
 
 const a = args();
 const dir = path.resolve(a.dados || ".");
@@ -36,17 +37,25 @@ http.createServer(async (req, res) => {
         totais: { contasAvaliadas: lista.filter((c) => !c.semAvaliacao).length, contasSemAvaliacao: lista.filter((c) => c.semAvaliacao).length, anunciosAuditados: soma("itens"), precosCorretos: soma("precosCorretos"), precisamRevisao: soma("precisamRevisao"), semMargemConfiavel: soma("semMargemConfiavel"), alteradosRecentemente: soma("alteradosRecentemente"), riscoFinanceiro30d: Math.round(soma("riscoFinanceiro30d") * 100) / 100 },
         ativacao: planoDeAtivacao({ contas }) });
     }
+    // Preview NUNCA habilita ações reais, mesmo com a flag no ambiente.
+    if (u.pathname === "/resgate/config") return json(res, 200, { ok: true, acoesHabilitadas: false, recotacaoSobDemanda: false, preview: true });
     let m = u.pathname.match(/^\/resgate\/contas\/(\d+)\/itens$/);
     if (m) {
       const q = u.searchParams; const lim = Math.min(100, Number(q.get("limite")) || 50); const pag = Math.max(1, Number(q.get("pagina")) || 1);
       const busca = (q.get("busca") || "").toUpperCase();
       let it = (await itensDa(Number(m[1]))).filter((x) => (!q.get("situacao") || x.situacao === q.get("situacao")) && (!q.get("acao") || x.acao === q.get("acao")) && (!q.get("origem") || x.historico.origem === q.get("origem")) && (q.get("recentes") !== "1" || x.historico.mudancaRecente) && (!busca || [x.itemId, x.sku, x.titulo].some((v) => String(v || "").toUpperCase().includes(busca))));
+      const meta = metaDe(q.get("meta")), filtro = FILTROS.includes(q.get("filtro")) ? q.get("filtro") : null;
+      if (filtro) it = it.filter((x) => passaFiltro(montarBancada(x, { meta }), filtro));
       it = it.sort((x, y) => y.prioridade - x.prioridade || (x.itemId < y.itemId ? -1 : 1));
-      const pg = it.slice((pag - 1) * lim, pag * lim).map((x) => ({ itemId: x.itemId, sku: x.sku, titulo: x.titulo, statusAnuncio: x.statusAnuncio, situacao: x.situacao, acao: x.acao, prioridade: x.prioridade, origem: x.historico.origem, mudancaRecente: x.historico.mudancaRecente, preco: x.contrato.componentes.precoVigente.valor, margemPercent: x.contrato.resultado.margemPercent, margemExibida: x.snapshot && x.snapshot.margemPercent, frete: x.contrato.componentes.frete.valor, freteNivel: x.contrato.componentes.frete.nivel, confianca: x.contrato.confiancaGeral, unidades30d: x.vendas30d.unidades, exposicao: x.exposicao, recomendacao: x.recomendacao, revisao: { status: "PENDENTE" }, precoVisto: x.fingerprint.precoVisto }));
+      const pg = it.slice((pag - 1) * lim, pag * lim).map((x) => ({ bancada: linhaDaLista(x, montarBancada(x, { meta })), itemId: x.itemId, sku: x.sku, titulo: x.titulo, statusAnuncio: x.statusAnuncio, situacao: x.situacao, acao: x.acao, prioridade: x.prioridade, origem: x.historico.origem, mudancaRecente: x.historico.mudancaRecente, preco: x.contrato.componentes.precoVigente.valor, margemPercent: x.contrato.resultado.margemPercent, margemExibida: x.snapshot && x.snapshot.margemPercent, frete: x.contrato.componentes.frete.valor, freteNivel: x.contrato.componentes.frete.nivel, confianca: x.contrato.confiancaGeral, unidades30d: x.vendas30d.unidades, exposicao: x.exposicao, recomendacao: x.recomendacao, revisao: { status: "PENDENTE" }, precoVisto: x.fingerprint.precoVisto }));
       return json(res, 200, { ok: true, total: it.length, pagina: pag, limite: lim, itens: pg });
     }
     m = u.pathname.match(/^\/resgate\/contas\/(\d+)\/itens\/([^/]+)$/);
-    if (m) { const x = (await itensDa(Number(m[1]))).find((y) => y.itemId === decodeURIComponent(m[2])); return x ? json(res, 200, { ok: true, item: x }) : json(res, 404, { ok: false, motivo: "não auditado" }); }
+    if (m) {
+      const x = (await itensDa(Number(m[1]))).find((y) => y.itemId === decodeURIComponent(m[2]));
+      return x ? json(res, 200, { ok: true, item: x, bancada: montarBancada(x, { meta: metaDe(u.searchParams.get("meta")) }), contexto: { clienteSlug: null, clienteContaId: Number(m[1]), acoesHabilitadas: false, preview: true } })
+        : json(res, 404, { ok: false, motivo: "não auditado" });
+    }
     m = u.pathname.match(/^\/resgate\/(?:contas\/(\d+)\/)?plano\.xlsx$/);
     if (m) {
       let contas = await store.listarContas();

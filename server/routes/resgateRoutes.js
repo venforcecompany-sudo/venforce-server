@@ -11,6 +11,7 @@ const router = express.Router();
 const base = [authMiddleware, requireAutomacoesAccess];
 const daConta = [...base, requireClienteContaNaCarteira("contaId")];
 
+router.get("/config", ...base, c.config);
 router.get("/visao-global", ...base, c.visaoGlobal);
 router.get("/plano.xlsx", ...base, c.planoXlsx);
 router.get("/contas/:contaId", ...daConta, c.conta);

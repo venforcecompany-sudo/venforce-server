@@ -16,6 +16,14 @@ const { planoDeAtivacao } = require("../services/resgate/resgateAtivacao");
 const { simularLote } = require("../services/resgate/resgateDryRun");
 const { clientesAutorizadosSet } = require("../services/squads/authorizationService");
 const repo = require("../services/resgate/resgateLeituraRepository");
+const { montarBancada, linhaDaLista, normalizarRecotacao, metaDe, FILTROS } = require("../services/resgate/resgateBancada");
+const { montarContratoFinanceiro } = require("../services/resgate/resgateContrato");
+
+// Ações reais (alterar preço / promoção) usam os endpoints EXISTENTES de /anuncios-meli
+// direto da tela, com as travas deles. A tela só as habilita com esta flag explícita
+// (padrão: desligada). Nenhuma rota do Resgate escreve no Mercado Livre.
+const acoesHabilitadas = () => process.env.RESGATE_ACOES_ML_HABILITADAS === "1";
+
 
 // Teto por conta na planilha global do servidor (memória do Render); a CLI exporta tudo.
 const LIMITE_GLOBAL_POR_CONTA = 1500;
@@ -93,9 +101,12 @@ async function itens(req, res) {
     const r = await store.paginaItens(exec.id, Number(req.params.contaId), {
       situacao: req.query.situacao || null, acao: req.query.acao || null, origem: req.query.origem || null,
       somenteRecentes: req.query.recentes === "1", busca: req.query.busca || null, limite, offset: (pagina - 1) * limite,
+      filtro: FILTROS.includes(req.query.filtro) ? req.query.filtro : null, meta: metaDe(req.query.meta),
     });
-    // Lista leve: o contrato completo só no detalhe.
+    // Lista leve: o contrato completo só no detalhe. `bancada` = colunas simples da tela nova.
+    const meta = metaDe(req.query.meta);
     const leves = r.itens.map((x) => ({
+      bancada: linhaDaLista(x, montarBancada(x, { meta })),
       itemId: x.itemId, sku: x.sku, titulo: x.titulo, statusAnuncio: x.statusAnuncio, familiaLogistica: x.familiaLogistica,
       situacao: x.situacao, acao: x.acao, prioridade: x.prioridade, origem: x.historico && x.historico.origem, mudancaRecente: x.historico && x.historico.mudancaRecente,
       ultimaMudancaEm: x.historico && x.historico.ultimaMudancaEm, fonteAvaliacao: x.fonteAvaliacao,
@@ -118,7 +129,11 @@ async function item(req, res) {
     const exec = await execucaoAtual(store);
     const x = exec ? await store.item(exec.id, Number(req.params.contaId), String(req.params.itemId)) : null;
     if (!x) return res.status(404).json({ ok: false, motivo: "Anúncio não auditado." });
-    return res.json({ ok: true, execucaoId: exec.id, item: x });
+    const ctx = contaDaRequisicao(req);
+    return res.json({
+      ok: true, execucaoId: exec.id, item: x, bancada: montarBancada(x, { meta: metaDe(req.query.meta) }),
+      contexto: { clienteSlug: ctx ? ctx.clienteSlug || null : null, clienteContaId: Number(req.params.contaId), acoesHabilitadas: acoesHabilitadas() },
+    });
   } catch (err) {
     console.error("[resgate] item:", err.message);
     return res.status(500).json({ ok: false, motivo: "Erro ao ler o anúncio." });
@@ -134,7 +149,7 @@ async function simular(req, res) {
     const auditado = exec ? await store.item(exec.id, Number(req.params.contaId), String(req.params.itemId)) : null;
     if (!ctx || !auditado) return res.status(404).json({ ok: false, motivo: "Anúncio não auditado nesta conta." });
     const precos = (Array.isArray(req.body && req.body.precos) ? req.body.precos : []).map(Number).filter((p) => p > 0).slice(0, 8);
-    const meta = req.body && req.body.meta !== undefined ? Number(req.body.meta) : (auditado.meta ? auditado.meta.valor : null);
+    const meta = metaDe(req.body && req.body.meta) ?? (auditado.meta ? auditado.meta.valor : null);
     const ler = deps.criarFetch();
     const vivo = await deps.lerAoVivo({ clienteId: ctx.clienteId, sellerId: auditado.sellerId, itemId: auditado.itemId, ler });
     if (!vivo.ok) return res.status(502).json({ ok: false, codigo: "LEITURA_ML_FALHOU", motivo: vivo.motivo });
@@ -142,17 +157,37 @@ async function simular(req, res) {
     const entrada = entradaAoVivo(vivo, row || {}, { clienteId: ctx.clienteId, clienteContaId: Number(req.params.contaId), sellerId: auditado.sellerId });
     const simulacoes = precos.length ? await simularPrecos(entrada, precos, vivo.cotarEmPreco) : [];
     const recomendacao = Number.isFinite(meta) ? await recomendarPreco(entrada, { meta, cotarEmPreco: vivo.cotarEmPreco }) : null;
+    // Bancada AO VIVO: contrato do preço atual (promoção financiada pela evidência lida agora)
+    // + recotação do sugerido + cenário "sair da promoção" (só quando pode decidir: cheio ≥ sugerido).
+    const contratoVivo = montarContratoFinanceiro(entrada);
+    const cheio = Number(vivo.precos.cheio), atual = Number(vivo.precos.vigente);
+    let cenarioSairPromo = null;
+    if (recomendacao && recomendacao.ok && cheio > atual + 0.001 && cheio >= recomendacao.preco - 0.009) {
+      const [sv] = await simularPrecos(entrada, [cheio], vivo.cotarEmPreco);
+      if (sv && sv.contrato) cenarioSairPromo = { preco: cheio, calculavel: sv.contrato.resultado.calculavel, margem: sv.contrato.resultado.margem, lucro: sv.contrato.resultado.lucro, margemConfiavel: sv.contrato.margemConfiavel };
+    }
+    const recotacao = recomendacao ? normalizarRecotacao({
+      ok: recomendacao.ok, motivo: recomendacao.motivo || null, meta, recotadoEm: vivo.observadoEm, cenarioSairPromo,
+      recomendacao: recomendacao.contrato ? { preco: recomendacao.preco, comissao: recomendacao.contrato.componentes.comissao.valor, frete: recomendacao.contrato.componentes.frete.valor, freteNivel: recomendacao.contrato.componentes.frete.nivel, freteConfianca: recomendacao.contrato.componentes.frete.confianca, margem: recomendacao.contrato.resultado.margem, lucro: recomendacao.contrato.resultado.lucro, margemConfiavel: recomendacao.contrato.margemConfiavel } : null,
+    }) : null;
+    const financiamento = vivo.promocao && vivo.promocao.financiamento && vivo.promocao.financiamento.financiamento !== undefined ? vivo.promocao.financiamento : null;
+    const bancada = montarBancada({ ...auditado, contrato: contratoVivo, promocaoFinanciamento: null, recotacao: null }, { promocao: financiamento && cheio > atual + 0.001 ? financiamento : null, recotacao, meta });
     return res.json({
       ok: true, observadoEm: vivo.observadoEm, precoAtual: vivo.precos.vigente,
       precoMudouDesdeAuditoria: auditado.fingerprint && auditado.fingerprint.precoVisto !== null && Math.abs(Number(vivo.precos.vigente) - Number(auditado.fingerprint.precoVisto)) >= 0.01,
       simulacoes: simulacoes.map((s) => ({ preco: s.preco, erro: s.erro || null, resultado: s.contrato ? s.contrato.resultado : null, frete: s.contrato ? s.contrato.componentes.frete : null, comissao: s.contrato ? s.contrato.componentes.comissao : null, bloqueios: s.contrato ? s.contrato.bloqueios : [] })),
       recomendacao: recomendacao ? { ok: recomendacao.ok, preco: recomendacao.preco ?? null, motivo: recomendacao.motivo || null, margemPercent: recomendacao.contrato ? recomendacao.contrato.resultado.margemPercent : null, trilha: recomendacao.trilha } : null,
-      metricasMl: ler.metricas,
+      recotacao, bancada, metricasMl: ler.metricas,
     });
   } catch (err) {
     console.error("[resgate] simular:", err.message);
     return res.status(500).json({ ok: false, motivo: "Erro ao simular." });
   }
+}
+
+/** GET /resgate/config — o que a tela pode oferecer neste ambiente. */
+function config(_req, res) {
+  return res.json({ ok: true, acoesHabilitadas: acoesHabilitadas(), recotacaoSobDemanda: true, preview: false });
 }
 
 /** POST /resgate/contas/:contaId/itens/:itemId/revisao { status, nota, precoVisto } */
@@ -220,4 +255,4 @@ async function dryRun(req, res) {
   }
 }
 
-module.exports = { visaoGlobal, conta, itens, item, simular, revisar, planoXlsx, dryRun, configurar };
+module.exports = { visaoGlobal, conta, itens, item, simular, revisar, planoXlsx, dryRun, config, configurar };

@@ -9,6 +9,40 @@ const LOTE = 200;
 
 function erroTabelasAusentes(err) { return err && err.code === "42P01"; }
 
+// Filtros simples da bancada em SQL — MESMAS regras de resgateBancada.montarBancada/passaFiltro
+// sem evidência extra de promoção (o teste com PG local confere a equivalência item a item).
+const J = "resultado->'contrato'";
+const BANCADA_SQL = {
+  cheio: `(${J}->'componentes'->'precoCheio'->>'valor')::numeric`,
+  vig: `(${J}->'componentes'->'precoVigente'->>'valor')::numeric`,
+  calc: `COALESCE((${J}->'resultado'->>'calculavel')::boolean, false)`,
+  conf: `COALESCE((${J}->>'margemConfiavel')::boolean, false)`,
+  margem: `(${J}->'resultado'->>'margem')::numeric`,
+};
+// Item enriquecido (evidência de promoção/recotação) traz `bancadaIndice` calculado pela própria
+// bancada (indiceBancada); item da auditoria pura cai nas expressões sobre o contrato.
+const BI = "resultado->'bancadaIndice'";
+const comIndice = (siIndice, senao) => `(CASE WHEN resultado ? 'bancadaIndice' THEN ${siIndice} ELSE ${senao} END)`;
+function sqlFiltroBancada(filtro, metaParam) {
+  if (!filtro) return "";
+  const { cheio, vig, calc: calcC, conf: confC, margem: margemC } = BANCADA_SQL;
+  const promoC = `COALESCE(${cheio} > ${vig} + 0.001, false)`;
+  const subsC = `(NOT ${promoC} OR COALESCE(${J}->'componentes'->'subsidioMl'->>'status' = 'ok', false))`;
+  const meta = `COALESCE(${metaParam}::numeric, (resultado->'meta'->>'valor')::numeric)`;
+  const promo = comIndice(`COALESCE((${BI}->>'promoAtiva')::boolean, false)`, promoC);
+  const margem = comIndice(`(${BI}->>'margem')::numeric`, margemC);
+  const confiavel = comIndice(`COALESCE((${BI}->>'confiavel')::boolean, false)`, `(${calcC} AND ${confC} AND ${subsC})`);
+  const okLimite = comIndice(
+    `(COALESCE((${BI}->>'calculavel')::boolean, false) AND COALESCE((${BI}->>'margemConfiavelBase')::boolean, false) AND COALESCE((${BI}->>'limiteInferior')::boolean, false)
+      AND NOT COALESCE((${BI}->>'promoPrecoMudou')::boolean, false) AND ${meta} IS NOT NULL AND (${BI}->>'margem')::numeric >= ${meta} - 0.000001)`,
+    `(${calcC} AND ${confC} AND NOT ${subsC} AND ${meta} IS NOT NULL AND ${margemC} >= ${meta} - 0.000001)`);
+  if (filtro === "prejuizo") return ` AND ${confiavel} AND ${margem} < 0`;
+  if (filtro === "abaixo_meta") return ` AND ${confiavel} AND (${margem} < 0 OR (${meta} IS NOT NULL AND ${margem} < ${meta} - 0.000001))`;
+  if (filtro === "desconhecida") return ` AND NOT ${confiavel} AND NOT ${okLimite}`;
+  if (filtro === "promocao") return ` AND ${promo}`;
+  return "";
+}
+
 function criarStorePg(db) {
   return {
     tipo: "pg",
@@ -101,13 +135,15 @@ function criarStorePg(db) {
         [id, clienteIds]);
       return rows;
     },
-    async paginaItens(id, contaId, { situacao = null, acao = null, origem = null, somenteRecentes = false, busca = null, limite = 50, offset = 0 } = {}) {
-      const params = [id, contaId, situacao, acao, origem, somenteRecentes, busca ? `%${String(busca).toUpperCase()}%` : null, Math.min(200, Math.max(1, limite)), Math.max(0, offset)];
+    async paginaItens(id, contaId, { situacao = null, acao = null, origem = null, somenteRecentes = false, busca = null, filtro: filtroSimples = null, meta = null, limite = 50, offset = 0 } = {}) {
+      const metaNum = Number.isFinite(Number(meta)) && meta !== null && meta !== "" ? Number(meta) : null;
+      const params = [id, contaId, situacao, acao, origem, somenteRecentes, busca ? `%${String(busca).toUpperCase()}%` : null, metaNum, Math.min(200, Math.max(1, limite)), Math.max(0, offset)];
       const filtro = `execucao_id = $1 AND cliente_conta_id = $2 AND ($3::text IS NULL OR situacao = $3) AND ($4::text IS NULL OR acao = $4)
-        AND ($5::text IS NULL OR origem = $5) AND (NOT $6 OR mudanca_recente) AND ($7::text IS NULL OR upper(item_id) LIKE $7 OR upper(COALESCE(resultado->>'sku','')) LIKE $7 OR upper(COALESCE(resultado->>'titulo','')) LIKE $7)`;
+        AND ($5::text IS NULL OR origem = $5) AND (NOT $6 OR mudanca_recente) AND ($7::text IS NULL OR upper(item_id) LIKE $7 OR upper(COALESCE(resultado->>'sku','')) LIKE $7 OR upper(COALESCE(resultado->>'titulo','')) LIKE $7)
+        AND ($8::numeric IS NULL OR true)${sqlFiltroBancada(filtroSimples, "$8")}`; // $8 (meta) sempre referenciado: o PG exige o tipo de todo parâmetro
       const [itens, total] = await Promise.all([
-        db.query(`SELECT resultado, revisao_status, revisao_em, revisao_nota FROM resgate_itens WHERE ${filtro} ORDER BY prioridade DESC, item_id LIMIT $8 OFFSET $9`, params),
-        db.query(`SELECT count(*)::int AS n FROM resgate_itens WHERE ${filtro}`, params.slice(0, 7)),
+        db.query(`SELECT resultado, revisao_status, revisao_em, revisao_nota FROM resgate_itens WHERE ${filtro} ORDER BY prioridade DESC, item_id LIMIT $9 OFFSET $10`, params),
+        db.query(`SELECT count(*)::int AS n FROM resgate_itens WHERE ${filtro}`, params.slice(0, 8)),
       ]);
       return { total: total.rows[0].n, itens: itens.rows.map((r) => ({ ...r.resultado, revisao: { status: r.revisao_status, em: r.revisao_em, nota: r.revisao_nota } })) };
     },
@@ -134,4 +170,4 @@ function criarStorePg(db) {
   };
 }
 
-module.exports = { criarStorePg, erroTabelasAusentes };
+module.exports = { criarStorePg, erroTabelasAusentes, sqlFiltroBancada };

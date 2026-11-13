@@ -85,6 +85,33 @@ function res() { const r = { statusCode: 200, headers: {}, body: null, status(c)
     assert.strictEqual(r.body.simulacoes.length, 2); assert.strictEqual(r.body.simulacoes[1].comissao.valor, 15.39);
     assert.ok(r.body.recomendacao && r.body.recomendacao.ok);
   });
+  await t("simular devolve a bancada AO VIVO e a recotação na meta pedida (15 = 15%)", async () => {
+    const vivo = { ok: true, observadoEm: "2026-11-12T23:00:00Z", precos: { vigente: 129.9, cheio: 149.9, promocional: 129.9, fonte: "sale_price" }, anuncio: { itemId: "MLB1", logisticType: "cross_docking" },
+      promocao: { ativa: true, subsidioMl: 0, financiamento: { comprovado: true, subsidio: 0, financiamento: "VENDEDOR_100", tipo: "SELLER_CAMPAIGN", id: "C-1", texto: "do vendedor" } },
+      cotacao: { comissaoValor: 24.68, comissaoPercentual: 0.19, fretePrevisto: 19.05, freteQualidade: { nivel: "cotado_ml" } },
+      cotarEmPreco: async (p) => ({ comissaoValor: Math.round(p * 19) / 100, comissaoPercentual: 0.19, fretePrevisto: 19.05, freteQualidade: { nivel: "cotado_ml" } }) };
+    const ler = Object.assign(async () => ({}), { metricas: { chamadas: 9 } });
+    const dbBase = dbFalso();
+    const db = { async query(sql, p) { if (/FROM margin_projection_snapshots s/.test(sql)) return { rows: [{ item_id: "MLB1", price: 129.9, cost: 62, tax_rate: 0.13, fixed_fee: 0, calculated_at: new Date().toISOString() }] }; return dbBase.query(sql, p); } };
+    c.configurar({ db, criarFetch: () => ler, lerAoVivo: async () => vivo });
+    const r = res(); await c.simular({ user: { id: 1 }, contaAutorizada: { clienteId: 133 }, params: { contaId: "86", itemId: "MLB1" }, body: { meta: 15 } }, r);
+    assert.strictEqual(r.statusCode, 200, JSON.stringify(r.body));
+    assert.strictEqual(r.body.bancada.promocao.financiamento, "VENDEDOR_100"); assert.strictEqual(r.body.bancada.promocao.subsidio, 0);
+    assert.strictEqual(r.body.recotacao.meta, 0.15); assert.ok(r.body.recotacao.ok);
+    assert.strictEqual(r.body.bancada.sugerido.status, "RECOTADO"); assert.ok(r.body.bancada.sugerido.margem >= 0.15 - 0.0005);
+  });
+  await t("config: ações reais DESLIGADAS por padrão; só a flag explícita liga; detalhe traz contexto e bancada", async () => {
+    const antes = process.env.RESGATE_ACOES_ML_HABILITADAS;
+    delete process.env.RESGATE_ACOES_ML_HABILITADAS;
+    let r = res(); c.config({}, r); assert.strictEqual(r.body.acoesHabilitadas, false);
+    process.env.RESGATE_ACOES_ML_HABILITADAS = "true"; r = res(); c.config({}, r); assert.strictEqual(r.body.acoesHabilitadas, false, "só \"1\" liga");
+    process.env.RESGATE_ACOES_ML_HABILITADAS = "1"; r = res(); c.config({}, r); assert.strictEqual(r.body.acoesHabilitadas, true);
+    if (antes === undefined) delete process.env.RESGATE_ACOES_ML_HABILITADAS; else process.env.RESGATE_ACOES_ML_HABILITADAS = antes;
+    c.configurar({ db: dbFalso() });
+    r = res(); await c.item({ user: { id: 1 }, contaAutorizada: { clienteId: 133, clienteSlug: "cliente-x" }, params: { contaId: "86", itemId: "MLB1" }, query: { meta: "15" } }, r);
+    assert.strictEqual(r.statusCode, 200); assert.strictEqual(r.body.contexto.clienteSlug, "cliente-x"); assert.strictEqual(r.body.contexto.acoesHabilitadas, false);
+    assert.ok(r.body.bancada && r.body.bancada.versao === "resgate-bancada/1"); assert.strictEqual(r.body.bancada.meta.valor, 0.15);
+  });
   await t("exportação global do servidor lê só anúncios com ação (memória do Render); a da conta lê todos", () => {
     const src = fs.readFileSync(path.join(__dirname, "..", "controllers", "resgateController.js"), "utf8");
     assert.ok(/somenteAcionaveis = !req\.params\.contaId/.test(src));
