@@ -2527,3 +2527,33 @@
 .vf-page-central-margem .cm-promo-options table { width: 100%; }
 .vf-page-central-margem .cm-promo-options th,
 .vf-page-central-margem .cm-promo-options td { font-size: var(--vf-fs-2xs); }
+
+/* Diagnóstico — composição do preço vigente e confiança da margem (P0 12/11/2026).
+   Texto + bolinha do Portal (vf-status), sem chip colorido. */
+/* Só no Diagnóstico: a coluna PREÇO carrega promoção/financiador/leitura. */
+.vf-page-central-margem .cm-table--comp th:nth-child(2),
+.vf-page-central-margem .cm-table--comp td:nth-child(2) { width: calc(var(--cm-col-money) + 46px); }
+.vf-page-central-margem .cm-price-cell { cursor: help; }
+.vf-page-central-margem .cm-price-cell .cm-cell-sub {
+  flex-wrap: wrap;
+  margin-top: 1px;
+  text-align: right;
+}
+.vf-page-central-margem .cm-price-cell .cm-cell-meta,
+.vf-page-central-margem .cm-price-cell .vf-status {
+  white-space: normal;
+  line-height: 1.25;
+}
+.vf-page-central-margem .cm-price-status,
+.vf-page-central-margem .cm-margin-conf {
+  font-size: var(--vf-fs-2xs);
+  white-space: nowrap;
+  cursor: help;
+}
+.vf-page-central-margem .cm-price-promo {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.cm-drawer .cm-adv__result--estimate { color: var(--vf-warning-strong); font-weight: var(--vf-fw-semibold); }

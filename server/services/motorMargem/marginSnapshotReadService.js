@@ -32,7 +32,9 @@ const settlement = require("./adapters/settlementEvidenceAdapter");
 const { flagLigada } = require("./marginSnapshotConfig");
 const { redigirSegredos } = require("./marginSnapshotSanitize");
 const { logEvento } = require("./marginSnapshotLog");
-const { carregarRebatesDaConta, calcularStatusOverrides, margemAtualComRebate, reclassificarStatus } = require("./margemAtualRebate");
+const { carregarRebatesDaConta, carregarRebatesAtivos, calcularStatusOverrides, margemAtualComRebate, reclassificarStatus } = require("./margemAtualRebate");
+const { STATUS: STATUS_PRECO } = require("./precoVigenteComposicao");
+const { resumoDoFrete } = require("../shared/freteCotacaoConfiavel");
 const periodoRealizado = require("./marginRealizadoPeriodo");
 const { agregarKpisRealizados } = require("./marginRealizadoKpis");
 
@@ -168,6 +170,9 @@ async function obterResumo({ clienteSlug, clienteContaId }, deps = {}) {
       ...placar,
       // LC/un somado dos anúncios em Prejuízo, já com o retorno ML dos que seguem em prejuízo.
       lcPrejuizo: Math.round((lcPrejuizo + efetivo.overrides.rebateEmPrejuizo + Number.EPSILON) * 100) / 100,
+      // Prejuízo/Margem baixa sobre preço promocional NÃO comprovado: contados
+      // à parte (status efetivo "Dado suspeito"), nunca como resultado comprovado.
+      limiteInferior: efetivo.overrides.limiteInferior || { total: 0, LOSS: 0, LOW_MARGIN: 0 },
     };
     foraDoCatalogo = fora.total;
   }
@@ -321,6 +326,50 @@ function percentual(margin) {
   return margin === null || margin === undefined ? null : Math.round(margin * 10000) / 100;
 }
 
+// Confiança da margem PROJETADA exibida — quatro estados, do pior para o melhor:
+//   BLOQUEADA     falta componente obrigatório, ou a composição do preço não é
+//                 comprovada (promoção não lida/identificada, participação do
+//                 ML não informada): o número, se houver, é só limite inferior;
+//   DESATUALIZADA a última atualização falhou para o item, ou preço do cálculo
+//                 e promoção são leituras de momentos diferentes;
+//   ESTIMADA      algum insumo é estimativa (frete por medidas/custo cobrado,
+//                 frete não verificado, componente assumido, confiança baixa);
+//   CONFIAVEL     todos os componentes medidos e a composição comprovada.
+function confiancaDaMargem({ projected, precoVigente, row, freteResumo }) {
+  const motivos = [];
+  const quality = row.quality || {};
+  if (projected.margin === null || projected.margin === undefined) {
+    motivos.push(projected.incompletaMotivo || (row.missing && row.missing.length
+      ? `Falta ${row.missing.join(", ")} para calcular a margem.`
+      : "Margem projetada não calculável."));
+    return { nivel: "BLOQUEADA", motivos };
+  }
+  if (precoVigente && (precoVigente.status === STATUS_PRECO.REVISAR || precoVigente.status === STATUS_PRECO.SEM_PRECO)) {
+    motivos.push(precoVigente.texto);
+    return { nivel: "BLOQUEADA", motivos, limiteInferior: precoVigente.status === STATUS_PRECO.REVISAR };
+  }
+  const refresh = row.refreshStatus;
+  if (refresh === "failed" || refresh === "stale") {
+    motivos.push(refresh === "failed"
+      ? "A última atualização não recalculou este anúncio: o valor é da leitura anterior."
+      : "Leitura anterior não revalidada.");
+  }
+  if (precoVigente && precoVigente.status === STATUS_PRECO.DESATUALIZADO) motivos.push(precoVigente.texto);
+  if (motivos.length) return { nivel: "DESATUALIZADA", motivos };
+
+  const aplicavel = typeof quality.freteAplicavel === "boolean" ? quality.freteAplicavel : true;
+  if (aplicavel && freteResumo) {
+    if (freteResumo.estimado) motivos.push(freteResumo.texto || "Frete estimado.");
+    else if (!freteResumo.avaliado && row.freight !== null && row.freight !== undefined) {
+      motivos.push("Frete cotado direto pelo Mercado Livre, sem verificação da modalidade logística (pode ser a tarifa de Envios Agora).");
+    }
+  }
+  if ((row.assumed || []).length) motivos.push(`Assumido 0 para: ${row.assumed.join(", ")}.`);
+  if (row.confidenceLevel === "LOW") motivos.push("Confiança baixa nas evidências do cálculo.");
+  if (precoVigente && precoVigente.momentosDiferentes) motivos.push("Preço e promoção vêm de leituras com mais de 12 h de diferença (mesmo preço).");
+  return { nivel: motivos.length ? "ESTIMADA" : "CONFIAVEL", motivos };
+}
+
 /**
  * Monta o item no mesmo contrato que a Central já consome (fields/quality/
  * projected/realized + aliases planos), com:
@@ -333,7 +382,7 @@ function percentual(margin) {
  *  - status/confiança: os do snapshot (classificação da PROJETADA —
  *    `statusBase: "projected"`).
  */
-function comporItem(row, realizada, deps = {}, rebateInfo = null, rebateIndisponivel = null) {
+function comporItem(row, realizada, deps = {}, rebateInfo = null, rebateIndisponivel = null, rebateCtx = {}) {
   const computeMargin = deps.computeMargin || core.computeMargin;
   const bag = core.createEvidenceBag();
 
@@ -370,7 +419,8 @@ function comporItem(row, realizada, deps = {}, rebateInfo = null, rebateIndispon
   const quality = row.quality || {};
   // Margem atual com o retorno ML da promoção em andamento (mesmo módulo da
   // tabela, do drawer e das Oportunidades). Sem rebate = a linha do snapshot.
-  const atual = margemAtualComRebate(row, rebateInfo, rebateIndisponivel);
+  const atual = margemAtualComRebate(row, rebateInfo, rebateIndisponivel, rebateCtx);
+  const precoVigente = atual.precoVigente || null;
   // O status acompanha a margem exibida: reclassificado pela MESMA classifyStatus
   // do núcleo (null = o do snapshot continua valendo).
   const reclass = reclassificarStatus(row, atual);
@@ -392,6 +442,11 @@ function comporItem(row, realizada, deps = {}, rebateInfo = null, rebateIndispon
     missing: row.missing || [],
     assumed: row.assumed || [],
   };
+  const freteResumo = resumoDoFrete({ fretePrevisto: row.freight, freteQualidade: quality.freteQualidade || null });
+  const confianca = confiancaDaMargem({
+    projected: { ...projected, incompletaMotivo: custoMarketplaceAssumido ? margemConfiavel.NOTA_MARGEM_INCOMPLETA : null },
+    precoVigente, row, freteResumo,
+  });
   const realizedContrato = {
     profit: realized.profit,
     margin: realized.margin,
@@ -469,7 +524,7 @@ function comporItem(row, realizada, deps = {}, rebateInfo = null, rebateIndispon
       statusReasons: reclass ? reclass.reasons : quality.statusReasons || [],
       // Transparência: o status persistido era outro; o retorno ML da promoção
       // em andamento mudou a margem e, com ela, a classificação.
-      statusReclassificado: reclass ? { de: reclass.de, para: reclass.status, motivo: "retorno_ml" } : null,
+      statusReclassificado: reclass ? { de: reclass.de, para: reclass.status, motivo: reclass.motivo || "retorno_ml" } : null,
       integrityCode: integrity ? integrity.code : null,
       integrityReason: integrity ? integrity.reason : null,
     },
@@ -489,7 +544,20 @@ function comporItem(row, realizada, deps = {}, rebateInfo = null, rebateIndispon
       statusAnuncio: quality.statusAnuncio || null,
       // Nível do frete: estimado (dimensões/custo cobrado) nunca é "confirmado". null = cotação direta do ML.
       freteQualidade: quality.freteQualidade || null,
+      // Resumo legível do frete considerado (mesmo texto do /anuncios).
+      frete: {
+        valor: freteResumo.valor,
+        nivel: quality.freteQualidade ? quality.freteQualidade.nivel || null : null,
+        estimado: freteResumo.estimado,
+        verificado: freteResumo.avaliado,
+        confianca: freteResumo.confianca,
+        texto: freteResumo.texto,
+        aplicavel: typeof quality.freteAplicavel === "boolean" ? quality.freteAplicavel : null,
+      },
     },
+    // Composição do preço vigente: preço cheio/comprador/vendedor, promoção,
+    // financiador e retorno ML comprovado (precoVigenteComposicao).
+    precoVigente,
 
     // Aliases planos que o frontend da Central já lê (mesmos de
     // motorMargemService.comAliasesDeCompatibilidade).
@@ -516,6 +584,11 @@ function comporItem(row, realizada, deps = {}, rebateInfo = null, rebateIndispon
       // Retorno ML da promoção em andamento já somado à margem acima (null = nenhum).
       rebate: atual.rebate,
       rebateMotivo: atual.rebateMotivo,
+      // CONFIAVEL | ESTIMADA | DESATUALIZADA | BLOQUEADA (+ motivos). BLOQUEADA
+      // com margem = limite inferior (sem o retorno ML não comprovado).
+      confianca: confianca.nivel,
+      confiancaMotivos: confianca.motivos,
+      limiteInferior: confianca.limiteInferior === true,
     },
     realized: {
       margin: realizedContrato.margin,
@@ -556,10 +629,18 @@ async function statusEfetivoDaConta({ cliente, conta, deps, db }) {
   const rebates = await carregarRebatesDaConta({
     clienteContaId: conta.id, sellerId: seller, db, promoRepo: deps.promoRepository, logger: deps.logger,
   });
-  const overrides = await calcularStatusOverrides({
-    clienteId: cliente.id, clienteContaId: conta.id, rebates: rebates.porItem, snapshotRepo: repo, db,
-  });
-  return { rebates, overrides };
+  const repoPromo = deps.promoRepository || require("../promoSnapshot/promoSnapshotRepository");
+  // Promoções completas dos anúncios em preço promocional fora do mapa da conta
+  // (campanha do vendedor sem subsídio, DEAL…): UMA consulta para o lote.
+  const carregarPromocoesDosItens = typeof repoPromo.mapRebatesAtivosPorItem === "function"
+    ? (itemIds) => carregarRebatesAtivos({ clienteContaId: conta.id, sellerId: seller, itemIds, db, promoRepo: repoPromo, logger: deps.logger })
+    : null;
+  const overrides = rebates.indisponivel
+    ? { itemIds: [], statuses: [], rebateEmPrejuizo: 0, limiteInferior: { total: 0, LOSS: 0, LOW_MARGIN: 0 } }
+    : await calcularStatusOverrides({
+      clienteId: cliente.id, clienteContaId: conta.id, rebates: rebates.porItem, snapshotRepo: repo, db, carregarPromocoesDosItens,
+    });
+  return { rebates, overrides, sellerId: seller };
 }
 
 async function listarItens(params = {}, deps = {}) {
@@ -621,7 +702,16 @@ async function listarItens(params = {}, deps = {}) {
     repo.countProjectionSnapshotsFiltrado({ filtro, db }),
   ]);
 
-  const rebates = efetivo.rebates;
+  // Promoções COMPLETAS dos itens da página (a da conta só traz os subsidiados):
+  // a composição precisa ver também a campanha do vendedor que forma o preço.
+  const repoPromo = deps.promoRepository || require("../promoSnapshot/promoSnapshotRepository");
+  const rebates = efetivo.rebates.indisponivel || typeof repoPromo.mapRebatesAtivosPorItem !== "function"
+    ? efetivo.rebates
+    : await carregarRebatesAtivos({
+      clienteContaId: conta.id, sellerId: efetivo.sellerId, itemIds: linhas.map((l) => String(l.itemId)),
+      db, promoRepo: repoPromo, logger: deps.logger,
+    });
+  const rebateCtx = { promoSnapshot: rebates.porItem.promoSnapshot !== undefined ? rebates.porItem.promoSnapshot : efetivo.rebates.porItem.promoSnapshot };
 
   return {
     ...base,
@@ -642,7 +732,7 @@ async function listarItens(params = {}, deps = {}) {
       totalPaginas: Math.max(Math.ceil(contagem.total / pag.limit), 1),
     },
     ultimoCalculoEm: contagem.ultimoCalculoEm,
-    itens: linhas.map((row) => comporItem(row, realizada, deps, rebates.porItem.get(String(row.itemId)) || null, rebates.indisponivel)),
+    itens: linhas.map((row) => comporItem(row, realizada, deps, rebates.porItem.get(String(row.itemId)) || null, rebates.indisponivel, rebateCtx)),
   };
 }
 
@@ -720,6 +810,7 @@ async function obterRealizado(params = {}, deps = {}) {
 }
 
 module.exports = {
+  confiancaDaMargem,
   sellerDaConta,
   statusEfetivoDaConta,
   obterRealizado,

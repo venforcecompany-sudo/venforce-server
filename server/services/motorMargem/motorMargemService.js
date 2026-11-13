@@ -434,6 +434,17 @@ async function enrichBatch(prepared, { offset, limit, targetMargin, itemIds }, d
       // da MESMA leitura que deu o preço — Anúncios ML usa para achar o
       // rebate sem reler o sale_price. undefined = preço não veio do sale_price.
       promotionIdAtivo: observado.promotionIdAtivo,
+      // Identidade da promoção que formou o preço, NO MESMO instante da leitura
+      // do preço — persistida no snapshot para a Central casar o preço do
+      // cálculo com a promoção certa (precoVigenteComposicao). null = sem leitura.
+      precoLeitura: observado.fontePreco
+        ? {
+            fonte: observado.fontePreco,
+            promotionId: observado.promotionIdAtivo ?? null,
+            campaignId: observado.campaignIdAtivo ?? null,
+            promotionType: observado.promotionTypeAtivo ?? null,
+          }
+        : null,
       conciliacao: { ...conciliacao },
       realizado: realizado || null,
       reembolso: reembolsoInfo || null,
