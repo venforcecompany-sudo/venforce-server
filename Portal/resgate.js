@@ -139,7 +139,11 @@
     else if (minimo(b)) manchete = "Você lucra pelo menos " + moeda(L) + " por venda — pode ser mais, mas não dá para comprovar.";
     else if (b.status === "ABAIXO_DA_META") manchete = "Você lucra " + moeda(L) + " por venda (" + pct(m) + "), abaixo da sua meta de " + pct(meta, 0) + ".";
     else manchete = "Tudo certo: você lucra " + moeda(L) + " por venda (" + pct(m) + ").";
-    if (p) {
+    if (p && !p.tipo) {
+      // Preço CONHECIDO, financiamento DESCONHECIDO: não confundir um com o outro.
+      frases.push({ t: "O comprador paga " + moeda(P) + " (preço lido no Mercado Livre), com desconto de " + moeda(r2(cheio - P)) + " sobre o preço cheio de " + moeda(cheio) + "." });
+      frases.push({ t: "Ainda não foi lido qual promoção forma esse preço nem quem paga o desconto. Por segurança, nenhuma ajuda do Mercado Livre foi somada: a margem mostrada é a mínima.", c: "destaque" });
+    } else if (p) {
       var ehVend = TIPOS_VENDEDOR[p.tipo];
       frases.push({ t: "O comprador paga " + moeda(P) + " por causa da promoção " + nomePromo(f || p) + (ehVend ? ", criada por você." : ", do Mercado Livre.") + " O preço cheio é " + moeda(cheio) + "." });
       if (oc) frases.push({ t: "Você também tem a campanha " + nomePromo(oc) + " a " + moeda(oc.preco) + ", mas não é ela que define o preço: a outra promoção deixa o anúncio " + moeda(r2(oc.preco - P)) + " mais barato." });
@@ -159,6 +163,8 @@
       var s = b.sugerido || {};
       if (s.preco) frases.push({ t: "Para chegar a " + pct(meta, 0) + ", o preço precisaria ser " + moeda(s.preco) + (s.status === "RECOTADO" ? " — preço já recotado no Mercado Livre." : " (estimativa preliminar).") });
     }
+    var cf = item.comparacaoFrete;
+    if (cf && cf.amostras && !cf.bate && !vazio(cf.medianaRealizada)) frases.push({ t: "Nos " + inteiro(cf.amostras) + " envios reais comparáveis, o frete mediano cobrado foi " + moeda(cf.medianaRealizada) + (cf.superestimado ? ": o frete usado na conta (" + moeda(cv(b, "frete")) + ") pode estar acima do real." : ": o frete usado na conta (" + moeda(cv(b, "frete")) + ") pode estar abaixo do real.") });
     if (b.precoMudou) frases.push({ t: b.precoMudou.texto, c: "alerta" });
     return { manchete: manchete, frases: frases };
   }
@@ -188,7 +194,7 @@
       return a;
     }
     if (incerta(b)) {
-      a.push({ id: "confirmar", tipo: "tarefa", titulo: "Confirmar quanto o Mercado Livre paga", desc: "A promoção " + nomePromo(formaPreco(b) || p) + " não informa a participação do Mercado Livre.", passos: ["Ler a promoção novamente no Mercado Livre (só leitura): use “Confirmar no Mercado Livre” abaixo.", "Se a participação aparecer, a margem é recalculada com ela; se não, continua no pior caso."], rec: b.status !== "OK", recotar: true });
+      a.push({ id: "confirmar", tipo: "tarefa", titulo: "Confirmar quanto o Mercado Livre paga", desc: p.tipo ? "A promoção " + nomePromo(formaPreco(b) || p) + " não informa a participação do Mercado Livre." : "Qual promoção forma o preço e quem paga o desconto ainda não foram lidos.", passos: ["Ler a promoção novamente no Mercado Livre (só leitura): use “Confirmar no Mercado Livre” abaixo.", "Se a participação aparecer, a margem é recalculada com ela; se não, continua no pior caso."], rec: b.status !== "OK", recotar: true });
       a.push({ id: "pior", tipo: "preco", titulo: "Ajustar o preço considerando o pior caso", desc: "Simula sem nenhuma ajuda do Mercado Livre.", cen: "sem" });
       a.push({ id: "manter", tipo: "manter", titulo: "Deixar como está", desc: b.status === "OK" ? "Mesmo no pior caso, já está na meta." : "Nada muda no anúncio.", rec: b.status === "OK" });
       return a;
@@ -401,7 +407,7 @@
       '<td class="rg-col-sel"><input type="checkbox" data-rg-sel="' + esc(x.itemId) + '"' + (estado.sel[x.itemId] ? " checked" : "") + ' aria-label="Selecionar ' + esc(x.itemId) + '"></td>' +
       '<td><span class="rg-t1" title="' + esc(x.titulo) + '">' + (rev ? "✓ " : "") + esc(x.titulo || x.itemId) + '</span><span class="rg-mudo">' + esc(x.itemId) + (x.sku ? " · " + esc(x.sku) : "") + (b.unidades30d ? " · " + inteiro(b.unidades30d) + " vendas/mês" : "") + "</span></td>" +
       '<td class="rg-n">' + (p && b.precoCheio !== b.precoComprador ? '<s class="rg-mudo">' + moeda(b.precoCheio) + "</s><br>" : "") + "<b>" + moeda(b.precoComprador) + "</b></td>" +
-      '<td class="rg-col-md">' + (p ? esc(p.tipoRotulo) + '<span class="rg-mudo">' + esc(p.financiamento === "VENDEDOR_100" ? "desconto todo do vendedor" : p.financiamento === "ML_COFINANCIA" ? "ML ajuda " + moeda(p.subsidio) + "/venda" : "ajuda do ML não comprovada") + "</span>" : '<span class="rg-mudo">sem promoção</span>') + "</td>" +
+      '<td class="rg-col-md">' + (p ? esc(p.tipoRotulo || "Promoção não identificada") + '<span class="rg-mudo">' + esc(p.financiamento === "VENDEDOR_100" ? "desconto todo do vendedor" : p.financiamento === "ML_COFINANCIA" ? "ML ajuda " + moeda(p.subsidio) + "/venda" : "ajuda do ML não comprovada") + "</span>" : '<span class="rg-mudo">sem promoção</span>') + "</td>" +
       '<td class="rg-n">' + (vazio(b.margemPercent) ? '<span class="rg-mudo">—</span>' : (b.limiteInferior ? "≥ " : "") + pct(b.margemPercent)) + "<br>" + situacaoHtml(s) + "</td>" +
       '<td class="rg-n rg-col-md">' + (sug.preco ? moeda(sug.preco) + '<br><span class="rg-marca rg-marca--' + sp.cls + '">' + sp.txt + "</span>" : '<span class="rg-mudo">—</span>') + "</td>" +
       '<td class="rg-col-acao"><span class="rg-prox">' + esc(curto(b.proximoPasso || s.curto, 90)) + "</span></td></tr>";

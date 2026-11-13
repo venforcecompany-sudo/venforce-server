@@ -73,6 +73,17 @@ t("entender: campanha própria → desconto todo do vendedor; cofinanciada → M
   assert.ok(/devolve R\$\s?4,26/.test(t2) && /uma única vez/.test(t2) && /não é ela que define o preço/.test(t2) && /118,80/.test(t2));
   x = R.entender(det(bloq()), null, 15); assert.ok(/Ainda não dá para saber/.test(x.manchete) && /frete deste anúncio/.test(x.frases.map((f) => f.t).join(" ")));
 });
+t("MLB6849329632: preço do comprador conhecido × financiamento desconhecido — margem mínima, sem presumir ML", () => {
+  const b = bancada({ status: "MARGEM_DESCONHECIDA", precos: { cheio: 697.9, comprador: 522.21, promocionalVendedor: null, campanhaVendedor: null },
+    promocao: { ativa: true, iniciadas: null, tipo: null, tipoRotulo: null, id: null, nome: null, financiamento: "NAO_DETERMINADO", subsidio: null, comprovado: false },
+    resultado: { calculavel: true, lucro: 51.15, margemPercent: 9.79, confiavel: false, limiteInferior: true } });
+  const x = R.entender(det(b, {}, { comparacaoFrete: { amostras: 3, medianaRealizada: 79.35, bate: false, superestimado: true } }), null, 15), tx = x.frases.map((f) => f.t).join(" ");
+  assert.ok(/pelo menos R\$\s?51,15/.test(x.manchete));
+  assert.ok(/522,21/.test(tx) && /preço lido no Mercado Livre/.test(tx) && /nenhuma ajuda do Mercado Livre foi somada/.test(tx) && !/promoção promoção/.test(tx) && !/do Mercado Livre\./.test(tx));
+  assert.ok(/79,35/.test(tx), "evidência de frete realizado da auditoria");
+  assert.ok(/≥ 9,79%/.test(R.linhaTabelaHtml({ itemId: "MLB6849329632", titulo: "Exaustor", bancada: { status: "MARGEM_DESCONHECIDA", margemPercent: 9.79, limiteInferior: true, precoComprador: 522.21, precoCheio: 697.9, promocao: { tipoRotulo: null, financiamento: "NAO_DETERMINADO" }, sugerido: {} } })));
+  assert.strictEqual(R.opcoes(det(b), 15)[0].id, "confirmar");
+});
 t("opções: só ações compatíveis (ACEITE cofinanciada não oferece ajustar promocional; bloqueado → completar)", () => {
   const ids = (b) => R.opcoes(det(b), 15).map((o) => o.id);
   assert.deepStrictEqual(ids(bancada({ promocao: { ...bancada().promocao, modoEscrita: "PRECO" } })), ["sair", "promo", "comparar", "manter"]);
