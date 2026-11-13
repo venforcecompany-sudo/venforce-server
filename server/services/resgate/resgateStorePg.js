@@ -40,6 +40,10 @@ function sqlFiltroBancada(filtro, metaParam) {
   if (filtro === "abaixo_meta") return ` AND ${confiavel} AND (${margem} < 0 OR (${meta} IS NOT NULL AND ${margem} < ${meta} - 0.000001))`;
   if (filtro === "desconhecida") return ` AND NOT ${confiavel} AND NOT ${okLimite}`;
   if (filtro === "promocao") return ` AND ${promo}`;
+  // Mesma regra do status OK da bancada: confiável e na meta, OU limite inferior já na meta.
+  const naMeta = `((${confiavel} AND NOT (${margem} < 0 OR (${meta} IS NOT NULL AND ${margem} < ${meta} - 0.000001))) OR ${okLimite})`;
+  if (filtro === "na_meta") return ` AND ${naMeta}`;
+  if (filtro === "atencao") return ` AND NOT ${naMeta}`;
   return "";
 }
 

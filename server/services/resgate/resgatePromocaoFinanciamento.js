@@ -68,7 +68,9 @@ function classificarFinanciamento({ iniciadas, salePrice = null, vigente, cheio,
     if (grupos.size !== 1) return { ...base, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "PROMO_AMBIGUA", texto: `${casam.length} promoções iniciadas no mesmo preço com financiamento diferente: não dá para saber qual forma o preço.` };
   }
   const p = casam[0];
-  const out = { ...base, tipo: p.type, tipoRotulo: TIPO_ROTULO[p.type] || p.type, nome: p.name || null, id: p.id || null };
+  // Todas as iniciadas, marcando QUAL forma o preço (a tela explica a campanha do vendedor "por baixo").
+  const lista = (iniciadas || []).map((x) => ({ id: x.id || null, tipo: x.type || null, tipoRotulo: TIPO_ROTULO[x.type] || x.type || null, nome: x.name || null, preco: num(x.price), original: num(x.original_price), mlPct: num(x.meli_percentage), vendPct: num(x.seller_percentage), formaPreco: x === p }));
+  const out = { ...base, tipo: p.type, tipoRotulo: TIPO_ROTULO[p.type] || p.type, nome: p.name || null, id: p.id || null, iniciadas: lista };
   if (p.camposBoost && p.camposBoost.length) return { ...out, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "BOOSTED_OFFER_NAO_MEDIDO", texto: `A resposta traz ${p.camposBoost.join(", ")}: compensação do ML não mensurável com segurança.` };
   const mp = num(p.meli_percentage), sp = num(p.seller_percentage), orig = num(p.original_price);
   if (mp !== null) {

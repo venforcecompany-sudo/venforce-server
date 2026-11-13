@@ -23,5 +23,6 @@ router.post("/contas/:contaId/itens/:itemId/simular", ...daConta, c.simular);
 router.post("/contas/:contaId/itens/:itemId/revisao", ...daConta, c.revisar);
 router.get("/contas/:contaId/plano.xlsx", ...daConta, c.planoXlsx);
 router.post("/contas/:contaId/dry-run", ...daConta, c.dryRun);
+router.post("/contas/:contaId/propostas", ...daConta, c.propostas);
 
 module.exports = router;

@@ -162,5 +162,25 @@ function res() { const r = { statusCode: 200, headers: {}, body: null, status(c)
     const src = fs.readFileSync(path.join(__dirname, "..", "services", "resgate", "resgatePedidos.js"), "utf8");
     assert.ok(!/require\(|pool|\.query\(/.test(src), "serviço de pedidos é puro");
   });
+  await t("simular preliminar: NENHUMA leitura do ML (nem fetch criado) e resultado marcado PRELIMINAR", async () => {
+    let criou = 0, leu = 0;
+    const itemC = { ...item, contrato: require("../services/resgate/resgateContrato").montarContratoFinanceiro({ precos: { cheio: 100, vigente: 100 }, promocao: { ativa: false }, comissao: { valor: 14, percentual: 0.14, precoBase: 100 }, frete: { valor: 13.85 }, custo: { valor: 40 }, imposto: { percentual: 0.13 }, taxaFixa: { valor: 0 }, anuncio: { logisticType: "cross_docking" } }) };
+    const base = dbFalso();
+    const db = { async query(sql, p2) { if (/FROM resgate_itens WHERE execucao_id = \$1 AND cliente_conta_id = \$2 AND item_id = \$3/.test(sql)) return { rows: [{ resultado: itemC, revisao_status: "PENDENTE" }] }; return base.query(sql, p2); } };
+    c.configurar({ db, criarFetch: () => { criou++; return async () => ({}); }, lerAoVivo: async () => { leu++; return { ok: false }; } });
+    const r = res(); await c.simular({ user: { id: 1 }, contaAutorizada: { clienteId: 133 }, params: { contaId: "86", itemId: "MLB1" }, body: { precos: [110], preliminar: true } }, r);
+    assert.strictEqual(r.statusCode, 200, JSON.stringify(r.body)); assert.strictEqual(criou + leu, 0);
+    assert.strictEqual(r.body.tipo, "PRELIMINAR"); assert.strictEqual(r.body.simulacoes[0].comissao.valor, 15.4);
+  });
+  await t("propostas em lote: valida estratégia e seleção; só calcula (nenhuma escrita no banco)", async () => {
+    const base = dbFalso();
+    c.configurar({ db: base });
+    let r = res(); await c.propostas({ user: { id: 1 }, params: { contaId: "86" }, body: { estrategia: "X", itemIds: ["MLB1"] } }, r); assert.strictEqual(r.statusCode, 400);
+    r = res(); await c.propostas({ user: { id: 1 }, params: { contaId: "86" }, body: { estrategia: "SAIR_CAMPANHA", itemIds: [] } }, r); assert.strictEqual(r.statusCode, 400);
+    r = res(); await c.propostas({ user: { id: 1 }, params: { contaId: "86" }, body: { estrategia: "SAIR_CAMPANHA", itemIds: ["MLB1"], meta: 15 } }, r);
+    assert.strictEqual(r.statusCode, 200, JSON.stringify(r.body)); assert.ok(Array.isArray(r.body.prontos) && Array.isArray(r.body.excecoes));
+    assert.ok(!base.chamadas.some((q) => /UPDATE|INSERT|DELETE/i.test(q)), base.chamadas.join(" | "));
+    assert.ok(/router\.post\("\/contas\/:contaId\/propostas", \.\.\.daConta/.test(rotas));
+  });
   console.log(`\n${ok} verificações das rotas do Resgate`);
 })();

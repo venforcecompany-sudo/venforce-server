@@ -16,10 +16,13 @@ const { planoDeAtivacao } = require("../../services/resgate/resgateAtivacao");
 const { planoParaBuffer } = require("../../services/resgate/resgatePlanoXlsx");
 const { montarBancada, passaFiltro, linhaDaLista, metaDe, FILTROS } = require("../../services/resgate/resgateBancada");
 const { montarPedidosDoItem, montarDetalhePedido } = require("../../services/resgate/resgatePedidos");
+const { simularPreliminar, propostasEmLote, ESTRATEGIAS } = require("../../services/resgate/resgateSimulacaoPreliminar");
+// Corpo JSON das POSTs (preview só aceita as que NÃO escrevem: simulação preliminar e propostas).
+const lerCorpo = (req) => new Promise((ok) => { let s = ""; req.on("data", (d) => { s += d; if (s.length > 1e6) req.destroy(); }); req.on("end", () => { try { ok(JSON.parse(s || "{}")); } catch (_) { ok({}); } }); });
 
 const a = args();
 const os = require("os");
-const PADRAO = path.join(os.homedir(), "venforce-backups", "handoffs", "resgate_2026-11-12", "auditoria_bancada_e4");
+const PADRAO = path.join(os.homedir(), "venforce-backups", "handoffs", "resgate_2026-11-12", "auditoria_bancada_e5");
 const dir = path.resolve(String(a.dados || PADRAO).replace(/^~(?=\/|$)/, os.homedir()));
 // Pasta sem contas/ gerava uma tela com ZERO contas sem explicar: agora recusa com a causa.
 (function conferirDados() {
@@ -51,7 +54,7 @@ http.createServer(async (req, res) => {
         ativacao: planoDeAtivacao({ contas }) });
     }
     // Preview NUNCA habilita ações reais, mesmo com a flag no ambiente.
-    if (u.pathname === "/resgate/config") return json(res, 200, { ok: true, acoesHabilitadas: false, recotacaoSobDemanda: false, preview: true });
+    if (u.pathname === "/resgate/config") return json(res, 200, { ok: true, acoesHabilitadas: false, recotacaoSobDemanda: false, simulacaoPreliminar: true, preview: true });
     let m = u.pathname.match(/^\/resgate\/contas\/(\d+)\/itens$/);
     if (m) {
       const q = u.searchParams; const lim = Math.min(100, Number(q.get("limite")) || 50); const pag = Math.max(1, Number(q.get("pagina")) || 1);
@@ -80,6 +83,20 @@ http.createServer(async (req, res) => {
       const x = (await itensDa(Number(m[1]))).find((y) => y.itemId === decodeURIComponent(m[2]));
       return x ? json(res, 200, { ok: true, item: x, bancada: montarBancada(x, { meta: metaDe(u.searchParams.get("meta")) }), contexto: { clienteSlug: null, clienteContaId: Number(m[1]), acoesHabilitadas: false, preview: true } })
         : json(res, 404, { ok: false, motivo: "não auditado" });
+    }
+    m = u.pathname.match(/^\/resgate\/contas\/(\d+)\/itens\/([^/]+)\/simular$/);
+    if (m && req.method === "POST") {
+      const corpo = await lerCorpo(req);
+      if (corpo.preliminar !== true) return json(res, 501, { ok: false, codigo: "RECOTACAO_INDISPONIVEL_NO_PREVIEW", motivo: "Recotação no Mercado Livre indisponível no preview local: a simulação aqui é só preliminar." });
+      const x = (await itensDa(Number(m[1]))).find((y) => y.itemId === decodeURIComponent(m[2]));
+      return x ? json(res, 200, await simularPreliminar(x, corpo.precos)) : json(res, 404, { ok: false, motivo: "não auditado" });
+    }
+    m = u.pathname.match(/^\/resgate\/contas\/(\d+)\/propostas$/);
+    if (m && req.method === "POST") {
+      const corpo = await lerCorpo(req);
+      if (!ESTRATEGIAS[corpo.estrategia]) return json(res, 400, { ok: false, motivo: "Estratégia inválida." });
+      const ids = new Set((corpo.itemIds || []).map(String).slice(0, 500));
+      return json(res, 200, await propostasEmLote((await itensDa(Number(m[1]))).filter((x) => ids.has(x.itemId)), { estrategia: corpo.estrategia, meta: corpo.meta, tetoAumento: corpo.tetoAumento, terminarEm90: corpo.terminarEm90 === true }));
     }
     m = u.pathname.match(/^\/resgate\/(?:contas\/(\d+)\/)?plano\.xlsx$/);
     if (m) {

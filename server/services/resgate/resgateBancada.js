@@ -17,6 +17,7 @@
 // Ações: a bancada só DESCREVE as opções e qual endpoint existente de
 // /anuncios-meli as executaria. Não executa nada.
 
+const { TIPOS_DO_VENDEDOR } = require("./resgatePromocaoFinanciamento");
 const core = require("../motorMargem/core");
 const { modoEscritaPromocao, motivoTipoSemEscrita } = require("../meliAnuncios/promocaoTiposSuportados");
 const { FINANCIAMENTO } = require("./resgatePromocaoFinanciamento");
@@ -24,7 +25,7 @@ const { FINANCIAMENTO } = require("./resgatePromocaoFinanciamento");
 const VERSAO = "resgate-bancada/1";
 const EPS = 1e-6;
 const STATUS = { OK: "OK", ABAIXO_DA_META: "ABAIXO_DA_META", PREJUIZO: "PREJUIZO", MARGEM_DESCONHECIDA: "MARGEM_DESCONHECIDA", BLOQUEADO: "BLOQUEADO" };
-const FILTROS = ["abaixo_meta", "prejuizo", "desconhecida", "promocao"];
+const FILTROS = ["abaixo_meta", "prejuizo", "desconhecida", "promocao", "atencao", "na_meta"];
 
 const num = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 const r2 = (v) => (v === null ? null : Math.round((v + Number.EPSILON) * 100) / 100);
@@ -188,8 +189,10 @@ function montarBancada(item, { promocao: promocaoIn = null, recotacao: recotacao
 
   return {
     versao: VERSAO, itemId: item && item.itemId, status, motivoStatus, meta: metaInfo,
-    precos: { cheio, comprador, promocionalVendedor: promoAtiva && promo.financiamento === FINANCIAMENTO.VENDEDOR ? comprador : null },
-    promocao: { ativa: promoAtiva, tipo: promo.tipo || null, tipoRotulo: promo.tipoRotulo || promo.tipo || null, id: promo.id || null, nome: promo.nome || null, financiamento: promo.financiamento, subsidio, comprovado: Boolean(promo.comprovado), texto: promo.texto || null, fonte: promo.fonte || null, modoEscrita: modo },
+    precos: { cheio, comprador, promocionalVendedor: promoAtiva && promo.financiamento === FINANCIAMENTO.VENDEDOR ? comprador : null,
+      // Campanha do próprio vendedor INICIADA que não forma o preço (outra promoção a deixa mais barata).
+      campanhaVendedor: (() => { const oc = promoAtiva && Array.isArray(promo.iniciadas) ? promo.iniciadas.find((x) => !x.formaPreco && TIPOS_DO_VENDEDOR.has(x.tipo)) : null; return oc ? { id: oc.id, nome: oc.nome, tipoRotulo: oc.tipoRotulo, preco: oc.preco } : null; })() },
+    promocao: { ativa: promoAtiva, iniciadas: Array.isArray(promo.iniciadas) ? promo.iniciadas : null, tipo: promo.tipo || null, tipoRotulo: promo.tipoRotulo || promo.tipo || null, id: promo.id || null, nome: promo.nome || null, financiamento: promo.financiamento, subsidio, comprovado: Boolean(promo.comprovado), texto: promo.texto || null, fonte: promo.fonte || null, modoEscrita: modo },
     cascata, resultado, bloqueios, pendencias, sugerido, acoes,
     precoMudou: precoMudou ? { ...precoMudou, texto: `Preço cheio mudou desde a auditoria (${brl(precoMudou.cheioAuditoria)} → ${brl(precoMudou.cheioAtual)}): reler antes de agir.` } : null,
     observadoEm: item && item.avaliadoEm || null,
@@ -233,7 +236,7 @@ function linhaDaLista(x, b) {
     promocao: b.promocao.ativa ? { tipoRotulo: b.promocao.tipoRotulo, financiamento: b.promocao.financiamento, subsidio: b.promocao.subsidio, comprovado: b.promocao.comprovado } : null,
     sugerido: { status: b.sugerido.status, preco: b.sugerido.preco }, acaoPrincipal: b.acoes[0] ? b.acoes[0].tipo : null, proximoPasso: proximoPasso(b),
     mudancaRecente: Boolean(x.historico && x.historico.mudancaRecente), ultimaMudancaEm: x.historico ? x.historico.ultimaMudancaEm || null : null,
-    unidades30d: x.vendas30d ? x.vendas30d.unidades : null, precoMudou: Boolean(b.precoMudou), revisao: x.revisao || null, precoVisto: x.fingerprint ? x.fingerprint.precoVisto : null,
+    unidades30d: x.vendas30d ? x.vendas30d.unidades : null, precoMudou: Boolean(b.precoMudou), bloqueio: (b.bloqueios || [])[0] ? b.bloqueios[0].codigo : null, revisao: x.revisao || null, precoVisto: x.fingerprint ? x.fingerprint.precoVisto : null,
   };
 }
 
@@ -244,6 +247,8 @@ function passaFiltro(b, filtro) {
   if (filtro === "prejuizo") return b.status === STATUS.PREJUIZO;
   if (filtro === "desconhecida") return b.status === STATUS.MARGEM_DESCONHECIDA || b.status === STATUS.BLOQUEADO;
   if (filtro === "promocao") return Boolean(b.promocao && b.promocao.ativa);
+  if (filtro === "atencao") return b.status !== STATUS.OK;
+  if (filtro === "na_meta") return b.status === STATUS.OK;
   return true;
 }
 

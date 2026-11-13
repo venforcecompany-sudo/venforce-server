@@ -19,6 +19,7 @@ const repo = require("../services/resgate/resgateLeituraRepository");
 const { montarBancada, linhaDaLista, normalizarRecotacao, metaDe, FILTROS } = require("../services/resgate/resgateBancada");
 const { montarContratoFinanceiro } = require("../services/resgate/resgateContrato");
 const { montarPedidosDoItem, montarDetalhePedido } = require("../services/resgate/resgatePedidos");
+const { simularPreliminar, propostasEmLote, ESTRATEGIAS } = require("../services/resgate/resgateSimulacaoPreliminar");
 const centralVendasReadService = require("../services/centralVendas/centralVendasReadService");
 
 // Ações reais (alterar preço / promoção) usam os endpoints EXISTENTES de /anuncios-meli
@@ -155,6 +156,8 @@ async function simular(req, res) {
     const auditado = exec ? await store.item(exec.id, Number(req.params.contaId), String(req.params.itemId)) : null;
     if (!ctx || !auditado) return res.status(404).json({ ok: false, motivo: "Anúncio não auditado nesta conta." });
     const precos = (Array.isArray(req.body && req.body.precos) ? req.body.precos : []).map(Number).filter((p) => p > 0).slice(0, 8);
+    // Preliminar: NENHUMA chamada ao ML — mesmo núcleo, comissão e frete auditados do preço atual.
+    if (req.body && req.body.preliminar === true) return res.json(await simularPreliminar(auditado, precos));
     const meta = metaDe(req.body && req.body.meta) ?? (auditado.meta ? auditado.meta.valor : null);
     const ler = deps.criarFetch();
     const vivo = await deps.lerAoVivo({ clienteId: ctx.clienteId, sellerId: auditado.sellerId, itemId: auditado.itemId, ler });
@@ -240,9 +243,31 @@ async function pedidoDetalhe(req, res) {
   } catch (err) { return erroCentral(res, err, "pedidoDetalhe"); }
 }
 
+/**
+ * POST /resgate/contas/:contaId/propostas { itemIds[], estrategia, meta, tetoAumento, terminarEm90 }
+ * Prepara PROPOSTAS em lote (nada é aplicado, nada é gravado): preço da meta recotado quando
+ * existe, senão PRELIMINAR; exceções com o motivo. Sem chamada ao ML.
+ */
+async function propostas(req, res) {
+  try {
+    const store = await storeOu503(res); if (!store) return;
+    const exec = await execucaoAtual(store);
+    if (!exec) return res.status(404).json({ ok: false, motivo: "Sem auditoria para esta conta." });
+    const b = req.body || {};
+    if (!ESTRATEGIAS[b.estrategia]) return res.status(400).json({ ok: false, motivo: "Estratégia inválida." });
+    const ids = new Set((Array.isArray(b.itemIds) ? b.itemIds : []).map(String).slice(0, 500));
+    if (!ids.size) return res.status(400).json({ ok: false, motivo: "Selecione ao menos um anúncio." });
+    const itens = (await store.lerItens(exec.id, Number(req.params.contaId))).filter((x) => ids.has(x.itemId));
+    return res.json(await propostasEmLote(itens, { estrategia: b.estrategia, meta: b.meta, tetoAumento: b.tetoAumento, terminarEm90: b.terminarEm90 === true }));
+  } catch (err) {
+    console.error("[resgate] propostas:", err.message);
+    return res.status(500).json({ ok: false, motivo: "Erro ao preparar as propostas." });
+  }
+}
+
 /** GET /resgate/config — o que a tela pode oferecer neste ambiente. */
 function config(_req, res) {
-  return res.json({ ok: true, acoesHabilitadas: acoesHabilitadas(), recotacaoSobDemanda: true, preview: false });
+  return res.json({ ok: true, acoesHabilitadas: acoesHabilitadas(), recotacaoSobDemanda: true, simulacaoPreliminar: true, preview: false });
 }
 
 /** POST /resgate/contas/:contaId/itens/:itemId/revisao { status, nota, precoVisto } */
@@ -310,4 +335,4 @@ async function dryRun(req, res) {
   }
 }
 
-module.exports = { visaoGlobal, conta, itens, item, simular, revisar, planoXlsx, dryRun, config, pedidos, pedidoDetalhe, configurar };
+module.exports = { visaoGlobal, conta, itens, item, simular, revisar, planoXlsx, dryRun, config, pedidos, pedidoDetalhe, propostas, configurar };
