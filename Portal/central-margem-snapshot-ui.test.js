@@ -164,6 +164,7 @@ const MOCK_CLIENT = `
           texto: "Campanha tradicional (DEAL): o Mercado Livre não informa a participação dele.",
           promo: { id: "P-8", tipo: "DEAL", tipoLabel: "Campanha tradicional (DEAL)", nome: "Black Friday", precoFinal: 100, precoOriginal: 163.9 } });
         confianca = "BLOQUEADA"; limite = true; motivos = [precoVigente.texto];
+        status = "SUSPECT_DATA"; // backend: Prejuízo sobre limite inferior nunca é Prejuízo confirmado
       }
       if (i === 20) {
         precoVigente = pv("CONFIRMADO", "VENDEDOR", { cheio: 115.4, subsidio: { valor: 0, status: "ZERO" }, texto: "Campanha do vendedor: promoção do próprio vendedor.",
@@ -307,7 +308,7 @@ const MOCK_CLIENT = `
           mensagem: missing ? "Esta conta ainda não tem leitura de margem calculada." : null,
           conta: { id: Number(conta), nome: "Conta " + conta },
           snapshot: { totalItens: missing ? null : TOTAL, ultimoCalculoEm: missing ? null : "2026-09-27T10:00:00Z", foraDoCatalogo: missing ? null : 0 },
-          kpis: missing ? null : { total: TOTAL, porStatus: porStatus, porRefreshStatus: { fresh: TOTAL - 1, stale: 0, failed: 1 }, anuncios: anuncios, comMargem: TOTAL - porStatus.UNVALIDATED },
+          kpis: missing ? null : { total: TOTAL, porStatus: porStatus, limiteInferior: { total: 7, LOSS: 4, LOW_MARGIN: 3 }, porRefreshStatus: { fresh: TOTAL - 1, stale: 0, failed: 1 }, anuncios: anuncios, comMargem: TOTAL - porStatus.UNVALIDATED },
           refresh: { runAtivo: runPublico(ativo(conta)), ultimoRun: runPublico(ultimo(conta)) },
         };
         var normalizado = window.VFCentralMargemApi.normalizeSnapshotResumo(payload);
@@ -656,7 +657,11 @@ async function run() {
       assert.strictEqual(await cel("C900-MLB100020", "[data-cm-freight-level]"), "estimado (medidas do anúncio)");
       assert.strictEqual(await cel("C900-MLB100020", "[data-cm-margin-conf]"), "Estimada");
 
-      // Desatualizada: nunca apresentada como atual.
+      // Limite inferior negativo NUNCA aparece como Prejuízo confirmado.
+      const estado17 = await cel("C900-MLB100017", ".cm-state-cell");
+      assert.ok(estado17.includes("Não comprovado") && !estado17.includes("Prejuízo"), estado17);
+
+            // Desatualizada: nunca apresentada como atual.
       assert.strictEqual(await cel("C900-MLB100021", "[data-cm-price-status]"), "Preço mudou: recalcular");
       assert.strictEqual(await cel("C900-MLB100021", "[data-cm-margin-conf]"), "Desatualizada");
       assert.ok((await cel("C900-MLB100021", ".cm-diag-cell")).includes("Recalcular margem"));
@@ -682,6 +687,10 @@ async function run() {
       assert.strictEqual(await cel("C900-MLB100017", ".cm-mc-value"), "≥ -10,0%");
       assert.strictEqual(await cel("C900-MLB100017", ".cm-next-chip"), "Revisar preço/promoção");
       assert.strictEqual(await cel("C900-MLB100021", "[data-cm-stale]"), "desatualizada");
+      // Placar: limite inferior fora de "Em prejuízo"/"Abaixo da meta", contado à parte em "Dado suspeito".
+      const placar = (await cdp.evaluate("document.getElementById('cm-kpis-top') ? document.getElementById('cm-kpis-top').innerText : document.body.innerText")).replace(/\u00a0/g, " ");
+      assert.ok(placar.includes("inclui 7 com preço/promoção a revisar"), placar);
+      assert.ok((await cdp.evaluate("Array.from(document.querySelectorAll('[title]')).map(function(e){return e.title;}).join('|')")).includes("4 outro(s) só têm limite inferior negativo"), "o KPI de prejuízo explica o que ficou fora");
     });
 
     await check("trocar o período relê itens e realizado com periodo=YYYY-MM (Shell) e NÃO pede refresh do snapshot", async () => {

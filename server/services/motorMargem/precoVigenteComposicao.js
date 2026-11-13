@@ -70,6 +70,7 @@ const MOTIVO = Object.freeze({
   PRECO_MUDOU: "PRECO_MUDOU",
   PROMOCAO_DEPOIS_DO_CALCULO: "PROMOCAO_DEPOIS_DO_CALCULO",
   PRECO_SEM_SALE_PRICE: "PRECO_SEM_SALE_PRICE",
+  BOOSTED_OFFER_NAO_MEDIDO: "BOOSTED_OFFER_NAO_MEDIDO",
 });
 
 // Descontos cujo dono é o vendedor (o ML não cofinancia campanha própria).
@@ -108,22 +109,29 @@ function brl(v) { return v === null || v === undefined ? "—" : `R$ ${Number(v)
 /** Linha de promoção em formato único (linhaPublica do repo ou linha crua). */
 function normalizarLinhaPromo(p) {
   if (!p || typeof p !== "object") return null;
-  const tipo = p.tipo || p.promotionType || p.promotion_type || null;
+  // Aceita a linha do Promo Snapshot (camelCase/snake_case) e a resposta BRUTA
+  // de GET /seller-promotions/items/{id} (type, price, id, ref_id) — o mesmo
+  // classificador serve a Central e o Resgate.
+  const tipo = p.tipo || p.promotionType || p.promotion_type || p.type || null;
   const ativa = p.ativa;
+  const camposBoost = Array.isArray(p.camposBoost)
+    ? p.camposBoost
+    : Object.keys(p).filter((k) => /boost/i.test(k) && p[k] !== null && p[k] !== undefined && p[k] !== false);
   return {
-    promotionId: p.promotionId ?? p.promotion_id ?? null,
+    promotionId: p.promotionId ?? p.promotion_id ?? p.id ?? null,
     refId: p.refId ?? p.ref_id ?? null,
     tipo: tipo ? String(tipo).toUpperCase() : null,
-    nome: p.nome || null,
+    nome: p.nome || p.name || null,
     status: String(p.status || "").toLowerCase() || null,
     ativa: typeof ativa === "boolean" ? ativa : null,
-    precoFinal: num(p.precoFinal ?? p.preco_final),
-    precoOriginal: num(p.precoOriginal ?? p.preco_original),
+    precoFinal: num(p.precoFinal ?? p.preco_final ?? p.price),
+    precoOriginal: num(p.precoOriginal ?? p.preco_original ?? p.original_price),
     meliPercentage: num(p.meliPercentage ?? p.meli_percentage),
     sellerPercentage: num(p.sellerPercentage ?? p.seller_percentage),
     subsidioMl: num(p.subsidioMl ?? p.subsidio_ml),
     observedAt: iso(p.observedAt ?? p.observed_at),
     herdada: p.herdada === true || p.herdado === true,
+    camposBoost,
   };
 }
 
@@ -137,6 +145,12 @@ function iniciada(p) {
  */
 function financiamento(p, precoCheio, preco) {
   const rotulo = ROTULO_TIPO[p.tipo] || p.tipo || "Promoção";
+  // boosted_offer/benefício extra do ML: nenhuma resposta real trouxe esses
+  // campos; se aparecerem, a compensação não é mensurável — nunca somada.
+  if (p.camposBoost && p.camposBoost.length) {
+    return { financiador: FINANCIADOR.NAO_DETERMINADO, subsidio: null, motivo: MOTIVO.BOOSTED_OFFER_NAO_MEDIDO,
+      texto: `${rotulo}: a resposta do Mercado Livre traz ${p.camposBoost.join(", ")} — compensação do ML não mensurável com segurança.` };
+  }
   const mp = p.meliPercentage;
   if (mp !== null) {
     if (mp <= 0) {
@@ -335,7 +349,40 @@ function classificarPrecoVigente({ linha, promocoes = null, contexto = {} } = {}
   });
 }
 
+/**
+ * Adaptador para quem lê o ML direto (VenForce Resgate): mesma decisão de
+ * classificarPrecoVigente, a partir da RESPOSTA BRUTA.
+ *
+ * @param {object} a
+ * @param {Array}  a.lista           resposta de GET /seller-promotions/items/{id}?app_version=v2
+ * @param {number} [a.promoStatus]   HTTP dessa leitura (≠ 200 → leitura indisponível)
+ * @param {object} [a.salePrice]     resposta de GET /items/{id}/sale_price (amount, regular_amount, metadata)
+ * @param {number} a.precoComprador  preço usado na margem (sale_price.amount do cálculo)
+ * @param {number} [a.precoCheio]    preço cheio do vendedor (regular_amount)
+ * @param {string} [a.precoLidoEm]   ISO da leitura do preço
+ * @param {string} [a.promoLidaEm]   ISO da leitura das promoções
+ */
+function classificarDaLeituraMl({ lista, promoStatus = 200, salePrice = null, precoComprador, precoCheio = null, precoLidoEm = null, promoLidaEm = null } = {}) {
+  const meta = salePrice && salePrice.metadata ? salePrice.metadata : null;
+  const linha = {
+    price: precoComprador,
+    listPrice: precoCheio,
+    calculatedAt: precoLidoEm,
+    quality: {
+      precoLeitura: meta ? { fonte: "sale_price", promotionId: meta.promotion_id ?? null, campaignId: meta.campaign_id ?? null, promotionType: meta.promotion_type ?? null } : null,
+    },
+  };
+  if (promoStatus !== 200) {
+    return classificarPrecoVigente({ linha, promocoes: null, contexto: { indisponivel: `HTTP_${promoStatus}` } });
+  }
+  // O sale_price lido junto, se o valor mudou, aponta a promoção de OUTRO preço:
+  // a identificação por id só vale para o mesmo preço (o classificador confere).
+  const promocoes = (Array.isArray(lista) ? lista : []).filter((p) => p && typeof p === "object");
+  return classificarPrecoVigente({ linha, promocoes, contexto: { promoSnapshot: { runId: null, snapshotAt: promoLidaEm } } });
+}
+
 module.exports = {
+  classificarDaLeituraMl,
   classificarPrecoVigente,
   normalizarLinhaPromo,
   STATUS,

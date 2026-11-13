@@ -170,6 +170,9 @@ async function obterResumo({ clienteSlug, clienteContaId }, deps = {}) {
       ...placar,
       // LC/un somado dos anúncios em Prejuízo, já com o retorno ML dos que seguem em prejuízo.
       lcPrejuizo: Math.round((lcPrejuizo + efetivo.overrides.rebateEmPrejuizo + Number.EPSILON) * 100) / 100,
+      // Prejuízo/Margem baixa sobre preço promocional NÃO comprovado: contados
+      // à parte (status efetivo "Dado suspeito"), nunca como resultado comprovado.
+      limiteInferior: efetivo.overrides.limiteInferior || { total: 0, LOSS: 0, LOW_MARGIN: 0 },
     };
     foraDoCatalogo = fora.total;
   }
@@ -521,7 +524,7 @@ function comporItem(row, realizada, deps = {}, rebateInfo = null, rebateIndispon
       statusReasons: reclass ? reclass.reasons : quality.statusReasons || [],
       // Transparência: o status persistido era outro; o retorno ML da promoção
       // em andamento mudou a margem e, com ela, a classificação.
-      statusReclassificado: reclass ? { de: reclass.de, para: reclass.status, motivo: "retorno_ml" } : null,
+      statusReclassificado: reclass ? { de: reclass.de, para: reclass.status, motivo: reclass.motivo || "retorno_ml" } : null,
       integrityCode: integrity ? integrity.code : null,
       integrityReason: integrity ? integrity.reason : null,
     },
@@ -626,9 +629,17 @@ async function statusEfetivoDaConta({ cliente, conta, deps, db }) {
   const rebates = await carregarRebatesDaConta({
     clienteContaId: conta.id, sellerId: seller, db, promoRepo: deps.promoRepository, logger: deps.logger,
   });
-  const overrides = await calcularStatusOverrides({
-    clienteId: cliente.id, clienteContaId: conta.id, rebates: rebates.porItem, snapshotRepo: repo, db,
-  });
+  const repoPromo = deps.promoRepository || require("../promoSnapshot/promoSnapshotRepository");
+  // Promoções completas dos anúncios em preço promocional fora do mapa da conta
+  // (campanha do vendedor sem subsídio, DEAL…): UMA consulta para o lote.
+  const carregarPromocoesDosItens = typeof repoPromo.mapRebatesAtivosPorItem === "function"
+    ? (itemIds) => carregarRebatesAtivos({ clienteContaId: conta.id, sellerId: seller, itemIds, db, promoRepo: repoPromo, logger: deps.logger })
+    : null;
+  const overrides = rebates.indisponivel
+    ? { itemIds: [], statuses: [], rebateEmPrejuizo: 0, limiteInferior: { total: 0, LOSS: 0, LOW_MARGIN: 0 } }
+    : await calcularStatusOverrides({
+      clienteId: cliente.id, clienteContaId: conta.id, rebates: rebates.porItem, snapshotRepo: repo, db, carregarPromocoesDosItens,
+    });
   return { rebates, overrides, sellerId: seller };
 }
 

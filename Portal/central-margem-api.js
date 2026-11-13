@@ -1228,6 +1228,9 @@
     LOW_MARGIN: { label: "Margem baixa", tone: "is-warning" },
     LOSS: { label: "Prejuízo", tone: "is-danger" },
     UNKNOWN: { label: "Indeterminado", tone: "is-neutral" },
+    // Margem sobre preço promocional com composição não comprovada: é limite
+    // inferior — nunca Prejuízo/Margem baixa confirmados (backend: SUSPECT_DATA).
+    UNVERIFIED: { label: "Não comprovado", tone: "is-warning" },
   };
 
   var INTEGRITY_STATES = {
@@ -1255,6 +1258,16 @@
         origin: "backend",
         margin: displayedMargin(item),
         reason: "Classificação financeira informada pelo Motor.",
+      };
+    }
+    if (item.projected && item.projected.lowerBound && !(item.realized && item.realized.margin !== null && item.realized.margin !== undefined)) {
+      return {
+        key: "UNVERIFIED",
+        label: FINANCIAL_RESULTS.UNVERIFIED.label,
+        tone: FINANCIAL_RESULTS.UNVERIFIED.tone,
+        origin: "backend",
+        margin: item.projected.margin,
+        reason: (item.projected.confidenceReasons || [])[0] || "Composição do preço não comprovada: a margem é só um limite inferior.",
       };
     }
     var margin = displayedMargin(item);
@@ -1623,6 +1636,13 @@
         withMargin: numberOrNull(kpis.comMargem) || 0,
         // LC/un somado dos anúncios em Prejuízo (calculado pelo Motor; null = o servidor não informou).
         lossLc: numberOrNull(kpis.lcPrejuizo),
+        // Prejuízo/Margem baixa sobre preço promocional NÃO comprovado: fora de
+        // LOSS/LOW_MARGIN (contados em SUSPECT_DATA), informados à parte.
+        lowerBound: kpis.limiteInferior ? {
+          total: numberOrNull(kpis.limiteInferior.total) || 0,
+          LOSS: numberOrNull(kpis.limiteInferior.LOSS) || 0,
+          LOW_MARGIN: numberOrNull(kpis.limiteInferior.LOW_MARGIN) || 0,
+        } : null,
       } : null,
       activeRun: snapshotRun(refresh.runAtivo),
       lastRun: snapshotRun(refresh.ultimoRun),

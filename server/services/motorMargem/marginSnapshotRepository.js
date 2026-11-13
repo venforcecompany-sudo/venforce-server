@@ -551,6 +551,24 @@ async function listProjectionSnapshotsByItemIds({ clienteId, clienteContaId, mar
   return result.rows.map(sanitizeSnapshot);
 }
 
+// Linhas calculadas sobre PREÇO PROMOCIONAL (list_price > price) com status
+// que depende da margem — candidatas a "limite inferior" quando a composição do
+// preço não é comprovada (precoVigenteComposicao). UMA query por conta.
+async function listProjectionSnapshotsPromocionais({ clienteId, clienteContaId, marketplace = "meli", statuses, db = pool }) {
+  if (!clienteId) throw new Error("listProjectionSnapshotsPromocionais: clienteId é obrigatório.");
+  if (!clienteContaId) throw new Error("listProjectionSnapshotsPromocionais: clienteContaId é obrigatório.");
+  const lista = (statuses || []).filter((st) => STATUS_VALIDOS.includes(st));
+  if (!lista.length) return [];
+  const result = await db.query(
+    `/* ms:promocionais */ SELECT * FROM margin_projection_snapshots
+      WHERE cliente_id = $1 AND cliente_conta_id = $2 AND marketplace = $3
+        AND catalog_missing_since IS NULL AND status = ANY($4::text[])
+        AND price IS NOT NULL AND list_price IS NOT NULL AND list_price - price > 0.011`,
+    [clienteId, clienteContaId, marketplace, lista]
+  );
+  return result.rows.map(sanitizeSnapshot);
+}
+
 // Projeção persistida de um LOTE de anúncios (os que tiveram venda no
 // período) — UMA query com `item_id = ANY`, nunca uma por anúncio. Inclui
 // itens fora do catálogo atual: eles venderam no período e o desvio
@@ -590,6 +608,7 @@ async function mapProjectionsForItems({ clienteId, clienteContaId, marketplace =
 module.exports = {
   mapProjectionsForItems,
   listProjectionSnapshotsByItemIds,
+  listProjectionSnapshotsPromocionais,
   STATUS_VALIDOS,
   REFRESH_STATUS_VALIDOS,
   CONFIANCA_VALIDOS,

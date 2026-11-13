@@ -253,6 +253,47 @@ cenario("Margin Snapshot grava em quality.precoLeitura a promoção que o sale_p
   assert.deepStrictEqual(row.quality.precoLeitura, { fonte: "sale_price", promotionId: "OFFER-1", campaignId: "C-1", promotionType: "custom" });
 });
 
+// ── Adaptador para a resposta bruta do ML (integração com o Resgate) ────────
+cenario("classificarDaLeituraMl: resposta BRUTA de seller-promotions + sale_price dá a MESMA decisão (casos reais)", () => {
+  const { classificarDaLeituraMl } = require("../services/motorMargem/precoVigenteComposicao");
+  // Campanha do vendedor (ref_id nulo) + SMART iniciada a outro preço; sale_price aponta a campanha.
+  const vend = classificarDaLeituraMl({
+    lista: [
+      { id: "C-1", ref_id: null, type: "SELLER_CAMPAIGN", status: "started", price: 102.9, original_price: 129.99, meli_percentage: null, seller_percentage: null, name: "PROMO" },
+      { id: "P-2", ref_id: "OFFER-2", type: "SMART", status: "started", price: 109.51, original_price: 129.99, meli_percentage: 1.5, seller_percentage: 14.2 },
+      { id: "P-9", type: "SMART", status: "candidate", price: 100, original_price: 129.99, meli_percentage: 5 },
+    ],
+    salePrice: { amount: 102.9, regular_amount: 129.99, metadata: { campaign_id: "C-1", promotion_id: "OFFER-X", promotion_type: "custom" } },
+    precoComprador: 102.9, precoCheio: 129.99,
+  });
+  assert.strictEqual(vend.status, STATUS.CONFIRMADO);
+  assert.strictEqual(vend.financiador, FINANCIADOR.VENDEDOR);
+  assert.strictEqual(vend.promocao.id, "C-1");
+  assert.strictEqual(vend.rebate, null);
+  // SMART cofinanciada.
+  const smart = classificarDaLeituraMl({
+    lista: [{ id: "P-3", ref_id: "OFFER-3", type: "SMART", status: "started", price: 95.84, original_price: 122.43, meli_percentage: 1.4, seller_percentage: 20.3 }],
+    precoComprador: 95.84, precoCheio: 122.43,
+  });
+  assert.strictEqual(smart.rebate, 1.71);
+  // DEAL sem participação: pendente.
+  const deal = classificarDaLeituraMl({
+    lista: [{ id: "P-8", type: "DEAL", status: "started", price: 169.66, original_price: 278.14 }], precoComprador: 169.66, precoCheio: 278.14,
+  });
+  assert.strictEqual(deal.status, STATUS.REVISAR);
+  assert.strictEqual(deal.motivo, MOTIVO.PARTICIPACAO_ML_NAO_INFORMADA);
+  // Leitura das promoções falhou.
+  assert.strictEqual(classificarDaLeituraMl({ lista: null, promoStatus: 429, precoComprador: 90, precoCheio: 100 }).motivo, MOTIVO.PROMO_INDISPONIVEL);
+  // Campo "boost" presente: compensação não mensurável — nunca somada.
+  const boost = classificarDaLeituraMl({
+    lista: [{ id: "P-4", type: "SMART", status: "started", price: 90, original_price: 100, meli_percentage: 3, seller_percentage: 7, boosted_offer: true }],
+    precoComprador: 90, precoCheio: 100,
+  });
+  assert.strictEqual(boost.status, STATUS.REVISAR);
+  assert.strictEqual(boost.motivo, MOTIVO.BOOSTED_OFFER_NAO_MEDIDO);
+  assert.strictEqual(boost.rebate, null);
+});
+
 async function main() {
   let falhas = 0;
   for (const c of casos) {

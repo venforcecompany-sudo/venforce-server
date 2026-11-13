@@ -13,6 +13,8 @@
 // conta nunca entram; e o classificador decide o retorno sobre essas linhas.
 
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
 const { Client, Pool } = require("pg");
 
 const baseUrl = process.env.MARGIN_TEST_DATABASE_URL;
@@ -27,6 +29,7 @@ process.env.DATABASE_URL = testUrl.toString();
 
 const repo = require("../services/promoSnapshot/promoSnapshotRepository");
 const { margemAtualComRebate } = require("../services/motorMargem/margemAtualRebate");
+const snapshotRepository = require("../services/motorMargem/marginSnapshotRepository");
 
 async function main() {
   const admin = new Client({ connectionString: baseUrl });
@@ -99,6 +102,25 @@ async function main() {
     assert.strictEqual(margemAtualComRebate(linha(95.84, 122.43), porItem.get("MLB2"), null, ctx).rebate, 1.71);
     assert.strictEqual(margemAtualComRebate(linha(129.9, 149.9), porItem.get("MLB3"), null, ctx).precoVigente.financiador, "VENDEDOR");
     assert.strictEqual(margemAtualComRebate(linha(90, 100), porItem.get("MLB4"), null, ctx).rebate, 3);
+    // Linhas em preço promocional com status que depende da margem (limite inferior).
+    await pool.query(`CREATE TABLE clientes (id BIGSERIAL PRIMARY KEY, slug TEXT);
+      CREATE TABLE cliente_contas (id BIGSERIAL PRIMARY KEY, cliente_id BIGINT);
+      CREATE TABLE bases (id BIGSERIAL PRIMARY KEY, nome TEXT);
+      CREATE TABLE users (id BIGSERIAL PRIMARY KEY);
+      INSERT INTO clientes (id, slug) VALUES (133, 'cliente_teste');
+      INSERT INTO cliente_contas (id, cliente_id) VALUES (86, 133), (87, 133);`);
+    await pool.query(fs.readFileSync(path.join(__dirname, "../sql/margin_snapshot_schema.sql"), "utf8"));
+    const base = { clienteId: 133, clienteContaId: 87, marketplace: "meli", confidenceLevel: "HIGH", quality: {}, missing: [], assumed: [], divergences: [],
+      observedAt: new Date(), runId: null, refreshStatus: "fresh", lastError: null, cost: 40, taxRate: 0.1, fixedFee: 0, commission: 12, freight: 15, profit: -5, margin: -0.05, marginPercent: -5 };
+    await snapshotRepository.upsertProjectionSnapshot({ ...base, itemId: "MLB1", price: 90, listPrice: 120, status: "LOSS" }, pool);
+    await snapshotRepository.upsertProjectionSnapshot({ ...base, itemId: "MLB2", price: 90, listPrice: 90, status: "LOSS" }, pool);
+    await snapshotRepository.upsertProjectionSnapshot({ ...base, itemId: "MLB3", price: 90, listPrice: 120, status: "HEALTHY" }, pool);
+    await snapshotRepository.upsertProjectionSnapshot({ ...base, itemId: "MLB4", price: 90, listPrice: 120, status: "LOW_MARGIN" }, pool);
+    await snapshotRepository.upsertProjectionSnapshot({ ...base, itemId: "MLB5", price: 90, listPrice: null, status: "LOSS" }, pool);
+    await snapshotRepository.upsertProjectionSnapshot({ ...base, clienteContaId: 86, itemId: "MLB6", price: 90, listPrice: 120, status: "LOSS" }, pool);
+    const promocionais = await snapshotRepository.listProjectionSnapshotsPromocionais({ clienteId: 133, clienteContaId: 87, statuses: ["LOSS", "LOW_MARGIN"], db: pool });
+    assert.deepStrictEqual(promocionais.map((l) => l.itemId).sort(), ["MLB1", "MLB4"], "só preço promocional, status da margem, da conta");
+
     console.log("promoRebatesPrecoVigente.postgres: ok (SQL real)");
   } finally {
     await pool.end();

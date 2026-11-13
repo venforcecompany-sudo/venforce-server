@@ -2556,3 +2556,4 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+.cm-drawer .cm-adv__result--estimate { color: var(--vf-warning-strong); font-weight: var(--vf-fw-semibold); }

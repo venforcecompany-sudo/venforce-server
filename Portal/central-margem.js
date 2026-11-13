@@ -1826,11 +1826,15 @@
     var suspeitos = isSnapshotMode()
       ? (counts ? counts.SUSPECT_DATA || 0 : null)
       : (state.data ? contract.summarizeItems(state.data.items).integrity.SUSPECT || 0 : null);
+    // Limite inferior: Prejuízo/Margem baixa sobre promoção não comprovada — fora
+    // dos dois KPIs de resultado, dentro de "Dado suspeito" (backend).
+    var limite = kpisSnap && kpisSnap.lowerBound && kpisSnap.lowerBound.total ? kpisSnap.lowerBound : null;
     refs.kpisTop.innerHTML = [
       topMetric("Em prejuízo", counts ? escapeHtml(String(counts.LOSS || 0)) : dash, {
         filter: "LOSS", tone: counts && counts.LOSS ? "is-danger" : "",
         foot: counts && lcPrejuizo !== null ? "LC/un somado " + (formatMoney(lcPrejuizo) || "—") : null,
-        title: "Anúncios em prejuízo (com o retorno ML da promoção em andamento). O número soma o LC por unidade deles. Clique para filtrar.",
+        title: "Anúncios em prejuízo COMPROVADO (com o retorno ML da promoção em andamento). O número soma o LC por unidade deles. " +
+          (limite && limite.LOSS ? limite.LOSS + " outro(s) só têm limite inferior negativo (promoção não comprovada) e estão em Dado suspeito. " : "") + "Clique para filtrar.",
       }),
       topMetric("Abaixo da meta", counts ? escapeHtml(String(counts.LOW_MARGIN || 0)) : dash, {
         filter: "LOW_MARGIN", tone: counts && counts.LOW_MARGIN ? "is-warning" : "", foot: counts ? "margem positiva, abaixo da meta" : null,
@@ -1838,8 +1842,10 @@
       }),
       promoKpi(dash),
       topMetric("Dado suspeito", suspeitos === null ? dash : escapeHtml(String(suspeitos)), {
-        integrity: "SUSPECT", tone: suspeitos ? "is-warning" : "", foot: suspeitos === null ? null : "fontes em conflito ou custo suspeito",
-        title: "Anúncios com dado suspeito (fontes em conflito, custo ≥ preço). Clique para filtrar.",
+        integrity: "SUSPECT", tone: suspeitos ? "is-warning" : "",
+        foot: suspeitos === null ? null : limite ? "inclui " + limite.total + " com preço/promoção a revisar" : "fontes em conflito ou custo suspeito",
+        title: "Anúncios com dado suspeito (fontes em conflito, custo ≥ preço" +
+          (limite ? "; " + limite.total + " com margem só como limite inferior: promoção sem financiamento comprovado — " + limite.LOSS + " seriam prejuízo e " + limite.LOW_MARGIN + " margem baixa, não confirmados" : "") + "). Clique para filtrar.",
       }),
     ].join("");
     realizedLine();
@@ -3123,18 +3129,18 @@
     if (integrity.key === "MISSING") {
       return { title: "Completar Base", detail: "Abrir Bases usando o MLB como busca. A Central não escreve custo." };
     }
-    if (integrity.key === "SUSPECT") {
-      return { title: "Investigar evidências", detail: "Comparar as fontes da variável divergente antes de agir." };
-    }
-    if (integrity.key === "RECONCILING") {
-      return { title: "Aguardar conciliação", detail: "Não tratar o realizado como fechado." };
-    }
     var pc = item.priceComposition;
     if (pc && pc.status === "REVISAR") {
       return { title: "Revisar preço/promoção", detail: pc.text || "Composição do preço não comprovada: a margem não é confiável." };
     }
     if (pc && pc.status === "DESATUALIZADO") {
       return { title: "Recalcular margem", detail: pc.text || "Preço e promoção vêm de leituras diferentes." };
+    }
+    if (integrity.key === "SUSPECT") {
+      return { title: "Investigar evidências", detail: "Comparar as fontes da variável divergente antes de agir." };
+    }
+    if (integrity.key === "RECONCILING") {
+      return { title: "Aguardar conciliação", detail: "Não tratar o realizado como fechado." };
     }
     if (composition.pending) {
       return { title: "Calculando composição", detail: "O Motor está calculando LC e margem desta seleção de fontes." };
@@ -3386,13 +3392,13 @@
     if (integrity.key === "MISSING" || item.integrityCode === "custo_suspeito") {
       return { kind: "custo", label: "Revisar custo", tone: "is-warning", variable: "cost", title: item.integrityReason || "Custo ausente ou suspeito: a Central não escreve custo; abra as evidências e corrija na Base." };
     }
-    if (integrity.key === "SUSPECT") {
-      return { kind: "dados", label: "Revisar dados", tone: "is-warning", variable: variavel(null), title: "Fontes em conflito: compare as evidências antes de decidir o preço." };
-    }
     var pcOp = item.priceComposition;
     if (pcOp && (pcOp.status === "REVISAR" || pcOp.status === "DESATUALIZADO")) {
       return { kind: "dados", label: pcOp.status === "REVISAR" ? "Revisar preço/promoção" : "Recalcular", tone: "is-warning", variable: "price",
         title: pcOp.text || "Composição do preço não comprovada: a margem não é confiável." };
+    }
+    if (integrity.key === "SUSPECT") {
+      return { kind: "dados", label: "Revisar dados", tone: "is-warning", variable: variavel(null), title: "Fontes em conflito: compare as evidências antes de decidir o preço." };
     }
     if (integrity.key === "RECONCILING") {
       return { kind: "conciliacao", label: "Em conciliação", tone: "is-neutral", title: "Dados ainda conciliando: não trate o realizado como fechado." };
@@ -5199,6 +5205,7 @@
   function advancedSimulationHtml(item) {
     if (item.stub || !state.scenario) return "";
     var simulation = contract.simulateScenario(item, state.scenario, state.selection);
+    var priceChangedNoQuote = simulation.changed.indexOf("price") !== -1;
     var rows = contract.VARIABLES.map(function (variableKey) {
       var changed = simulation.changed.indexOf(variableKey) !== -1;
       var inputValue = simulation.values[variableKey] === null ? "" : String(simulation.values[variableKey]);
@@ -5211,7 +5218,13 @@
       ? '<p class="cm-adv__result" data-cm-calc-pending>Calculando no Motor…</p>'
       : simulation.failed
         ? '<p class="cm-adv__result cm-field-error" role="alert">Não foi possível calcular agora: ' + escapeHtml(simulation.failureReason || "tente de novo.") + "</p>"
-        : '<p class="cm-adv__result">Resultado hipotético: LC ' + escapeHtml(simulation.computable ? formatMoney(simulation.profit) : "—") + " · MC " +
+        : priceChangedNoQuote
+          // Preço trocado aqui NÃO é cotado: o número é uma estimativa com a
+          // comissão/frete do preço atual — nunca um preço recomendado ou validado.
+          ? '<p class="cm-adv__result cm-adv__result--estimate" data-cm-adv-estimate>Estimativa sem recotação (não é preço recomendado nem validado): LC ≈ ' +
+            escapeHtml(simulation.computable ? formatMoney(simulation.profit) : "—") + " · MC ≈ " + escapeHtml(simulation.computable ? formatPercent(simulation.margin) : "—") +
+            (simulation.computable ? "" : " · cenário incompleto: falta " + escapeHtml(simulation.missing.map(variableLabel).join(", "))) + "</p>"
+          : '<p class="cm-adv__result">Resultado hipotético: LC ' + escapeHtml(simulation.computable ? formatMoney(simulation.profit) : "—") + " · MC " +
           escapeHtml(simulation.computable ? formatPercent(simulation.margin) : "—") +
           (simulation.computable ? "" : " · cenário incompleto: falta " + escapeHtml(simulation.missing.map(variableLabel).join(", "))) + "</p>";
     return '<details class="cm-adv"' + (state.advancedOpen ? " open" : "") + ' id="cm-adv"><summary>Simulação avançada <small>hipótese — o cálculo é do Motor, não é decisão</small></summary>' +
@@ -5220,7 +5233,7 @@
       resultado +
       // Preço trocado aqui NÃO recota: comissão e frete continuam os do preço
       // atual (e o retorno ML sai). A cotação real em P' é a da Bancada.
-      (simulation.changed.indexOf("price") !== -1
+      (priceChangedNoQuote
         ? '<p class="cm-adv__warn" data-cm-adv-price-warn>Preço hipotético: a comissão e o frete acima continuam os do preço atual e o retorno ML da promoção sai do cálculo. Para comissão e frete recotados pelo Mercado Livre no preço novo, use o preço manual da Bancada.</p>'
         : "") +
       '<button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" id="cm-scenario-reset"' + (simulation.changed.length ? "" : " disabled") + ">Restaurar hipótese</button>" +
