@@ -197,6 +197,9 @@ function mapItemParaSnapshot({ item, run, base, observedAt }) {
       freteAplicavel: item.diagnostico ? margemConfiavel.freteAplicavelDaLogistica(item.diagnostico.logisticType) : null,
       // null = frete cotado direto pelo ML sem avaliação (liberação gradual desligada ou linha antiga).
       freteQualidade: item.diagnostico ? (item.diagnostico.freteQualidade || null) : null,
+      // Promoção que formou o preço desta linha (sale_price.metadata), lida
+      // junto do preço. Linha sem o campo = calculada antes desta gravação.
+      precoLeitura: item.diagnostico ? (item.diagnostico.precoLeitura || null) : null,
     },
     missing: item.margin.projected.missing,
     assumed: item.margin.projected.assumed,

@@ -81,12 +81,20 @@ async function resolverPrecosItem({ clienteId, itemId, precoListaFallback = null
     // — id da oferta, ex. OFFER-MLB…). Aditivo: só quem precisa casar com
     // /seller-promotions (rebate da lista de Anúncios) lê; null = sem promoção.
     const promotionId = resp.data?.metadata?.promotion_id;
+    // campaign_id = id da promoção em /seller-promotions (C-…/P-…): é por ele
+    // que se casa uma SELLER_CAMPAIGN, cujo ref_id vem nulo na listagem.
+    // promotion_type ("campaign"/"custom"/…) é só informativo — não diz quem
+    // financia. Aditivos: quem não lê continua idêntico.
+    const campaignId = resp.data?.metadata?.campaign_id;
+    const promotionType = resp.data?.metadata?.promotion_type;
     return {
       precoCheio: temPromocao ? regularAmount : amount,
       precoPromocional: temPromocao ? amount : null,
       precoEfetivo: amount,
       fonte: "sale_price",
       promotionIdAtivo: promotionId != null ? String(promotionId) : null,
+      campaignIdAtivo: campaignId != null ? String(campaignId) : null,
+      promotionTypeAtivo: promotionType != null ? String(promotionType) : null,
     };
   } catch (_) {
     // /sale_price indisponível para o item (erro de rede, 4xx/5xx ou payload

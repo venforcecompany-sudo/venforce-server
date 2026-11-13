@@ -3,7 +3,7 @@
 // Módulo: Anúncios Meli — promoções oficiais do item, para o bloco
 // "Promoções disponíveis" do modal de detalhe.
 //
-// Fonte única: GET /seller-promotions/items/{ITEM_ID}?app_version=v2 (ver
+// Fonte principal: GET /seller-promotions/items/{ITEM_ID}?app_version=v2 (ver
 // documentacao_api_meli/gerenciar-ofertas.md). Read-only — nunca inscreve o
 // item em promoção nenhuma, nunca grava preço no Mercado Livre. O preço final
 // de cada linha alimenta, no FRONTEND, a mesma simulação de margem que já
@@ -65,6 +65,7 @@ function statusLabelPromocao(status) {
 }
 
 function fin(n) {
+  if (n === null || n === undefined || (typeof n === "string" && n.trim() === "")) return null;
   const v = Number(n);
   return Number.isFinite(v) ? v : null;
 }
@@ -74,9 +75,8 @@ function round2(n) {
 }
 
 // Normaliza UMA promoção crua do ML. Nunca inventa desconto: quando o ML não
-// fornece preço utilizável — started/pending sem `price` > 0, ou candidate
-// sem `suggested_discounted_price` — `precoFinal` fica null e a UI mostra
-// "sem sugestão do Mercado Livre", nunca um cálculo próprio.
+// fornece preço utilizável nem percentuais para a candidata, `precoFinal`
+// fica null. Preços oficiais têm prioridade sobre o cálculo por percentuais.
 //
 // `promotionIdAtivo` (opcional): id/ref_id da promoção que o próprio ML está
 // usando AGORA para formar o preço de venda (GET /items/{id}/sale_price →
@@ -92,12 +92,18 @@ function normalizarPromocao(promo, index, promotionIdAtivo = null) {
     precoFinal = p != null && p > 0 ? p : null;
   } else if (status === "candidate") {
     const sugerido = fin(promo && promo.suggested_discounted_price);
-    if (sugerido != null) {
+    const precoMl = fin(promo && promo.price);
+    if (sugerido != null && sugerido > 0) {
       precoFinal = sugerido;
+    } else if (precoMl != null && precoMl > 0) {
+      // A API também devolve price para candidatas SMART. Os percentuais
+      // vêm arredondados e não reproduzem esse preço: MLB6414829980 retorna
+      // price=99, mas 139.99*(1-(4.5+24.7)/100) daria 99.11.
+      precoFinal = precoMl;
     } else {
-      // Campanhas cofinanciadas automáticas (SMART, PRICE_MATCHING) nunca
-      // enviam suggested_discounted_price em candidate — só original_price +
-      // meli_percentage/seller_percentage. Caso real: "Impulsione suas
+      // Algumas candidatas SMART/PRICE_MATCHING chegam sem preço/sugestão,
+      // só com original_price + meli_percentage/seller_percentage.
+      // Caso real: "Impulsione suas
       // vendas" (SMART, item MLB4147165927/MLB4162633919) aparecia com
       // subsidioMl preenchido mas precoFinal/voceRecebe vazios.
       //
@@ -159,7 +165,7 @@ function normalizarPromocao(promo, index, promotionIdAtivo = null) {
       : null;
 
   const idPromo = promo && promo.id;
-  const refIdPromo = promo && promo.ref_id;
+  const refIdPromo = promo && (promo.ref_id || promo.offer_id);
 
   // statusExibicao — só a promoção que o próprio ML aponta como responsável
   // pelo preço de venda atual (promotionIdAtivo, casado contra id/ref_id)
@@ -258,9 +264,53 @@ async function obterPromotionIdAtivo({ clienteId, itemId, mlUserId }) {
     if (!resp || !resp.ok) return { promotionId: null, amount: null };
     const promotionId = resp.data && resp.data.metadata && resp.data.metadata.promotion_id;
     const amount = fin(resp.data && resp.data.amount);
-    return { promotionId: promotionId != null ? String(promotionId) : null, amount };
+    return {
+      promotionId: promotionId != null ? String(promotionId) : null,
+      amount,
+      regularAmount: fin(resp.data && resp.data.regular_amount),
+      campaignId: resp.data && resp.data.metadata && resp.data.metadata.campaign_id,
+    };
   } catch (_) {
     return { promotionId: null, amount: null };
+  }
+}
+
+// A listagem pode devolver apenas uma nova candidatura da campanha cuja
+// oferta anterior segue formando o preço. Confirma a oferta pelo seu ID;
+// nunca promove uma candidata a ativa apenas por igualdade de preço.
+async function reconciliarOfertaAtiva({ clienteId, itemId, mlUserId, lista, saleInfo }) {
+  const offerId = saleInfo && saleInfo.promotionId;
+  if (!offerId || !String(offerId).startsWith("OFFER-") || !(saleInfo.amount > 0)) return lista;
+  const reconhecida = lista.some((p) =>
+    String(p.ref_id || p.offer_id || "") === String(offerId) &&
+    ["started", "active", "pending"].includes(String(p.status || "").toLowerCase())
+  );
+  if (reconhecida) return lista;
+
+  try {
+    const resp = await mlFetch(clienteId, `/seller-promotions/offers/${encodeURIComponent(offerId)}?app_version=v2`, { mlUserId });
+    const oferta = resp && resp.ok && resp.data;
+    const status = String(oferta && (oferta.status && oferta.status.id || oferta.status) || "").toLowerCase();
+    if (!oferta || String(oferta.id) !== String(offerId) || String(oferta.item_id) !== String(itemId) ||
+        !oferta.promotion_id || !oferta.type || !["started", "active"].includes(status) ||
+        (saleInfo.campaignId && String(saleInfo.campaignId) !== String(oferta.promotion_id))) return lista;
+
+    const index = lista.findIndex((p) => String(p.id) === String(oferta.promotion_id) && p.type === oferta.type);
+    const anterior = index >= 0 ? lista[index] : {};
+    // Nome e vigência identificam a campanha; percentuais da nova candidatura
+    // não comprovam o subsídio da oferta anterior. Ausência continua null.
+    const recuperada = {
+      id: oferta.promotion_id, type: oferta.type, ref_id: oferta.id, status,
+      name: anterior.name || oferta.name || null,
+      start_date: anterior.start_date || null, finish_date: anterior.finish_date || null,
+      price: saleInfo.amount,
+      original_price: saleInfo.regularAmount > 0 ? saleInfo.regularAmount : anterior.original_price,
+      meli_percentage: oferta.meli_percentage ?? undefined,
+      seller_percentage: oferta.seller_percentage ?? undefined,
+    };
+    return index < 0 ? [...lista, recuperada] : lista.map((p, i) => i === index ? recuperada : p);
+  } catch (_) {
+    return lista;
   }
 }
 
@@ -283,7 +333,8 @@ async function obterVigenciaCampanha({ clienteId, promotionId, tipo, mlUserId })
     if (!resp || !resp.ok) return null;
     const inicio = (resp.data && resp.data.start_date) || null;
     const fim = (resp.data && resp.data.finish_date) || null;
-    return inicio || fim ? { inicio, fim } : null;
+    const nome = (resp.data && resp.data.name) || null;
+    return inicio || fim || nome ? { inicio, fim, nome } : null;
   } catch (_) {
     return null;
   }
@@ -331,6 +382,7 @@ async function enriquecerVigencia({ clienteId, mlUserId, paresBrutoNormalizado }
       if (!detalhe) return;
       if (detalhe.inicio != null) p.inicio = detalhe.inicio;
       if (detalhe.fim != null) p.fim = detalhe.fim;
+      if (!p.nome && detalhe.nome) p.nome = detalhe.nome;
     })
   );
 }
@@ -450,6 +502,7 @@ async function listarPromocoesDoItemDetalhado({ clienteId, itemId, mlUserId }) {
       : [];
   lista = lista.filter((p) => p && typeof p === "object");
 
+  lista = await reconciliarOfertaAtiva({ clienteId, itemId, mlUserId, lista, saleInfo });
   const ordenada = ordenarPorPrioridade(lista);
   const normalizadas = ordenada.map((p, i) => normalizarPromocao(p, i, saleInfo && saleInfo.promotionId));
 
@@ -481,8 +534,9 @@ async function obterRebatePromocaoAtiva({ clienteId, itemId, mlUserId, saleInfo:
   ]);
   if (!resp || !resp.ok) return { ok: false, rebate: null, promocao: null };
 
-  const lista = (Array.isArray(resp.data) ? resp.data : (resp.data && resp.data.results) || [])
+  let lista = (Array.isArray(resp.data) ? resp.data : (resp.data && resp.data.results) || [])
     .filter((p) => p && typeof p === "object");
+  lista = await reconciliarOfertaAtiva({ clienteId, itemId, mlUserId, lista, saleInfo });
   const normalizadas = ordenarPorPrioridade(lista).map((p, i) => normalizarPromocao(p, i, saleInfo && saleInfo.promotionId));
   aplicarFallbackPrecoAtivo(normalizadas, saleInfo && saleInfo.amount);
 

@@ -1326,6 +1326,34 @@
   color: var(--vf-text-muted);
 }
 
+.vf-page-anuncios-meli .am-margem-comp__parcial {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--vf-fs-sm);
+}
+
+.vf-page-anuncios-meli .am-margem-comp__parcial caption {
+  text-align: left;
+  padding: 8px 0;
+  font-weight: 600;
+}
+
+.vf-page-anuncios-meli .am-margem-comp__parcial th,
+.vf-page-anuncios-meli .am-margem-comp__parcial td {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--vf-border);
+}
+
+.vf-page-anuncios-meli .am-margem-comp__parcial th {
+  text-align: left;
+  font-weight: 400;
+}
+
+.vf-page-anuncios-meli .am-margem-comp__parcial td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .vf-page-anuncios-meli .am-margem-comp__badge {
   display: flex;
   align-items: center;

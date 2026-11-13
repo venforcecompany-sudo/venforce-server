@@ -2122,7 +2122,8 @@
     }
     // Sem número (ex.: UNVALIDATED) — rótulo REAL do Motor, com a razão real
     // (statusReasons[0], já gerada por classifyStatus) como tooltip.
-    var motivo = (m.statusReasons && m.statusReasons[0]) || "";
+    var motivo = m.margemIncompletaMotivo || (m.statusReasons && m.statusReasons[0]) || "";
+    if (motivo) tip = motivo;
     return '<span class="am-margem__estado ' + classe + '" title="' + escapeAttr(motivo) + '">' +
       escapeHtml(m.statusLabel || "Indisponível") + "</span>" +
       infoDotHtml(tip);
@@ -4007,12 +4008,14 @@
   }
 
   // Margem AO VIVO do Motor (GET /performance): preço atual do ML + retorno
-  // ML da promoção ativa. null = ainda não chegou ou não é computável — a
-  // célula fica com o snapshot.
+  // ML da promoção ativa. Uma resposta sem número também substitui o snapshot:
+  // a leitura atual pode ter invalidado o frete usado no cálculo salvo.
   function margemAoVivoHtml(itemId) {
     var c = AM.state.performanceCache[itemId];
     var m = c && c.temMargem ? c.margem : null;
-    if (!m || m.marginPercent == null) return null;
+    if (c && c.temMargem && c.margemIndisponivel) return margemConteudoHtml(m, c.margemIndisponivel);
+    if (!m) return null;
+    if (m.marginPercent == null) return margemConteudoHtml(m, null);
     var classe = MARGEM_CLASSE[m.status] || "is-neutral";
     var tip = "Margem calculada agora pelo Motor, no preço atual do Mercado Livre" +
       (m.precoAtual != null ? " (" + formatMoeda(m.precoAtual) + ")" : "") +
@@ -9175,8 +9178,33 @@
       margemConteudoHtml(cache.margem, cache.margemIndisponivel) + "</div>";
 
     if (!cache.temComposicao) return badge + margemComposicaoCarregandoHtml();
-    if (!cache.composicao) return badge; // contexto indisponível / item não-computável — sem ladder, sem número parcial
+    if (!cache.composicao) {
+      var motivo = cache.margemIndisponivel && cache.margemIndisponivel.mensagem;
+      if (!motivo && cache.margem) {
+        motivo = cache.margem.margemIncompletaMotivo || (cache.margem.statusReasons && cache.margem.statusReasons[0]);
+      }
+      return badge + '<p class="am-margem-comp__dica">' +
+        escapeHtml(motivo || "Não há dados suficientes para carregar a composição da margem.") + "</p>";
+    }
 
+    if (cache.composicao.incompleta) {
+      var comp = cache.composicao;
+      var linhas = [
+        ["Preço de venda", comp.venda],
+        ["Custo do produto", comp.custoProduto],
+        ["Comissão Mercado Livre", comp.comissaoMl],
+        ["Frete", comp.frete, comp.freteAplicavel === false ? "Não se aplica" : "Indisponível"],
+        ["Custos adicionais", comp.taxaFixa],
+        ["Imposto", comp.impostoValor],
+      ].map(function (linha) {
+        var valor = linha[1] == null ? (linha[2] || "Indisponível") : formatMoeda(linha[1], moeda);
+        return '<tr><th scope="row">' + escapeHtml(linha[0]) + '</th><td>' + escapeHtml(valor) + '</td></tr>';
+      }).join("");
+      var aviso = cache.margem && cache.margem.margemIncompletaMotivo;
+      return badge + '<table class="am-margem-comp__parcial"><caption>Custos disponíveis</caption><tbody>' +
+        linhas + '</tbody></table><p class="am-margem-comp__dica">' +
+        escapeHtml(aviso || "A margem depende dos custos indisponíveis.") + '</p>';
+    }
     return badge + margemComposicaoLadderHtml(cache.composicao, cache.margem, moeda, itemId);
   }
 
@@ -9452,9 +9480,16 @@
       var ativa = sel.statusExibicao === "ATIVA";
       // Já participa: sempre "Deixar de participar"; "Alterar" só quando o
       // preço é do vendedor (PRECO) — nas ACEITE o Mercado Livre define.
-      if (promocaoParticipa(sel) && (sel.modoEscrita === "ACEITE" || sel.modoEscrita === "PRECO")) {
+      if (promocaoParticipa(sel)) {
         var naoForma = ativa ? null
           : "Esta promoção não está formando o preço agora — a simulação mostra a margem se ela passar a valer.";
+        if (sel.modoEscrita !== "PRECO" && sel.modoEscrita !== "ACEITE") {
+          return {
+            nota: "Você pode solicitar a saída desta promoção. O Mercado Livre valida as regras de cancelamento da oferta.",
+            tom: "texto",
+            botoes: [BOTAO_SAIR],
+          };
+        }
         if (sel.modoEscrita === "ACEITE") {
           return {
             nota: "O preço é definido pelo Mercado Livre — você só escolhe continuar ou deixar de participar." +
@@ -10056,12 +10091,12 @@
   }
 
   // Participar sem preço (ACEITE — o Mercado Livre define) ou deixar de
-  // participar (ACEITE e PRECO). Nenhum preço é enviado. Mesma régua de
+  // participar de qualquer tipo. Nenhum preço é enviado. Mesma régua de
   // margemAcaoAtual.
   function abrirConfirmacaoAceite(itemId, linha, sair) {
     if (!DET || DET.itemId !== itemId || !linha) return;
     if (sair) {
-      if (!promocaoParticipa(linha) || (linha.modoEscrita !== "ACEITE" && linha.modoEscrita !== "PRECO")) return;
+      if (!promocaoParticipa(linha)) return;
     } else if (linha.modoEscrita !== "ACEITE" || linha.status !== "candidate") {
       return;
     }

@@ -43,7 +43,7 @@ const margemConfiavel = require("../services/motorMargem/margemConfiavel");
 const { reclassificarStatus } = require("../services/motorMargem/margemAtualRebate");
 const { mlFetch } = require("../utils/mlClient");
 const { buscarComissaoEFrete } = require("../services/shared/marketplaceCurrentQuoteService");
-const { criarCotadorEmP } = require("../services/motorMargem/margemCotacaoEmP");
+const { criarCotadorEmP, MOTIVOS_COTACAO } = require("../services/motorMargem/margemCotacaoEmP");
 const { assertClienteNaCarteira } = require("../services/squads/authorizationService");
 const tituloEngine = require("../services/meliAnuncios/seo/tituloEngine");
 const termosComplementaresEngine = require("../services/meliAnuncios/seo/termosComplementaresEngine");
@@ -1394,10 +1394,16 @@ function montarMapaMargem(itens, incluirComposicao, rebateAlvo, rebatesAoVivo = 
     // P0 04/11/2026: comissão/frete do ML ausentes (assumidos 0 pelo núcleo)
     // ⇒ o número é inflado (R$ 50 → 46%): não vai para a célula, nem com rebate.
     const incompleta = margemConfiavel.margemProjetadaIncompleta(item);
+    const freteNaoConfiavel = item.diagnostico && item.diagnostico.cotacao &&
+      item.diagnostico.cotacao.frete &&
+      item.diagnostico.cotacao.frete.motivo === MOTIVOS_COTACAO.FRETE_COTACAO_NAO_CONFIAVEL;
+    const motivoIncompleta = freteNaoConfiavel
+      ? "Não foi possível obter um frete confiável do Mercado Livre. Confira as medidas da embalagem (altura, largura, comprimento e peso) no anúncio e recalcule a margem."
+      : margemConfiavel.NOTA_MARGEM_INCOMPLETA;
     margem[itemId] = {
       origem,
       margemIncompleta: incompleta,
-      margemIncompletaMotivo: incompleta ? margemConfiavel.NOTA_MARGEM_INCOMPLETA : null,
+      margemIncompletaMotivo: incompleta ? motivoIncompleta : null,
       margin: incompleta ? null : (comRebate ? comRebate.margin : (exibida ? exibida.margin : null)),
       marginPercent: incompleta ? null : (comRebate
         ? (comRebate.margin === null ? null : Math.round(comRebate.margin * 10000) / 100)
@@ -1442,12 +1448,16 @@ function montarMapaMargem(itens, incluirComposicao, rebateAlvo, rebatesAoVivo = 
           : null,
     };
 
-    // Só monta composição quando a margem exibida É computável — item sem
-    // margem (Base ausente, UNVALIDATED etc.) não tem nada pra decompor, e
-    // o front reaproveita o mesmo statusLabel/statusReasons acima, nunca
-    // uma composição parcial.
-    if (incluirComposicao && exibida && exibida.computable) {
+    // Cotação incompleta: os insumos conhecidos continuam visíveis para
+    // diagnóstico, sem total de margem e sem substituir custos ausentes por 0.
+    if (incluirComposicao && exibida && exibida.computable && !incompleta) {
       composicao[itemId] = montarComposicaoDoItem(item, origem, comRebate ? alvo.valor : null);
+    } else if (incluirComposicao && incompleta) {
+      composicao[itemId] = {
+        ...montarComposicaoDoItem(item, origem),
+        incompleta: true,
+        freteAplicavel: margemConfiavel.freteAplicavelDaLogistica(item.diagnostico && item.diagnostico.logisticType),
+      };
     }
   }
   return { margem, composicao };
@@ -1504,7 +1514,11 @@ async function carregarRebatesAoVivo({ clienteId, mlUserId, itens, ignorarItemId
       try {
         const lido = await promocoesService.obterRebatePromocaoAtiva({
           clienteId, itemId, mlUserId,
-          saleInfo: conhecida ? { promotionId, amount: valorEvidencia(item.pricing && item.pricing.current) } : null,
+          saleInfo: conhecida ? {
+            promotionId,
+            amount: valorEvidencia(item.pricing && item.pricing.current),
+            regularAmount: valorEvidencia(item.pricing && item.pricing.list),
+          } : null,
         });
         if (!lido || !lido.ok) return;
         r = { rebate: lido.rebate, promocao: lido.promocao };

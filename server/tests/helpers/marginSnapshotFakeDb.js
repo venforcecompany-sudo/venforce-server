@@ -194,6 +194,13 @@ function makeMarginSnapshotFakeDb() {
       row.ultimo_calculo = linhas.reduce((max, r) => (!max || r.calculated_at > max ? r.calculated_at : max), null);
       return { rows: [row] };
     }
+    if (sql.includes("/* ms:promocionais */")) {
+      const [clienteId, clienteContaId, marketplace, statuses] = params;
+      return { rows: snapshots.filter((r) => Number(r.cliente_id) === Number(clienteId) && Number(r.cliente_conta_id) === Number(clienteContaId)
+        && r.marketplace === marketplace && !r.catalog_missing_since && statuses.includes(r.status)
+        && r.price !== null && r.price !== undefined && r.list_price !== null && r.list_price !== undefined
+        && Number(r.list_price) - Number(r.price) > 0.011).map((r) => ({ ...r })) };
+    }
     if (sql.includes("/* ms:por-itens */")) {
       const [clienteId, clienteContaId, marketplace, ids] = params;
       return { rows: snapshots.filter((r) => Number(r.cliente_id) === Number(clienteId) && Number(r.cliente_conta_id) === Number(clienteContaId)

@@ -940,25 +940,73 @@ async function mapRebatesAtivosDaConta({ clienteContaId, marketplace = "meli", s
   return lerRebatesAtivos({ clienteContaId, marketplace, sellerId, itemIds: null }, db);
 }
 
+// Promoções que podem formar o preço (iniciadas, e programadas que o sale_price
+// confirmou) de cada item, do snapshot ATUAL da conta + seller. Quem decide
+// QUAL delas forma o preço da margem e quanto o ML compensa é o classificador
+// (motorMargem/precoVigenteComposicao) — nunca "qualquer iniciada com
+// subsídio" (bug de 12/11/2026: SMART iniciada a 109,51 somava retorno sobre
+// um preço de 102,90 formado por campanha do vendedor).
+//
+// Modo conta (itemIds = null): só os itens com alguma iniciada subsidiada —
+// os únicos que podem ganhar retorno (KPIs/filtro por status).
+//
+// Devolve Map itemId → { linhas, promocoes } e, não enumerável,
+// `mapa.promoSnapshot` = { runId, snapshotAt } | null (conta sem leitura).
 async function lerRebatesAtivos({ clienteContaId, marketplace, sellerId, itemIds }, db) {
+  // UMA consulta: a linha da conta (estado da leitura) com as promoções do run
+  // atual. Conta sem linha = sem leitura; conta com run e sem promoção = uma
+  // linha com item_id nulo.
   const r = await db.query(
-    `SELECT p.item_id::text AS item_id,
-            COUNT(*)::int AS promocoes,
-            MAX(p.subsidio_ml) AS subsidio
+    `SELECT c.current_run_id, c.snapshot_at,
+            p.item_id::text AS item_id, p.promotion_id, p.ref_id, p.promotion_type, p.nome, p.status,
+            p.ativa, p.preco_final, p.preco_original, p.meli_percentage, p.seller_percentage,
+            p.subsidio_ml, p.observed_at, p.herdado
        FROM promo_snapshot_contas c
-       JOIN promo_snapshot_itens p
+       LEFT JOIN promo_snapshot_itens p
          ON p.run_id = c.current_run_id AND p.cliente_conta_id = c.cliente_conta_id AND p.seller_id = c.seller_id
-      WHERE c.cliente_conta_id = $1 AND c.marketplace = $2 AND c.seller_id = $3
         AND ($4::text[] IS NULL OR p.item_id = ANY($4::text[]))
-        AND LOWER(COALESCE(p.status, '')) IN ('started', 'active')
-        AND p.subsidio_ml > 0
-      GROUP BY p.item_id`,
+        AND (LOWER(COALESCE(p.status, '')) IN ('started', 'active')
+             OR (LOWER(COALESCE(p.status, '')) = 'pending' AND p.ativa IS TRUE))
+        AND ($4::text[] IS NOT NULL OR p.item_id IN (
+              SELECT s.item_id FROM promo_snapshot_itens s
+               WHERE s.run_id = c.current_run_id AND s.cliente_conta_id = c.cliente_conta_id AND s.seller_id = c.seller_id
+                 AND LOWER(COALESCE(s.status, '')) IN ('started', 'active') AND s.subsidio_ml > 0))
+      WHERE c.cliente_conta_id = $1 AND c.marketplace = $2 AND c.seller_id = $3`,
     [clienteContaId, marketplace, String(sellerId), itemIds]
   );
-  return new Map(r.rows.map((row) => {
-    const promocoes = Number(row.promocoes || 0);
-    return [row.item_id, { promocoes, rebate: promocoes === 1 ? numOrNull(row.subsidio) : null }];
-  }));
+  const rows = (r && r.rows) || [];
+  const conta = rows[0] || null;
+  const promoSnapshot = conta && conta.current_run_id != null
+    ? { runId: Number(conta.current_run_id), snapshotAt: conta.snapshot_at || null }
+    : null;
+  const mapa = new Map();
+  Object.defineProperty(mapa, "promoSnapshot", { value: promoSnapshot, enumerable: false });
+  if (!promoSnapshot) return mapa;
+  for (const row of rows) {
+    if (row.item_id == null) continue;
+    const id = String(row.item_id);
+    const linha = {
+      promotionId: row.promotion_id || null,
+      refId: row.ref_id || null,
+      tipo: row.promotion_type || null,
+      nome: row.nome || null,
+      status: row.status || null,
+      ativa: typeof row.ativa === "boolean" ? row.ativa : null,
+      precoFinal: numOrNull(row.preco_final),
+      precoOriginal: numOrNull(row.preco_original),
+      meliPercentage: numOrNull(row.meli_percentage),
+      sellerPercentage: numOrNull(row.seller_percentage),
+      subsidioMl: numOrNull(row.subsidio_ml),
+      observedAt: row.observed_at || null,
+      herdada: row.herdado === true,
+    };
+    const atual = mapa.get(id) || { linhas: [], promocoes: 0 };
+    atual.linhas.push(linha);
+    const st = String(linha.status || "").toLowerCase();
+    if ((st === "started" || st === "active") && linha.subsidioMl > 0) atual.promocoes += 1;
+    mapa.set(id, atual);
+  }
+  return mapa;
 }
 
 /**

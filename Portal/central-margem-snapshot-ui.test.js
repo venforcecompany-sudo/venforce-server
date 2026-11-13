@@ -145,7 +145,40 @@ const MOCK_CLIENT = `
       // retorno à margem atual (100 + 3,30 − 10 − 12 − 20 − 40 = 21,30 → 21,3%).
       var rebate = null;
       if (i === 15) { margin = 0.213; rebate = 3.3; }
+      // Composição do preço vigente (backend: precoVigenteComposicao) e confiança da margem.
+      function pv(status, financiador, o) {
+        return { versao: "preco-vigente/1", status: status, motivo: o.motivo || null, texto: o.texto || null, precoCalculo: 100, precoCheio: o.cheio || 100,
+          precoComprador: 100, precoVendedor: o.vendedor === undefined ? 100 : o.vendedor, temPromocao: Boolean(o.promo), financiador: financiador,
+          promocao: o.promo || null, subsidioMl: o.subsidio || { valor: null, status: "NAO_SE_APLICA" }, rebate: o.rebate || null,
+          leituras: { precoEm: "2026-11-12T18:40:00Z", precoFonte: "sale_price", promocaoEm: o.promo ? "2026-11-12T18:44:00Z" : null }, momentosDiferentes: false };
+      }
+      var precoVigente = null; var confianca = null; var motivos = []; var limite = false; var frete = null;
+      if (i === 15) {
+        precoVigente = pv("CONFIRMADO", "COFINANCIADA", { cheio: 122.43, vendedor: 103.3, rebate: 3.3, subsidio: { valor: 3.3, status: "COMPROVADO" },
+          texto: "Campanha cofinanciada (SMART): o Mercado Livre cofinancia 2,7%.",
+          promo: { id: "P-1", tipo: "SMART", tipoLabel: "Campanha cofinanciada (SMART)", nome: "Impulsione suas vendas", precoFinal: 100, precoOriginal: 122.43, meliPercentage: 2.7, sellerPercentage: 15.6 } });
+        confianca = "CONFIAVEL";
+      }
+      if (i === 17) {
+        precoVigente = pv("REVISAR", "NAO_DETERMINADO", { cheio: 163.9, vendedor: null, motivo: "PARTICIPACAO_ML_NAO_INFORMADA", subsidio: { valor: null, status: "DESCONHECIDO" },
+          texto: "Campanha tradicional (DEAL): o Mercado Livre não informa a participação dele.",
+          promo: { id: "P-8", tipo: "DEAL", tipoLabel: "Campanha tradicional (DEAL)", nome: "Black Friday", precoFinal: 100, precoOriginal: 163.9 } });
+        confianca = "BLOQUEADA"; limite = true; motivos = [precoVigente.texto];
+        status = "SUSPECT_DATA"; // backend: Prejuízo sobre limite inferior nunca é Prejuízo confirmado
+      }
+      if (i === 20) {
+        precoVigente = pv("CONFIRMADO", "VENDEDOR", { cheio: 115.4, subsidio: { valor: 0, status: "ZERO" }, texto: "Campanha do vendedor: promoção do próprio vendedor.",
+          promo: { id: "C-1", tipo: "SELLER_CAMPAIGN", tipoLabel: "Campanha do vendedor", nome: "PROMO - LOJA", precoFinal: 100, precoOriginal: 115.4 } });
+        confianca = "ESTIMADA"; motivos = ["Frete ESTIMADO: cotação atual do Mercado Livre pelas medidas atuais da embalagem do anúncio."];
+        frete = { valor: 20, nivel: "estimado_dimensoes_declaradas", estimado: true, verificado: true, confianca: "media", texto: motivos[0], aplicavel: true };
+      }
+      if (i === 21) {
+        precoVigente = pv("DESATUALIZADO", null, { cheio: 120, motivo: "PRECO_MUDOU", texto: "A margem foi calculada a R$ 100,00, mas a promoção está a R$ 95,00.",
+          promo: { id: "C-2", tipo: "SELLER_CAMPAIGN", nome: "Outra", precoFinal: 95, precoOriginal: 120 } });
+        confianca = "DESATUALIZADA"; motivos = [precoVigente.texto];
+      }
       return {
+        precoVigente: precoVigente,
         itemId: "C" + conta + "-MLB" + (100000 + i), title: "Produto " + i + " da conta " + conta, titulo: "Produto " + i + " da conta " + conta,
         sku: skuDe(i), status: status, confidence: "HIGH", marketplace: "meli", targetMargin: 0.1,
         fields: {
@@ -153,10 +186,11 @@ const MOCK_CLIENT = `
           taxRate: field(ev("VENFORCE_BASE", 0.1, "DECLARED")), fixedFee: field(ev("VENFORCE_BASE", 0, "DECLARED")),
           commission: field(ev("MELI_API", 12)), commissionRate: field(ev("MELI_API", 0.12)), freight: field(ev("MELI_API", 20)),
         },
-        projected: { margin: margin, profit: margin === null ? null : margin * 100, estimated: false, rebate: rebate },
+        projected: { margin: margin, profit: margin === null ? null : margin * 100, estimated: false, rebate: rebate,
+          confianca: confianca, confiancaMotivos: motivos, limiteInferior: limite },
         realized: { margin: null, profit: null, pending: true },
         quality: { confidence: "HIGH", confidenceByField: {}, reasons: [], divergences: [], statusReasons: ["status " + status] },
-        diagnostico: { statusAnuncio: statusAnuncioDe(i) },
+        diagnostico: { statusAnuncio: statusAnuncioDe(i), frete: frete },
         snapshot: { refreshStatus: i === 3 ? "failed" : "fresh", lastError: i === 3 ? "ML 503" : null, calculatedAt: "2026-09-27T10:00:00Z" },
         statusBase: "projected",
         realizado_motivo: window.__cmRealizadoFalha ? "CENTRAL_VENDAS_FALHOU" : null,
@@ -274,7 +308,7 @@ const MOCK_CLIENT = `
           mensagem: missing ? "Esta conta ainda não tem leitura de margem calculada." : null,
           conta: { id: Number(conta), nome: "Conta " + conta },
           snapshot: { totalItens: missing ? null : TOTAL, ultimoCalculoEm: missing ? null : "2026-09-27T10:00:00Z", foraDoCatalogo: missing ? null : 0 },
-          kpis: missing ? null : { total: TOTAL, porStatus: porStatus, porRefreshStatus: { fresh: TOTAL - 1, stale: 0, failed: 1 }, anuncios: anuncios, comMargem: TOTAL - porStatus.UNVALIDATED },
+          kpis: missing ? null : { total: TOTAL, porStatus: porStatus, limiteInferior: { total: 7, LOSS: 4, LOW_MARGIN: 3 }, porRefreshStatus: { fresh: TOTAL - 1, stale: 0, failed: 1 }, anuncios: anuncios, comMargem: TOTAL - porStatus.UNVALIDATED },
           refresh: { runAtivo: runPublico(ativo(conta)), ultimoRun: runPublico(ultimo(conta)) },
         };
         var normalizado = window.VFCentralMargemApi.normalizeSnapshotResumo(payload);
@@ -588,6 +622,75 @@ async function run() {
       assert.strictEqual(await celula(".cm-mc-value"), "21,3%", "Composição (fórmula local com o retorno ML do backend)");
       await cdp.evaluate("document.querySelector('[data-view=\"operational\"]').click()");
       await waitFor(cdp, "document.querySelector('table.cm-table--op')", "visão Operacional não voltou");
+    });
+
+    await check("Diagnóstico: PREÇO mostra a promoção, quem financia, o preço cheio e a leitura; MARGEM mostra a confiança e nunca uma margem não comprovada como confiável", async () => {
+      const cel = (id, seletor) => cdp.evaluate(`(function(){var e=document.querySelector('tr[data-item-id="${id}"] ${seletor}');return e?e.textContent.replace(/\u00a0/g,' ').trim():null;})()`);
+      const titulo = (id, seletor) => cdp.evaluate(`(function(){var e=document.querySelector('tr[data-item-id="${id}"] ${seletor}');return e?e.title.replace(/\u00a0/g,' '):null;})()`);
+      await cdp.evaluate("document.querySelector('[data-view=\"composition\"]').click()");
+      await waitFor(cdp, "document.querySelector('table.cm-table--comp')", "visão Diagnóstico não abriu");
+
+      // Cofinanciada: promoção, financiador com o retorno, preço cheio, leitura; margem com retorno e confiável.
+      assert.strictEqual(await cel("C900-MLB100015", "[data-cm-promo]"), "Impulsione suas vendas");
+      assert.strictEqual(await cel("C900-MLB100015", "[data-cm-funder]"), "cofinanciada pelo ML · retorno R$ 3,30");
+      assert.strictEqual(await cel("C900-MLB100015", "[data-cm-full-price]"), "cheio R$ 122,43");
+      assert.ok(/12\/11/.test(await cel("C900-MLB100015", "[data-cm-price-read]")), "horário da leitura do preço");
+      const tituloPreco = await titulo("C900-MLB100015", ".cm-price-cell");
+      for (const trecho of ["Preço usado no cálculo: R$ 100,00", "Preço cheio (configurado pelo vendedor): R$ 122,43", "Valor reconhecido ao vendedor (comprador + retorno ML): R$ 103,30", "Retorno ML comprovado: R$ 3,30", "Leitura do preço: sale_price"]) {
+        assert.ok(tituloPreco.includes(trecho), `falta "${trecho}" no detalhe do preço: ${tituloPreco}`);
+      }
+      assert.strictEqual(await cel("C900-MLB100015", "[data-cm-rebate]"), "+ retorno ML R$ 3,30");
+      assert.strictEqual(await cel("C900-MLB100015", "[data-cm-margin-conf]"), "Confiável");
+      assert.ok((await titulo("C900-MLB100015", ".cm-mc-value")).includes("+ retorno ML R$ 3,30 = LC"), "fórmula com o retorno uma vez");
+
+      // DEAL sem participação: Revisar preço/promoção; margem é limite inferior e bloqueada.
+      assert.strictEqual(await cel("C900-MLB100017", "[data-cm-price-status]"), "Revisar preço/promoção");
+      assert.strictEqual(await cel("C900-MLB100017", ".cm-mc-value"), "≥ -10,0%");
+      assert.ok(await cdp.evaluate("Boolean(document.querySelector('tr[data-item-id=\"C900-MLB100017\"] [data-cm-lower-bound]'))"));
+      assert.strictEqual(await cel("C900-MLB100017", "[data-cm-margin-conf]"), "Bloqueada");
+      assert.ok((await cel("C900-MLB100017", ".cm-diag-cell")).includes("Revisar preço/promoção"), "próxima ação");
+      assert.ok((await cel("C900-MLB100017", "[data-cm-price-problem]")).includes("não informa a participação"));
+
+      // Vendedor 100%: sem retorno; frete estimado explícito; margem estimada.
+      assert.strictEqual(await cel("C900-MLB100020", "[data-cm-funder]"), "vendedor 100%");
+      assert.strictEqual(await cel("C900-MLB100020", "[data-cm-rebate]"), null);
+      assert.strictEqual(await cel("C900-MLB100020", "[data-cm-freight-level]"), "estimado (medidas do anúncio)");
+      assert.strictEqual(await cel("C900-MLB100020", "[data-cm-margin-conf]"), "Estimada");
+
+      // Limite inferior negativo NUNCA aparece como Prejuízo confirmado.
+      const estado17 = await cel("C900-MLB100017", ".cm-state-cell");
+      assert.ok(estado17.includes("Não comprovado") && !estado17.includes("Prejuízo"), estado17);
+
+            // Desatualizada: nunca apresentada como atual.
+      assert.strictEqual(await cel("C900-MLB100021", "[data-cm-price-status]"), "Preço mudou: recalcular");
+      assert.strictEqual(await cel("C900-MLB100021", "[data-cm-margin-conf]"), "Desatualizada");
+      assert.ok((await cel("C900-MLB100021", ".cm-diag-cell")).includes("Recalcular margem"));
+
+      // Registro visual (fora do repo): as quatro linhas da composição do preço.
+      if (process.env.CM_SHOT_DIR) {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
+        await sleep(400);
+        await cdp.evaluate("(function(){var r=document.querySelector('tr[data-item-id=\"C900-MLB100015\"]');r.scrollIntoView({block:'start'});var w=r.closest('.cm-table-wrap');if(w)w.scrollTop=r.offsetTop-60;})()");
+        await sleep(300);
+        const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
+        fs.writeFileSync(path.join(process.env.CM_SHOT_DIR, "diagnostico-preco-vigente.png"), Buffer.from(shot.data, "base64"));
+        await cdp.send("Emulation.clearDeviceMetricsOverride");
+        await sleep(300);
+      }
+
+      // Item sem composição (contrato antigo): célula de preço inalterada, sem selo.
+      assert.strictEqual(await cel("C900-MLB100001", "[data-cm-margin-conf]"), null);
+
+      // Precificar: a margem não comprovada também não aparece como confiável.
+      await cdp.evaluate("document.querySelector('[data-view=\"operational\"]').click()");
+      await waitFor(cdp, "document.querySelector('table.cm-table--op')", "visão Operacional não voltou");
+      assert.strictEqual(await cel("C900-MLB100017", ".cm-mc-value"), "≥ -10,0%");
+      assert.strictEqual(await cel("C900-MLB100017", ".cm-next-chip"), "Revisar preço/promoção");
+      assert.strictEqual(await cel("C900-MLB100021", "[data-cm-stale]"), "desatualizada");
+      // Placar: limite inferior fora de "Em prejuízo"/"Abaixo da meta", contado à parte em "Dado suspeito".
+      const placar = (await cdp.evaluate("document.getElementById('cm-kpis-top') ? document.getElementById('cm-kpis-top').innerText : document.body.innerText")).replace(/\u00a0/g, " ");
+      assert.ok(placar.includes("inclui 7 com preço/promoção a revisar"), placar);
+      assert.ok((await cdp.evaluate("Array.from(document.querySelectorAll('[title]')).map(function(e){return e.title;}).join('|')")).includes("4 outro(s) só têm limite inferior negativo"), "o KPI de prejuízo explica o que ficou fora");
     });
 
     await check("trocar o período relê itens e realizado com periodo=YYYY-MM (Shell) e NÃO pede refresh do snapshot", async () => {

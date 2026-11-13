@@ -324,7 +324,82 @@ cenario("conta secundária com o código novo: run conclui e grava margem com co
   ok(s.refreshStatus === "fresh" && Math.abs(s.profit - 6.5) < 0.001 && (s.assumed || []).length === 0, JSON.stringify({ p: s.profit, a: s.assumed }));
 });
 
+cenario("próxima sincronização recota medidas atuais no preço vigente e substitui frete antigo no snapshot", async () => {
+  const flagAnterior = process.env.FRETE_COTACAO_CONFIAVEL_SELLERS;
+  process.env.FRETE_COTACAO_CONFIAVEL_SELLERS = SELLER_2;
+  try {
+    const precosCotados = [];
+    const w = mundoMl({ frete: async ({ path }) => {
+      const p = new URLSearchParams(path.split("?")[1]);
+      const porDimensoes = p.has("dimensions");
+      if (porDimensoes) {
+        precosCotados.push(Number(p.get("item_price")));
+        ok(!p.has("item_id"), "consulta por medidas não envia item_id");
+      }
+      return { ok: true, status: 200, data: { coverage: { all_country: {
+        list_cost: porDimensoes ? (Number(p.get("item_price")) === 50 ? 19.05 : 20.05) : 7.75,
+        discount: { type: porDimensoes ? "mandatory" : "none", rate: porDimensoes ? 0.5 : 0 },
+      } } } };
+    } });
+    w.anuncios.MLB201.logistic_type = "cross_docking";
+    const original = w.mlFetch;
+    w.mlFetch = async (cid, path, opts) => {
+      if (String(path).startsWith("/items/MLB201?")) {
+        ok(opts.mlUserId === SELLER_2, "leitura atual usa a conta selecionada");
+        return { ok: true, status: 200, data: { id: "MLB201", attributes: [], shipping: {
+          dimensions: "32x23x5,680", tags: ["mandatory_free_shipping", "proximity"],
+        } } };
+      }
+      ok(!String(path).startsWith("/orders/"), "sync com medidas atuais não depende de vendas antigas");
+      return original(cid, path, opts);
+    };
+    for (const price of [50, 60]) {
+      w.anuncios.MLB201.price = price;
+      const { db, erro } = await rodarProcessor(w, { sementes: [{ ...semente("MLB201"), freight: 7.75, refreshStatus: "failed", lastError: "frete indisponível" }] });
+      ok(!erro, String(erro && erro.message));
+      const s = await snapshotRepository.getProjectionSnapshot({ clienteContaId: 87, itemId: "MLB201", db });
+      ok(s.price === price && s.freight === (price === 50 ? 19.05 : 20.05), JSON.stringify({ price: s.price, freight: s.freight }));
+      ok(s.refreshStatus === "fresh" && s.lastError === null, "recálculo substitui a falha anterior");
+      ok(s.quality.freteQualidade.fonteMedidas === "shipping.dimensions", "fonte das medidas atuais persistida");
+    }
+    assert.deepStrictEqual(precosCotados, [50, 60]);
+  } finally {
+    if (flagAnterior === undefined) delete process.env.FRETE_COTACAO_CONFIAVEL_SELLERS;
+    else process.env.FRETE_COTACAO_CONFIAVEL_SELLERS = flagAnterior;
+  }
+});
+
 // ── 4b. Linhas antigas com comissão/frete assumidos 0 (o "45% em R$ 50") ──
+cenario("sync recupera frete regular sem dimensões nem histórico e persiste a nova margem", async () => {
+  const flagAnterior = process.env.FRETE_COTACAO_CONFIAVEL_SELLERS;
+  process.env.FRETE_COTACAO_CONFIAVEL_SELLERS = SELLER_2;
+  try {
+    const w = mundoMl({ frete: async ({ path }) => {
+      const params = new URLSearchParams(path.split("?")[1]);
+      const regular = params.has("tags") && !params.get("tags").includes("proximity");
+      return { ok: true, status: 200, data: { coverage: { all_country: {
+        list_cost: regular ? 19.05 : 7.75, discount: { type: regular ? "mandatory" : "none", rate: regular ? 0.5 : 0 },
+      } } } };
+    } });
+    w.anuncios.MLB201.logistic_type = "cross_docking";
+    const original = w.mlFetch;
+    w.mlFetch = async (cid, path, opts) => {
+      ok(!String(path).startsWith("/orders/") && !String(path).includes("include_attributes"), "modalidade regular não depende de histórico nem medidas");
+      if (String(path).startsWith("/items/MLB201?")) return { ok: true, status: 200, data: { shipping: { tags: ["mandatory_free_shipping", "proximity"], dimensions: null }, attributes: [] } };
+      return original(cid, path, opts);
+    };
+    const { db, erro } = await rodarProcessor(w, { sementes: [{ ...semente("MLB201"), freight: 7.75, refreshStatus: "failed", lastError: "frete indisponível" }] });
+    ok(!erro, String(erro && erro.message));
+    const s = await snapshotRepository.getProjectionSnapshot({ clienteContaId: 87, itemId: "MLB201", db });
+    ok(s.freight === 19.05 && s.refreshStatus === "fresh" && s.lastError === null, "snapshot antigo substituído por cotação regular");
+    ok(s.quality.freteQualidade.nivel === "cotado_ml" && s.quality.freteQualidade.modalidadeCotada === "mercado_envios_regular", "fonte da modalidade persistida");
+    ok(Math.abs(s.profit - (-3.05)) < 0.001, "margem usa o frete regular obtido na sync");
+  } finally {
+    if (flagAnterior === undefined) delete process.env.FRETE_COTACAO_CONFIAVEL_SELLERS;
+    else process.env.FRETE_COTACAO_CONFIAVEL_SELLERS = flagAnterior;
+  }
+});
+
 cenario("Central: linha antiga inflada fica fora de comMargem e no FIM da ordenação por margem (asc e desc)", async () => {
   const db = makeMarginSnapshotFakeDb();
   const base = { clienteId: 7, clienteSlug: "alianza_jeans", clienteContaId: 87, marketplace: "meli", confidenceLevel: "HIGH",
@@ -381,6 +456,26 @@ cenario("Anúncios ao vivo (montarMapaMargem): célula sem número quando falta 
   const okItem = await itemAoVivo();
   const m2 = _paraTeste.montarMapaMargem([okItem], false, null).margem.MLB201;
   ok(m2.marginPercent !== null && m2.margemIncompleta === false);
+});
+
+cenario("Anúncios: frete desconhecido mostra insumos disponíveis, sem margem e com motivo para corrigir", async () => {
+  const { _paraTeste } = require("../controllers/meliAnunciosController");
+  const inc = await itemAoVivo();
+  inc.margin.projected = { ...inc.margin.projected, computable: false, margin: null, marginPercent: null, profit: null, assumed: ["freight"] };
+  inc.marketplaceCosts.freightProjected = null;
+  inc.diagnostico.cotacao = { frete: { aplicavel: true, motivo: "frete_cotacao_nao_confiavel", status: 200 } };
+  inc.quality.status = "SUSPECT_DATA";
+  const r = _paraTeste.montarMapaMargem([inc], true, { itemId: "MLB201", valor: 5 });
+  const m = r.margem.MLB201;
+  const c = r.composicao.MLB201;
+  ok(m.marginPercent === null && m.profit === null && m.rebate === null, "sem margem ou rebate calculado com frete ausente");
+  ok(m.margemIncompletaMotivo.includes("medidas da embalagem"), m.margemIncompletaMotivo);
+  ok(c.incompleta === true && c.frete === null && c.freteAplicavel === true, JSON.stringify(c));
+  ok(c.venda === 50 && c.custoProduto === 22 && c.comissaoMl === 7, "os insumos obtidos continuam visíveis");
+  ok(_paraTeste.montarMapaMargem([inc], false, null).composicao.MLB201 === undefined, "composição continua opt-in");
+  const valido = await itemAoVivo();
+  const completo = _paraTeste.montarMapaMargem([valido], true, null);
+  ok(!completo.composicao.MLB201.incompleta && completo.composicao.MLB201.frete === 9.5, "frete válido preservado");
 });
 
 cenario("'Você recebe' e POST simular-margem: sem comissão/frete → sem margem (R$ 45 nunca vira 41%)", async () => {

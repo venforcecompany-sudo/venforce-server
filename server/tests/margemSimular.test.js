@@ -664,6 +664,18 @@ cenario("rebate ambíguo (2+ promoções em andamento): flag e bloqueado — nã
   assert.strictEqual(r.atual.rebate_motivo, "REBATE_AMBIGUO");
 });
 
+cenario("preço promocional não comprovado ou desatualizado bloqueia recomendações", async () => {
+  for (const mudou of [false, true]) {
+    const porItem = new Map();
+    porItem.promoSnapshot = mudou ? { runId: 31 } : null;
+    if (mudou) porItem.set("MLB100", { linhas: [{ tipo: "SMART", status: "started", ativa: true,
+      precoFinal: 80, precoOriginal: 120, meliPercentage: 5 }], promocoes: 1 });
+    const w = mundo({ linhaBase: { ...LINHA_BASE, listPrice: 120 }, rebates: { porItem, indisponivel: null } });
+    const r = await rodar(w, pedido([{ tipo: "preco", preco: 85 }, { tipo: "promo", promotion_id: "P1" }]));
+    assert.ok(r.cenarios.every(c => c.veredito === "bloqueado" && c.motivo === "rebate_atual_indisponivel"));
+  }
+});
+
 cenario("Promo Snapshot ilegível para o retorno atual: bloqueado rebate_atual_indisponivel", async () => {
   const w = mundo({ rebates: { porItem: new Map(), indisponivel: "PROMO_SNAPSHOT_INDISPONIVEL" } });
   const r = await rodar(w, pedido([{ tipo: "preco", preco: 85 }]));

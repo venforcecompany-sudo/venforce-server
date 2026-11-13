@@ -817,7 +817,7 @@ async function run() {
     };
 
     assert.strictEqual((await pedir()).profit, 42.45);
-    assert.deepStrictEqual(chamadasRebate[0].saleInfo, { promotionId: "OFFER-MLB-REL-1", amount: 100 }, "sale_price do Motor reaproveitado");
+    assert.deepStrictEqual(chamadasRebate[0].saleInfo, { promotionId: "OFFER-MLB-REL-1", amount: 100, regularAmount: null }, "sale_price do Motor reaproveitado");
     assert.strictEqual((await pedir()).profit, 42.45, "do cache, mesmo valor");
     assert.strictEqual(chamadasRebate.length, 1, "2º carregamento da mesma oferta não lê o ML");
 

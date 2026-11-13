@@ -789,11 +789,16 @@ async function run() {
       assert.ok(await cdp.evaluate("document.getElementById('cm-adv').open"), "permanece aberta após editar");
       assert.strictEqual(await cdp.evaluate("document.getElementById('cm-scenario-reset').disabled"), false);
       // O resultado vem do Motor (mock = núcleo real), não da tela: enquanto não chega, "Calculando…".
-      await waitFor(cdp, "document.getElementById('cm-adv').textContent.toLowerCase().includes('resultado hipotético')", "o Motor não respondeu a simulação avançada");
+      // Preço trocado na simulação avançada NÃO é cotado: só "estimativa sem recotação", nunca preço recomendado/validado.
+      await waitFor(cdp, "document.getElementById('cm-adv').textContent.toLowerCase().includes('estimativa sem recotação')", "o Motor não respondeu a simulação avançada");
       const esperado = core.calcularComposicao({ preco: 150, custo: 52, aliquota: 0.06, taxa_fixa: 0, comissao: 16.48, frete: 23.4 });
       assert.ok(esperado.computavel && esperado.lc === 49.12, JSON.stringify(esperado));
       const resultado = (await cdp.evaluate("document.querySelector('#cm-adv .cm-adv__result').textContent")).replace(/\s+/g, " ");
-      assert.ok(/LC R\$\s*49,12/.test(resultado), resultado);
+      assert.ok(/LC ≈ R\$\s*49,12/.test(resultado), resultado);
+      assert.ok(/não é preço recomendado nem validado/.test(resultado), resultado);
+      assert.ok(!/resultado hipotético/i.test(resultado), "preço sem recotação nunca é apresentado como resultado");
+      assert.ok(await cdp.evaluate("Boolean(document.querySelector('#cm-adv [data-cm-adv-estimate]')) && Boolean(document.querySelector('#cm-adv [data-cm-adv-price-warn]'))"));
+      assert.ok(!(await cdp.evaluate("Array.from(document.querySelectorAll('#cm-adv button')).some(function(b){return /aplicar|usar|recomendad/i.test(b.textContent);})")), "a simulação avançada não oferece aplicar o preço");
       assert.ok((await cdp.evaluate("window.__cmCalcCalls")) >= 1, "o cálculo passou pelo backend");
       await cdp.evaluate(`(function(){var i=document.querySelector('[data-scenario-value=cost]');i.value='';i.dispatchEvent(new Event('change',{bubbles:true}));})()`);
       await waitFor(cdp, "document.getElementById('cm-adv').textContent.toLowerCase().includes('cenário incompleto')", "o Motor deveria dizer que o cenário está incompleto");

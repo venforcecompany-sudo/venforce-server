@@ -204,7 +204,7 @@ async function obterCotacaoAtual(
   const fetchFn = deps.mlFetchFn || mlFetch;
   const precosFn = deps.resolverPrecosItemFn || resolverPrecosItem;
 
-  const { precoCheio, precoPromocional, precoEfetivo, fonte, promotionIdAtivo } = await precosFn({
+  const { precoCheio, precoPromocional, precoEfetivo, fonte, promotionIdAtivo, campaignIdAtivo, promotionTypeAtivo } = await precosFn({
     clienteId,
     itemId,
     precoListaFallback,
@@ -231,6 +231,10 @@ async function obterCotacaoAtual(
     // undefined quando o preço não veio do sale_price (fallback legado): aí
     // não se sabe qual promoção forma o preço. null = sale_price sem promoção.
     promotionIdAtivo,
+    // Mesma leitura do preço: campanha (/seller-promotions id) e tipo informado
+    // pelo sale_price. undefined quando o preço não veio do sale_price.
+    campaignIdAtivo,
+    promotionTypeAtivo,
     comissaoValor,
     comissaoPercentual,
     fretePrevisto,

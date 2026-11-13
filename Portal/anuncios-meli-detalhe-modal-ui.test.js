@@ -2615,6 +2615,35 @@ async function run() {
       }
     });
 
+    await check("31b — frete indisponível mostra os custos conhecidos sem total nem campos de simulação", async () => {
+      performanceHandler = (ids) => {
+        const margem = {}; const composicao = {};
+        ids.forEach((id) => {
+          margem[id] = { origem: "projected", marginPercent: null, profit: null, status: "SUSPECT_DATA", statusLabel: "Dado suspeito",
+            margemIncompleta: true, margemIncompletaMotivo: "Confira as medidas da embalagem no anúncio e recalcule a margem." };
+          composicao[id] = { incompleta: true, venda: 89.9, custoProduto: 42, comissaoMl: 17.08, frete: null, freteAplicavel: true, taxaFixa: 0, impostoValor: 11.69 };
+        });
+        return { ok: true, metricas7d: {}, margem, composicao, margemIndisponivel: null };
+      };
+      try {
+        await recarregarEAbrir();
+        await waitFor(cdp, "!!document.querySelector('#am-det-margem-body .am-margem-comp__parcial')", "os custos disponíveis não apareceram");
+        const estado = await cdp.evaluate(`(function () {
+          var body = document.querySelector('#am-det-margem-body');
+          return { linhas: Array.from(body.querySelectorAll('tr')).map(function (r) { return r.textContent; }),
+            texto: body.textContent, campos: body.querySelectorAll('input').length };
+        })()`);
+        assert.ok(estado.linhas.includes("Custo do produtoR$ 42,00"), JSON.stringify(estado));
+        assert.ok(estado.linhas.includes("FreteIndisponível"), JSON.stringify(estado));
+        assert.ok(estado.linhas.includes("Custos adicionaisR$ 0,00"), JSON.stringify(estado));
+        assert.ok(!estado.linhas.some((l) => /^Margem/.test(l)), JSON.stringify(estado));
+        assert.match(estado.texto, /medidas da embalagem/);
+        assert.strictEqual(estado.campos, 0);
+        const celula = await cdp.evaluate("document.querySelector('.am-margem[data-margem-item]').textContent");
+        assert.match(celula, /Dado suspeito/, "a lista usa a invalidação ao vivo");
+      } finally { performanceHandler = null; }
+    });
+
     await check("32 — prejuízo (LOSS): a composição aparece COMPLETA, o badge destaca a cor de risco", async () => {
       performanceHandler = (ids) => {
         const margem = {};
@@ -3734,6 +3763,8 @@ async function run() {
       assert.strictEqual(envio.body.titulo, undefined, "o título não mudou e não vai junto");
       assert.deepStrictEqual(pedidos.slice(antes).filter((u) => /\/seo\/|\/otimizar|\/aprovar/.test(u)), [],
         "salvar o Modelo não passa por SEO, otimizador ou aprovação");
+      await waitFor(cdp, "(document.getElementById('am-det-savebar') || {}).textContent?.includes('Resposta de teste (45c).')",
+        "a resposta de erro precisa chegar antes de descartar o rascunho");
       conteudoResultado = null;
       await clicar(cdp, '.am-det-modal [data-acao="descartar"]');
       await waitFor(cdp, "!document.getElementById('am-det-savebar')", "descartar não limpou a pendência");
@@ -3842,6 +3873,8 @@ async function run() {
       assert.strictEqual(envio.body.descricao, SUG_DESC_A, "o salvar leva a descrição usada");
       assert.strictEqual(envio.body.titulo, undefined);
       assert.strictEqual(envio.body.modelo, undefined);
+      await waitFor(cdp, "(document.getElementById('am-det-savebar') || {}).textContent?.includes('Resposta de teste (46f).')",
+        "a resposta de erro precisa chegar antes de descartar a descrição");
       conteudoResultado = null;
       await clicar(cdp, '.am-det-modal [data-acao="descartar"]');
       await waitFor(cdp, "!document.getElementById('am-det-savebar')", "descartar não limpou a pendência");

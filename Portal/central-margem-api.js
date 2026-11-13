@@ -741,7 +741,26 @@
         // (margemAtualRebate). A tela só o exibe e o repassa à Composição.
         rebate: numberOrNull(projectedBlock.rebate),
         rebateReason: firstValue(projectedBlock.rebateMotivo, null),
+        // CONFIAVEL | ESTIMADA | DESATUALIZADA | BLOQUEADA, decidido no backend
+        // (marginSnapshotReadService.confiancaDaMargem). null = contrato antigo.
+        confidenceLevel: firstValue(projectedBlock.confianca, null),
+        confidenceReasons: arrayOf(projectedBlock.confiancaMotivos),
+        lowerBound: projectedBlock.limiteInferior === true,
       },
+      // Composição do preço vigente (precoVigenteComposicao): preço cheio,
+      // comprador e vendedor, promoção, financiador e retorno ML comprovado.
+      // Só exibição — nenhum número é recalculado no navegador.
+      priceComposition: normalizePriceComposition(raw.precoVigente),
+      // Frete considerado no cálculo, com nível e texto (resumoDoFrete).
+      freightSummary: raw.diagnostico && raw.diagnostico.frete ? {
+        value: numberOrNull(raw.diagnostico.frete.valor),
+        level: raw.diagnostico.frete.nivel || null,
+        estimated: raw.diagnostico.frete.estimado === true,
+        verified: raw.diagnostico.frete.verificado === true,
+        confidence: raw.diagnostico.frete.confianca || null,
+        text: raw.diagnostico.frete.texto || null,
+        applicable: typeof raw.diagnostico.frete.aplicavel === "boolean" ? raw.diagnostico.frete.aplicavel : null,
+      } : null,
       realized: {
         margin: realizedMargin,
         profit: numberOrNull(firstValue(realizedBlock.profit, realizedBlock.lucro, raw.realizedProfit, raw.lucroRealizado)),
@@ -1209,6 +1228,9 @@
     LOW_MARGIN: { label: "Margem baixa", tone: "is-warning" },
     LOSS: { label: "Prejuízo", tone: "is-danger" },
     UNKNOWN: { label: "Indeterminado", tone: "is-neutral" },
+    // Margem sobre preço promocional com composição não comprovada: é limite
+    // inferior — nunca Prejuízo/Margem baixa confirmados (backend: SUSPECT_DATA).
+    UNVERIFIED: { label: "Não comprovado", tone: "is-warning" },
   };
 
   var INTEGRITY_STATES = {
@@ -1236,6 +1258,16 @@
         origin: "backend",
         margin: displayedMargin(item),
         reason: "Classificação financeira informada pelo Motor.",
+      };
+    }
+    if (item.projected && item.projected.lowerBound && !(item.realized && item.realized.margin !== null && item.realized.margin !== undefined)) {
+      return {
+        key: "UNVERIFIED",
+        label: FINANCIAL_RESULTS.UNVERIFIED.label,
+        tone: FINANCIAL_RESULTS.UNVERIFIED.tone,
+        origin: "backend",
+        margin: item.projected.margin,
+        reason: (item.projected.confidenceReasons || [])[0] || "Composição do preço não comprovada: a margem é só um limite inferior.",
       };
     }
     var margin = displayedMargin(item);
@@ -1604,9 +1636,56 @@
         withMargin: numberOrNull(kpis.comMargem) || 0,
         // LC/un somado dos anúncios em Prejuízo (calculado pelo Motor; null = o servidor não informou).
         lossLc: numberOrNull(kpis.lcPrejuizo),
+        // Prejuízo/Margem baixa sobre preço promocional NÃO comprovado: fora de
+        // LOSS/LOW_MARGIN (contados em SUSPECT_DATA), informados à parte.
+        lowerBound: kpis.limiteInferior ? {
+          total: numberOrNull(kpis.limiteInferior.total) || 0,
+          LOSS: numberOrNull(kpis.limiteInferior.LOSS) || 0,
+          LOW_MARGIN: numberOrNull(kpis.limiteInferior.LOW_MARGIN) || 0,
+        } : null,
       } : null,
       activeRun: snapshotRun(refresh.runAtivo),
       lastRun: snapshotRun(refresh.ultimoRun),
+    };
+  }
+
+  function normalizePriceComposition(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    var promo = raw.promocao || null;
+    var leituras = raw.leituras || {};
+    var subsidio = raw.subsidioMl || {};
+    return {
+      status: raw.status || null,
+      reason: raw.motivo || null,
+      text: raw.texto || null,
+      calcPrice: numberOrNull(raw.precoCalculo),
+      fullPrice: numberOrNull(raw.precoCheio),
+      buyerPrice: numberOrNull(raw.precoComprador),
+      sellerPrice: numberOrNull(raw.precoVendedor),
+      hasPromotion: raw.temPromocao === true,
+      funder: raw.financiador || null,
+      subsidy: numberOrNull(subsidio.valor),
+      subsidyStatus: subsidio.status || null,
+      rebate: numberOrNull(raw.rebate),
+      promotion: promo ? {
+        id: promo.id || null,
+        type: promo.tipo || null,
+        typeLabel: promo.tipoLabel || promo.tipo || null,
+        name: promo.nome || null,
+        status: promo.status || null,
+        confirmedActive: promo.ativaConfirmada === true,
+        finalPrice: numberOrNull(promo.precoFinal),
+        originalPrice: numberOrNull(promo.precoOriginal),
+        meliPercentage: numberOrNull(promo.meliPercentage),
+        sellerPercentage: numberOrNull(promo.sellerPercentage),
+        observedAt: promo.observadoEm || null,
+        inherited: promo.herdada === true,
+      } : null,
+      priceReadAt: leituras.precoEm || null,
+      priceSource: leituras.precoFonte || null,
+      promotionReadAt: leituras.promocaoEm || null,
+      differentMoments: raw.momentosDiferentes === true,
+      financialBase: raw.baseFinanceira || null,
     };
   }
 
