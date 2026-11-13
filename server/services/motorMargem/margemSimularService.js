@@ -674,7 +674,11 @@ async function simular({ user, body } = {}, deps = {}) {
   const meta = metaDoSnapshot(snapshot);
   const flags = {
     rebate_ambiguo: atualRebate.rebateMotivo === MOTIVO_REBATE.AMBIGUO,
-    rebate_atual_indisponivel: atualRebate.rebateMotivo === MOTIVO_REBATE.PROMO_SNAPSHOT_INDISPONIVEL,
+    rebate_atual_indisponivel: [
+      MOTIVO_REBATE.PROMO_SNAPSHOT_INDISPONIVEL,
+      MOTIVO_REBATE.PRECO_PROMOCAO_NAO_COMPROVADO,
+      MOTIVO_REBATE.PRECO_PROMOCAO_DESATUALIZADO,
+    ].includes(atualRebate.rebateMotivo),
   };
 
   // ── Promoções (só lê o Promo Snapshot quando algum cenário precisa) ──

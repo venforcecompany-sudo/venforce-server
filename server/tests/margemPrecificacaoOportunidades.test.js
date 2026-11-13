@@ -15,6 +15,22 @@ function cenario(nome, fn) {
   casos.push({ nome, fn });
 }
 
+cenario("oportunidade não recomenda ganho sobre retorno atual desconhecido", () => {
+  const { montarCandidata } = require("../services/motorMargem/precificacao/precificacaoOportunidadesService");
+  for (const modo of ["sem_leitura", "deal", "mudou", "vendedor"]) {
+    const info = modo === "sem_leitura" ? null : { linhas: [{ status: "started", ativa: true,
+      tipo: modo === "vendedor" ? "SELLER_CAMPAIGN" : "DEAL", precoOriginal: 120,
+      precoFinal: modo === "mudou" ? 80 : 90 }], promocoes: 0 };
+    const r = montarCandidata({ itemId: "MLB1", promocao: { status: "candidate" }, precoPromo: 85,
+      precoOriginalPromo: 120, retornoMl: 10, vendasPorMlb: new Map(), rebateAtual: info,
+      rebatePromoSnapshot: modo === "sem_leitura" ? null : { runId: 31 },
+      snap: { price: 90, list_price: 120, cost: 40, tax_rate: 0.1, fixed_fee: 0,
+        commission: 9, commission_rate: 0.1, freight: 10, anuncio_logistic_type: "xd_drop_off" } });
+    assert.strictEqual(r.veredito, modo === "vendedor" ? "entrar" : "bloqueado", modo);
+    if (modo !== "vendedor") assert.ok(r.bloqueios.includes("rebate_atual_indisponivel"), modo);
+  }
+});
+
 function snapRow(itemId, o = {}) {
   const price = o.price ?? 100;
   const rate = o.rate === undefined ? 0.12 : o.rate;

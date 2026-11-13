@@ -191,9 +191,10 @@ function montarCandidata(args) {
   // Composição de hoje: a mesma da tabela (snapshot + retorno ML em andamento).
   // O retorno de hoje sai do MESMO classificador da tabela: só o da promoção
   // que forma o preço do snapshot, com financiamento comprovado.
-  const decisaoRebate = rebateAtual
-    ? rebateAplicavel({ price: snap.price, listPrice: snap.list_price }, rebateAtual, { promoSnapshot: rebatePromoSnapshot })
-    : { rebate: null, ambiguo: false };
+  const decisaoRebate = rebateAplicavel(
+    { price: snap.price, listPrice: snap.list_price }, rebateAtual,
+    { promoSnapshot: rebatePromoSnapshot, indisponivel: rebateIndisponivel }
+  );
   const rebateEmAndamento = decisaoRebate.rebate === null || decisaoRebate.rebate === undefined ? null : Number(decisaoRebate.rebate);
   const rebateAmbiguo = decisaoRebate.ambiguo === true;
   const logistica = snap.anuncio_logistic_type === undefined || snap.anuncio_logistic_type === null ? null : String(snap.anuncio_logistic_type);
@@ -216,7 +217,11 @@ function montarCandidata(args) {
     meta,
     flags: {
       rebate_ambiguo: rebateAmbiguo,
-      rebate_atual_indisponivel: rebateIndisponivel === MOTIVO_REBATE.PROMO_SNAPSHOT_INDISPONIVEL,
+      rebate_atual_indisponivel: [
+        MOTIVO_REBATE.PROMO_SNAPSHOT_INDISPONIVEL,
+        MOTIVO_REBATE.PRECO_PROMOCAO_NAO_COMPROVADO,
+        MOTIVO_REBATE.PRECO_PROMOCAO_DESATUALIZADO,
+      ].includes(decisaoRebate.motivo),
     },
   });
 
