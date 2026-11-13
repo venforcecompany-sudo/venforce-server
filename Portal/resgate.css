@@ -214,3 +214,5 @@
   .rg-pag .rg-teclas { display: none; }
   .rg-lote-barra { left: 12px; right: 12px; transform: none; border-radius: var(--vf-radius); flex-wrap: wrap; }
 }
+/* Com a bancada aberta, a lista mostra só o essencial: anúncio, preço e margem sempre visíveis. */
+.rg-split:has(.rg-bancada.is-aberta) .rg-t1 { max-width: 210px; }
