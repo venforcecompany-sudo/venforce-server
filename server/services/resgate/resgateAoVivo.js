@@ -15,6 +15,7 @@ const { buscarComissaoEFrete } = require("../shared/marketplaceCurrentQuoteServi
 const { resolverPrecosItem } = require("../automacoes/precoItemService");
 const { normalizarPromocoesDoItem } = require("../promoSnapshot/promoSnapshotNormalize");
 const { createRateLimiter } = require("../motorMargem/marginSnapshotRateLimiter");
+const { classificarFinanciamento, iniciadasDaResposta } = require("./resgatePromocaoFinanciamento");
 
 class EscritaBloqueadaError extends Error {
   constructor(metodo, path) {
@@ -102,6 +103,26 @@ function promocaoDoItem(normalizadas, brutas, promotionIdAtivo) {
 }
 
 /**
+ * Com desconto VIGENTE (cheio > comprador), quem decide o subsídio é a promoção
+ * que FORMA o preço do comprador (resgatePromocaoFinanciamento), não "a única
+ * promoção em andamento com retorno" — uma SMART em andamento que não forma o
+ * preço não paga nada, e uma campanha do vendedor sem meli_percentage tem
+ * subsídio 0 comprovado. Sem comprovação: subsídio desconhecido (nunca zero).
+ * Sem desconto vigente não há desconto a cofinanciar: subsídio 0.
+ */
+function aplicarFinanciamento(promocao, lista, precos) {
+  const cheio = num(precos && precos.precoCheio), vigente = num(precos && precos.precoEfetivo);
+  if (cheio === null || vigente === null) return promocao;
+  if (!(cheio > vigente + 0.001)) return { ...promocao, subsidioMl: 0, ambigua: false, financiamento: { comprovado: true, subsidio: 0, financiamento: null, texto: "Sem desconto vigente: nada a cofinanciar." } };
+  const f = classificarFinanciamento({
+    iniciadas: iniciadasDaResposta(lista), vigente, cheio,
+    salePrice: precos.promotionIdAtivo ? { amount: vigente, metadata: { campaign_id: precos.promotionIdAtivo } } : null,
+    fonte: "seller-promotions/items (ao vivo)",
+  });
+  return { ...promocao, id: f.id || promocao.id, tipo: f.tipo || promocao.tipo, nome: f.nome || promocao.nome, subsidioMl: f.comprovado ? f.subsidio : null, ambigua: false, financiamento: f };
+}
+
+/**
  * Leitura ao vivo completa de UM anúncio da conta.
  * Recusa anúncio de OUTRO seller (isolamento entre contas).
  */
@@ -132,6 +153,7 @@ async function lerAnuncioAoVivo({ clienteId, sellerId, itemId, ler, agora = () =
       const lista = Array.isArray(pm.data) ? pm.data : (pm.data && Array.isArray(pm.data.results) ? pm.data.results : []);
       const normalizadas = normalizarPromocoesDoItem({ itemId, lista, saleInfo: { promotionId: precos.promotionIdAtivo || null, amount: precos.precoEfetivo }, observedAt: observadoEm });
       promocao = { ...promocaoDoItem(normalizadas, lista, precos.promotionIdAtivo), observadoEm };
+      promocao = aplicarFinanciamento(promocao, lista, precos);
     } else if (pm && pm.status === 404) {
       promocao = { ativa: false, subsidioMl: null, observadoEm };
     } else {
@@ -168,4 +190,4 @@ async function lerAnuncioAoVivo({ clienteId, sellerId, itemId, ler, agora = () =
   };
 }
 
-module.exports = { criarFetchSomenteLeitura, lerAnuncioAoVivo, promocaoDoItem, EscritaBloqueadaError };
+module.exports = { criarFetchSomenteLeitura, lerAnuncioAoVivo, promocaoDoItem, aplicarFinanciamento, EscritaBloqueadaError };
