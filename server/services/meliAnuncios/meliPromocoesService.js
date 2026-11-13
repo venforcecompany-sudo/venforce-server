@@ -314,6 +314,47 @@ async function reconciliarOfertaAtiva({ clienteId, itemId, mlUserId, lista, sale
   }
 }
 
+// A listagem do item e /offers podem omitir os percentuais depois do aceite.
+// O recurso de itens da campanha expõe os valores da oferta vigente. Só
+// aproveita a MESMA oferta: uma nova candidatura pode ter outro subsídio.
+async function enriquecerSubsidiosParticipantes({ clienteId, itemId, mlUserId, lista }) {
+  const cache = new Map();
+  return Promise.all(lista.map(async (promo) => {
+    const status = String(promo.status || "").toLowerCase();
+    if (!["started", "active", "pending"].includes(status) || !promo.id || !promo.type ||
+        (fin(promo.original_price) != null && fin(promo.meli_percentage) != null)) return promo;
+    const refId = promo.ref_id || promo.offer_id;
+    if (!refId) return promo;
+    const chave = `${promo.id}::${promo.type}`;
+    if (!cache.has(chave)) {
+      cache.set(chave, (async () => {
+        try {
+          const resp = await mlFetch(clienteId,
+            `/seller-promotions/promotions/${encodeURIComponent(promo.id)}/items` +
+            `?promotion_type=${encodeURIComponent(promo.type)}&item_id=${encodeURIComponent(itemId)}&app_version=v2`,
+            { mlUserId });
+          if (!resp || !resp.ok) return [];
+          return Array.isArray(resp.data) ? resp.data :
+            (Array.isArray(resp.data && resp.data.results) ? resp.data.results : []);
+        } catch (_) {
+          return [];
+        }
+      })());
+    }
+    const itens = await cache.get(chave);
+    const oferta = itens.find((it) => it && String(it.id) === String(itemId) &&
+      String(it.offer_id || it.ref_id || "") === String(refId) &&
+      ["started", "active", "pending"].includes(String(it.status || "").toLowerCase()));
+    if (!oferta) return promo;
+    return {
+      ...promo,
+      original_price: fin(promo.original_price) ?? fin(oferta.original_price),
+      meli_percentage: fin(promo.meli_percentage) ?? fin(oferta.meli_percentage),
+      seller_percentage: fin(promo.seller_percentage) ?? fin(oferta.seller_percentage),
+    };
+  }));
+}
+
 // Enriquecimento de vigência — /seller-promotions/items/{itemId} (fonte
 // principal) só manda start_date/finish_date de forma confiável para DEAL;
 // para SMART, PRICE_MATCHING, PRE_NEGOTIATED, LIGHTNING, UNHEALTHY_STOCK (e
@@ -503,6 +544,7 @@ async function listarPromocoesDoItemDetalhado({ clienteId, itemId, mlUserId }) {
   lista = lista.filter((p) => p && typeof p === "object");
 
   lista = await reconciliarOfertaAtiva({ clienteId, itemId, mlUserId, lista, saleInfo });
+  lista = await enriquecerSubsidiosParticipantes({ clienteId, itemId, mlUserId, lista });
   const ordenada = ordenarPorPrioridade(lista);
   const normalizadas = ordenada.map((p, i) => normalizarPromocao(p, i, saleInfo && saleInfo.promotionId));
 
@@ -520,13 +562,14 @@ async function listarPromocoesDoItemDetalhado({ clienteId, itemId, mlUserId }) {
 // Retorno ML (subsídio por unidade) da promoção que forma o preço AGORA — a
 // mesma ATIVA que o modal usa no "Hoje", decidida pelas mesmas regras
 // (normalizarPromocao + aplicarFallbackPrecoAtivo). Versão enxuta para a
-// LISTA: só as duas leituras que decidem a ATIVA, sem o enriquecimento de
-// vigência (uma chamada a mais por campanha sem data). `ok:false` = não deu
+// LISTA: leituras que decidem a ATIVA e recuperam seu subsídio quando omitido,
+// sem o enriquecimento de vigência (uma chamada por campanha sem data). `ok:false` = não deu
 // para saber; nunca vira rebate 0 inventado.
 //
 // `saleInfo` ({promotionId, amount}, opcional): o sale_price que o chamador
 // JÁ leu (o Motor de Margem lê no mesmo pedido) — evita relê-lo, e a
-// leitura cai para UMA chamada (seller-promotions).
+// leitura básica cai para UMA chamada (seller-promotions); a recuperação de
+// oferta/subsídio só consulta os detalhes quando faltam esses dados.
 async function obterRebatePromocaoAtiva({ clienteId, itemId, mlUserId, saleInfo: saleInfoPronto = null }) {
   const [resp, saleInfo] = await Promise.all([
     mlFetch(clienteId, `/seller-promotions/items/${encodeURIComponent(itemId)}?app_version=v2`, { mlUserId }),
@@ -537,6 +580,7 @@ async function obterRebatePromocaoAtiva({ clienteId, itemId, mlUserId, saleInfo:
   let lista = (Array.isArray(resp.data) ? resp.data : (resp.data && resp.data.results) || [])
     .filter((p) => p && typeof p === "object");
   lista = await reconciliarOfertaAtiva({ clienteId, itemId, mlUserId, lista, saleInfo });
+  lista = await enriquecerSubsidiosParticipantes({ clienteId, itemId, mlUserId, lista });
   const normalizadas = ordenarPorPrioridade(lista).map((p, i) => normalizarPromocao(p, i, saleInfo && saleInfo.promotionId));
   aplicarFallbackPrecoAtivo(normalizadas, saleInfo && saleInfo.amount);
 

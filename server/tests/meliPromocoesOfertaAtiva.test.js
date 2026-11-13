@@ -11,6 +11,8 @@ let lista;
 let oferta;
 let sale;
 let falhaOferta;
+let itensCampanha;
+let falhaCampanha;
 
 const originalLoad = Module._load;
 Module._load = function(request, parent, isMain) {
@@ -18,6 +20,10 @@ Module._load = function(request, parent, isMain) {
     chamadas.push({ clienteId, path, ...options });
     if (options.method === "DELETE") return { ok: true, data: null };
     if (path.includes("/sale_price")) return { ok: true, data: sale };
+    if (path.includes("/promotions/") && path.includes("/items?")) {
+      if (falhaCampanha === "throw") throw new Error("rede indisponível");
+      return falhaCampanha ? { ok: false, status: 429 } : { ok: true, data: { results: itensCampanha } };
+    }
     if (path.includes("/offers/")) {
       if (falhaOferta === "throw") throw new Error("rede indisponível");
       return falhaOferta ? { ok: false, status: 404 } : { ok: true, data: oferta };
@@ -38,6 +44,8 @@ Module._load = originalLoad;
 function reset() {
   chamadas = [];
   falhaOferta = null;
+  itensCampanha = [];
+  falhaCampanha = null;
   lista = [{ id: campaignId, type: "SMART", ref_id: "CANDIDATE-MLB4901811987-77689780532",
     status: "candidate", price: 97, original_price: 139.99, name: "Queima estoque",
     meli_percentage: 4.6, seller_percentage: 26.1 }];
@@ -103,6 +111,44 @@ async function run() {
   const rebate = await service.obterRebatePromocaoAtiva(args);
   assert.strictEqual(rebate.promocao.id, campaignId);
   assert.strictEqual(rebate.rebate, 2.8, "usa apenas percentual confirmado da oferta ativa");
+
+  // Depois do aceite, /items pode continuar mostrando uma candidatura e
+  // /offers só identifica a oferta. O subsídio vem dos itens da campanha.
+  for (const jaReconhecida of [false, true]) {
+    reset();
+    if (jaReconhecida) lista[0] = { ...lista[0], status: "started", ref_id: offerId, meli_percentage: null, original_price: null };
+    itensCampanha = [{ id: itemId, offer_id: offerId, status: "started", price: 97,
+      original_price: 139.99, meli_percentage: 2, seller_percentage: 28.7 }];
+    ps = await service.listarPromocoesDoItem(args);
+    assert.strictEqual(ps[0].subsidioMl, 2.8, "recupera subsídio da mesma oferta após ativação");
+    assert.strictEqual(ps[0].precoFinal, 97);
+    assert.strictEqual(ps[0].statusExibicao, "ATIVA");
+    const atual = await service.obterRebatePromocaoAtiva(args);
+    assert.strictEqual(atual.rebate, 2.8, "composição e tabela usam o mesmo subsídio");
+    assert.ok(chamadas.every((c) => c.mlUserId === args.mlUserId && c.clienteId === args.clienteId && !c.method));
+  }
+
+  for (const alterar of [
+    () => { itensCampanha[0].offer_id = "CANDIDATE-NOVA"; },
+    () => { itensCampanha[0].id = "MLB-OUTRO"; },
+    () => { itensCampanha[0].status = "candidate"; },
+    () => { itensCampanha[0].status = "finished"; },
+    () => { falhaCampanha = "429"; },
+    () => { falhaCampanha = "throw"; },
+  ]) {
+    reset();
+    itensCampanha = [{ id: itemId, offer_id: offerId, status: "started", original_price: 139.99, meli_percentage: 2 }];
+    alterar();
+    ps = await service.listarPromocoesDoItem(args);
+    assert.strictEqual(ps[0].subsidioMl, null, "não inventa subsídio nem usa outra oferta em falha");
+    assert.strictEqual(ps[0].statusExibicao, "ATIVA");
+  }
+
+  reset();
+  lista[0] = { ...lista[0], status: "started", ref_id: offerId, meli_percentage: 0 };
+  ps = await service.listarPromocoesDoItem(args);
+  assert.strictEqual(ps[0].subsidioMl, 0, "zero explícito é preservado");
+  assert.ok(!chamadas.some((c) => c.path.includes("/items?promotion_type=")), "não consulta subsídio já informado");
 
   reset();
   const r = await escrita.sairPromocao({ ...args, promotionId: campaignId, tipo: "SMART" });
