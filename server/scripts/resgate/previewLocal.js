@@ -22,7 +22,7 @@ const lerCorpo = (req) => new Promise((ok) => { let s = ""; req.on("data", (d) =
 
 const a = args();
 const os = require("os");
-const PADRAO = path.join(os.homedir(), "venforce-backups", "handoffs", "resgate_2026-11-12", "auditoria_bancada_e5");
+const PADRAO = path.join(os.homedir(), "venforce-backups", "handoffs", "resgate_2026-11-12", "auditoria_bancada_e6");
 const dir = path.resolve(String(a.dados || PADRAO).replace(/^~(?=\/|$)/, os.homedir()));
 // Pasta sem contas/ gerava uma tela com ZERO contas sem explicar: agora recusa com a causa.
 (function conferirDados() {

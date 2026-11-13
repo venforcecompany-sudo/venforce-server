@@ -73,6 +73,11 @@ t("lote: ajustar promocional não vale para promoção em que o ML define o pre�
   assert.ok(r.prontos.length + r.excecoes.length === 1);
   assert.strictEqual((await propostasEmLote([item()], { estrategia: "X" })).ok, false);
 });
+t("financiamento: arredondamento dos percentuais do ML (0,1 p.p.) aceito como na Central de Margem; fora disso, não comprovado", () => {
+  const caso = (price) => classificarFinanciamento({ iniciadas: [{ id: "P-1", type: "SMART", status: "started", price, original_price: 186.3, meli_percentage: 4, seller_percentage: 30.1, name: "x", camposBoost: [] }], vigente: price, cheio: 186.3 });
+  const ok1 = caso(122.92); assert.strictEqual(ok1.financiamento, "ML_COFINANCIA"); assert.strictEqual(ok1.subsidio, 7.45); // MLB4454087500 real: Δ 0,15 ≤ 0,197
+  const ko = caso(123.2); assert.strictEqual(ko.financiamento, "NAO_DETERMINADO"); assert.strictEqual(ko.pendencia, "INCONSISTENCIA_PRECO_PROMO");
+});
 t("serviço não importa nada que fale com o ML nem com o banco", () => {
   const src = require("fs").readFileSync(require("path").join(__dirname, "..", "services", "resgate", "resgateSimulacaoPreliminar.js"), "utf8");
   assert.ok(!/fetch|criarFetch|lerAnuncioAoVivo|pool|\.query\(|config\/database/.test(src));

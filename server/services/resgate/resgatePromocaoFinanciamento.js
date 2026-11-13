@@ -75,7 +75,9 @@ function classificarFinanciamento({ iniciadas, salePrice = null, vigente, cheio,
   const mp = num(p.meli_percentage), sp = num(p.seller_percentage), orig = num(p.original_price);
   if (mp !== null) {
     if (orig === null || (ch !== null && Math.abs(orig - ch) >= TOL)) return { ...out, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "PRECO_ORIGINAL_DIVERGE", texto: `Preço original da promoção (${orig === null ? "ausente" : brl(orig)}) difere do preço cheio (${ch === null ? "ausente" : brl(ch)}): subsídio não calculável com segurança.` };
-    if (sp !== null && Math.abs(orig * (1 - (mp + sp) / 100) - v) > 0.05) return { ...out, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "INCONSISTENCIA_PRECO_PROMO", texto: `Percentuais (ML ${pctBr(mp)} + vendedor ${pctBr(sp)}) não reproduzem o preço do comprador: subsídio não comprovado.` };
+    // Mesma tolerância da Central de Margem (precoVigenteComposicao, main #410): o ML informa os
+    // percentuais com 0,1 p.p., então o preço reconstruído pode errar até 0,1% do original.
+    if (sp !== null && Math.abs(orig * (1 - (mp + sp) / 100) - v) > Math.max(0.05, orig * 0.001) + 0.011) return { ...out, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "INCONSISTENCIA_PRECO_PROMO", texto: `Percentuais (ML ${pctBr(mp)} + vendedor ${pctBr(sp)}) não reproduzem o preço do comprador: subsídio não comprovado.` };
     const sub = r2(orig * mp / 100);
     return { ...out, financiamento: mp > 0 ? FINANCIAMENTO.COFINANCIADA : FINANCIAMENTO.VENDEDOR, subsidio: mp > 0 ? sub : 0, comprovado: true,
       texto: mp > 0 ? `${out.tipoRotulo}: ML cofinancia ${pctBr(mp)} (${brl(sub)}/un) e vendedor ${sp === null ? "?" : pctBr(sp)}.` : `${out.tipoRotulo} com participação do ML 0%.` };
