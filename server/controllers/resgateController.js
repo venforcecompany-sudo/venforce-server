@@ -156,7 +156,9 @@ async function simular(req, res) {
     const [row] = await repo.paginaItens(deps.db, { clienteContaId: Number(req.params.contaId), aposItemId: "", limite: 1, itemIds: [auditado.itemId] });
     const entrada = entradaAoVivo(vivo, row || {}, { clienteId: ctx.clienteId, clienteContaId: Number(req.params.contaId), sellerId: auditado.sellerId });
     const simulacoes = precos.length ? await simularPrecos(entrada, precos, vivo.cotarEmPreco) : [];
-    const recomendacao = Number.isFinite(meta) ? await recomendarPreco(entrada, { meta, cotarEmPreco: vivo.cotarEmPreco }) : null;
+    // recotar:false = só simular os preços pedidos (sem buscar o sugerido: menos GET no ML).
+    const querRecotar = !(req.body && req.body.recotar === false);
+    const recomendacao = querRecotar && Number.isFinite(meta) ? await recomendarPreco(entrada, { meta, cotarEmPreco: vivo.cotarEmPreco }) : null;
     // Bancada AO VIVO: contrato do preço atual (promoção financiada pela evidência lida agora)
     // + recotação do sugerido + cenário "sair da promoção" (só quando pode decidir: cheio ≥ sugerido).
     const contratoVivo = montarContratoFinanceiro(entrada);

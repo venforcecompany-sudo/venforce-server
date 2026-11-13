@@ -1,8 +1,15 @@
 /*
- * VenForce Resgate — tela. Só LÊ o que o backend calculou (contrato
- * resgate-contrato/1): nenhuma fórmula financeira aqui, nenhum valor ausente
- * vira 0 (ausente = "—"). Únicas chamadas que tocam o ML: "Simular ao vivo" e
- * "Dry-run" — ambas GET no backend. Não existe botão que altere preço.
+ * VenForce Resgate — central de recuperação de preço e margem.
+ * Fluxo: conta → anúncio → margem → simular → revisar → confirmar.
+ *
+ * Regras da tela:
+ *   · Só EXIBE a bancada calculada no servidor (resgate-bancada/1): nenhuma
+ *     fórmula financeira aqui; ausente = "—", nunca 0.
+ *   · Simular e recotar: POST /resgate/.../simular (somente GET no ML).
+ *   · Ações reais: SOMENTE pelos endpoints existentes de /anuncios-meli, por um
+ *     único caminho (executarAcao) que exige: ações habilitadas pelo servidor,
+ *     fora do preview, releitura do preço atual igual ao preço visto, e
+ *     confirmação explícita no modal. Padrão: desligadas.
  */
 (function (root, factory) {
   var api = factory(root || {});
@@ -12,26 +19,27 @@
   "use strict";
 
   var DEFAULT_API_BASE = "https://venforce-server.onrender.com";
-  var SITUACOES = {
-    MARGEM_ANTIGA_INFLADA: ["Margem antiga inflada", "danger"], PREJUIZO: ["Prejuízo", "danger"], ABAIXO_DA_META: ["Abaixo da meta", "warning"],
-    DADOS_INSUFICIENTES: ["Dados insuficientes", "neutral"], MARGEM_DESCONHECIDA: ["Margem desconhecida", "neutral"],
-    SNAPSHOT_DESATUALIZADO: ["Snapshot desatualizado", "info"], PROMOCAO_SUBSIDIADA: ["Promoção subsidiada", "success"], PRECO_OK: ["Preço correto", "success"],
+  var STATUS = {
+    OK: ["Na meta", "success"], ABAIXO_DA_META: ["Abaixo da meta", "warning"], PREJUIZO: ["Prejuízo", "danger"],
+    MARGEM_DESCONHECIDA: ["Margem desconhecida", "neutral"], BLOQUEADO: ["Sem cálculo", "neutral"],
   };
-  var ACOES = { REVISAR_PRECO: "Revisar preço", COMPLETAR_DADOS: "Completar dados", VERIFICAR_FRETE: "Verificar frete", VERIFICAR_SUBSIDIO: "Verificar subsídio", RECALCULAR_SNAPSHOT: "Recalcular", NENHUMA: "Nenhuma" };
-  var ORIGENS = { SEM_ALTERACAO_REGISTRADA: "Sem alteração registrada", ALTERADO_MANUAL: "Alterado manualmente", ALTERADO_AUTOMACAO: "Alterado por automação", ALTERADO_ORIGEM_INDETERMINADA: "Alterado (origem indeterminada)", HISTORICO_INSUFICIENTE: "Histórico insuficiente" };
-  var DECISOES = { JA_LIBERADA: ["Liberada", "success"], LIBERAR_PRIORITARIO: ["Liberar com prioridade", "danger"], LIBERAVEL: ["Pode liberar", "primary"], LIBERAVEL_COM_RESSALVAS: ["Liberar c/ ressalvas", "warning"], NAO_LIBERAVEL: ["Não liberar", "danger"], SEM_DADOS: ["Sem dados", "neutral"] };
-  var CONFIANCAS = { alta: "alta", media: "média", baixa: "baixa", nao_verificada: "não verificada", desconhecida: "desconhecida" };
+  var FINANCIAMENTO = { VENDEDOR_100: "Vendedor paga 100%", ML_COFINANCIA: "ML cofinancia", NAO_DETERMINADO: "Financiamento não comprovado" };
+  var ACAO_ROTULO = { ALTERAR_PRECO: "Alterar preço", ALTERAR_PRECO_PROMOCIONAL: "Alterar preço promocional", SAIR_DA_PROMOCAO: "Sair da promoção", PARTICIPAR: "Participar da promoção" };
+  var REVISAO = { PENDENTE: ["Pendente", "neutral"], APROVADO: ["Aprovado", "success"], AJUSTADO: ["Ajustado", "primary"], REJEITADO: ["Rejeitado", "neutral"], INVALIDADO: ["Invalidado (preço mudou)", "warning"] };
+  var CONFIANCAS = { alta: "alta", media: "média", baixa: "baixa", nao_verificada: "não verificada", desconhecida: "desconhecida", nao_aplicavel: "não se aplica" };
 
   // ── Formatação (ausente = "—", nunca 0) ─────────────────────────────────
   function vazio(v) { return v === null || v === undefined || v === "" || (typeof v === "number" && !isFinite(v)); }
   function moeda(v) { return vazio(v) ? "—" : "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function pct(v) { return vazio(v) ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%"; }
+  function pctFracao(v) { return vazio(v) ? "—" : pct(Number(v) * 100); }
   function inteiro(v) { return vazio(v) ? "—" : Number(v).toLocaleString("pt-BR"); }
   function data(v) { if (vazio(v)) return "—"; var d = new Date(v); return isNaN(d.getTime()) ? "—" : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); }
   function esc(s) { return String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function tag(texto, tom) { return '<span class="vf-tag is-' + esc(tom || "neutral") + '">' + esc(texto) + "</span>"; }
-  function situacaoTag(s) { var x = SITUACOES[s] || [s || "—", "neutral"]; return tag(x[0], x[1]); }
-  function decisaoTag(d) { var x = DECISOES[d] || [d || "—", "neutral"]; return tag(x[0], x[1]); }
+  function statusTag(s) { var x = STATUS[s] || [s || "—", "neutral"]; return tag(x[0], x[1]); }
+  function lerNumero(texto) { var s = String(texto === null || texto === undefined ? "" : texto).trim().replace(/\s/g, ""); if (!s) return null; if (s.indexOf(",") >= 0) s = s.replace(/\./g, "").replace(",", "."); var n = Number(s); return isFinite(n) && n > 0 ? n : null; }
+  function lerPrecos(texto) { return String(texto || "").split(/[;\s]+/).map(lerNumero).filter(function (n) { return n !== null; }).slice(0, 8); }
 
   function buildQuery(params) {
     var q = new URLSearchParams();
@@ -40,69 +48,201 @@
     return s ? "?" + s : "";
   }
 
-  // ── Linhas (puras, testáveis) ─────────────────────────────────────────────
-  function linhaConta(c) {
-    var nome = esc(c.clienteNome || "—") + (c.contaNome ? ' <span class="rg-sub">' + esc(c.contaNome) + "</span>" : "");
-    if (c.semAvaliacao) {
-      return '<tr class="rg-linha rg-linha--muda"><td>' + nome + "</td><td>" + esc(c.sellerId || "—") + '</td><td colspan="8">' + tag("Sem avaliação", "neutral") + " " + esc(c.semAvaliacao) + "</td></tr>";
-    }
-    var m = c.matriz || {};
-    return '<tr class="rg-linha" tabindex="0" data-rg-conta="' + esc(c.clienteContaId) + '"><td>' + nome + "</td><td>" + esc(c.sellerId || "—") + '</td><td class="rg-num">' + inteiro(c.itens) +
-      '</td><td class="rg-num">' + inteiro(c.precosCorretos) + '</td><td class="rg-num"><strong>' + inteiro(c.precisamRevisao) + '</strong></td><td class="rg-num">' + inteiro(c.semMargemConfiavel) +
-      '</td><td class="rg-num">' + inteiro(c.alteradosRecentemente) + '</td><td class="rg-num">' + moeda(c.riscoFinanceiro30d) + "</td><td>" + decisaoTag(m.decisao || c.decisaoAtivacao) + "</td><td>" +
-      (c.financeiramenteValidada ? tag("Sim", "success") : tag("Não", "neutral")) + "</td></tr>";
-  }
-
+  // ── Lista ───────────────────────────────────────────────────────────────
   function linhaItem(x) {
-    var rec = x.recomendacao;
-    var proposta = rec && rec.ok ? moeda(rec.preco) + ' <span class="rg-sub">→ ' + pct(rec.margemPercentApos) + "</span>" : rec ? '<span class="rg-sub">' + esc(rec.motivo || "—") + "</span>" : "—";
-    var rev = x.revisao && x.revisao.status ? x.revisao.status : "PENDENTE";
-    var exp = x.exposicao && !vazio(x.exposicao.valor) ? (x.exposicao.tipo === "faturamento_exposto" ? '<span class="rg-sub" title="Faturamento com margem desconhecida">fat. </span>' : "") + moeda(x.exposicao.valor) : "—";
-    return '<tr class="rg-linha" tabindex="0" data-rg-item="' + esc(x.itemId) + '"><td><div class="rg-anuncio"><strong>' + esc(x.itemId) + '</strong><span class="rg-sub vf-truncate">' + esc(x.titulo || "") + "</span></div></td>" +
-      '<td class="rg-num">' + moeda(x.preco) + '</td><td class="rg-num">' + pct(x.margemPercent) + '</td><td class="rg-num">' + pct(x.margemExibida) + "</td>" +
-      "<td>" + moeda(x.frete) + ' <span class="rg-sub">' + esc(CONFIANCAS[x.confianca] || x.freteNivel || "") + "</span></td>" +
-      "<td>" + situacaoTag(x.situacao) + "</td><td>" + esc(ORIGENS[x.origem] || x.origem || "—") + (x.mudancaRecente ? " " + tag("recente", "warning") : "") + "</td>" +
-      '<td class="rg-num">' + inteiro(x.unidades30d) + '</td><td class="rg-num">' + exp + "</td><td>" + proposta + "</td><td>" + esc(rev) + "</td></tr>";
+    var b = x.bancada || {};
+    var promo = b.promocao ? '<span class="rg-sub">' + esc(b.promocao.tipoRotulo || "Promoção") + "</span><br>" + esc(FINANCIAMENTO[b.promocao.financiamento] || "—") : '<span class="rg-sub">Sem promoção</span>';
+    var sug = b.sugerido && b.sugerido.preco !== null && b.sugerido.preco !== undefined
+      ? moeda(b.sugerido.preco) + '<br><span class="rg-sub">' + (b.sugerido.status === "RECOTADO" ? "recotado no ML" : "preliminar") + "</span>" : "—";
+    var margem = (b.limiteInferior ? '<span class="rg-sub" title="Sem o subsídio do ML, que não foi comprovado">mín. </span>' : "") + pct(b.margemPercent);
+    return '<tr class="rg-linha" tabindex="0" data-rg-item="' + esc(x.itemId) + '">' +
+      '<td><div class="rg-anuncio"><strong>' + esc(x.itemId) + '</strong><span class="rg-sub vf-truncate">' + esc(x.titulo || "") + "</span>" +
+        '<span class="rg-sub">' + (x.sku ? "SKU " + esc(x.sku) : "sem SKU") + (b.mudancaRecente ? " · " + tag("alterado recentemente", "info") : "") + (b.precoMudou ? " · " + tag("preço mudou", "warning") : "") + "</span></div></td>" +
+      '<td class="rg-num">' + moeda(b.precoComprador) + (b.promocao && !vazio(b.precoCheio) ? '<br><span class="rg-sub rg-riscado">' + moeda(b.precoCheio) + "</span>" : "") + "</td>" +
+      '<td class="rg-num">' + margem + "<br>" + statusTag(b.status) + "</td>" +
+      "<td>" + promo + "</td>" +
+      '<td class="rg-num">' + sug + "</td>" +
+      '<td class="rg-motivo"><span class="rg-proximo">' + esc(b.proximoPasso || "") + '</span><span class="rg-sub">' + esc(b.motivoStatus || "") + "</span></td></tr>";
   }
 
-  function blocoComponentes(contrato) {
-    var c = (contrato && contrato.componentes) || {};
-    var linhas = [["Preço cheio", c.precoCheio, moeda], ["Preço vigente", c.precoVigente, moeda], ["Preço promocional", c.precoPromocional, moeda], ["Subsídio ML /un", c.subsidioMl, moeda],
-      ["Valor reconhecido", c.valorReconhecidoVendedor, moeda], ["Desconto do vendedor", c.descontoVendedor, moeda], ["Comissão", c.comissao, moeda], ["Frete", c.frete, moeda],
-      ["Custo", c.custo, moeda], ["Imposto", c.imposto, function (v) { return vazio(v) ? "—" : pct(v * 100); }], ["Taxa fixa", c.taxaFixa, moeda]];
-    return '<table class="vf-table vf-table--compact rg-componentes"><thead><tr><th>Componente</th><th class="rg-num">Valor</th><th>Fonte</th><th>Confiança</th><th>Evidência</th></tr></thead><tbody>' +
-      linhas.map(function (l) { var x = l[1] || {}; return "<tr><td>" + esc(l[0]) + '</td><td class="rg-num">' + l[2](x.valor) + "</td><td>" + esc(x.fonte || "—") + "</td><td>" + esc(CONFIANCAS[x.confianca] || x.confianca || "—") + "</td><td>" + data(x.observadoEm) + "</td></tr>"; }).join("") +
-      "</tbody></table>";
+  // ── Bancada ─────────────────────────────────────────────────────────────
+  var OPERACAO = { base: "", menos: "−", mais: "+", igual: "=" };
+  function cascataHtml(b) {
+    return '<ol class="rg-cascata">' + (b.cascata || []).map(function (l) {
+      var valor = l.status === "nao_aplicavel" ? '<span class="rg-sub">não se aplica</span>' : moeda(l.valor);
+      var sub = [l.fonte, l.confianca ? "confiança " + (CONFIANCAS[l.confianca] || l.confianca) : null, l.nota].filter(Boolean).map(esc).join(" · ");
+      return '<li class="rg-cascata__linha rg-cascata__linha--' + esc(l.operacao) + (l.chave === "lucro" ? " rg-cascata__linha--total" : "") + '" data-rg-linha="' + esc(l.chave) + '">' +
+        '<span class="rg-cascata__op" aria-hidden="true">' + (OPERACAO[l.operacao] || "") + '</span><span class="rg-cascata__rotulo">' + esc(l.rotulo) + (sub ? '<span class="rg-sub">' + sub + "</span>" : "") + "</span>" +
+        '<span class="rg-cascata__valor rg-num">' + valor + "</span></li>";
+    }).join("") + "</ol>";
   }
 
-  function detalheItem(x) {
-    var c = x.contrato || {}, r = c.resultado || {};
-    var lista = function (arr, campo) { return arr && arr.length ? "<ul class=\"rg-lista\">" + arr.map(function (b) { return "<li>" + esc(b[campo || "texto"]) + (b.resolveCom ? ' <span class="rg-sub">— ' + esc(b.resolveCom) + "</span>" : "") + "</li>"; }).join("") + "</ul>" : '<p class="rg-sub">Nenhuma.</p>'; };
-    var tl = (x.historico && x.historico.linhaDoTempo) || [];
-    return '<div class="rg-detalhe">' +
-      '<div class="vf-metric-row">' +
-        '<div class="vf-metric"><div class="vf-metric__label">Margem real</div><div class="vf-metric__value">' + pct(r.margemPercent) + "</div><div class=\"vf-metric__foot\">" + (r.limiteInferior ? "limite inferior (subsídio desconhecido)" : esc(CONFIANCAS[c.confiancaGeral] || "")) + "</div></div>" +
-        '<div class="vf-metric"><div class="vf-metric__label">Lucro /un</div><div class="vf-metric__value">' + moeda(r.lucro) + "</div></div>" +
-        '<div class="vf-metric"><div class="vf-metric__label">Margem exibida (snapshot)</div><div class="vf-metric__value">' + pct(x.snapshot && x.snapshot.margemPercent) + '</div><div class="vf-metric__foot">' + data(x.snapshot && x.snapshot.calculadoEm) + "</div></div>" +
-        '<div class="vf-metric"><div class="vf-metric__label">Meta</div><div class="vf-metric__value">' + (x.meta ? pct(x.meta.valor * 100) : "—") + '</div><div class="vf-metric__foot">' + esc(x.meta && x.meta.origem || "") + "</div></div>" +
-      "</div>" +
-      "<p>" + situacaoTag(x.situacao) + " " + tag(ACOES[x.acao] || x.acao, "primary") + " " + esc((x.motivos || []).join(" ")) + "</p>" +
-      '<h3 class="rg-h3">Componentes</h3>' + blocoComponentes(c) +
-      '<p class="rg-sub">' + esc(c.componentes && c.componentes.frete && c.componentes.frete.texto || "") + "</p>" +
-      '<h3 class="rg-h3">Bloqueios</h3>' + lista(c.bloqueios) +
-      '<h3 class="rg-h3">Pendências e inconsistências</h3>' + lista((c.pendencias || []).concat(c.inconsistencias || [])) +
-      '<h3 class="rg-h3">Histórico de preço</h3><p class="rg-sub">' + esc(ORIGENS[x.historico && x.historico.origem] || "") + " — " + esc(x.historico && x.historico.motivo || "") + "</p>" +
-      (tl.length ? '<ol class="rg-timeline">' + tl.map(function (e) { return "<li><span class=\"rg-sub\">" + data(e.em) + "</span> " + esc(e.descricao || e.tipo) + (vazio(e.preco) ? "" : " · " + moeda(e.preco)) + ' <span class="rg-sub">(' + esc(e.fonte) + ")</span></li>"; }).join("") + "</ol>" : '<p class="rg-sub">Sem eventos.</p>') +
-      '<h3 class="rg-h3">Simular ao vivo</h3>' +
-      '<div class="vf-cluster"><label class="vf-visually-hidden" for="rg-sim-precos">Preços</label><input class="vf-input vf-input--sm" id="rg-sim-precos" placeholder="Ex.: 89,90; 94,90"> <button class="vf-btn vf-btn--secondary vf-btn--sm" type="button" id="rg-sim-ir">Simular (leitura ao vivo)</button></div>' +
-      '<div id="rg-sim-saida"></div>' +
-      '<h3 class="rg-h3">Revisão</h3><p class="rg-sub">Proposta válida só para o preço visto ' + moeda(x.fingerprint && x.fingerprint.precoVisto) + " (" + data(x.fingerprint && x.fingerprint.vistoEm) + "). Revisar não altera o anúncio.</p>" +
-      '<div class="vf-cluster"><button class="vf-btn vf-btn--primary vf-btn--sm" type="button" data-rg-revisar="APROVADO">Aprovar proposta</button><button class="vf-btn vf-btn--secondary vf-btn--sm" type="button" data-rg-revisar="AJUSTADO">Ajustado manualmente</button><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" data-rg-revisar="REJEITADO">Rejeitar</button></div>' +
+  function precosHtml(b) {
+    var p = b.precos || {};
+    var m = function (rotulo, valor, nota) { return '<div class="vf-metric"><div class="vf-metric__label">' + esc(rotulo) + '</div><div class="vf-metric__value">' + valor + "</div>" + (nota ? '<div class="vf-metric__foot">' + esc(nota) + "</div>" : "") + "</div>"; };
+    return '<div class="vf-metric-row rg-precos">' +
+      m("Preço cheio do vendedor", moeda(p.cheio)) +
+      m("Promocional do vendedor", moeda(p.promocionalVendedor), b.promocao && b.promocao.ativa && vazio(p.promocionalVendedor) ? "não é uma promoção 100% do vendedor" : null) +
+      m("Comprador paga", moeda(p.comprador)) +
+      m("Subsídio ML comprovado", b.promocao && b.promocao.ativa ? (b.promocao.comprovado ? moeda(b.promocao.subsidio) : "não comprovado") : "—") +
       "</div>";
   }
 
-  function lerPrecos(texto) {
-    return String(texto || "").split(/[;\s]+/).map(function (s) { return Number(s.replace(/\./g, "").replace(",", ".")); }).filter(function (n) { return isFinite(n) && n > 0; }).slice(0, 8);
+  function resultadoHtml(b) {
+    var r = b.resultado || {};
+    return '<div class="rg-resultado">' +
+      '<div><div class="rg-resultado__rotulo">' + (r.limiteInferior ? "Margem mínima" : "Margem") + '</div><div class="rg-resultado__valor">' + pct(r.margemPercent) + "</div></div>" +
+      '<div><div class="rg-resultado__rotulo">' + (r.limiteInferior ? "Lucro mínimo /un" : "Lucro /un") + '</div><div class="rg-resultado__valor">' + moeda(r.lucro) + "</div></div>" +
+      '<div><div class="rg-resultado__rotulo">Meta</div><div class="rg-resultado__valor">' + pctFracao(b.meta && b.meta.valor) + "</div></div>" +
+      '<div class="rg-resultado__status">' + statusTag(b.status) + '<p class="rg-sub">' + esc(b.motivoStatus || "") + "</p></div></div>";
+  }
+
+  function promocaoHtml(b) {
+    var p = b.promocao || {};
+    if (!p.ativa) return '<p class="rg-sub">Sem promoção ativa: o comprador paga o preço cheio.</p>';
+    return '<div class="rg-promo"><div><strong>' + esc(p.tipoRotulo || p.tipo || "Promoção ativa") + "</strong>" + (p.nome ? " · " + esc(p.nome) : "") + (p.id ? ' <span class="rg-sub">' + esc(p.id) + "</span>" : "") + "</div>" +
+      "<div>" + tag(FINANCIAMENTO[p.financiamento] || "—", p.comprovado ? "primary" : "warning") + " " + esc(p.texto || "") + "</div>" +
+      (p.fonte ? '<div class="rg-sub">Evidência: ' + esc(p.fonte) + "</div>" : "") + "</div>";
+  }
+
+  function sugeridoHtml(b, cfg) {
+    var s = b.sugerido || {};
+    var recotar = '<button class="vf-btn vf-btn--secondary vf-btn--sm" type="button" data-rg-recotar' + (cfg && cfg.recotacaoSobDemanda ? "" : ' disabled title="Indisponível neste ambiente (sem leitura ao vivo do ML)"') + ">Recotar no ML (somente leitura)</button>";
+    if (s.status === "NAO_NECESSARIO") return '<p class="rg-sub">' + (b.status === "OK" ? "Margem na meta: nenhum preço novo é necessário." : "Sem preço sugerido: resolva os bloqueios primeiro.") + "</p>";
+    if (s.status === "RECOTADO") {
+      return '<div class="rg-sugerido rg-sugerido--ok"><div class="rg-sugerido__preco">' + moeda(s.preco) + '</div><div>' + tag("Recotado no ML", "success") + " margem " + pct(s.margemPercent) + " · comissão " + moeda(s.comissao) + " · frete " + moeda(s.frete) +
+        '<div class="rg-sub">' + esc(s.texto || "") + " Recotado em " + data(s.recotadoEm) + ".</div></div></div>" + '<div class="vf-cluster">' + recotar + "</div>";
+    }
+    return '<div class="rg-sugerido"><div class="rg-sugerido__preco rg-sub">' + moeda(s.preco) + '</div><div>' + tag("Simulação preliminar: não usar", "neutral") + '<div class="rg-sub">' + esc(s.texto || "") + "</div></div></div>" + '<div class="vf-cluster">' + recotar + "</div>";
+  }
+
+  function acoesHtml(b, ctx, cfg) {
+    var habilitadas = podeAgir(ctx, cfg);
+    var aviso = habilitadas ? "" : '<p class="rg-sub rg-aviso-acoes">' + esc(motivoSemAcoes(ctx, cfg)) + "</p>";
+    if (!(b.acoes || []).length) return aviso + '<p class="rg-sub">Nenhuma ação de preço indicada para este anúncio.</p>';
+    return aviso + '<ul class="rg-acoes">' + b.acoes.map(function (a, i) {
+      var esperado = a.resultadoEsperado ? (a.resultadoEsperado.recotado ? "Comprador passaria a pagar " + moeda(a.resultadoEsperado.precoComprador) + " · margem " + pct(a.resultadoEsperado.margemPercent) + (a.resultadoEsperado.atingeMeta ? " (atinge a meta)" : " (abaixo da meta)") : "Comprador passaria a pagar " + moeda(a.resultadoEsperado.precoComprador) + " · margem ainda não recotada") : "";
+      var bloqueio = a.suportada === false ? a.motivoNaoSuportada || "Ação não suportada pelo VenForce." : a.requerAntes ? "Requer antes: " + (ACAO_ROTULO[a.requerAntes] || a.requerAntes) + "." : "";
+      return '<li class="rg-acao"><div><strong>' + esc(a.rotulo || ACAO_ROTULO[a.tipo] || a.tipo) + "</strong>" + (esperado ? '<div class="rg-sub">' + esc(esperado) + "</div>" : "") + (bloqueio ? '<div class="rg-sub">' + esc(bloqueio) + "</div>" : "") + (a.nota ? '<div class="rg-sub">' + esc(a.nota) + "</div>" : "") + "</div>" +
+        '<button class="vf-btn vf-btn--secondary vf-btn--sm" type="button" data-rg-acao="' + i + '"' + (habilitadas && a.suportada !== false ? "" : " disabled") + ">Revisar e confirmar</button></li>";
+    }).join("") + "</ul>";
+  }
+
+  function pendenciasHtml(b) {
+    var l = (b.bloqueios || []).map(function (x) { return { t: x.texto, r: x.resolveCom, forte: true }; }).concat((b.pendencias || []).map(function (x) { return { t: x.texto, r: null }; }));
+    if (!l.length) return "";
+    return '<section class="rg-secao"><h3 class="rg-h3">Por que o cálculo está bloqueado ou incompleto</h3><ul class="rg-lista">' + l.map(function (x) { return "<li>" + (x.forte ? "<strong>" + esc(x.t) + "</strong>" : esc(x.t)) + (x.r ? '<div class="rg-sub">Resolve: ' + esc(x.r) + "</div>" : "") + "</li>"; }).join("") + "</ul></section>";
+  }
+
+  function revisaoHtml(item) {
+    var st = (item.revisao && item.revisao.status) || "PENDENTE", r = REVISAO[st] || [st, "neutral"];
+    return '<div class="rg-revisao"><div>Estado: ' + tag(r[0], r[1]) + (item.revisao && item.revisao.em ? ' <span class="rg-sub">' + data(item.revisao.em) + "</span>" : "") + '</div>' +
+      '<p class="rg-sub">Vale só para o preço visto ' + moeda(item.fingerprint && item.fingerprint.precoVisto) + ". Se o preço mudar, a revisão é invalidada. Revisar não altera o anúncio.</p>" +
+      '<div class="vf-cluster"><button class="vf-btn vf-btn--secondary vf-btn--sm" type="button" data-rg-revisar="APROVADO">Aprovar proposta</button><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" data-rg-revisar="AJUSTADO">Marcar como ajustado</button><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" data-rg-revisar="REJEITADO">Rejeitar</button></div></div>';
+  }
+
+  function detalhesTecnicosHtml(item) {
+    var c = (item.contrato && item.contrato.componentes) || {};
+    var nomes = [["precoCheio", "Preço cheio"], ["precoVigente", "Preço do comprador"], ["subsidioMl", "Subsídio ML (auditoria)"], ["comissao", "Comissão"], ["frete", "Frete"], ["custo", "Custo"], ["imposto", "Imposto"], ["taxaFixa", "Taxa fixa"]];
+    var tl = (item.historico && item.historico.linhaDoTempo) || [];
+    return '<details class="rg-detalhes"><summary>Detalhes técnicos e histórico</summary>' +
+      '<table class="vf-table vf-table--compact"><thead><tr><th>Componente</th><th class="rg-num">Valor</th><th>Fonte</th><th>Confiança</th><th>Observado</th></tr></thead><tbody>' +
+      nomes.map(function (n) { var x = c[n[0]] || {}; var v = n[0] === "imposto" ? pctFracao(x.valor) : moeda(x.valor); return "<tr><td>" + esc(n[1]) + '</td><td class="rg-num">' + v + "</td><td>" + esc(x.fonte || "—") + "</td><td>" + esc(CONFIANCAS[x.confianca] || x.confianca || "—") + "</td><td>" + data(x.observadoEm) + "</td></tr>"; }).join("") +
+      "</tbody></table>" +
+      '<p class="rg-sub">' + esc(item.historico && item.historico.motivo || "") + "</p>" +
+      (tl.length ? '<ol class="rg-timeline">' + tl.map(function (e) { return '<li><span class="rg-sub">' + data(e.em) + "</span> " + esc(e.descricao || e.tipo) + (vazio(e.preco) ? "" : " · " + moeda(e.preco)) + ' <span class="rg-sub">(' + esc(e.fonte) + ")</span></li>"; }).join("") + "</ol>" : "") +
+      "</details>";
+  }
+
+  function bancadaHtml(det, cfg, extra) {
+    var b = det.bancada || {}, item = det.item || {}, ctx = det.contexto || {};
+    var e = extra || {};
+    return '<div class="rg-bancada__corpo">' +
+      (b.precoMudou ? '<div class="vf-banner vf-banner--compact"><div class="vf-banner__content"><div class="vf-banner__title">Preço mudou desde a auditoria</div><div class="vf-banner__description">' + esc(b.precoMudou.texto) + "</div></div></div>" : "") +
+      (e.aoVivo ? '<div class="rg-sub rg-aovivo">Atualizado ao vivo em ' + data(e.aoVivo) + " (somente leitura).</div>" : "") +
+      precosHtml(b) + resultadoHtml(b) +
+      '<section class="rg-secao"><h3 class="rg-h3">Composição da margem</h3>' + cascataHtml(b) + "</section>" +
+      pendenciasHtml(b) +
+      '<section class="rg-secao"><h3 class="rg-h3">Promoção</h3>' + promocaoHtml(b) +
+        '<div class="vf-cluster rg-promo-acoes"><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" data-rg-ver-promocoes' + (ctx.clienteSlug && !ctx.preview ? "" : ' disabled title="Indisponível neste ambiente"') + ">Ver promoções disponíveis</button></div><div id=\"rg-promocoes\"></div></section>" +
+      '<section class="rg-secao"><h3 class="rg-h3">Preço sugerido para a meta</h3>' + sugeridoHtml(b, cfg) + "</section>" +
+      '<section class="rg-secao"><h3 class="rg-h3">Simular outro preço</h3>' +
+        '<div class="vf-cluster"><label class="vf-visually-hidden" for="rg-sim-preco">Preço do comprador</label><div class="vf-input-group rg-sim-campo"><span class="vf-input-prefix">R$</span><input class="vf-input vf-input--sm" id="rg-sim-preco" inputmode="decimal" placeholder="' + esc(b.sugerido && b.sugerido.preco ? String(b.sugerido.preco).replace(".", ",") : "0,00") + '"></div>' +
+        '<button class="vf-btn vf-btn--secondary vf-btn--sm" type="button" id="rg-sim-ir"' + (cfg && cfg.recotacaoSobDemanda ? "" : ' disabled title="Indisponível neste ambiente (sem leitura ao vivo do ML)"') + ">Simular (recota comissão e frete)</button></div>" +
+        '<div id="rg-sim-saida"></div></section>' +
+      '<section class="rg-secao"><h3 class="rg-h3">Ações</h3>' + acoesHtml(b, ctx, cfg) + "</section>" +
+      '<section class="rg-secao"><h3 class="rg-h3">Revisão</h3>' + revisaoHtml(item) + "</section>" +
+      detalhesTecnicosHtml(item) + "</div>";
+  }
+
+  /** Antes × depois de uma simulação (o "depois" vem do servidor, recotado no preço). */
+  function comparacaoHtml(b, sim) {
+    var r = sim && sim.resultado || {};
+    var antes = b.resultado || {};
+    var linha = function (rotulo, a, d) { return "<tr><td>" + esc(rotulo) + '</td><td class="rg-num">' + a + '</td><td class="rg-num"><strong>' + d + "</strong></td></tr>"; };
+    var c = function (k) { var l = (b.cascata || []).filter(function (x) { return x.chave === k; })[0]; return l ? l.valor : null; };
+    return '<table class="vf-table vf-table--compact rg-comparacao"><thead><tr><th></th><th class="rg-num">Agora</th><th class="rg-num">Simulado</th></tr></thead><tbody>' +
+      linha("Comprador paga", moeda(b.precos && b.precos.comprador), moeda(sim.preco)) +
+      linha("Subsídio do ML", moeda(c("subsidioMl")), '<span class="rg-sub">não se transfere</span>') +
+      linha("Comissão", moeda(c("comissao")), moeda(sim.comissao && sim.comissao.valor)) +
+      linha("Frete", moeda(c("frete")), moeda(sim.frete && sim.frete.valor)) +
+      linha("Lucro /un", moeda(antes.lucro), moeda(r.lucro)) +
+      linha("Margem", pct(antes.margemPercent), pct(r.margemPercent)) +
+      "</tbody></table>" + ((sim.bloqueios || []).length ? '<p class="rg-sub">' + esc(sim.bloqueios.map(function (x) { return x.texto; }).join(" ")) + "</p>" : "") +
+      '<p class="rg-sub">Comissão e frete cotados no preço simulado (faixa de preço e modalidade incluídas). Preço novo não herda o subsídio da promoção atual.</p>';
+  }
+
+  function promocoesDisponiveisHtml(lista, ctx, cfg) {
+    if (!lista || !lista.length) return '<p class="rg-sub">Nenhuma promoção retornada pelo Mercado Livre.</p>';
+    var habilitadas = podeAgir(ctx, cfg);
+    return '<ul class="rg-promos">' + lista.map(function (p, i) {
+      var vr = p.voceRecebe || {};
+      var ativa = p.status === "started" || p.status === "active";
+      var pode = ativa ? (p.modoEscrita ? "SAIR_DA_PROMOCAO" : null) : (p.status === "candidate" && p.modoEscrita === "ACEITE" ? "PARTICIPAR" : null);
+      return '<li class="rg-promos__item"><div><strong>' + esc(p.tipoLabel || p.tipo) + "</strong>" + (p.nome ? " · " + esc(p.nome) : "") + " " + tag(p.statusExibicao || p.statusLabel || p.status || "—", ativa ? "primary" : "neutral") +
+        '<div class="rg-sub">Comprador pagaria ' + moeda(p.precoFinal) + (vazio(p.meliPercentage) ? "" : " · ML " + pct(p.meliPercentage)) + (vazio(p.subsidioMl) ? "" : " (" + moeda(p.subsidioMl) + "/un)") +
+        " · margem nela " + (vr.computable ? pct(vr.marginPercent) : "não calculável") + "</div></div>" +
+        (pode ? '<button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" data-rg-promo="' + i + '" data-rg-promo-acao="' + pode + '"' + (habilitadas ? "" : " disabled") + ">" + esc(ACAO_ROTULO[pode]) + "</button>" : "") + "</li>";
+    }).join("") + "</ul>";
+  }
+
+  // ── Ações: um único caminho de escrita ──────────────────────────────────
+  function podeAgir(ctx, cfg) { return Boolean(cfg && cfg.acoesHabilitadas && !cfg.preview && ctx && ctx.acoesHabilitadas && !ctx.preview && ctx.clienteSlug); }
+  function motivoSemAcoes(ctx, cfg) {
+    if ((cfg && cfg.preview) || (ctx && ctx.preview)) return "Preview local: somente leitura. Nenhuma ação é enviada ao Mercado Livre.";
+    if (!(cfg && cfg.acoesHabilitadas) || !(ctx && ctx.acoesHabilitadas)) return "Ações no Mercado Livre desligadas neste ambiente. Simule e revise; a execução exige autorização.";
+    if (!(ctx && ctx.clienteSlug)) return "Cliente da conta não identificado: ações indisponíveis.";
+    return "";
+  }
+  /** Ação → chamada do endpoint EXISTENTE de /anuncios-meli (puro, testável). */
+  function planoDaAcao(acao, ctx, itemId) {
+    var base = { clienteSlug: ctx.clienteSlug, clienteContaId: ctx.clienteContaId };
+    var id = encodeURIComponent(itemId), pid = encodeURIComponent(acao.promocaoId || "");
+    if (acao.tipo === "ALTERAR_PRECO") return { method: "PATCH", url: "/anuncios-meli/" + id + "/preco", body: Object.assign({}, base, { preco: acao.precoAlvo }) };
+    if (acao.tipo === "ALTERAR_PRECO_PROMOCIONAL") return { method: "POST", url: "/anuncios-meli/" + id + "/promocoes/" + pid + "/aplicar", body: Object.assign({}, base, { precoNovo: acao.precoAlvo, alterarParticipacao: true }) };
+    if (acao.tipo === "SAIR_DA_PROMOCAO") return { method: "POST", url: "/anuncios-meli/" + id + "/promocoes/" + pid + "/sair", body: Object.assign({}, base, { tipo: acao.promocaoTipo || null }) };
+    if (acao.tipo === "PARTICIPAR") return { method: "POST", url: "/anuncios-meli/" + id + "/promocoes/" + pid + "/participar", body: Object.assign({}, base, { tipo: acao.promocaoTipo || null }) };
+    return null;
+  }
+  /** Releitura (GET leve do /anuncios-meli) comparada ao preço visto. Mudou → proposta inválida. */
+  function conferirReleitura(acao, b, relido) {
+    if (!relido || vazio(relido.precoAtual)) return { ok: false, motivo: "Não foi possível reler o preço atual no Mercado Livre: nada foi enviado." };
+    var visto = b.precos && b.precos.comprador;
+    if (vazio(visto) || Math.abs(Number(relido.precoAtual) - Number(visto)) >= 0.01) return { ok: false, motivo: "O preço mudou desde a análise (" + moeda(visto) + " → " + moeda(relido.precoAtual) + "): proposta invalidada. Reabra o anúncio e recote." };
+    if (acao.requerAntes === "SAIR_DA_PROMOCAO" && !vazio(relido.precoOriginal)) return { ok: false, motivo: "O anúncio ainda está em promoção: saia da promoção antes de alterar o preço cheio." };
+    return { ok: true };
+  }
+  function modalHtml(acao, b, relido, conferencia) {
+    var depois = acao.tipo === "SAIR_DA_PROMOCAO" ? (acao.resultadoEsperado ? moeda(acao.resultadoEsperado.precoComprador) : "preço cheio") : moeda(acao.precoAlvo);
+    var margemDepois = acao.tipo === "SAIR_DA_PROMOCAO" ? (acao.resultadoEsperado && acao.resultadoEsperado.recotado ? pct(acao.resultadoEsperado.margemPercent) : "não recotada")
+      : (b.sugerido && b.sugerido.status === "RECOTADO" && Math.abs(Number(b.sugerido.preco) - Number(acao.precoAlvo)) < 0.005 ? pct(b.sugerido.margemPercent) : "não recotada");
+    return "<p><strong>" + esc(acao.rotulo || ACAO_ROTULO[acao.tipo]) + "</strong></p>" +
+      '<table class="vf-table vf-table--compact"><thead><tr><th></th><th class="rg-num">Agora (relido)</th><th class="rg-num">Depois</th></tr></thead><tbody>' +
+      '<tr><td>Comprador paga</td><td class="rg-num">' + moeda(relido && relido.precoAtual) + '</td><td class="rg-num"><strong>' + depois + "</strong></td></tr>" +
+      '<tr><td>Margem</td><td class="rg-num">' + pct(b.resultado && b.resultado.margemPercent) + '</td><td class="rg-num"><strong>' + margemDepois + "</strong></td></tr></tbody></table>" +
+      (conferencia.ok ? '<p class="rg-sub">Será enviado pelo endpoint existente de Anúncios ML (' + esc(acao.endpoint || "") + "), com as mesmas travas da tela de Anúncios.</p>" +
+        '<label class="vf-check"><input type="checkbox" id="rg-modal-ciente"> Revisei os valores e quero enviar esta alteração ao Mercado Livre.</label>'
+        : '<div class="vf-banner vf-banner--compact"><div class="vf-banner__content"><div class="vf-banner__title">Ação bloqueada</div><div class="vf-banner__description">' + esc(conferencia.motivo) + "</div></div></div>");
   }
 
   // ── Cliente HTTP ───────────────────────────────────────────────────────
@@ -113,169 +253,238 @@
     var h = { Authorization: "Bearer " + token() };
     var init = { method: o.method || "GET", headers: h };
     if (o.body !== undefined) { h["Content-Type"] = "application/json"; init.body = JSON.stringify(o.body); }
-    return fetch(apiBase() + caminho, init).then(function (r) { return r.json().catch(function () { return null; }).then(function (d) { return { ok: r.ok && d && d.ok !== false, status: r.status, data: d }; }); })
+    return root.fetch(apiBase() + caminho, init).then(function (r) { return r.json().catch(function () { return null; }).then(function (d) { return { ok: r.ok && d && d.ok !== false, status: r.status, data: d }; }); })
       .catch(function (e) { return { ok: false, status: 0, data: { motivo: e && e.message || "Falha de rede." } }; });
   }
+  function lerPreferencia(k, padrao) { try { var v = root.localStorage && root.localStorage.getItem(k); return v === null || v === undefined ? padrao : v; } catch (_) { return padrao; } }
+  function gravarPreferencia(k, v) { try { if (root.localStorage) root.localStorage.setItem(k, v); } catch (_) { /* sem storage */ } }
 
   // ── Estado e telas ──────────────────────────────────────────────────────
-  var estado = { aba: "global", global: null, contaId: null, pagina: 1, limite: 50, filtros: {}, itemAberto: null };
+  var estado = { cfg: { acoesHabilitadas: false, preview: false, recotacaoSobDemanda: false }, global: null, contaId: null, meta: 15, filtro: "", recentes: false, busca: "", pagina: 1, limite: 50, aberto: null, promocoes: null, acaoPendente: null };
   function $(id) { return root.document.getElementById(id); }
   function mostrarEstado(html) { $("rg-estado").innerHTML = html || ""; }
-  function toast(msg, tom) { var el = root.document.createElement("div"); el.className = "vf-toast"; el.innerHTML = '<div class="vf-toast__content"><div class="vf-toast__title">' + esc(msg) + "</div></div>"; if (tom) el.dataset.tone = tom; $("rg-toasts").appendChild(el); setTimeout(function () { el.remove(); }, 5000); }
-
+  function toast(msg, tom) { var el = root.document.createElement("div"); el.className = "vf-toast"; el.innerHTML = '<div class="vf-toast__content"><div class="vf-toast__title">' + esc(msg) + "</div></div>"; if (tom) el.dataset.tone = tom; $("rg-toasts").appendChild(el); setTimeout(function () { el.remove(); }, 6000); }
+  function atualizarHash() {
+    var h = buildQuery({ conta: estado.contaId, filtro: estado.filtro, item: estado.aberto && estado.aberto.item && estado.aberto.item.itemId }).replace(/^\?/, "");
+    try { root.history.replaceState(null, "", h ? "#" + h : "#"); } catch (_) { /* sem history */ }
+  }
   function trocarAba(aba) {
-    estado.aba = aba;
     Array.prototype.forEach.call(root.document.querySelectorAll("[data-rg-tab]"), function (b) { var on = b.dataset.rgTab === aba; b.setAttribute("aria-selected", String(on)); b.classList.toggle("is-active", on); });
     Array.prototype.forEach.call(root.document.querySelectorAll("[data-rg-painel]"), function (p) { p.hidden = p.dataset.rgPainel !== aba; });
   }
 
-  function kpi(rotulo, valor, tom) { return '<div class="vf-kpi' + (tom ? " vf-kpi--" + tom : "") + '"><div class="vf-kpi__label">' + esc(rotulo) + '</div><div class="vf-kpi__value">' + valor + "</div></div>"; }
+  function renderModo() {
+    var cfg = estado.cfg, el = $("rg-modo");
+    var txt = cfg.preview ? "Preview local — somente leitura: simular, recotar e ações no Mercado Livre estão desligados." : !cfg.acoesHabilitadas ? "Ações no Mercado Livre desligadas neste ambiente. Você pode analisar, simular e revisar." : "";
+    el.hidden = !txt; el.innerHTML = txt ? '<div class="vf-banner vf-banner--compact"><div class="vf-banner__content"><div class="vf-banner__description">' + esc(txt) + "</div></div></div>" : "";
+  }
 
-  function renderGlobal(d) {
+  function renderContas(d) {
+    var contas = (d.contas || []).filter(function (c) { return !c.semAvaliacao; });
+    contas.sort(function (a, b) { return (Number(b.precisamRevisao) || 0) - (Number(a.precisamRevisao) || 0) || String(a.clienteNome).localeCompare(String(b.clienteNome)); });
+    $("rg-conta").innerHTML = contas.map(function (c) { return '<option value="' + esc(c.clienteContaId) + '">' + esc((c.clienteNome || "Cliente") + (c.contaNome ? " — " + c.contaNome : "")) + " (" + inteiro(c.itens) + ")</option>"; }).join("");
+    $("rg-exec").textContent = d.execucao ? "Auditoria de " + data(d.execucao.finalizadaEm || d.execucao.iniciadaEm) : "Nenhuma auditoria concluída";
     var t = d.totais || {};
-    $("rg-exec").textContent = d.execucao ? "Auditoria #" + d.execucao.id + " · " + data(d.execucao.finalizadaEm || d.execucao.iniciadaEm) : "Nenhuma auditoria concluída";
-    $("rg-kpis").innerHTML = d.execucao ? [
-      kpi("Contas avaliadas", inteiro(t.contasAvaliadas) + (t.contasSemAvaliacao ? ' <span class="rg-sub">+' + inteiro(t.contasSemAvaliacao) + " sem avaliação</span>" : "")),
-      kpi("Anúncios auditados", inteiro(t.anunciosAuditados)), kpi("Preços corretos", inteiro(t.precosCorretos)),
-      kpi("Precisam revisão", inteiro(t.precisamRevisao), "danger"), kpi("Sem margem confiável", inteiro(t.semMargemConfiavel), "warning"),
-      kpi("Alterados recentemente", inteiro(t.alteradosRecentemente)), kpi("Risco estimado 30d", moeda(t.riscoFinanceiro30d), "danger"),
-    ].join("") : "";
-    $("rg-contas").innerHTML = (d.contas || []).map(linhaConta).join("") || '<tr><td colspan="10" class="vf-table__empty">Sem contas na sua carteira nesta auditoria.</td></tr>';
-    renderAtivacao(d.ativacao);
+    $("rg-kpis").innerHTML = d.execucao ? [["Contas avaliadas", inteiro(t.contasAvaliadas)], ["Sem avaliação", inteiro(t.contasSemAvaliacao)], ["Anúncios auditados", inteiro(t.anunciosAuditados)], ["Alterados recentemente", inteiro(t.alteradosRecentemente)]]
+      .map(function (k) { return '<div class="vf-kpi"><div class="vf-kpi__label">' + esc(k[0]) + '</div><div class="vf-kpi__value">' + k[1] + "</div></div>"; }).join("") : "";
+    $("rg-contas").innerHTML = (d.contas || []).map(function (c) {
+      if (c.semAvaliacao) return '<tr class="rg-linha--muda"><td>' + esc(c.clienteNome || "—") + ' <span class="rg-sub">' + esc(c.contaNome || "") + '</span></td><td colspan="5">' + tag("Sem avaliação", "neutral") + " " + esc(c.semAvaliacao) + "</td></tr>";
+      return '<tr class="rg-linha" tabindex="0" data-rg-conta="' + esc(c.clienteContaId) + '"><td>' + esc(c.clienteNome || "—") + ' <span class="rg-sub">' + esc(c.contaNome || "") + '</span></td><td class="rg-num">' + inteiro(c.itens) + '</td><td class="rg-num">' + inteiro(c.precisamRevisao) + '</td><td class="rg-num">' + inteiro(c.semMargemConfiavel) + '</td><td class="rg-num">' + inteiro(c.alteradosRecentemente) + "</td><td>" + esc(c.matriz && c.matriz.decisao || c.decisaoAtivacao || "—") + "</td></tr>";
+    }).join("");
+    var a = d.ativacao;
+    $("rg-ativacao").innerHTML = a ? '<section class="rg-secao"><h3 class="rg-h3">Ativação do cotador por ondas</h3>' + (a.envProposto ? Object.keys(a.envProposto).map(function (k) { return "<div><code>" + esc(k) + "=" + esc(a.envProposto[k]) + "</code></div>"; }).join("") : '<p class="rg-sub">Nenhuma conta pronta para a próxima onda.</p>') + '<ol class="rg-lista">' + (a.passos || []).map(function (p) { return "<li>" + esc(p) + "</li>"; }).join("") + "</ol></section>" : "";
   }
 
-  function renderAtivacao(a) {
-    if (!a) { $("rg-ativacao").innerHTML = '<div class="vf-empty"><div class="vf-empty__title">Sem plano de ativação</div></div>'; return; }
-    var env = a.envProposto ? Object.keys(a.envProposto).map(function (k) { return "<div><code>" + esc(k) + "=" + esc(a.envProposto[k]) + "</code></div>"; }).join("") : '<p class="rg-sub">Nenhuma conta pronta para a próxima onda.</p>';
-    $("rg-ativacao").innerHTML =
-      (a.alertas && a.alertas.length ? '<div class="vf-banner"><div class="vf-banner__content"><div class="vf-banner__title">Atenção</div><div class="vf-banner__description">' + a.alertas.map(esc).join("<br>") + "</div></div></div>" : "") +
-      '<div class="vf-card"><div class="vf-card__header"><div class="vf-card__title">Próxima onda</div></div><div class="vf-card__body">' +
-      ((a.proximaOnda || []).map(function (o) { return "<div>" + decisaoTag(o.decisao) + " " + esc(o.clienteNome || "") + " · conta " + esc(o.clienteContaId) + " · seller " + esc(o.sellerId) + ' <span class="rg-sub">' + esc((o.motivos || []).join(" ")) + "</span></div>"; }).join("") || '<p class="rg-sub">—</p>') +
-      '<h3 class="rg-h3">Valores propostos (listas explícitas, sem *)</h3>' + env +
-      '<ol class="rg-lista">' + (a.passos || []).map(function (p) { return "<li>" + esc(p) + "</li>"; }).join("") + "</ol></div></div>" +
-      '<div class="vf-card"><div class="vf-card__header"><div class="vf-card__title">Não liberar agora</div></div><div class="vf-card__body">' +
-      ((a.naoLiberar || []).map(function (o) { return "<div>" + decisaoTag(o.decisao) + " conta " + esc(o.clienteContaId) + ' <span class="rg-sub">' + esc((o.motivos || []).join(" ")) + "</span></div>"; }).join("") || '<p class="rg-sub">—</p>') + "</div></div>";
+  function renderResumoConta() {
+    var c = ((estado.global && estado.global.contas) || []).filter(function (x) { return Number(x.clienteContaId) === estado.contaId; })[0] || {};
+    var bc = c.bancada;
+    $("rg-conta-resumo").innerHTML = '<span class="rg-sub">' + inteiro(c.itens) + " anúncios · seller " + esc(c.sellerId || "—") + (bc ? " · evidência de promoção em " + inteiro(bc.comFinanciamento) + " · recotados " + inteiro(bc.comRecotacao) : "") + "</span>";
+    $("rg-xlsx-conta").href = apiBase() + "/resgate/contas/" + estado.contaId + "/plano.xlsx";
   }
 
-  function opcoes(sel, mapa, rotuloTodos) {
-    sel.innerHTML = '<option value="">' + esc(rotuloTodos) + "</option>" + Object.keys(mapa).map(function (k) { var v = Array.isArray(mapa[k]) ? mapa[k][0] : mapa[k]; return '<option value="' + esc(k) + '">' + esc(v) + "</option>"; }).join("");
-  }
-
-  function carregarGlobal() {
-    mostrarEstado('<div class="vf-loading-state"><span class="vf-spinner vf-spinner--sm"></span> Lendo a última auditoria…</div>');
-    return chamar("/resgate/visao-global").then(function (r) {
-      if (!r.ok) { mostrarEstado('<div class="vf-banner"><div class="vf-banner__content"><div class="vf-banner__title">Resgate indisponível</div><div class="vf-banner__description">' + esc(r.data && r.data.motivo || "Erro ao carregar.") + "</div></div></div>"); return; }
-      mostrarEstado(""); estado.global = r.data; renderGlobal(r.data);
-      $("rg-xlsx-global").href = apiBase() + "/resgate/plano.xlsx";
+  function consultaLista(extra) { return buildQuery(Object.assign({ meta: estado.meta, recentes: estado.recentes, busca: estado.busca }, extra || {})); }
+  function carregarContagens() {
+    var base = "/resgate/contas/" + estado.contaId + "/itens";
+    ["", "abaixo_meta", "prejuizo", "desconhecida", "promocao"].forEach(function (f) {
+      var el = root.document.querySelector('[data-rg-cont="' + f + '"]'); if (el) el.textContent = "";
+      chamar(base + consultaLista({ filtro: f, limite: 1 })).then(function (r) { if (el && r.ok) el.textContent = inteiro(r.data.total); });
     });
   }
-
-  function abrirConta(contaId) {
-    estado.contaId = Number(contaId); estado.pagina = 1; trocarAba("conta");
-    try { root.history.replaceState(null, "", "#conta=" + estado.contaId); } catch (_) { /* sem history */ }
-    var c = (estado.global && estado.global.contas || []).find(function (x) { return Number(x.clienteContaId) === estado.contaId; }) || {};
-    var m = c.matriz || {};
-    $("rg-conta-topo").innerHTML = '<div class="vf-cluster vf-cluster--between"><div><strong>' + esc(c.clienteNome || "Conta") + "</strong> " + esc(c.contaNome || "") + ' <span class="rg-sub">seller ' + esc(c.sellerId || "—") + "</span></div><div>" + decisaoTag(m.decisao) + " " + esc((m.motivos || []).join(" ")) + "</div></div>" +
-      '<p class="rg-sub">Meta: ' + (c.meta ? pct(c.meta.valor * 100) + " (" + esc(c.meta.origem) + ")" : "—") + " · Modalidades: " + esc(Object.keys(m.modalidades || {}).map(function (f) { var x = m.modalidades[f]; return f + " " + x.status; }).join(", ") || "—") + "</p>";
-    $("rg-xlsx-conta").href = apiBase() + "/resgate/contas/" + estado.contaId + "/plano.xlsx";
-    return carregarItens();
-  }
-
   function carregarItens() {
-    var f = estado.filtros;
-    $("rg-itens").innerHTML = '<tr><td colspan="11" class="vf-table__loading">Carregando…</td></tr>';
-    return chamar("/resgate/contas/" + estado.contaId + "/itens" + buildQuery({ situacao: f.situacao, acao: f.acao, origem: f.origem, recentes: f.recentes, busca: f.busca, pagina: estado.pagina, limite: estado.limite })).then(function (r) {
-      if (!r.ok) { $("rg-itens").innerHTML = '<tr><td colspan="11" class="vf-table__empty">' + esc(r.data && r.data.motivo || "Erro.") + "</td></tr>"; return; }
-      estado.itens = r.data.itens;
-      $("rg-itens").innerHTML = r.data.itens.map(linhaItem).join("") || '<tr><td colspan="11" class="vf-table__empty">Nenhum anúncio com estes filtros.</td></tr>';
+    $("rg-itens").innerHTML = '<tr><td colspan="6" class="vf-table__loading">Carregando…</td></tr>';
+    return chamar("/resgate/contas/" + estado.contaId + "/itens" + consultaLista({ filtro: estado.filtro, pagina: estado.pagina, limite: estado.limite })).then(function (r) {
+      if (!r.ok) { $("rg-itens").innerHTML = '<tr><td colspan="6" class="vf-table__empty">' + esc(r.data && r.data.motivo || "Erro.") + "</td></tr>"; return; }
+      $("rg-itens").innerHTML = r.data.itens.map(linhaItem).join("") || '<tr><td colspan="6" class="vf-table__empty">Nenhum anúncio com estes filtros.</td></tr>';
       var paginas = Math.max(1, Math.ceil(r.data.total / estado.limite));
       $("rg-paginacao").innerHTML = '<div class="vf-pagination__info">' + inteiro(r.data.total) + " anúncios · página " + estado.pagina + " de " + paginas + '</div><div class="vf-pagination__actions"><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" data-rg-pag="-1"' + (estado.pagina <= 1 ? " disabled" : "") + '>Anterior</button><button class="vf-btn vf-btn--ghost vf-btn--sm" type="button" data-rg-pag="1"' + (estado.pagina >= paginas ? " disabled" : "") + ">Próxima</button></div>";
     });
   }
+  function recarregarLista() { estado.pagina = 1; carregarContagens(); atualizarHash(); return carregarItens(); }
+  function abrirConta(id) {
+    estado.contaId = Number(id); $("rg-conta").value = String(estado.contaId); trocarAba("anuncios"); renderResumoConta();
+    return recarregarLista();
+  }
+  function marcarFiltro(f) {
+    estado.filtro = f || "";
+    Array.prototype.forEach.call(root.document.querySelectorAll("[data-rg-filtro]"), function (b) { var on = b.dataset.rgFiltro === estado.filtro; b.classList.toggle("is-active", on); b.setAttribute("aria-pressed", String(on)); });
+  }
 
+  function renderBancada(extra) {
+    var det = estado.aberto; if (!det) return;
+    $("rg-drawer-title").textContent = det.item.itemId;
+    $("rg-drawer-sub").textContent = (det.item.titulo || "") + (det.item.sku ? " · SKU " + det.item.sku : "");
+    $("rg-drawer-corpo").innerHTML = bancadaHtml(det, estado.cfg, extra);
+    if (estado.promocoes) $("rg-promocoes").innerHTML = promocoesDisponiveisHtml(estado.promocoes, det.contexto, estado.cfg);
+  }
   function abrirItem(itemId) {
     $("rg-drawer").hidden = false; $("rg-drawer-backdrop").hidden = false;
     $("rg-drawer").classList.add("is-open"); $("rg-drawer-backdrop").classList.add("is-open");
     $("rg-drawer-title").textContent = itemId; $("rg-drawer-corpo").innerHTML = '<div class="vf-loading-state"><span class="vf-spinner vf-spinner--sm"></span></div>';
-    return chamar("/resgate/contas/" + estado.contaId + "/itens/" + encodeURIComponent(itemId)).then(function (r) {
+    estado.promocoes = null;
+    return chamar("/resgate/contas/" + estado.contaId + "/itens/" + encodeURIComponent(itemId) + buildQuery({ meta: estado.meta })).then(function (r) {
       if (!r.ok) { $("rg-drawer-corpo").innerHTML = esc(r.data && r.data.motivo || "Erro."); return; }
-      estado.itemAberto = r.data.item;
-      $("rg-drawer-sub").textContent = r.data.item.titulo || "";
-      $("rg-drawer-corpo").innerHTML = detalheItem(r.data.item);
+      estado.aberto = r.data; atualizarHash(); renderBancada();
     });
   }
   function fecharItem() {
     $("rg-drawer").classList.remove("is-open"); $("rg-drawer-backdrop").classList.remove("is-open");
-    $("rg-drawer").hidden = true; $("rg-drawer-backdrop").hidden = true; estado.itemAberto = null;
+    $("rg-drawer").hidden = true; $("rg-drawer-backdrop").hidden = true; estado.aberto = null; atualizarHash();
   }
 
+  function urlItem(sufixo) { return "/resgate/contas/" + estado.contaId + "/itens/" + encodeURIComponent(estado.aberto.item.itemId) + (sufixo || ""); }
+  function recotar() {
+    if (!estado.aberto || !estado.cfg.recotacaoSobDemanda) return null;
+    toast("Recotando no Mercado Livre (somente leitura)…", "info");
+    return chamar(urlItem("/simular"), { method: "POST", body: { meta: estado.meta } }).then(function (r) {
+      if (!r.ok) { toast((r.data && r.data.motivo) || "Não foi possível recotar.", "danger"); return; }
+      estado.aberto = Object.assign({}, estado.aberto, { bancada: r.data.bancada });
+      renderBancada({ aoVivo: r.data.observadoEm });
+    });
+  }
   function simular() {
-    var x = estado.itemAberto; if (!x) return null;
-    $("rg-sim-saida").innerHTML = '<div class="vf-loading-state"><span class="vf-spinner vf-spinner--sm"></span> Cotando no Mercado Livre (somente leitura)…</div>';
-    return chamar("/resgate/contas/" + estado.contaId + "/itens/" + encodeURIComponent(x.itemId) + "/simular", { method: "POST", body: { precos: lerPrecos($("rg-sim-precos").value) } }).then(function (r) {
-      if (!r.ok) { $("rg-sim-saida").innerHTML = esc(r.data && r.data.motivo || "Erro."); return; }
-      var d = r.data;
-      $("rg-sim-saida").innerHTML = (d.precoMudouDesdeAuditoria ? '<div class="vf-banner"><div class="vf-banner__content"><div class="vf-banner__title">O preço mudou desde a auditoria</div><div class="vf-banner__description">Preço atual ' + moeda(d.precoAtual) + ": a proposta auditada não vale mais.</div></div></div>" : "") +
-        '<table class="vf-table vf-table--compact"><thead><tr><th class="rg-num">Preço</th><th class="rg-num">Comissão</th><th class="rg-num">Frete</th><th class="rg-num">Lucro</th><th class="rg-num">Margem</th><th>Bloqueios</th></tr></thead><tbody>' +
-        (d.simulacoes || []).map(function (s) { return '<tr><td class="rg-num">' + moeda(s.preco) + '</td><td class="rg-num">' + moeda(s.comissao && s.comissao.valor) + '</td><td class="rg-num">' + moeda(s.frete && s.frete.valor) + '</td><td class="rg-num">' + moeda(s.resultado && s.resultado.lucro) + '</td><td class="rg-num">' + pct(s.resultado && s.resultado.margemPercent) + "</td><td>" + esc((s.bloqueios || []).map(function (b) { return b.texto; }).join(" ")) + "</td></tr>"; }).join("") +
-        "</tbody></table>" + (d.recomendacao ? "<p>Preço mínimo para a meta: <strong>" + (d.recomendacao.ok ? moeda(d.recomendacao.preco) + " → " + pct(d.recomendacao.margemPercent) : esc(d.recomendacao.motivo)) + "</strong></p>" : "");
+    var p = lerNumero($("rg-sim-preco").value);
+    if (!estado.aberto || p === null || !estado.cfg.recotacaoSobDemanda) { if (p === null) toast("Informe um preço válido.", "warning"); return null; }
+    $("rg-sim-saida").innerHTML = '<div class="vf-loading-state"><span class="vf-spinner vf-spinner--sm"></span> Cotando comissão e frete no preço simulado…</div>';
+    return chamar(urlItem("/simular"), { method: "POST", body: { precos: [p], meta: estado.meta, recotar: false } }).then(function (r) {
+      if (!r.ok) { $("rg-sim-saida").innerHTML = '<p class="rg-sub">' + esc(r.data && r.data.motivo || "Erro ao simular.") + "</p>"; return; }
+      var s = (r.data.simulacoes || [])[0];
+      $("rg-sim-saida").innerHTML = s ? comparacaoHtml(r.data.bancada || estado.aberto.bancada, s) : '<p class="rg-sub">Sem resultado.</p>';
     });
   }
-
+  function verPromocoes() {
+    var ctx = estado.aberto && estado.aberto.contexto; if (!ctx || !ctx.clienteSlug || ctx.preview) return null;
+    $("rg-promocoes").innerHTML = '<div class="vf-loading-state"><span class="vf-spinner vf-spinner--sm"></span> Lendo promoções…</div>';
+    return chamar("/anuncios-meli/" + encodeURIComponent(estado.aberto.item.itemId) + "/promocoes" + buildQuery({ clienteSlug: ctx.clienteSlug, clienteContaId: ctx.clienteContaId })).then(function (r) {
+      if (!r.ok) { $("rg-promocoes").innerHTML = '<p class="rg-sub">' + esc(r.data && r.data.motivo || "Erro ao ler promoções.") + "</p>"; return; }
+      estado.promocoes = r.data.promocoes || [];
+      $("rg-promocoes").innerHTML = promocoesDisponiveisHtml(estado.promocoes, ctx, estado.cfg);
+    });
+  }
   function revisar(status) {
-    var x = estado.itemAberto; if (!x) return null;
-    return chamar("/resgate/contas/" + estado.contaId + "/itens/" + encodeURIComponent(x.itemId) + "/revisao", { method: "POST", body: { status: status, precoVisto: x.fingerprint && x.fingerprint.precoVisto } }).then(function (r) {
-      toast(r.ok ? "Revisão registrada: " + status : (r.data && r.data.motivo) || "Erro ao revisar.", r.ok ? "success" : "danger");
-      if (r.ok) carregarItens();
+    var x = estado.aberto && estado.aberto.item; if (!x) return null;
+    return chamar(urlItem("/revisao"), { method: "POST", body: { status: status, precoVisto: x.fingerprint && x.fingerprint.precoVisto } }).then(function (r) {
+      toast(r.ok ? "Revisão registrada: " + ((REVISAO[status] || [status])[0]) : (r.data && r.data.motivo) || "Erro ao revisar.", r.ok ? "success" : "danger");
+      if (r.ok) { estado.aberto.item.revisao = { status: status, em: new Date().toISOString() }; renderBancada(); }
     });
   }
 
-  function dryRun() {
-    return chamar("/resgate/contas/" + estado.contaId + "/dry-run", { method: "POST", body: {} }).then(function (r) {
-      if (!r.ok) { toast((r.data && r.data.motivo) || "Erro no dry-run.", "danger"); return; }
-      var res = r.data.resumo || {};
-      toast("Dry-run (nada foi enviado): " + (res.ESCREVERIA || 0) + " passariam, " + (res.NAO_ESCREVERIA || 0) + " bloqueadas.", "info");
+  function abrirModal(html, podeConfirmar) {
+    $("rg-modal-corpo").innerHTML = html; $("rg-modal").classList.add("is-open"); $("rg-modal").setAttribute("aria-hidden", "false");
+    var conf = $("rg-modal-confirmar"); conf.disabled = true; conf.hidden = !podeConfirmar;
+    var ciente = $("rg-modal-ciente"); if (ciente) ciente.addEventListener("change", function () { conf.disabled = !ciente.checked; });
+  }
+  function fecharModal() { $("rg-modal").classList.remove("is-open"); $("rg-modal").setAttribute("aria-hidden", "true"); estado.acaoPendente = null; }
+
+  /** Passo 1: travas + releitura do preço atual (GET leve) + modal de confirmação. Nada é enviado aqui. */
+  function prepararAcao(acao) {
+    var det = estado.aberto; if (!det || !acao) return Promise.resolve(null);
+    var ctx = det.contexto || {};
+    if (!podeAgir(ctx, estado.cfg)) { toast(motivoSemAcoes(ctx, estado.cfg), "warning"); return Promise.resolve(null); }
+    if (acao.suportada === false) { toast(acao.motivoNaoSuportada || "Ação não suportada.", "warning"); return Promise.resolve(null); }
+    var itemId = det.item.itemId;
+    return chamar("/anuncios-meli/precos-ao-vivo" + buildQuery({ clienteSlug: ctx.clienteSlug, clienteContaId: ctx.clienteContaId, itemIds: itemId })).then(function (r) {
+      var relido = r.ok && r.data && r.data.precos ? r.data.precos[itemId] : null;
+      var conferencia = conferirReleitura(acao, det.bancada, relido);
+      estado.acaoPendente = conferencia.ok ? { acao: acao, plano: planoDaAcao(acao, ctx, itemId), relido: relido } : null;
+      abrirModal(modalHtml(acao, det.bancada, relido, conferencia), conferencia.ok);
+      return conferencia;
+    });
+  }
+  /** Passo 2: só depois do "Revisei" marcado no modal. Endpoint existente de /anuncios-meli. */
+  function executarAcao() {
+    var p = estado.acaoPendente, det = estado.aberto;
+    var ciente = $("rg-modal-ciente");
+    if (!p || !det || !p.plano || !ciente || !ciente.checked || !podeAgir(det.contexto, estado.cfg)) return Promise.resolve(null);
+    $("rg-modal-confirmar").disabled = true;
+    return chamar(p.plano.url, { method: p.plano.method, body: p.plano.body }).then(function (r) {
+      fecharModal();
+      if (!r.ok) { toast((r.data && r.data.motivo) || "O Mercado Livre recusou a alteração. Nada foi alterado.", "danger"); return r; }
+      toast("Enviado ao Mercado Livre e confirmado pela tela de Anúncios.", "success");
+      return chamar(urlItem("/revisao"), { method: "POST", body: { status: "AJUSTADO", precoVisto: det.item.fingerprint && det.item.fingerprint.precoVisto, nota: (ACAO_ROTULO[p.acao.tipo] || p.acao.tipo) + (p.acao.precoAlvo ? " → " + p.acao.precoAlvo : "") } })
+        .then(function () { return abrirItem(det.item.itemId); }).then(function () { return r; });
     });
   }
 
   function iniciar() {
     if (!root.document || !$("rg-app")) return;
-    opcoes($("rg-f-situacao"), SITUACOES, "Todas as classificações"); opcoes($("rg-f-acao"), ACOES, "Todas as ações"); opcoes($("rg-f-origem"), ORIGENS, "Qualquer origem");
+    var metaSalva = Number(lerPreferencia("vf-resgate-meta", "15"));
+    estado.meta = isFinite(metaSalva) && metaSalva >= 0 && metaSalva < 90 ? metaSalva : 15;
+    $("rg-meta").value = String(estado.meta);
     root.document.addEventListener("click", function (ev) {
-      var t = ev.target.closest && ev.target.closest("[data-rg-tab],[data-rg-conta],[data-rg-item],[data-rg-pag],[data-rg-revisar],#rg-drawer-fechar,#rg-drawer-backdrop,#rg-sim-ir,#rg-dry-run");
-      if (!t) return;
+      var t = ev.target.closest && ev.target.closest("[data-rg-tab],[data-rg-conta],[data-rg-item],[data-rg-pag],[data-rg-filtro],[data-rg-revisar],[data-rg-acao],[data-rg-recotar],[data-rg-ver-promocoes],[data-rg-promo],#rg-drawer-fechar,#rg-drawer-backdrop,#rg-sim-ir,#rg-modal-cancelar,#rg-modal-confirmar");
+      if (!t || t.disabled) return;
       if (t.dataset.rgTab) trocarAba(t.dataset.rgTab);
       else if (t.dataset.rgConta) abrirConta(t.dataset.rgConta);
       else if (t.dataset.rgItem) abrirItem(t.dataset.rgItem);
       else if (t.dataset.rgPag) { estado.pagina += Number(t.dataset.rgPag); carregarItens(); }
+      else if (t.dataset.rgFiltro !== undefined) { marcarFiltro(t.dataset.rgFiltro); estado.pagina = 1; atualizarHash(); carregarItens(); }
       else if (t.dataset.rgRevisar) revisar(t.dataset.rgRevisar);
+      else if (t.dataset.rgAcao !== undefined) prepararAcao(estado.aberto && estado.aberto.bancada.acoes[Number(t.dataset.rgAcao)]);
+      else if (t.dataset.rgPromo !== undefined) { var p = estado.promocoes && estado.promocoes[Number(t.dataset.rgPromo)]; if (p) prepararAcao({ tipo: t.dataset.rgPromoAcao, rotulo: ACAO_ROTULO[t.dataset.rgPromoAcao] + ": " + (p.tipoLabel || p.tipo), promocaoId: p.id, promocaoTipo: p.tipo, suportada: Boolean(p.modoEscrita), endpoint: "POST /anuncios-meli/:itemId/promocoes/:promotionId/" + (t.dataset.rgPromoAcao === "PARTICIPAR" ? "participar" : "sair"), resultadoEsperado: { precoComprador: p.precoFinal, recotado: false } }); }
+      else if (t.hasAttribute("data-rg-recotar")) recotar();
+      else if (t.hasAttribute("data-rg-ver-promocoes")) verPromocoes();
       else if (t.id === "rg-sim-ir") simular();
-      else if (t.id === "rg-dry-run") dryRun();
+      else if (t.id === "rg-modal-cancelar") fecharModal();
+      else if (t.id === "rg-modal-confirmar") executarAcao();
       else fecharItem();
     });
-    root.document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") fecharItem(); if (ev.key === "Enter" && ev.target.dataset && (ev.target.dataset.rgConta || ev.target.dataset.rgItem)) ev.target.click(); });
-    var refiltrar = function () { estado.filtros = { situacao: $("rg-f-situacao").value, acao: $("rg-f-acao").value, origem: $("rg-f-origem").value, recentes: $("rg-f-recentes").checked, busca: $("rg-f-busca").value.trim() }; estado.pagina = 1; if (estado.contaId) carregarItens(); };
-    ["rg-f-situacao", "rg-f-acao", "rg-f-origem", "rg-f-recentes"].forEach(function (id) { $(id).addEventListener("change", refiltrar); });
-    var timer = null; $("rg-f-busca").addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(refiltrar, 350); });
-    // Downloads autenticados: o link aponta para a API; o token vai por fetch → blob.
-    ["rg-xlsx-global", "rg-xlsx-conta"].forEach(function (id) {
-      $(id).addEventListener("click", function (ev) {
-        ev.preventDefault();
-        fetch(this.href, { headers: { Authorization: "Bearer " + token() } }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.blob(); })
-          .then(function (b) { var a = root.document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "venforce-resgate.xlsx"; a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000); })
-          .catch(function (e) { toast("Erro ao baixar: " + e.message, "danger"); });
-      });
+    root.document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") { if ($("rg-modal").classList.contains("is-open")) fecharModal(); else fecharItem(); }
+      if (ev.key === "Enter" && ev.target.dataset && (ev.target.dataset.rgConta || ev.target.dataset.rgItem)) ev.target.click();
     });
-    // Link direto: #conta=<id>&item=<MLB>&situacao=<…> (compartilhável com o responsável).
-    carregarGlobal().then(function () {
+    $("rg-conta").addEventListener("change", function () { abrirConta(this.value); });
+    $("rg-meta").addEventListener("change", function () {
+      var n = lerNumero(this.value); if (n === null || n >= 90) { this.value = String(estado.meta); return; }
+      estado.meta = n; gravarPreferencia("vf-resgate-meta", String(n)); recarregarLista(); if (estado.aberto) abrirItem(estado.aberto.item.itemId);
+    });
+    $("rg-f-recentes").addEventListener("change", function () { estado.recentes = this.checked; recarregarLista(); });
+    var timer = null; $("rg-f-busca").addEventListener("input", function () { var v = this.value.trim(); clearTimeout(timer); timer = setTimeout(function () { estado.busca = v; recarregarLista(); }, 350); });
+    $("rg-xlsx-conta").addEventListener("click", function (ev) {
+      ev.preventDefault();
+      root.fetch(this.href, { headers: { Authorization: "Bearer " + token() } }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.blob(); })
+        .then(function (b) { var a = root.document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "venforce-resgate-conta-" + estado.contaId + ".xlsx"; a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000); })
+        .catch(function (e) { toast("Erro ao baixar: " + e.message, "danger"); });
+    });
+    mostrarEstado('<div class="vf-loading-state"><span class="vf-spinner vf-spinner--sm"></span> Lendo a última auditoria…</div>');
+    chamar("/resgate/config").then(function (c) {
+      if (c.ok) estado.cfg = { acoesHabilitadas: Boolean(c.data.acoesHabilitadas), preview: Boolean(c.data.preview), recotacaoSobDemanda: Boolean(c.data.recotacaoSobDemanda) };
+      renderModo();
+      return chamar("/resgate/visao-global");
+    }).then(function (r) {
+      if (!r.ok) { mostrarEstado('<div class="vf-banner"><div class="vf-banner__content"><div class="vf-banner__title">Resgate indisponível</div><div class="vf-banner__description">' + esc(r.data && r.data.motivo || "Erro ao carregar.") + "</div></div></div>"); return; }
+      mostrarEstado(""); estado.global = r.data; renderContas(r.data);
       var h = new URLSearchParams(String(root.location && root.location.hash || "").replace(/^#/, ""));
-      if (h.get("aba") === "ativacao") trocarAba("ativacao");
-      if (h.get("conta")) {
-        if (h.get("situacao")) { $("rg-f-situacao").value = h.get("situacao"); estado.filtros.situacao = h.get("situacao"); }
-        abrirConta(h.get("conta")).then(function () { if (h.get("item")) abrirItem(h.get("item")); });
-      }
+      marcarFiltro(h.get("filtro") || "");
+      var conta = h.get("conta") || $("rg-conta").value;
+      if (!conta) { mostrarEstado('<div class="vf-empty"><div class="vf-empty__title">Nenhuma conta auditada na sua carteira.</div></div>'); return; }
+      abrirConta(conta).then(function () { if (h.get("item")) abrirItem(h.get("item")); });
     });
   }
 
-  return { iniciar: iniciar, moeda: moeda, pct: pct, inteiro: inteiro, esc: esc, buildQuery: buildQuery, linhaConta: linhaConta, linhaItem: linhaItem, detalheItem: detalheItem, lerPrecos: lerPrecos, SITUACOES: SITUACOES };
+  return {
+    iniciar: iniciar, moeda: moeda, pct: pct, inteiro: inteiro, esc: esc, buildQuery: buildQuery, lerNumero: lerNumero, lerPrecos: lerPrecos,
+    linhaItem: linhaItem, bancadaHtml: bancadaHtml, cascataHtml: cascataHtml, comparacaoHtml: comparacaoHtml, promocoesDisponiveisHtml: promocoesDisponiveisHtml,
+    acoesHtml: acoesHtml, planoDaAcao: planoDaAcao, conferirReleitura: conferirReleitura, podeAgir: podeAgir, modalHtml: modalHtml,
+    _estado: estado, _prepararAcao: prepararAcao, _executarAcao: executarAcao, STATUS: STATUS,
+  };
 });

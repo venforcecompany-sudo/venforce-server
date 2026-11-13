@@ -20,6 +20,8 @@
 const TOL = 0.011;
 const num = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 const r2 = (v) => Math.round((v + Number.EPSILON) * 100) / 100;
+const brl = (v) => "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pctBr = (v) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + "%";
 
 const TIPOS_DO_VENDEDOR = new Set(["SELLER_CAMPAIGN", "PRICE_DISCOUNT"]);
 const TIPO_ROTULO = {
@@ -55,7 +57,7 @@ function classificarFinanciamento({ iniciadas, salePrice = null, vigente, cheio,
   let casam = (iniciadas || []).filter((p) => num(p.price) !== null && Math.abs(p.price - v) < TOL);
   if (casam.length !== 1 && salePrice && salePrice.metadata && salePrice.metadata.campaign_id) {
     if (num(salePrice.amount) !== null && Math.abs(salePrice.amount - v) >= TOL) {
-      return { ...base, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "PRECO_MUDOU", texto: `Preço do comprador mudou depois da leitura anterior (R$ ${v} → R$ ${salePrice.amount}): recalcular.` };
+      return { ...base, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "PRECO_MUDOU", texto: `Preço do comprador mudou depois da leitura anterior (${brl(v)} → ${brl(salePrice.amount)}): recalcular.` };
     }
     const porId = (iniciadas || []).filter((p) => p.id === salePrice.metadata.campaign_id);
     if (porId.length === 1) casam = porId;
@@ -70,11 +72,11 @@ function classificarFinanciamento({ iniciadas, salePrice = null, vigente, cheio,
   if (p.camposBoost && p.camposBoost.length) return { ...out, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "BOOSTED_OFFER_NAO_MEDIDO", texto: `A resposta traz ${p.camposBoost.join(", ")}: compensação do ML não mensurável com segurança.` };
   const mp = num(p.meli_percentage), sp = num(p.seller_percentage), orig = num(p.original_price);
   if (mp !== null) {
-    if (orig === null || (ch !== null && Math.abs(orig - ch) >= TOL)) return { ...out, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "PRECO_ORIGINAL_DIVERGE", texto: `Preço original da promoção (${orig}) difere do preço cheio (${ch}): subsídio não calculável com segurança.` };
-    if (sp !== null && Math.abs(orig * (1 - (mp + sp) / 100) - v) > 0.05) return { ...out, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "INCONSISTENCIA_PRECO_PROMO", texto: `Percentuais (ML ${mp}% + vendedor ${sp}%) não reproduzem o preço do comprador: subsídio não comprovado.` };
+    if (orig === null || (ch !== null && Math.abs(orig - ch) >= TOL)) return { ...out, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "PRECO_ORIGINAL_DIVERGE", texto: `Preço original da promoção (${orig === null ? "ausente" : brl(orig)}) difere do preço cheio (${ch === null ? "ausente" : brl(ch)}): subsídio não calculável com segurança.` };
+    if (sp !== null && Math.abs(orig * (1 - (mp + sp) / 100) - v) > 0.05) return { ...out, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "INCONSISTENCIA_PRECO_PROMO", texto: `Percentuais (ML ${pctBr(mp)} + vendedor ${pctBr(sp)}) não reproduzem o preço do comprador: subsídio não comprovado.` };
     const sub = r2(orig * mp / 100);
     return { ...out, financiamento: mp > 0 ? FINANCIAMENTO.COFINANCIADA : FINANCIAMENTO.VENDEDOR, subsidio: mp > 0 ? sub : 0, comprovado: true,
-      texto: mp > 0 ? `${out.tipoRotulo}: ML cofinancia ${mp}% (R$ ${sub.toFixed(2)}/un) e vendedor ${sp ?? "?"}%.` : `${out.tipoRotulo} com participação do ML 0%.` };
+      texto: mp > 0 ? `${out.tipoRotulo}: ML cofinancia ${pctBr(mp)} (${brl(sub)}/un) e vendedor ${sp === null ? "?" : pctBr(sp)}.` : `${out.tipoRotulo} com participação do ML 0%.` };
   }
   if (TIPOS_DO_VENDEDOR.has(p.type)) return { ...out, financiamento: FINANCIAMENTO.VENDEDOR, subsidio: 0, comprovado: true, texto: `${out.tipoRotulo}: promoção do próprio vendedor, sem participação financeira do ML na resposta.` };
   return { ...out, financiamento: FINANCIAMENTO.INDETERMINADO, pendencia: "PARTICIPACAO_ML_NAO_INFORMADA", texto: `${out.tipoRotulo}: a API não informa a participação do ML (sem meli_percentage) e o tipo não é do vendedor: financiamento não determinado.` };

@@ -90,6 +90,8 @@ const promo4191 = [
     const tipos = b.acoes.map((a) => a.tipo);
     assert.ok(!tipos.includes("ALTERAR_PRECO_PROMOCIONAL")); assert.ok(tipos.includes("SAIR_DA_PROMOCAO")); assert.ok(tipos.includes("ALTERAR_PRECO"));
     assert.strictEqual(b.acoes.find((a) => a.tipo === "ALTERAR_PRECO").requerAntes, "SAIR_DA_PROMOCAO");
+    const { linhaDaLista } = require("../services/resgate/resgateBancada");
+    assert.ok(/^Sair da promoção e, depois, alterar o preço cheio para R\$\s152,9\d \(recotar o preço sugerido antes\)\.$/.test(linhaDaLista(mlb4427(), b).proximoPasso), linhaDaLista(mlb4427(), b).proximoPasso);
   });
   await t("recotação confiável na MESMA meta → RECOTADO; outra meta → volta a PRELIMINAR", () => {
     const f = classificarFinanciamento({ iniciadas: iniciadasDaResposta(promo4427), vigente: 129.9, cheio: 149.9 });

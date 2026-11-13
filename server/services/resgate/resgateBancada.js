@@ -137,7 +137,7 @@ function montarBancada(item, { promocao: promocaoIn = null, recotacao: recotacao
     linha("precoCheio", "Preço cheio (controlado pelo vendedor)", "base", cheio, { fonte: k.precoCheio && k.precoCheio.fonte, confianca: k.precoCheio && k.precoCheio.confianca }),
     ...(promoAtiva ? [
       linha("descontoVendedor", "Desconto bancado pelo vendedor", "menos", descontoVendedor, { nota: subsidio === null ? "Depende de quem financia a promoção." : null }),
-      linha("descontoMl", "Desconto bancado pelo Mercado Livre", "menos", subsidio, { fonte: promo.fonte, nota: promo.texto }),
+      linha("descontoMl", "Desconto bancado pelo Mercado Livre", "menos", subsidio, { nota: subsidio === null ? "Não comprovado." : null }),
     ] : []),
     linha("precoComprador", "Preço pago pelo comprador", "igual", comprador, { fonte: k.precoVigente && k.precoVigente.fonte, confianca: k.precoVigente && k.precoVigente.confianca }),
     linha("subsidioMl", "Subsídio/rebate do ML repassado ao vendedor", "mais", subsidio, { status: !promoAtiva ? "nao_aplicavel" : undefined, fonte: promo.fonte, nota: promoAtiva ? (promo.comprovado ? "Entra uma única vez." : "Não comprovado: não somado.") : null }),
@@ -210,6 +210,20 @@ function indiceBancada(item) {
   };
 }
 
+/** O que o operador faz a seguir, em uma frase (a lista mostra isto; o diagnóstico vai abaixo). */
+function proximoPasso(b) {
+  if (b.status === STATUS.OK) return "Nada a fazer: margem na meta.";
+  if (b.status === STATUS.BLOQUEADO) { const x = (b.bloqueios || [])[0]; return x ? (x.resolveCom || x.texto) : "Completar os dados do anúncio."; }
+  if (b.status === STATUS.MARGEM_DESCONHECIDA) {
+    if (b.promocao && b.promocao.ativa && !b.promocao.comprovado) return "Ler as promoções do anúncio para comprovar quem paga o desconto.";
+    return ((b.pendencias || [])[0] || {}).texto || "Recalcular a margem.";
+  }
+  const opcoes = (b.acoes || []).filter((a) => a.suportada !== false && !a.requerAntes).map((a) => a.rotulo);
+  const depois = (b.acoes || []).find((a) => a.requerAntes && a.precoAlvo !== undefined);
+  const base = (opcoes.length ? opcoes.join(" ou ") : "Rever o preço") + (depois ? ` e, depois, alterar o preço cheio para ${brl(depois.precoAlvo)}` : "");
+  return base + (b.sugerido && b.sugerido.status === "RECOTADO" ? "." : " (recotar o preço sugerido antes).");
+}
+
 /** Linha LEVE da lista (mesma no servidor e no preview): o que a tabela mostra, sem o contrato. */
 function linhaDaLista(x, b) {
   return {
@@ -217,7 +231,7 @@ function linhaDaLista(x, b) {
     status: b.status, motivoStatus: b.motivoStatus, precoCheio: b.precos.cheio, precoComprador: b.precos.comprador,
     margemPercent: b.resultado.margemPercent, lucro: b.resultado.lucro, limiteInferior: Boolean(b.resultado.limiteInferior),
     promocao: b.promocao.ativa ? { tipoRotulo: b.promocao.tipoRotulo, financiamento: b.promocao.financiamento, subsidio: b.promocao.subsidio, comprovado: b.promocao.comprovado } : null,
-    sugerido: { status: b.sugerido.status, preco: b.sugerido.preco }, acaoPrincipal: b.acoes[0] ? b.acoes[0].tipo : null,
+    sugerido: { status: b.sugerido.status, preco: b.sugerido.preco }, acaoPrincipal: b.acoes[0] ? b.acoes[0].tipo : null, proximoPasso: proximoPasso(b),
     mudancaRecente: Boolean(x.historico && x.historico.mudancaRecente), ultimaMudancaEm: x.historico ? x.historico.ultimaMudancaEm || null : null,
     unidades30d: x.vendas30d ? x.vendas30d.unidades : null, precoMudou: Boolean(b.precoMudou), revisao: x.revisao || null, precoVisto: x.fingerprint ? x.fingerprint.precoVisto : null,
   };

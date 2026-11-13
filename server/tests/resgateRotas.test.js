@@ -99,6 +99,11 @@ function res() { const r = { statusCode: 200, headers: {}, body: null, status(c)
     assert.strictEqual(r.body.bancada.promocao.financiamento, "VENDEDOR_100"); assert.strictEqual(r.body.bancada.promocao.subsidio, 0);
     assert.strictEqual(r.body.recotacao.meta, 0.15); assert.ok(r.body.recotacao.ok);
     assert.strictEqual(r.body.bancada.sugerido.status, "RECOTADO"); assert.ok(r.body.bancada.sugerido.margem >= 0.15 - 0.0005);
+    let cotacoes = 0;
+    c.configurar({ db, criarFetch: () => ler, lerAoVivo: async () => ({ ...vivo, cotarEmPreco: async (p) => { cotacoes++; return vivo.cotarEmPreco(p); } }) });
+    const s2 = res(); await c.simular({ user: { id: 1 }, contaAutorizada: { clienteId: 133 }, params: { contaId: "86", itemId: "MLB1" }, body: { precos: [139.9], meta: 15, recotar: false } }, s2);
+    assert.strictEqual(s2.statusCode, 200); assert.strictEqual(s2.body.recomendacao, null); assert.strictEqual(s2.body.recotacao, null);
+    assert.strictEqual(cotacoes, 1, "recotar:false cota só o preço pedido"); assert.strictEqual(s2.body.simulacoes[0].preco, 139.9);
   });
   await t("config: ações reais DESLIGADAS por padrão; só a flag explícita liga; detalhe traz contexto e bancada", async () => {
     const antes = process.env.RESGATE_ACOES_ML_HABILITADAS;
