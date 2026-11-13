@@ -17,7 +17,15 @@ const { planoParaBuffer } = require("../../services/resgate/resgatePlanoXlsx");
 const { montarBancada, passaFiltro, linhaDaLista, metaDe, FILTROS } = require("../../services/resgate/resgateBancada");
 
 const a = args();
-const dir = path.resolve(a.dados || ".");
+const os = require("os");
+const PADRAO = path.join(os.homedir(), "venforce-backups", "handoffs", "resgate_2026-11-12", "auditoria_bancada_e4");
+const dir = path.resolve(String(a.dados || PADRAO).replace(/^~(?=\/|$)/, os.homedir()));
+// Pasta sem contas/ gerava uma tela com ZERO contas sem explicar: agora recusa com a causa.
+(function conferirDados() {
+  const c = path.join(dir, "contas");
+  const n = fs.existsSync(c) ? fs.readdirSync(c).filter((x) => fs.existsSync(path.join(c, x, "conta.json"))).length : 0;
+  if (!n) { console.error(`--dados "${dir}" não tem contas/<id>/conta.json (symlink quebrado ou pasta errada). Use a pasta de uma auditoria, ex.: ${PADRAO}`); process.exit(2); }
+})();
 const portal = path.resolve(__dirname, "..", "..", "..", "Portal");
 const store = criarStoreArquivo(dir);
 const porta = Number(a.porta || 5099);

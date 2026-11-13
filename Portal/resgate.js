@@ -283,6 +283,7 @@
     var contas = (d.contas || []).filter(function (c) { return !c.semAvaliacao; });
     contas.sort(function (a, b) { return (Number(b.precisamRevisao) || 0) - (Number(a.precisamRevisao) || 0) || String(a.clienteNome).localeCompare(String(b.clienteNome)); });
     $("rg-conta").innerHTML = contas.map(function (c) { return '<option value="' + esc(c.clienteContaId) + '">' + esc((c.clienteNome || "Cliente") + (c.contaNome ? " — " + c.contaNome : "")) + " (" + inteiro(c.itens) + ")</option>"; }).join("");
+    if (!contas.length) $("rg-estado").innerHTML = '<div class="vf-banner vf-banner--compact"><div class="vf-banner__content"><div class="vf-banner__description">Nenhuma conta com auditoria nesta origem de dados. No preview local, confira a pasta passada em --dados.</div></div></div>';
     $("rg-exec").textContent = d.execucao ? "Auditoria de " + data(d.execucao.finalizadaEm || d.execucao.iniciadaEm) : "Nenhuma auditoria concluída";
     var t = d.totais || {};
     $("rg-kpis").innerHTML = d.execucao ? [["Contas avaliadas", inteiro(t.contasAvaliadas)], ["Sem avaliação", inteiro(t.contasSemAvaliacao)], ["Anúncios auditados", inteiro(t.anunciosAuditados)], ["Alterados recentemente", inteiro(t.alteradosRecentemente)]]
