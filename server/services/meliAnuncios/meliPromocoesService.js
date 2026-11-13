@@ -65,6 +65,7 @@ function statusLabelPromocao(status) {
 }
 
 function fin(n) {
+  if (n === null || n === undefined || (typeof n === "string" && n.trim() === "")) return null;
   const v = Number(n);
   return Number.isFinite(v) ? v : null;
 }
@@ -74,9 +75,8 @@ function round2(n) {
 }
 
 // Normaliza UMA promoção crua do ML. Nunca inventa desconto: quando o ML não
-// fornece preço utilizável — started/pending sem `price` > 0, ou candidate
-// sem `suggested_discounted_price` — `precoFinal` fica null e a UI mostra
-// "sem sugestão do Mercado Livre", nunca um cálculo próprio.
+// fornece preço utilizável nem percentuais para a candidata, `precoFinal`
+// fica null. Preços oficiais têm prioridade sobre o cálculo por percentuais.
 //
 // `promotionIdAtivo` (opcional): id/ref_id da promoção que o próprio ML está
 // usando AGORA para formar o preço de venda (GET /items/{id}/sale_price →
@@ -92,12 +92,18 @@ function normalizarPromocao(promo, index, promotionIdAtivo = null) {
     precoFinal = p != null && p > 0 ? p : null;
   } else if (status === "candidate") {
     const sugerido = fin(promo && promo.suggested_discounted_price);
-    if (sugerido != null) {
+    const precoMl = fin(promo && promo.price);
+    if (sugerido != null && sugerido > 0) {
       precoFinal = sugerido;
+    } else if (precoMl != null && precoMl > 0) {
+      // A API também devolve price para candidatas SMART. Os percentuais
+      // vêm arredondados e não reproduzem esse preço: MLB6414829980 retorna
+      // price=99, mas 139.99*(1-(4.5+24.7)/100) daria 99.11.
+      precoFinal = precoMl;
     } else {
-      // Campanhas cofinanciadas automáticas (SMART, PRICE_MATCHING) nunca
-      // enviam suggested_discounted_price em candidate — só original_price +
-      // meli_percentage/seller_percentage. Caso real: "Impulsione suas
+      // Algumas candidatas SMART/PRICE_MATCHING chegam sem preço/sugestão,
+      // só com original_price + meli_percentage/seller_percentage.
+      // Caso real: "Impulsione suas
       // vendas" (SMART, item MLB4147165927/MLB4162633919) aparecia com
       // subsidioMl preenchido mas precoFinal/voceRecebe vazios.
       //

@@ -1165,6 +1165,47 @@ async function run() {
   // MESMA fórmula já validada do subsidioMl, só quando suggested_discounted_
   // price não vier — nunca sobrepõe o valor do ML quando ele existe.
 
+  // Resposta real da Alianza Jeans, MLB6414829980, em 13/11/2026.
+  // price oficial vence a reconstrução por percentuais arredondados.
+  {
+    const campanhas = [
+      { id: "P-MLB18211016", name: "Novembro Feminino", price: 99, meli_percentage: 4.5, seller_percentage: 24.7 },
+      { id: "P-MLB18197010", name: "Moda Nov26", price: 99, meli_percentage: 4.2, seller_percentage: 25 },
+      { id: "P-MLB17937078", name: "Impulsione suas vendas", price: 96.99, meli_percentage: 0.6, seller_percentage: 30.1 },
+    ];
+    for (const campanha of campanhas) {
+      const linha = promocoesService.normalizarPromocao({
+        ...campanha, type: "SMART", status: "candidate", original_price: 139.99,
+      }, 0);
+      assert.strictEqual(linha.precoFinal, campanha.price);
+      assert.strictEqual(linha.nome, campanha.name);
+    }
+    const ativa = promocoesService.normalizarPromocao({
+      id: "P-MLB18211012", ref_id: "OFFER-MLB6414829980-14376018364",
+      name: "Queima estoque", type: "SMART", status: "started", price: 99,
+      original_price: 139.99, meli_percentage: 4.5, seller_percentage: 24.7,
+    }, 0, "OFFER-MLB6414829980-14376018364");
+    assert.strictEqual(ativa.statusExibicao, "ATIVA");
+    assert.strictEqual(ativa.subsidioMl, 6.3);
+  }
+  ok("Alianza Jeans: preços e nomes oficiais preservados; a promoção ativa mantém seu subsídio");
+
+  {
+    const linha = promocoesService.normalizarPromocao({
+      type: "SMART", status: "candidate", price: 99, suggested_discounted_price: null,
+      original_price: 139.99, meli_percentage: 4.5, seller_percentage: 24.7,
+    }, 0);
+    assert.strictEqual(linha.precoFinal, 99, "sugestão null não vira preço zero");
+    for (const vazio of [null, "", " "]) {
+      const semPercentual = promocoesService.normalizarPromocao({
+        type: "SMART", status: "candidate", original_price: 139.99, meli_percentage: vazio,
+      }, 0);
+      assert.strictEqual(semPercentual.subsidioMl, null);
+      assert.strictEqual(semPercentual.precoFinal, null);
+    }
+  }
+  ok("campos numéricos vazios não inventam preço nem subsídio zero");
+
   // 38. SMART candidate sem suggested_discounted_price: precoFinal derivado
   //     de original_price*(1-meli_percentage/100).
   {
