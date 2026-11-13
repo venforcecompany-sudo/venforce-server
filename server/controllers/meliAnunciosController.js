@@ -1514,7 +1514,11 @@ async function carregarRebatesAoVivo({ clienteId, mlUserId, itens, ignorarItemId
       try {
         const lido = await promocoesService.obterRebatePromocaoAtiva({
           clienteId, itemId, mlUserId,
-          saleInfo: conhecida ? { promotionId, amount: valorEvidencia(item.pricing && item.pricing.current) } : null,
+          saleInfo: conhecida ? {
+            promotionId,
+            amount: valorEvidencia(item.pricing && item.pricing.current),
+            regularAmount: valorEvidencia(item.pricing && item.pricing.list),
+          } : null,
         });
         if (!lido || !lido.ok) return;
         r = { rebate: lido.rebate, promocao: lido.promocao };
