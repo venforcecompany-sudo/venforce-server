@@ -12,9 +12,9 @@ const pool = require("../config/database");
 const acessoReal = require("../services/sentinel/sentinelAcesso");
 const { criarController } = require("../controllers/sentinelController");
 
-function criarSentinelRouter({ auth = authMiddleware, db = pool, acesso = acessoReal, motor = () => require("../services/sentinel/sentinelIncidentes") } = {}) {
+function criarSentinelRouter({ auth = authMiddleware, db = pool, acesso = acessoReal, motor = () => require("../services/sentinel/sentinelIncidentes"), conciliacao } = {}) {
   const router = express.Router();
-  const c = criarController({ db, acesso, motor });
+  const c = criarController({ db, acesso, motor, ...(conciliacao ? { conciliacao } : {}) });
 
   const gatePapel = (req, res, next) => {
     if (!acesso.papelPermitido(req.user)) {
@@ -31,6 +31,10 @@ function criarSentinelRouter({ auth = authMiddleware, db = pool, acesso = acesso
   router.post("/incidentes/:id/resolver", ...base, c.resolver);
   router.get("/contas", ...base, c.contas);
   router.get("/saude", ...base, c.saude);
+  // Conciliação da comissão (S1): somente leitura.
+  router.get("/conciliacao/resumo", ...base, c.conciliacaoResumo);
+  router.get("/conciliacao", ...base, c.conciliacaoListar);
+  router.get("/conciliacao/pedidos/:pedidoId", ...base, c.conciliacaoPedido);
   return router;
 }
 
