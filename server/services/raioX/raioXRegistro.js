@@ -70,6 +70,7 @@ const REGISTRO = [
   R("sentinel_incidentes", "Sentinel", { modulos: ["Pedidos ao vivo"], classe: "historico", origem: "Sentinel" }),
   R("sentinel_checkpoints", "Sentinel", { classe: "config", origem: "Sentinel", reconstruivel: "sim" }),
   R("sentinel_pedido_excecoes", "Sentinel", { origem: "usuário", manual: true }),
+  R("sentinel_conciliacao_comissao", "Sentinel", { modulos: ["Pedidos ao vivo"], classe: "derivada", origem: "Billing ML (coletor S1)", reconstruivel: "sim" }),
 
   // Custos, relatórios, diagnósticos, design
   R("base_cliente_vinculos", "Custos e bases", { modulos: ["Bases", "sync Central (custo)", "Margem"], classe: "config", origem: "usuário", manual: true }),

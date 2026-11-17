@@ -131,7 +131,34 @@ async function evidenciaSchemaPronto(db, { agora = Date.now(), ttlMs = EVIDENCIA
   }
 }
 
+// Conciliação da comissão (S1): SEPARADA, como a de incidentes/evidência. O polling NÃO depende dela; o coletor de
+// Billing (sentinelConciliacaoColetor) suspende sozinho sem as tabelas. Aplicar é etapa manual e autorizada.
+const SENTINEL_CONCILIACAO_MIGRATION = "20261119_sentinel_conciliacao_comissao.sql";
+const SENTINEL_CONCILIACAO_LOCK_KEY = "vf:schema:sentinel_conciliacao_comissao";
+
+async function ensureSentinelConciliacaoSchema(db) {
+  if (!db || typeof db.query !== "function") throw new Error("ensureSentinelConciliacaoSchema exige `db` explícito.");
+  const ddl = fs.readFileSync(path.join(migrationsDir, SENTINEL_CONCILIACAO_MIGRATION), "utf8");
+  await aplicarMigrationSerializada(db, ddl, SENTINEL_CONCILIACAO_LOCK_KEY);
+}
+
+// Somente leitura e SEM cache (1 consulta barata por execução): as duas tabelas existem? Erro ⇒ false (nunca lança).
+async function conciliacaoSchemaPronto(db) {
+  if (!db || typeof db.query !== "function") return false;
+  try {
+    const r = await db.query(
+      "SELECT to_regclass('public.sentinel_conciliacao_comissao') IS NOT NULL AND to_regclass('public.sentinel_conciliacao_controle') IS NOT NULL AS ok");
+    return r.rows[0]?.ok === true;
+  } catch (_) {
+    return false;
+  }
+}
+
 module.exports = {
+  ensureSentinelConciliacaoSchema,
+  conciliacaoSchemaPronto,
+  SENTINEL_CONCILIACAO_MIGRATION,
+  SENTINEL_CONCILIACAO_LOCK_KEY,
   ensureSentinelEvidenciaSchema,
   evidenciaSchemaPronto,
   invalidarEvidenciaSchema,
