@@ -8987,7 +8987,7 @@
   // ===========================================================================
 
   function novaSimulacaoMargem() {
-    return { custoProduto: null, custosAdicionais: null, preco: null, resultado: null, entradas: null };
+    return { custoProduto: null, custosAdicionais: null, preco: null, rebate: null, resultado: null, entradas: null };
   }
 
   function promocaoSelecionadaDoItem(itemId) {
@@ -8996,7 +8996,37 @@
   }
 
   function simulacaoTemOverride(sim) {
-    return !!(sim && (sim.custoProduto != null || sim.custosAdicionais != null || sim.preco != null));
+    return !!(sim && (sim.custoProduto != null || sim.custosAdicionais != null || sim.preco != null || sim.rebate != null));
+  }
+
+  // Taxa de rebate na coluna Simulação: campo editável (rebate HIPOTÉTICO,
+  // só para visualizar a margem — nunca vai ao Mercado Livre), ou travado
+  // quando o rebate é de uma promoção com subsídio do ML:
+  //  · promoção escolhida com subsidioMl — o valor é o que o ML paga nela;
+  //  · nenhuma escolhida e o anúncio está numa promoção ATIVA com rebate.
+  function rebateSimulacaoEstado(itemId) {
+    var sel = promocaoSelecionadaDoItem(itemId);
+    if (sel) {
+      if (sel.subsidioMl != null) {
+        return { editavel: false, motivo: "Nesta promoção o rebate é pago pelo Mercado Livre — o valor vem dela e não pode ser alterado." };
+      }
+      return { editavel: true, motivo: null };
+    }
+    if (promocaoAtivaComSubsidioDoItem(itemId)) {
+      return {
+        editavel: false,
+        motivo: "O anúncio está numa promoção com rebate ativa e o valor vem do Mercado Livre. Escolha outra promoção ao lado para simular outro cenário.",
+      };
+    }
+    return { editavel: true, motivo: null };
+  }
+
+  // Rebate que a simulação usa quando nada foi digitado: com uma promoção
+  // (sem subsídio) escolhida, zero — o anúncio estaria nela, sem rebate;
+  // senão, o de hoje.
+  function rebateBaseSimulacao(itemId, comp) {
+    if (promocaoSelecionadaDoItem(itemId)) return 0;
+    return comp && comp.rebate != null ? comp.rebate : 0;
   }
 
   // "Mudou alguma coisa": uma promoção escolhida OU um valor digitado.
@@ -9116,15 +9146,26 @@
       margemSimInputHtml("custosAdicionais", adicSim, itemId, "Custos adicionais"), "am-margem-sim__linha--campo");
 
     // "Taxa de rebate": retorno ML da promoção — SOMADO ao lucro, nunca um
-    // custo. Aparece quando hoje há rebate (promoção ATIVA com subsidioMl) ou
-    // quando a simulação traz um (promoção escolhida com subsídio).
+    // custo. Sempre visível: editável para simular um rebate hipotético
+    // (só visualização da margem), travado nas promoções com rebate do ML
+    // (ver rebateSimulacaoEstado).
     var rebateHoje = comp.rebate != null ? comp.rebate : 0;
-    var rebateSim = ent ? (ent.rebate || 0) : rebateHoje;
-    if (comp.rebate != null || rebateSim > 0) {
-      linhas += margemSimLinhaHtml(
-        "Taxa de rebate" + infoDotHtml("Retorno ML da promoção — somado ao lucro, não é um custo.", "Sobre a taxa de rebate"),
-        formatMoeda(rebateHoje, moeda), margemSimValorHtml(rebateSim, rebateHoje, moeda));
+    var estRebate = rebateSimulacaoEstado(itemId);
+    var rebateSimHtml;
+    if (estRebate.editavel) {
+      var rebateDigitado = sim && sim.rebate != null ? sim.rebate : rebateBaseSimulacao(itemId, comp);
+      rebateSimHtml = margemSimInputHtml("rebate", rebateDigitado, itemId, "Taxa de rebate");
+    } else {
+      var rebateSim = ent ? (ent.rebate || 0) : rebateHoje;
+      rebateSimHtml = '<span class="am-margem-sim__valor am-margem-comp__valor--bloqueado' +
+        (Math.abs(rebateSim - rebateHoje) > 0.004 ? " is-alterado" : "") +
+        '" title="' + escapeAttr(estRebate.motivo) + '">' + formatMoeda(rebateSim, moeda) + "</span>";
     }
+    linhas += margemSimLinhaHtml(
+      "Taxa de rebate" + (estRebate.editavel
+        ? infoDotHtml("Retorno ML da promoção — somado ao lucro, não é um custo. Digite um valor para ver a margem com esse rebate; é só simulação, nada vai ao Mercado Livre.", "Sobre a taxa de rebate")
+        : infoDotHtml(estRebate.motivo, "Por que o rebate está travado")),
+      formatMoeda(rebateHoje, moeda), rebateSimHtml, estRebate.editavel ? "am-margem-sim__linha--campo" : "");
 
     if (comp.impostoValor != null) {
       var rotuloImposto = "Imposto" +
@@ -9376,9 +9417,16 @@
     if (!DET || DET.itemId !== itemId) return;
     var cache = AM.state.performanceCache[itemId];
     var comp = cache && cache.composicao;
+    // Rebate travado (promoção com rebate do ML): nunca aceita digitação.
+    if (campo === "rebate" && !rebateSimulacaoEstado(itemId).editavel) {
+      DET.simulacaoMargem.rebate = null;
+      repintarComposicaoDoItem(itemId);
+      return;
+    }
     var real = !comp ? null
       : campo === "preco" ? comp.venda
       : campo === "custoProduto" ? comp.custoProduto
+      : campo === "rebate" ? rebateBaseSimulacao(itemId, comp)
       : comp.taxaFixa;
     var texto = String(bruto == null ? "" : bruto).trim();
 
@@ -9444,6 +9492,9 @@
       var ativa = promocaoAtivaComSubsidioDoItem(itemId);
       if (ativa) subsidio = ativa.subsidioMl;
     }
+    // Rebate digitado (hipotético, só visualização): vale apenas quando o
+    // campo está liberado — nas promoções com rebate do ML o valor é o dela.
+    if (sim.rebate != null && rebateSimulacaoEstado(itemId).editavel) subsidio = sim.rebate;
     if (subsidio != null) corpo.subsidioMl = subsidio;
 
     var meuToken = DET.token;
@@ -9542,7 +9593,14 @@
       }
       return { nota: "Simulação apenas — este anúncio tem variações e o preço é alterado no nível do anúncio.", tom: "info" };
     }
-    return { nota: "Custo simulado — não altera a Base de Custos.", tom: "texto" };
+    if (sim.rebate != null && sim.custoProduto == null && sim.custosAdicionais == null) {
+      return { nota: "Rebate simulado — só para visualizar a margem. Nada é enviado ao Mercado Livre.", tom: "texto" };
+    }
+    return {
+      nota: "Custo simulado — não altera a Base de Custos." +
+        (sim.rebate != null ? " O rebate digitado é só para visualizar a margem." : ""),
+      tom: "texto",
+    };
   }
 
   function margemAcoesHtml(itemId) {
@@ -10031,6 +10089,8 @@
 
     DET.promoLinhaSelecionada = chave;
     sim.preco = p.precoFinal != null ? p.precoFinal : null;
+    // Promoção com rebate do ML: o valor é o dela — some o digitado.
+    if (p.subsidioMl != null) sim.rebate = null;
     dispararSimulacaoMargem(itemId);
 
     if (sim.preco == null && p.modoEscrita !== "ACEITE") {
@@ -10043,7 +10103,9 @@
   function margemSimuladaTexto(moeda) {
     var r = DET && DET.simulacaoMargem && DET.simulacaoMargem.resultado;
     if (!r || !r.computable || r.profit == null) return "—";
-    return formatMoeda(r.profit, moeda) + (r.marginPercent != null ? " (" + formatarPercentualCompacto(r.marginPercent) + ")" : "");
+    var rebateDigitado = DET.simulacaoMargem.rebate != null && rebateSimulacaoEstado(DET.itemId).editavel;
+    return formatMoeda(r.profit, moeda) + (r.marginPercent != null ? " (" + formatarPercentualCompacto(r.marginPercent) + ")" : "") +
+      (rebateDigitado ? " — com rebate simulado de " + formatMoeda(DET.simulacaoMargem.rebate, moeda) : "");
   }
 
   // PRECO (DEAL/SELLER_CAMPAIGN): participar com o preço escolhido, ou
