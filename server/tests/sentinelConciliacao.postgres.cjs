@@ -265,6 +265,15 @@ async function main() {
     ml.billingResposta = (seller) => (seller === S10 ? { ok: false, status: 403, data: null } : null);
     const r403 = await coletar(T0 + 83 * HORA);
     eq("403: conta 10 parada (sem permissão de Billing), nada gravado", [r403.contas.find((c) => c.contaId === 10).parada, (await linhas(10))["202"]], ["sem_permissao_billing", undefined]);
+    ml.billingResposta = (seller) => { if (seller === S10) throw Object.assign(new Error("grant ausente"), { code: "ML_GRANT_NOT_FOUND" }); return null; };
+    const rGrant = await coletar(T0 + 83 * HORA + 1000);
+    eq("exceção de grant/conta (não HTTP): conta 10 parada, nada gravado, sem gastar tentativas", [rGrant.contas.find((c) => c.contaId === 10).parada, (await linhas(10))["202"]], ["erro_cliente_ml", undefined]);
+    await q(`INSERT INTO sentinel_pedidos (cliente_id, cliente_conta_id, pedido_id, competencia, data_pedido, status_ml, itens, comissao, estado_margem, payload_hash)
+             VALUES (2, 20, '12a/../x', '2026-11', $1, 'paid', '[{"item_id":"MLB1","quantidade":1}]', 6.21, 'confirmada', 'hx')`, [new Date(T0 - 2 * DIA).toISOString()]);
+    ml.billingResposta = null; ml.zerar();
+    const rId = await coletar(T0 + 83 * HORA + 2000, { contaIds: [20] });
+    ok("pedido_id não numérico nunca vai para a URL do ML", !ml.log.some((l) => l.path.includes("12a")) && rId.contas.find((c) => c.contaId === 20).ignoradosIdInvalido === 1);
+    await q("DELETE FROM sentinel_pedidos WHERE pedido_id = '12a/../x'");
     ml.billingResposta = null;
 
     console.log("\n9) 429: nenhuma nova chamada (todas as contas), pausa GLOBAL persistida e respeitada; backoff exponencial");

@@ -172,9 +172,12 @@ async function processarContaConciliacao(contaId, deps) {
     return resumo;
   }
 
-  const candidatos = await repo.selecionarCandidatos(db, contaId, {
+  const selecionados = await repo.selecionarCandidatos(db, contaId, {
     agoraIso: iso(agoraMs), janelaDias: cfg.janelaDias, maturidadeHoras: cfg.maturidadeHoras, limite: cfg.maxPedidosConta,
   });
+  // id do ML vai para a URL: só dígitos (defesa; o polling só grava ids numéricos)
+  const candidatos = selecionados.filter((l) => /^\d{1,30}$/.test(String(l.pedido_id)));
+  resumo.ignoradosIdInvalido = selecionados.length - candidatos.length;
   resumo.candidatos = candidatos.length;
   if (!candidatos.length) return resumo;
 
@@ -196,7 +199,9 @@ async function processarContaConciliacao(contaId, deps) {
       resp = await mlFetch(ctx.clienteId, path, { mlUserId: ctx.sellerId, bigIntFields: BIGINT_CAMPOS });
     } catch (e) { err = e; }
     if (err && err.code === "SENTINEL_ORCAMENTO_CHAMADAS") ctl.chamadas -= 1; // não saiu do processo
-    const classe = classificar(resp, err);
+    // exceção que não é HTTP nem prazo (grant ausente/inválido, conta divergente…): problema da CONTA, não do pedido ⇒
+    // para a conta sem gravar (não gasta tentativas dos pedidos).
+    const classe = err && classificar(null, err) === "erro" ? "erro_cliente" : classificar(resp, err);
     if (classe === "limite") await pausar429(resp?.retryAfter);
     return { classe, resp, status: resp?.status ?? null, erro: err ? `${err.code || err.name || "ERRO"}` : null };
   };
@@ -217,7 +222,7 @@ async function processarContaConciliacao(contaId, deps) {
     }
   };
   const PARADAS = { limite: "limite_429", limite_ativo: "limite_429", token: "token_indisponivel", proibido: "sem_permissao_billing",
-    orcamento: "orcamento", prazo: "prazo" };
+    orcamento: "orcamento", prazo: "prazo", erro_cliente: "erro_cliente_ml" };
 
   for (const lote of pedacos(candidatos, cfg.loteMax)) {
     if (resumo.parada) break;
