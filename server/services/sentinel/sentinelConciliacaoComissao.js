@@ -71,6 +71,9 @@ const MOTIVOS = Object.freeze({
   BILLING_COM_BONIFICACAO_OU_CREDITO: "billing_com_bonificacao_ou_credito_nao_validado",
   FUNDING_MODE_NAO_VALIDADO: "funding_mode_nao_validado",
   DISCOUNT_BILLING_NAO_VALIDADO: "discount_billing_nao_validado",
+  // /orders/{id}/discounts não consultado ⇒ não se sabe se há cupom/cashback (ausência ≠ "não há"). Transitório: o
+  // coletor reconsulta; nunca vira TARIFA_*_COMPROVADA sem o detalhe de descontos.
+  DESCONTOS_NAO_VERIFICADOS: "descontos_nao_verificados",
   // — divergências (⇒ DIVERGENTE, sem ajuste)
   SALE_FEE_DIFERE_DO_NET: "sale_fee_pedido_difere_do_net",
   REBATE_POSSIVELMENTE_EM_DOBRO: "rebate_possivelmente_contado_duas_vezes",
@@ -83,6 +86,27 @@ const MOTIVOS = Object.freeze({
   CRUZAMENTO_DESCONTOS_INDISPONIVEL: "cruzamento_com_descontos_indisponivel",
   TARIFA_DO_PEDIDO_E_BRUTA: "tarifa_do_pedido_e_bruta",
 });
+
+// Categoria de cada motivo (o coletor usa para a política de reconsulta; a leitura, para explicar o estado).
+//   bloqueio    — dado/vínculo impede comparar;     escopo      — cenário não validado (conservador);
+//   divergencia — números não fecham (investigar); aviso       — informativo, não muda o estado.
+const POR_CATEGORIA = {
+  bloqueio: ["PEDIDO_INVALIDO", "SEM_REGISTRO_BILLING", "BILLING_DE_OUTRO_PEDIDO", "BILLING_REGISTRO_DUPLICADO", "BILLING_PARCIAL",
+    "BILLING_DE_OUTRA_CONTA", "PEDIDO_DE_OUTRA_CONTA", "ITEM_NAO_CONFERE", "PAGAMENTO_NAO_CONFERE", "CAMPO_BILLING_AUSENTE", "VALOR_INVALIDO",
+    "SALE_FEE_PEDIDO_INVALIDO", "COBRANCA_DUPLICADA", "COBRANCA_MULTIPLA_MESMO_TIPO", "SUBTIPO_DESCONHECIDO", "SEM_COBRANCAS_DE_TARIFA",
+    "DESCONTO_SEM_ITEM_CORRESPONDENTE"],
+  escopo: ["MULTIPLOS_ITENS", "QUANTIDADE_MAIOR_QUE_1", "CUPOM_NAO_VALIDADO", "CASHBACK_NAO_VALIDADO", "DESCONTO_TIPO_DESCONHECIDO",
+    "CANCELAMENTO_OU_REEMBOLSO", "PEDIDO_NAO_PAGO", "BILLING_COM_BONIFICACAO_OU_CREDITO", "FUNDING_MODE_NAO_VALIDADO", "DISCOUNT_BILLING_NAO_VALIDADO",
+    "DESCONTOS_NAO_VERIFICADOS"],
+  divergencia: ["SALE_FEE_DIFERE_DO_NET", "REBATE_POSSIVELMENTE_EM_DOBRO", "COBRANCAS_NAO_SOMAM_NET", "IDENTIDADE_GROSS_NET", "REBATE_DIFERE_DO_CALCULADO"],
+  aviso: ["DOCUMENTO_EM_PROCESSAMENTO", "CONTA_NAO_VERIFICADA", "CRUZAMENTO_DESCONTOS_INDISPONIVEL", "TARIFA_DO_PEDIDO_E_BRUTA"],
+};
+const CATEGORIA_MOTIVO = Object.freeze(Object.fromEntries(
+  Object.entries(POR_CATEGORIA).flatMap(([cat, chaves]) => chaves.map((k) => [MOTIVOS[k], cat]))));
+// Motivos que podem desaparecer numa nova observação (Billing ainda sem o pedido, parcial, descontos não lidos…):
+// o coletor reconsulta. Os demais motivos de ESCOPO são estáveis para o mesmo pedido (cupom não some).
+const MOTIVOS_TRANSITORIOS = Object.freeze([MOTIVOS.SEM_REGISTRO_BILLING, MOTIVOS.BILLING_PARCIAL, MOTIVOS.DESCONTOS_NAO_VERIFICADOS,
+  MOTIVOS.SEM_COBRANCAS_DE_TARIFA, MOTIVOS.CAMPO_BILLING_AUSENTE]);
 
 const idTexto = (v) => (v === null || v === undefined || v === "" ? null : String(v));
 const ehObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -182,6 +206,8 @@ function conciliarComissaoPedido(entrada) {
     }
     if (temLinha && sellerConhecido) calculadoMl = ml;
     if (mlComFundingDiferente) m.escopo.add(MOTIVOS.FUNDING_MODE_NAO_VALIDADO);
+  } else {
+    m.escopo.add(MOTIVOS.DESCONTOS_NAO_VERIFICADOS);
   }
   res.rebate.calculado_descontos_centavos = calculadoMl;
   if (calculadoMl !== null) res.rebate.origem = "calculado_apenas";
@@ -344,6 +370,8 @@ function finalizar(res, m) {
 module.exports = {
   CONCILIACAO_CONTRATO_VERSAO,
   MOTIVOS,
+  CATEGORIA_MOTIVO,
+  MOTIVOS_TRANSITORIOS,
   SUBTIPOS_TARIFA,
   SUBTIPOS_FORA_DA_TARIFA,
   conciliarComissaoPedido,

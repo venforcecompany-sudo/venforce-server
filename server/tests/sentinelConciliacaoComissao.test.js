@@ -333,12 +333,30 @@ test("N5 parte do ML em /discounts com funding_mode que não é sale_fee: NAO_CO
   tem(x, MOTIVOS.FUNDING_MODE_NAO_VALIDADO);
 });
 
-test("N6 /discounts ausente: concilia pelo Billing, mas o rebate fica só 'billing_observado' e o cruzamento indisponível", () => {
-  const x = r(cenarioCofinanciado({ descontos: null }));
+test("N6 /discounts NÃO consultado: NAO_CONCILIADO (sem o detalhe não se sabe se há cupom/cashback; ausência ≠ 'não há')", () => {
+  for (const d of [null, undefined]) {
+    const x = r(cenarioCofinanciado({ descontos: d }));
+    assert.equal(x.estado, "NAO_CONCILIADO");
+    tem(x, MOTIVOS.DESCONTOS_NAO_VERIFICADOS);
+    assert.equal(x.rebate.billing_centavos, 115); // o que o Billing observou continua visível…
+    assert.equal(x.rebate.calculado_descontos_centavos, null); // …mas nada foi calculado
+    assert.equal(x.rebate_incorporado, "desconhecido");
+  }
+});
+
+test("N6b /discounts consultado e SEM detalhes: concilia pelo Billing; o cruzamento do rebate fica indisponível (visível)", () => {
+  const x = r(cenarioCofinanciado({ descontos: { details: [] } }));
   assert.equal(x.estado, "TARIFA_LIQUIDA_COMPROVADA");
-  assert.equal(x.rebate.calculado_descontos_centavos, null);
   assert.equal(x.rebate.concordam, null);
+  assert.equal(x.rebate.origem, "billing_observado");
   tem(x, MOTIVOS.CRUZAMENTO_DESCONTOS_INDISPONIVEL);
+});
+
+test("N8 todo motivo tem categoria; transitórios são um subconjunto conhecido", () => {
+  const { CATEGORIA_MOTIVO, MOTIVOS_TRANSITORIOS } = require("../services/sentinel/sentinelConciliacaoComissao");
+  for (const codigo of Object.values(MOTIVOS)) assert.ok(["bloqueio", "escopo", "divergencia", "aviso"].includes(CATEGORIA_MOTIVO[codigo]), codigo);
+  assert.equal(Object.keys(CATEGORIA_MOTIVO).length, Object.values(MOTIVOS).length);
+  for (const t of MOTIVOS_TRANSITORIOS) assert.ok(CATEGORIA_MOTIVO[t], t);
 });
 
 test("N7 item do /discounts que não existe no pedido: NAO_CONCILIADO", () => {
