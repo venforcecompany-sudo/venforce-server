@@ -1,15 +1,20 @@
 // server/tests/fechamentoFinanceiroShopeeRepasseConciliacao.test.js
-// Conciliação do líquido do pedido Shopee (caso Mercadão conta 2, out/2026).
+// Conciliação do líquido do pedido Shopee SEM coluna Repasse (caso out/2026).
 //
-// O Order.all real NÃO tem coluna "Repasse": o líquido é reconstruído por
-// "componentes" (bruto − taxas). Esse caminho ignorava cupom do vendedor e
-// não declarava os ajustes cujo financiador não é provável pela planilha
-// (cupom Shopee, ajuste PIX…), apresentando um LC "confiável" que o
-// demonstrativo da Shopee não sustentava (R$ 261,20 × R$ 230,57).
+// Fatos conferidos num Order.all real (886 pedidos de out/2026), sem versionar
+// a planilha:
+//  • não existe coluna "Repasse";
+//  • Total global = Subtotal − Cupom do vendedor − Cupom − Ajuste PIX
+//    − Compensar Moedas/100 + Taxa de envio paga pelo comprador;
+//  • "Ajuste por participação em ação comercial" = (comissão bruta − líquida)
+//    + (serviço bruto − líquido): as taxas LÍQUIDAS já embutem a compensação
+//    da Shopee, então cupom/PIX precisam ser deduzidos junto.
 //
-// Fonte dos valores: pedido real informado pelo usuário. Colunas e semântica
-// conferidas num Order.all real (set/2026): "Total global" = Subtotal −
-// Cupom do vendedor (− Cupom Shopee − moedas) + frete pago pelo comprador.
+// Pedido de referência (ID sintético): Subtotal 299,90 | Cupom vendedor 1,00 |
+// Cupom 14,95 | PIX 14,19 | Total global 269,76 | comissão 37,66→20,42 |
+// serviço 30,18→18,28. Líquido reconstruível = 269,76 − 38,70 = 231,06.
+// O demonstrativo da Shopee mostra 230,57 (taxa adicional de 0,49 que NÃO
+// existe no arquivo). Antes da correção o Portal mostrava 261,20.
 
 const assert = require("assert");
 const Module = require("module");
@@ -39,10 +44,10 @@ function eq(label, actual, expected) {
   console.log(`  ok  ${label}`);
 }
 
-// Colunas com os nomes reais do Order.all da Shopee.
-function linha(overrides) {
+// Pedido de referência com os nomes reais das colunas do Order.all.
+function pedidoReal(overrides) {
   return {
-    "ID do pedido": "PED-REAL",
+    "ID do pedido": "PED-SINTETICO-1",
     "Status do pedido": "Concluído",
     "Status da Devolução / Reembolso": "",
     "Nome do Produto": "Jogo de Panelas Cerâmica 5 Peças",
@@ -50,12 +55,40 @@ function linha(overrides) {
     Quantidade: 1,
     "Preço acordado": 299.9,
     "Subtotal do produto": 299.9,
-    "Taxa de transação": 0,
+    "Cupom do vendedor": 1.0,
+    Cupom: 14.95,
+    "Ajuste por pagamento via PIX": 14.19,
+    "Ajuste por participação em ação comercial": 29.14,
+    "Taxa de comissão bruta": 37.66,
     "Taxa de comissão líquida": 20.42,
+    "Taxa de serviço bruta": 30.18,
     "Taxa de serviço líquida": 18.28,
-    "Valor estimado do frete": "",
+    "Total global": 269.76,
+    "Valor estimado do frete": 18.11,
     CMV: 155,
     Imposto: 29.99,
+    ...overrides,
+  };
+}
+
+// Pedido simples, sem descontos (regressão do caminho já correto).
+function pedidoSimples(overrides) {
+  return {
+    "ID do pedido": "PED-SINTETICO-2",
+    "Status do pedido": "Concluído",
+    "Nome do Produto": "Item simples",
+    "Número de referência SKU": "ITEM-1",
+    Quantidade: 1,
+    "Preço acordado": 100,
+    "Subtotal do produto": 100,
+    "Taxa de comissão bruta": 14,
+    "Taxa de comissão líquida": 14,
+    "Taxa de serviço bruta": 6,
+    "Taxa de serviço líquida": 6,
+    "Total global": 100,
+    "Valor estimado do frete": 10,
+    CMV: 40,
+    Imposto: 10,
     ...overrides,
   };
 }
@@ -67,128 +100,120 @@ function run(rows) {
   });
 }
 
+// ── Caso real: reproduz R$ 261,20 → corrige para R$ 231,06 ─────────────────
+console.log("\n▸ Caso real — Total global − taxas líquidas");
+{
+  const r = run([pedidoReal()]);
+  const row = r.detailedRows[0];
+  eq("origem do líquido: componentes (sem Repasse)", row["Origem da receita líquida"], "componentes");
+  eq("líquido = 269,76 − 20,42 − 18,28", row["Receita líquida"], 231.06);
+  eq("LC = 231,06 − 155 − 29,99", r.summary.contributionProfitTotal, 46.07);
+  eq("evidência: reconstruído (não comprovado)", row["Evidência do líquido"], "reconstruido");
+  eq("confiança do líquido", r.summary.netRevenueConfidence, "reconstruida");
+  eq("Total global fechou com a identidade", r.summary.totalGlobalVerifiedOrders, 1);
+  eq("nenhum pedido estimado", r.summary.estimatedNetOrdersCount, 0);
+  // O valor antigo vinha de ignorar cupom, PIX e cupom do vendedor.
+  eq("o valor antigo (261,20) divergia em 30,14 do reconstruível", Math.round((261.2 - 231.06) * 100) / 100, 30.14);
+  // Diferença residual para o demonstrativo da Shopee: taxa fora do arquivo.
+  eq("resíduo vs. demonstrativo (230,57) = taxa não presente no arquivo", Math.round((231.06 - 230.57) * 100) / 100, 0.49);
+  ok(
+    "nota declara que não é o valor liquidado pela Shopee",
+    r.summary.executiveNotes.some((n) => n.includes("NET_REVENUE_RECONSTRUCTED"))
+  );
+}
+
 // ── 1. Repasse efetivo de R$ 230,57 (comprovado) ───────────────────────────
 console.log("\n▸ 1 — repasse efetivo é a fonte comprovada");
 {
-  const r = run([linha({ Repasse: 230.57 })]);
+  const r = run([pedidoReal({ Repasse: 230.57 })]);
   eq("líquido = repasse", r.summary.paidRevenueTotal, 230.57);
   eq("LC = 230,57 − 155 − 29,99", r.summary.contributionProfitTotal, 45.58);
-  eq("origem do líquido", r.detailedRows[0]["Origem da receita líquida"], "repasse");
   eq("evidência", r.detailedRows[0]["Evidência do líquido"], "comprovado");
   eq("confiança do líquido", r.summary.netRevenueConfidence, "comprovada");
-  eq("sem pendência de conciliação", r.summary.unresolvedAdjustmentOrdersCount, 0);
 }
 
-// ── Reprodução da divergência original ─────────────────────────────────────
-console.log("\n▸ Caso real — componentes sem repasse (divergência de R$ 30,63)");
+// ── 2. Sem repasse, sem Total global: identidade pelas colunas ─────────────
+console.log("\n▸ 2 — sem Total global, a identidade reconstrói o líquido");
 {
-  const r = run([
-    linha({
-      "Cupom do vendedor": 1.0,
-      Cupom: 14.95,
-      "Ajuste por pagamento via PIX": 14.19,
-    }),
-  ]);
-  const row = r.detailedRows[0];
-  eq("origem do líquido", row["Origem da receita líquida"], "componentes");
-  // Cupom do vendedor (R$ 1,00) é comprovadamente do vendedor: descontado.
-  eq("seller coupon descontado: 299,90 − 20,42 − 18,28 − 1,00", row["Receita líquida"], 260.2);
-  eq("LC não é mais 76,21 (somente com o cupom provado)", r.summary.contributionProfitTotal, 75.21);
-  // O que a planilha não prova NÃO é presumido como custo do vendedor…
-  eq("evidência estimada", row["Evidência do líquido"], "estimado");
-  eq("confiança do líquido estimada", r.summary.netRevenueConfidence, "estimada");
-  // …mas é declarado: o resultado não é apresentado como comprovado.
+  const r = run([pedidoReal({ "Total global": "" })]);
+  eq("líquido = 299,90 − 1,00 − 14,95 − 14,19 − 38,70", r.detailedRows[0]["Receita líquida"], 231.06);
+  eq("reconstruído", r.summary.netRevenueConfidence, "reconstruida");
+}
+
+// ── 3. Total global não fecha com as colunas (descontos desconhecidos) ─────
+console.log("\n▸ 3 — Total global divergente: estimado e declarado");
+{
+  // Total global 8,00 acima do que as colunas sustentam (visto em ~77 pedidos de out/2026).
+  const r = run([pedidoReal({ "Total global": 277.76 })]);
+  eq("usa só o que a identidade sustenta", r.detailedRows[0]["Receita líquida"], 231.06);
+  eq("evidência estimada", r.detailedRows[0]["Evidência do líquido"], "estimado");
   eq("financialConfidence rebaixada", r.summary.financialConfidence, "parcial");
-  eq("1 pedido com ajuste sem financiador provado", r.summary.unresolvedAdjustmentOrdersCount, 1);
-  const porColuna = Object.fromEntries(
-    r.summary.unresolvedAdjustments.map((a) => [a.column, a.total])
-  );
-  eq("cupom Shopee exposto", porColuna["Cupom"], 14.95);
-  eq("ajuste PIX exposto", porColuna["Ajuste por pagamento via PIX"], 14.19);
-  ok(
-    "nota executiva cita a conciliação pendente",
-    r.summary.executiveNotes.some((n) => n.includes("NET_REVENUE_ESTIMATED"))
-  );
-  // Divergência remanescente vs. demonstrativo (230,57): 260,20 − 230,57.
-  eq("diferença para o demonstrativo fica declarada", Math.round((260.2 - 230.57) * 100) / 100, 29.63);
-}
-
-// ── 2. Sem repasse, componentes suficientes e sem ajustes ──────────────────
-console.log("\n▸ 2 — componentes completos reconstroem o líquido");
-{
-  const r = run([linha()]);
-  eq("líquido = bruto − taxas", r.detailedRows[0]["Receita líquida"], 261.2);
-  eq("origem", r.detailedRows[0]["Origem da receita líquida"], "componentes");
-  eq("sem ajuste pendente: financialConfidence preservada", r.summary.financialConfidence, "confiavel");
-  eq("sem ajuste pendente: líquido reconstruído (não comprovado)", r.summary.netRevenueConfidence, "reconstruida");
-}
-
-// ── 3. Sem repasse e com descontos desconhecidos ───────────────────────────
-console.log("\n▸ 3 — descontos desconhecidos não são presumidos nem ignorados");
-{
-  const r = run([linha({ "Ajuste por participação em ação comercial": 5.5 })]);
-  eq("valor não aplicado", r.detailedRows[0]["Receita líquida"], 261.2);
-  eq("mas declarado", r.summary.unresolvedAdjustmentOrdersCount, 1);
-  eq("confiança rebaixada", r.summary.financialConfidence, "parcial");
+  const motivo = r.summary.netRevenueEstimatedReasons.find((x) => x.reason === "total_global_divergente");
+  eq("divergência declarada em R$", motivo && motivo.total, 8);
 }
 
 // ── 4. Cupom financiado pelo vendedor ──────────────────────────────────────
 console.log("\n▸ 4 — cupom do vendedor reduz o líquido");
 {
-  const r = run([linha({ "Cupom do vendedor": 3.99 })]);
-  eq("líquido", r.detailedRows[0]["Receita líquida"], 257.21);
-  eq("sem pendência", r.summary.unresolvedAdjustmentOrdersCount, 0);
-  const neg = run([linha({ "Cupom do vendedor": -3.99 })]);
-  eq("sinal negativo na exportação dá o mesmo líquido", neg.detailedRows[0]["Receita líquida"], 257.21);
-  const coin = run([linha({ "Coin Cashback Voucher Amount Sponsored by Seller": 2 })]);
-  eq("cashback patrocinado pelo vendedor reduz o líquido", coin.detailedRows[0]["Receita líquida"], 259.2);
+  const r = run([pedidoSimples({ "Cupom do vendedor": 3.99, "Total global": 96.01 })]);
+  eq("100 − 3,99 − 20", r.detailedRows[0]["Receita líquida"], 76.01);
+  eq("reconstruído", r.detailedRows[0]["Evidência do líquido"], "reconstruido");
+  const neg = run([pedidoSimples({ "Cupom do vendedor": -3.99, "Total global": 96.01 })]);
+  eq("sinal negativo na exportação dá o mesmo líquido", neg.detailedRows[0]["Receita líquida"], 76.01);
 }
 
-// ── 5. Cupom financiado pela plataforma ────────────────────────────────────
-console.log("\n▸ 5 — cupom 100% compensado pela Shopee não custa ao vendedor");
+// ── 5. Cupom/PIX financiado pela plataforma ────────────────────────────────
+console.log("\n▸ 5 — cupom Shopee: dedução + compensação nas taxas (efeito já embutido)");
 {
-  const r = run([linha({ Cupom: 14.95, "Incentivo de cupom": 14.95 })]);
-  eq("líquido intacto", r.detailedRows[0]["Receita líquida"], 261.2);
-  eq("sem pendência", r.summary.unresolvedAdjustmentOrdersCount, 0);
-  eq("confiança preservada", r.summary.financialConfidence, "confiavel");
-  const parcial = run([linha({ Cupom: 14.95, "Incentivo de cupom": 10 })]);
-  const col = parcial.summary.unresolvedAdjustments.find((a) => a.column === "Cupom");
-  eq("só o saldo não compensado fica pendente", col && col.total, 4.95);
+  // Cupom 10 deduzido do Total global; a Shopee compensa 10 reduzindo as taxas.
+  const r = run([
+    pedidoSimples({
+      Cupom: 10,
+      "Total global": 90,
+      "Ajuste por participação em ação comercial": 10,
+      "Taxa de comissão bruta": 20,
+      "Taxa de comissão líquida": 14,
+      "Taxa de serviço bruta": 10,
+      "Taxa de serviço líquida": 6,
+    }),
+  ]);
+  eq("90 − 14 − 6 (a compensação nas taxas devolve o cupom)", r.detailedRows[0]["Receita líquida"], 70);
+  eq("sem divergência", r.detailedRows[0]["Evidência do líquido"], "reconstruido");
+  // Sem a dedução (comportamento antigo) daria 100 − 14 − 6 = 80: superestimado em 10.
+  eq("comportamento antigo superestimava em 10", 80 - r.detailedRows[0]["Receita líquida"], 10);
 }
 
-// ── 6. Taxa adicional (Devolução Fácil R$ 0,49) ────────────────────────────
-console.log("\n▸ 6 — taxa sem coluna mapeada não é inventada; com repasse não duplica");
+// ── 6. Taxa adicional de R$ 0,49 ───────────────────────────────────────────
+console.log("\n▸ 6 — taxa sem coluna no arquivo não é inventada; com repasse não duplica");
 {
-  const comRepasse = run([linha({ Repasse: 230.57 })]);
-  eq("repasse já contém a taxa de R$ 0,49 (sem desconto extra)", comRepasse.detailedRows[0]["Receita líquida"], 230.57);
-  const semRepasse = run([linha()]);
-  ok(
-    "sem repasse a taxa não é visível: líquido reconstruído é declarado como não comprovado",
-    semRepasse.summary.netRevenueConfidence !== "comprovada"
-  );
+  const comRepasse = run([pedidoReal({ Repasse: 230.57 })]);
+  eq("repasse já contém a taxa (nenhum desconto extra)", comRepasse.detailedRows[0]["Receita líquida"], 230.57);
+  const semRepasse = run([pedidoReal()]);
+  ok("sem repasse o líquido não é declarado como comprovado", semRepasse.summary.netRevenueConfidence !== "comprovada");
+  eq("e não presume a taxa de 0,49", semRepasse.detailedRows[0]["Receita líquida"], 231.06);
 }
 
 // ── 7. Rebate/subsídio nunca aplicado duas vezes ───────────────────────────
-console.log("\n▸ 7 — repasse presente: nenhum ajuste/cupom é reaplicado");
+console.log("\n▸ 7 — com repasse, nenhum desconto/ajuste é reaplicado");
 {
-  const r = run([
-    linha({
-      Repasse: 230.57,
-      "Cupom do vendedor": 1.0,
-      Cupom: 14.95,
-      "Ajuste por pagamento via PIX": 14.19,
-    }),
-  ]);
+  const r = run([pedidoReal({ Repasse: 230.57 })]);
   eq("líquido permanece o repasse", r.detailedRows[0]["Receita líquida"], 230.57);
-  eq("não vira pendência (já está no repasse)", r.summary.unresolvedAdjustmentOrdersCount, 0);
-  eq("confiança preservada", r.summary.financialConfidence, "confiavel");
+  eq("sem pedido estimado", r.summary.estimatedNetOrdersCount, 0);
+  eq("descontos de nível pedido não aplicados", r.summary.orderLevelAdjustmentsAppliedTotal, 0);
+  const rec = run([pedidoReal()]);
+  eq("reconstrução aplica o desconto uma vez (1,00 + 14,95 + 14,19)", rec.summary.orderLevelAdjustmentsAppliedTotal, 30.14);
 }
 
 // ── 8. Sem nenhuma evidência de líquido ────────────────────────────────────
 console.log("\n▸ 8 — sem repasse e sem taxas: não conciliado");
 {
   const r = run([
-    linha({ "Taxa de transação": "", "Taxa de comissão líquida": "", "Taxa de serviço líquida": "" }),
+    pedidoReal({
+      "Taxa de comissão bruta": "",
+      "Taxa de comissão líquida": "",
+      "Taxa de serviço bruta": "",
+      "Taxa de serviço líquida": "",
+    }),
   ]);
   eq("origem", r.detailedRows[0]["Origem da receita líquida"], "ausente");
   eq("evidência", r.detailedRows[0]["Evidência do líquido"], "ausente");
@@ -199,23 +224,30 @@ console.log("\n▸ 8 — sem repasse e sem taxas: não conciliado");
 // ── 9. Pedido histórico: regras vêm da planilha, não das atuais ────────────
 console.log("\n▸ 9 — taxas históricas da própria planilha");
 {
-  // Comissão de 12% e serviço de 4% (regra antiga) — nenhuma tabela atual é aplicada.
   const r = run([
-    linha({
-      "Taxa de comissão líquida": 35.99,
-      "Taxa de serviço líquida": 11.99,
+    pedidoSimples({
+      "Taxa de comissão bruta": 12,
+      "Taxa de comissão líquida": 12,
+      "Taxa de serviço bruta": 4,
+      "Taxa de serviço líquida": 4,
     }),
   ]);
-  eq("líquido usa as taxas registradas no pedido", r.detailedRows[0]["Receita líquida"], 251.92);
+  eq("líquido usa as taxas registradas no pedido", r.detailedRows[0]["Receita líquida"], 84);
 }
 
-// ── 10. Regressão: pedido conciliado antes continua igual ──────────────────
-console.log("\n▸ 10 — pedido já conciliado (taxas+frete negativo) inalterado");
+// ── 10. Regressão: pedido sem descontos permanece idêntico ─────────────────
+console.log("\n▸ 10 — pedido sem descontos inalterado");
 {
-  const r = run([linha({ "Valor estimado do frete": -5 })]);
-  eq("líquido = 299,90 − 20,42 − 18,28 − 5", r.detailedRows[0]["Receita líquida"], 256.2);
+  const r = run([pedidoSimples()]);
+  eq("100 − 14 − 6", r.detailedRows[0]["Receita líquida"], 80);
   eq("financialConfidence preservada", r.summary.financialConfidence, "confiavel");
-  eq("sem pendência", r.summary.unresolvedAdjustmentOrdersCount, 0);
+  eq("sem pedido estimado", r.summary.estimatedNetOrdersCount, 0);
+  const comFrete = run([pedidoSimples({ "Taxa de envio pagas pelo comprador": 9.14, "Total global": 109.14 })]);
+  eq("frete pago pelo comprador não infla o líquido", comFrete.detailedRows[0]["Receita líquida"], 80);
+  const neg = run([pedidoSimples({ "Valor estimado do frete": -5 })]);
+  eq("frete negativo continua aplicado", neg.detailedRows[0]["Receita líquida"], 75);
+  const moedas = run([pedidoSimples({ "Compensar Moedas Shopee": 93, "Total global": 99.07 })]);
+  eq("moedas (centavos) deduzidas", moedas.detailedRows[0]["Receita líquida"], 79.07);
 }
 
 console.log(`\n✓ ${checks} verificações`);
