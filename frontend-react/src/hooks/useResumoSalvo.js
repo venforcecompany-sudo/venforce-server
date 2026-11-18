@@ -2,7 +2,7 @@
 //
 // O fechamento SALVO da competência, lido da própria entrega
 // (GET /entregas-cliente/:id → payload_json). O payload nativo grava o
-// `summary` do motor e uma amostra de `detailedRows` — é com eles que a mesa
+// `summary` do motor e as `detailedRows` (todas desde 18/11/2026; antes, amostra de 50) — é com eles que a mesa
 // mostra o mesmo destaque e a mesma cascata de um processamento em memória,
 // sem recalcular nada. Entrega legada sem `summary` → `summary: null` (a
 // tela cai na composição gravada em `cards`).
@@ -10,7 +10,7 @@
 import { useEffect, useState } from "react";
 import { buscarEntrega } from "../services/entregasApi.js";
 
-const VAZIO = { carregando: false, summary: null, detailedRows: [], unmatchedIds: [], erro: null };
+const VAZIO = { carregando: false, summary: null, detailedRows: [], detailedRowsCompletas: false, unmatchedIds: [], erro: null };
 
 export function useResumoSalvo({ entregaId, habilitado = true }) {
   const [estado, setEstado] = useState(VAZIO);
@@ -31,6 +31,7 @@ export function useResumoSalvo({ entregaId, habilitado = true }) {
           carregando: false,
           summary,
           detailedRows: Array.isArray(payload.detailedRows) ? payload.detailedRows : [],
+          detailedRowsCompletas: payload.detailedRowsCompletas === true,
           unmatchedIds: Array.isArray(payload.unmatchedIds) ? payload.unmatchedIds : [],
           erro: null,
         });

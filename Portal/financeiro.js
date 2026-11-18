@@ -832,7 +832,6 @@ function montarPayloadFechamentoCliente(data) {
   const unmatchedCancelled = Array.isArray(data?.unmatchedCancelled) ? data.unmatchedCancelled : [];
   const ignoredRevenue = safeNumber(data?.ignoredRevenue);
   const detailedAll = Array.isArray(data?.detailedRows) ? data.detailedRows : [];
-  const detailedSample50 = detailedAll.slice(0, 50);
 
   const severidade = (() => {
     if (finalResult < 0 || mcCalculada < 0) return "critico";
@@ -975,7 +974,7 @@ function montarPayloadFechamentoCliente(data) {
     periodo: meta.periodo || "",
     marketplace: summaryNormalized.marketplace,
     summary,
-    detailedRows: detailedSample50,
+    detailedRows: detailedAll,
     unmatchedIds: unmatched,
     unmatchedCancelled,
     ignoredRevenue,
@@ -1000,7 +999,7 @@ function montarPayloadFechamentoCliente(data) {
     snapshot: {
       summary,
       summaryNormalized,
-      detailedRows: detailedSample50,
+      detailedRows: detailedAll,
       detailedRowsTotal: detailedAll.length,
       unmatchedIds: unmatched,
       ignoredRevenue,
