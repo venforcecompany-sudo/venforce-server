@@ -411,6 +411,7 @@ function parseShopeeFinancialRows(rows) {
       shippingProvided: rawProvided(
         findField(row, ["valor estimado do frete", "frete", "shipping"])
       ),
+      adjustments: readShopeeOrderAdjustments(row),
       profit: profitRaw,
       isCancelled,
       isReturn,
@@ -450,6 +451,55 @@ function detectShopeeAdjustmentColumns(rows) {
     const normalized = normalizeKey(key);
     return SHOPEE_ADJUSTMENT_HINTS.some((hint) => normalized.includes(hint));
   });
+}
+
+// ── Ajustes de nível pedido que o Order.all traz fora das taxas ─────────────
+// O Order.all real NÃO tem "Repasse": o líquido é reconstruído (bruto − taxas).
+// Cupons e ajustes só podem ser descontados quando a planilha prova que o
+// vendedor os financia; senão ficam DECLARADOS como pendência de conciliação.
+//
+// Provado pelo próprio cabeçalho/valores (conferido num Order.all real:
+// Total global = Subtotal − Cupom do vendedor): financiado pelo vendedor.
+const SHOPEE_SELLER_FUNDED_COLUMNS = Object.freeze([
+  "Cupom do vendedor",
+  "Coin Cashback Voucher Amount Sponsored by Seller",
+]);
+// Financiador/sinal NÃO provável pela planilha: não entram no líquido.
+// offsetBy = coluna de incentivo da plataforma que compensa o valor.
+// trusted:false = a unidade do valor não está confirmada (moedas) — conta o
+// pedido, mas não soma R$.
+const SHOPEE_UNRESOLVED_ADJUSTMENT_COLUMNS = Object.freeze([
+  { column: "Cupom", offsetBy: "Incentivo de cupom", trusted: true },
+  { column: "Ajuste por pagamento via PIX", trusted: true },
+  { column: "Ajuste por participação em ação comercial", trusted: true },
+  { column: "Taxa de Envio Reversa", trusted: true },
+  { column: "Total descontado Cartão de Crédito", trusted: true },
+  { column: "Compensar Moedas Shopee", trusted: false },
+]);
+
+// Cabeçalho EXATO (sem a correspondência por palavra do findField, que faria
+// "Cupom" casar com "Cupom do vendedor").
+function findExactColumn(row, header) {
+  const target = normalizeKey(header);
+  for (const [key, value] of Object.entries(row)) {
+    if (normalizeKey(key) === target) return value;
+  }
+  return "";
+}
+
+function readShopeeOrderAdjustments(row) {
+  const out = {};
+  const columns = [
+    ...SHOPEE_SELLER_FUNDED_COLUMNS,
+    ...SHOPEE_UNRESOLVED_ADJUSTMENT_COLUMNS.flatMap((spec) =>
+      spec.offsetBy ? [spec.column, spec.offsetBy] : [spec.column]
+    ),
+  ];
+  for (const column of columns) {
+    const raw = findExactColumn(row, column);
+    out[column] = { present: rawProvided(raw), value: Math.abs(toNumber(raw)) };
+  }
+  return out;
 }
 
 // Escolhe a taxa efetivamente descontada: líquida quando presente, bruta só
@@ -2362,7 +2412,9 @@ function processShopeeFinancialOrders({
   const adjustmentColumns = detectShopeeAdjustmentColumns(salesRowsRaw);
   if (adjustmentColumns.length > 0) {
     executiveNotes.push(
-      `Colunas de cupom/rebate/ajuste detectadas e NÃO reaplicadas (o repasse já é líquido delas): ${adjustmentColumns.join(", ")}.`
+      `Colunas de cupom/rebate/ajuste detectadas: ${adjustmentColumns.join(", ")}. ` +
+      "Com repasse informado elas NÃO são reaplicadas (o repasse já é líquido delas); sem repasse, " +
+      "só o cupom financiado pelo vendedor é descontado e o restante fica como pendência (NET_REVENUE_ESTIMATED)."
     );
   }
 
@@ -2434,6 +2486,16 @@ function processShopeeFinancialOrders({
   let revenueDirectMatched = 0;
   let revenueBridgeMatched = 0;
   const bridgeAmbiguousKeys = [];
+  // Conciliação do líquido: quantos pedidos/qual receita em cada nível de evidência.
+  const netEvidence = {
+    comprovado: { count: 0, revenue: 0 },
+    reconstruido: { count: 0, revenue: 0 },
+    estimado: { count: 0, revenue: 0 },
+    ausente: { count: 0, revenue: 0 },
+  };
+  const unresolvedByColumn = new Map();
+  let unresolvedAdjustmentOrdersCount = 0;
+  let sellerFundedAdjustmentsTotal = 0;
 
   for (const [orderId, orderLines] of orders.entries()) {
     // Status do PEDIDO: o mais severo entre as linhas (uma devolução em
@@ -2540,13 +2602,24 @@ function processShopeeFinancialOrders({
 
     let orderNet;
     let netSource;
+    let netEvidenceLevel;
     let shippingApplied = 0;
+
+    // Valor de nível pedido de um ajuste (repetido em cada linha do pedido).
+    const adjustmentValue = (column) =>
+      collapseOrderLevelValue(
+        orderLines.map((line) => {
+          const entry = line.adjustments && line.adjustments[column];
+          return { present: !!(entry && entry.present), value: entry ? entry.value : 0 };
+        })
+      );
 
     if (repasse.present) {
       // Repasse já é líquido de taxas, frete, cupons e rebates. Os componentes
       // ficam informativos — descontar de novo seria contagem dupla.
       orderNet = round2(repasse.value);
       netSource = "repasse";
+      netEvidenceLevel = "comprovado";
     } else if (transactionFee.present || commissionFee.present || serviceFee.present) {
       // Frete: só é deduzido quando o sinal na planilha indica custo do
       // vendedor (negativo). Valor positivo é ambíguo => não aplicado.
@@ -2557,13 +2630,44 @@ function processShopeeFinancialOrders({
           shippingIndeterminateOrders += 1;
         }
       }
-      orderNet = round2(orderGross - feesSum - shippingApplied);
+      // Cupom/cashback financiado pelo vendedor (provado pela planilha) reduz
+      // o líquido; antes era ignorado e inflava o LC.
+      const sellerFunded = round2(
+        SHOPEE_SELLER_FUNDED_COLUMNS.reduce(
+          (sum, column) => sum + adjustmentValue(column).value,
+          0
+        )
+      );
+      sellerFundedAdjustmentsTotal = round2(sellerFundedAdjustmentsTotal + sellerFunded);
+
+      // Ajustes sem financiador provado: NÃO entram no líquido, mas são
+      // declarados — o resultado deixa de se apresentar como comprovado.
+      let orderHasUnresolved = false;
+      for (const spec of SHOPEE_UNRESOLVED_ADJUSTMENT_COLUMNS) {
+        const own = adjustmentValue(spec.column);
+        if (!own.present || own.value <= 0) continue;
+        const offset = spec.offsetBy ? adjustmentValue(spec.offsetBy).value : 0;
+        const pending = round2(Math.max(0, own.value - offset));
+        if (pending <= 0) continue; // compensado pela plataforma
+        orderHasUnresolved = true;
+        const acc = unresolvedByColumn.get(spec.column) || { column: spec.column, orders: 0, total: spec.trusted ? 0 : null };
+        acc.orders += 1;
+        if (spec.trusted) acc.total = round2(acc.total + pending);
+        unresolvedByColumn.set(spec.column, acc);
+      }
+      if (orderHasUnresolved) unresolvedAdjustmentOrdersCount += 1;
+
+      orderNet = round2(orderGross - feesSum - shippingApplied - sellerFunded);
       netSource = "componentes";
+      netEvidenceLevel = orderHasUnresolved ? "estimado" : "reconstruido";
     } else {
       feesMissingOrders += 1;
       orderNet = round2(orderGross);
       netSource = "ausente";
+      netEvidenceLevel = "ausente";
     }
+    netEvidence[netEvidenceLevel].count += 1;
+    netEvidence[netEvidenceLevel].revenue = round2(netEvidence[netEvidenceLevel].revenue + orderGross);
 
     if (shippingApplied > 0) {
       shippingFeesPresent = true;
@@ -2698,6 +2802,7 @@ function processShopeeFinancialOrders({
         "Receita bruta": lineGross,
         "Receita líquida": lineNet,
         "Origem da receita líquida": netSource,
+        "Evidência do líquido": netEvidenceLevel,
         "Taxa de transação": round2(transactionFee.value),
         "Taxa de comissão": round2(commissionFee.value),
         "Taxa de serviço": round2(serviceFee.value),
@@ -2841,6 +2946,41 @@ function processShopeeFinancialOrders({
     }
     executiveNotes.push(`COST_BASE_QUALITY: na base de custos, ${parts.join("; ")}.`);
   }
+  // Confiança do LÍQUIDO (eixo separado da cobertura de custo): o pior nível
+  // de evidência entre os pedidos reconhecidos.
+  const unresolvedAdjustments = Array.from(unresolvedByColumn.values());
+  let netRevenueConfidence = null;
+  if (netEvidence.ausente.count > 0) netRevenueConfidence = "nao_conciliada";
+  else if (netEvidence.estimado.count > 0) netRevenueConfidence = "estimada";
+  else if (netEvidence.reconstruido.count > 0) netRevenueConfidence = "reconstruida";
+  else if (netEvidence.comprovado.count > 0) netRevenueConfidence = "comprovada";
+
+  if (unresolvedAdjustmentOrdersCount > 0) {
+    const detail = unresolvedAdjustments
+      .map((a) => `${a.column}: ${a.orders} pedido(s)${a.total === null ? "" : `, R$ ${a.total.toFixed(2)}`}`)
+      .join("; ");
+    executiveNotes.push(
+      `NET_REVENUE_ESTIMATED: ${unresolvedAdjustmentOrdersCount} pedido(s) sem repasse têm cupom/ajuste cujo financiador não é provável pela planilha ` +
+      `(${detail}). Esses valores NÃO foram descontados nem presumidos: o líquido e a margem desses pedidos são estimativa e podem estar superestimados. ` +
+      "Envie o relatório de Renda do pedido (Repasse) para comprovar."
+    );
+  }
+  if (netEvidence.reconstruido.count + netEvidence.estimado.count > 0) {
+    executiveNotes.push(
+      "NET_REVENUE_RECONSTRUCTED: o Order.all não traz Repasse; o líquido de " +
+      `${netEvidence.reconstruido.count + netEvidence.estimado.count} pedido(s) foi reconstruído (bruto − taxas − frete negativo − cupom do vendedor), ` +
+      "sem tarifas fora das colunas mapeadas (ex.: Devolução Fácil). Não é o valor liquidado pela Shopee."
+    );
+  }
+  // Líquido sabidamente incompleto não pode manter confiança "confiavel".
+  let financialConfidence = coverage.financialConfidence;
+  if (
+    financialConfidence === "confiavel" &&
+    (unresolvedAdjustmentOrdersCount > 0 || feesMissingOrders > 0)
+  ) {
+    financialConfidence = "parcial";
+  }
+
   if (coverage.financialConfidence !== "confiavel") {
     executiveNotes.push(
       "Fechamento parcial: existem vendas sem custo cadastrado. O faturamento total está completo; LC e MC cobrem apenas a receita com custo identificado."
@@ -2862,7 +3002,13 @@ function processShopeeFinancialOrders({
       revenueWithCost: coverage.revenueWithCost,
       revenueWithoutCost: coverage.revenueWithoutCost,
       calculatedCoveragePercent: coverage.calculatedCoveragePercent,
-      financialConfidence: coverage.financialConfidence,
+      financialConfidence,
+      // Conciliação do líquido (aditivo): origem e pendências auditáveis.
+      netRevenueConfidence,
+      netRevenueEvidence: netEvidence,
+      unresolvedAdjustmentOrdersCount,
+      unresolvedAdjustments,
+      sellerFundedAdjustmentsTotal,
       contributionProfitTotal,
       averageContributionMargin: legacyRatio(contributionProfitTotal, revenueWithCost),
       contributionMarginCalculated: safeRatio(contributionProfitTotal, revenueWithCost),
