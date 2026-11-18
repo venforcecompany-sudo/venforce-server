@@ -323,4 +323,64 @@ console.log("\n▸ Validação monetária do formulário");
   ok("3.01100 é rejeitado no frontend", !parseMoneyInputResult("3.01100").valid);
 }
 
+/* ── Shopee: eixo da receita líquida separado do custo ─────────────────── */
+
+console.log("\n▸ Shopee — receita líquida reconstruída/estimada não parece repasse");
+{
+  const base = {
+    calculationMode: "real_financial",
+    financialConfidence: "confiavel",
+    costConfidence: "confiavel",
+    grossRevenueTotal: 299.9,
+    paidRevenueTotal: 231.06,
+    revenueWithCost: 299.9,
+    revenueWithoutCost: 0,
+    calculatedCoveragePercent: 100,
+    contributionProfitTotal: 46.07,
+  };
+  renderFinResumoExecutivo({
+    summary: {
+      ...base,
+      netRevenueConfidence: "estimada",
+      netRevenueEvidence: { comprovado: { count: 0 }, reconstruido: { count: 653 }, estimado: { count: 57 }, ausente: { count: 0 } },
+      netRevenueEstimatedReasons: [
+        { reason: "total_global_divergente", orders: 50, total: 564.03 },
+        { reason: "desconto_cartao_sem_compensacao", orders: 7, total: 88.19 },
+      ],
+    },
+  });
+  eq(
+    "status deixa explícito que a confiança é do CUSTO",
+    byId("fin-exec-status-fechamento").textContent,
+    "Fechamento por dados financeiros · Custo: Confiável"
+  );
+  const texto = byId("fin-exec-liquido-evidencia").textContent;
+  ok("linha de receita líquida visível", byId("fin-exec-liquido-evidencia-row").hidden === false);
+  ok("nível estimado exibido", texto.startsWith("Estimada"));
+  ok("contagem por nível exibida", texto.includes("653 reconstruído") && texto.includes("57 estimado"));
+  ok("pendência de Total global exibida", texto.includes("Total global não fecha com as colunas (50;"));
+  ok("pendência de cartão exibida", texto.includes("desconto de cartão sem compensação (7;"));
+  ok("estimado não ganha tom positivo", byId("fin-exec-liquido-evidencia").classList.contains("vf-fin-exec__value--neg"));
+
+  renderFinResumoExecutivo({
+    summary: { ...base, netRevenueConfidence: "reconstruida", netRevenueEvidence: { reconstruido: { count: 1 } }, netRevenueEstimatedReasons: [] },
+  });
+  ok("reconstruído rotulado como sem repasse", byId("fin-exec-liquido-evidencia").textContent.startsWith("Reconstruída (sem repasse)"));
+  ok("reconstruído não ganha tom positivo", !byId("fin-exec-liquido-evidencia").classList.contains("vf-fin-exec__value--pos"));
+
+  renderFinResumoExecutivo({
+    summary: { ...base, netRevenueConfidence: "comprovada", netRevenueEvidence: { comprovado: { count: 1 } }, netRevenueEstimatedReasons: [] },
+  });
+  ok("comprovado = repasse, tom positivo", byId("fin-exec-liquido-evidencia").textContent.startsWith("Comprovada (repasse)") &&
+    byId("fin-exec-liquido-evidencia").classList.contains("vf-fin-exec__value--pos"));
+
+  renderFinResumoExecutivo({ summary: { ...base, netRevenueConfidence: "nao_conciliada", netRevenueEvidence: { ausente: { count: 2 } } } });
+  ok("ausente exibido", byId("fin-exec-liquido-evidencia").textContent.includes("2 ausente"));
+
+  // Outros marketplaces não mandam o eixo: linha oculta, status como antes.
+  renderFinResumoExecutivo({ summary: { calculationMode: "real_meli_vendas", financialConfidence: "parcial" } });
+  ok("sem o eixo, linha oculta", byId("fin-exec-liquido-evidencia-row").hidden === true);
+  eq("sem o eixo, status inalterado", byId("fin-exec-status-fechamento").textContent, "Fechamento por dados financeiros · Parcial");
+}
+
 console.log(`\n${checks} verificações passaram. Frontend do fechamento OK.`);

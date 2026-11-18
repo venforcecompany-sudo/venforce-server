@@ -74,6 +74,13 @@ const CONFIDENCE_LABEL = {
   insuficiente: "Insuficiente — nenhuma receita com custo identificado",
 };
 
+const NET_REVENUE_CONFIDENCE_LABEL = {
+  comprovada: "Comprovada — repasse informado pela plataforma",
+  reconstruida: "Reconstruída — sem repasse; Total global − taxas líquidas (não é o valor liquidado)",
+  estimada: "Estimada — há pedidos cujo líquido não fecha com as colunas do arquivo",
+  nao_conciliada: "Não conciliada — pedidos sem repasse e sem taxas",
+};
+
 // V3 P2.6 D2 - declaracao da competencia efetivamente processada.
 const { detectarCompetenciaDeLinhas, compararCompetencias } = require("../utils/competenciaDetectada");
 
@@ -112,6 +119,20 @@ function buildFechamentoContextRows(summary, marketplace) {
     { Item: "Marketplace", Valor: marketplace },
     { Item: "Modo de cálculo", Valor: CALCULATION_MODE_LABEL[mode] || mode || "—" },
     { Item: "Status de confiança", Valor: CONFIDENCE_LABEL[confidence] || confidence || "—" },
+    // Eixo da receita líquida (Shopee): separado da confiança do custo acima.
+    ...(s.netRevenueConfidence
+      ? [
+          { Item: "Confiança da receita líquida", Valor: NET_REVENUE_CONFIDENCE_LABEL[s.netRevenueConfidence] || s.netRevenueConfidence },
+          { Item: "Pedidos com líquido estimado", Valor: formatSummaryValue(s.estimatedNetOrdersCount) },
+          {
+            Item: "Pendências do líquido",
+            Valor:
+              (Array.isArray(s.netRevenueEstimatedReasons) ? s.netRevenueEstimatedReasons : [])
+                .map((m) => `${m.reason}: ${m.orders} pedido(s), R$ ${Number(m.total || 0).toFixed(2)}`)
+                .join(" | ") || "—",
+          },
+        ]
+      : []),
     { Item: "Receita bruta total", Valor: formatSummaryValue(s.grossRevenueTotal) },
     { Item: "Receita com custo", Valor: formatSummaryValue(s.revenueWithCost) },
     { Item: "Receita sem custo", Valor: formatSummaryValue(s.revenueWithoutCost) },

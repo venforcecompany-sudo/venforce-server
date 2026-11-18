@@ -32,6 +32,37 @@ Acionado quando a planilha de vendas é a planilha de pedidos (tem `ID do pedido
 | SKU | `sku`, `sku da variacao`, `sku principal`, `no de referencia do sku principal`, `numero de referencia sku` |
 | IDs | `id do item`, `id do produto`, `id da variacao`, `id do modelo` |
 
+### Líquido do pedido sem Repasse (Total global × taxas líquidas)
+
+O `Order.all` real **não tem** coluna `Repasse`. Conferido em 886 pedidos de
+out/2026:
+
+- `Total global = Subtotal − Cupom do vendedor − Cupom − Ajuste por pagamento
+  via PIX − Compensar Moedas Shopee/100 + Taxa de envio pagas pelo comprador`
+  (653 de 710 pedidos reconhecidos fecham ao centavo).
+- `Ajuste por participação em ação comercial = (comissão bruta − líquida) +
+  (serviço bruto − líquido)` em 886/886: as taxas **líquidas** já embutem a
+  compensação da Shopee por cupom/PIX.
+
+Por isso o líquido reconstruído é `Total global − frete pago pelo comprador −
+taxas líquidas − frete negativo`. Usar o Subtotal com taxas líquidas contava a
+compensação sem a dedução (pedido de referência: 261,20 em vez de 231,06; a
+Renda da Shopee foi 230,57 por uma taxa de 0,49 que não está no arquivo).
+
+Evidência por pedido (`detailedRows["Evidência do líquido"]`,
+`summary.netRevenueEvidence`, `summary.netRevenueConfidence`):
+
+| Nível | Quando |
+| --- | --- |
+| `comprovado` | coluna `Repasse` presente — nada é reaplicado |
+| `reconstruido` | sem Repasse, Total global fecha com a identidade (ou ausente) |
+| `estimado` | Total global não fecha, ou `Total descontado Cartão de Crédito` / `Taxa de Envio Reversa` preenchidos — usa Subtotal − descontos e declara o motivo (`netRevenueEstimatedReasons`, nota `NET_REVENUE_ESTIMATED`) |
+| `ausente` | sem Repasse e sem taxas — líquido = bruto |
+
+Pedido `estimado` ou `ausente` rebaixa `financialConfidence` de `confiavel`
+para `parcial`. Reconstruído nunca é tratado como valor liquidado: tarifas
+fora das colunas (ex.: Devolução Fácil) e o frete real não estão no arquivo.
+
 ### Conciliação de custo — Model ID como identidade da variação
 
 O `Order.all` real expõe `Nome do Produto`, `Nome da variação`, `Nº de
