@@ -79,8 +79,11 @@ export function montarPayloadFechamento({
   baseSalva = null,
 }) {
   const summary = processamento?.summary || {};
+  // TODAS as linhas: quem reabre o fechamento salvo precisa ver os mesmos
+  // pedidos de quem processou (antes só ia uma amostra de 50 — um pedido de
+  // 08/10 sumia para o colega).
   const detailedRows = Array.isArray(processamento?.detailedRows)
-    ? processamento.detailedRows.slice(0, 50)
+    ? processamento.detailedRows
     : [];
   const unmatchedIds = Array.isArray(processamento?.unmatchedIds) ? processamento.unmatchedIds : [];
   const origemApi = fonteVendas === "api";
@@ -102,6 +105,9 @@ export function montarPayloadFechamento({
     summary,
     summaryNormalized: summary,
     detailedRows,
+    // Marca que `detailedRows` está completo. Entregas antigas não têm a
+    // chave e continuam sendo tratadas como amostra.
+    detailedRowsCompletas: true,
     unmatchedIds,
     // pedido da missão §9 — só o preview interno do V3 usa:
     cards: cardsDoSummary(summary),
