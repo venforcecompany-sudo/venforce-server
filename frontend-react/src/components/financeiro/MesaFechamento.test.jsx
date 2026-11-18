@@ -211,6 +211,13 @@ describe("fechamentoPayload", () => {
     expect(p.metadados.costsBase).toBeNull();
   });
 
+  it("montarPayloadFechamento grava TODAS as linhas do detalhamento (não só 50)", () => {
+    const linhas = Array.from({ length: 120 }, (_, i) => ({ "ID do pedido": `P${i}`, LC: 1, MC: 10 }));
+    const p = montarPayloadFechamento({ processamento: respostaOk({ detailedRows: linhas }), clienteSlug: "zenite", periodo: "2026-10", marketplace: "shopee", ajustes: {} });
+    expect(p.detailedRows).toHaveLength(120);
+    expect(p.detailedRows[119]["ID do pedido"]).toBe("P119");
+    expect(p.detailedRowsCompletas).toBe(true);
+  });
   it("cardsDoSummary nunca inventa R$0 para campo ausente", () => {
     const cards = cardsDoSummary({ grossRevenueTotal: 100000 });
     const semReceita = cards.find((c) => c.titulo === "Receita Líquida");
@@ -915,6 +922,17 @@ describe("Mesa · disposição (modelo B)", () => {
 });
 
 describe("Mesa · fechamento salvo (sem processar)", () => {
+  it("fechamento salvo com todas as linhas não é rotulado como amostra", async () => {
+    rede.requisitar.mockImplementation(async (caminho) =>
+      caminho === "/entregas-cliente/8"
+        ? { ok: true, entrega: { id: 8, payload_json: { summary: SUMMARY, detailedRowsCompletas: true, detailedRows: [{ "# de anúncio": "MLB1", "Título do anúncio": "Calça", "Venda Total": 10, LC: 2, MC: 20, "Cobertura de custo": "com custo" }] } } }
+        : semVinculos
+    );
+    const entrega = { id: 8, periodo: "2026-08", cliente_conta_id: 42, publicado: false, token_publico: null, created_at: "2026-08-20T10:00:00Z" };
+    render(<MesaFechamento {...props} entrega={entrega} />);
+    expect(await screen.findByText(/Ordenados por receita/)).toBeInTheDocument();
+    expect(screen.queryByText(/Amostra de/)).not.toBeInTheDocument();
+  });
   it("lê o summary gravado na entrega e mostra o mesmo destaque, com a amostra de produtos", async () => {
     const salvoSummary = { ...SUMMARY, finalResult: 4321 };
     rede.requisitar.mockImplementation(async (caminho) =>

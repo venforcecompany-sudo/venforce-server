@@ -707,7 +707,7 @@ export function MesaFechamento({
       {linhas.length > 0 && <ProdutosMesa
           linhas={linhas}
           pedido={pedidoProdutos}
-          amostra={!p}
+          amostra={!p && !salvo.detailedRowsCompletas}
           clienteSlug={clienteSlug}
           clienteContaId={clienteContaId}
           marketplace={f.marketplace}
