@@ -1152,6 +1152,45 @@ const FIN_CONFIANCA_LABEL = {
   insuficiente: "Insuficiente",
 };
 
+// Eixo da RECEITA LÍQUIDA (Shopee, summary.netRevenueConfidence), separado do
+// eixo de custo. Reconstruído nunca é exibido como repasse comprovado.
+const FIN_LIQUIDO_LABEL = {
+  comprovada: "Comprovada (repasse)",
+  reconstruida: "Reconstruída (sem repasse)",
+  estimada: "Estimada",
+  nao_conciliada: "Não conciliada (sem repasse e sem taxas)",
+};
+const FIN_LIQUIDO_NIVEL_LABEL = {
+  comprovado: "comprovado",
+  reconstruido: "reconstruído",
+  estimado: "estimado",
+  ausente: "ausente",
+};
+const FIN_LIQUIDO_MOTIVO_LABEL = {
+  total_global_divergente: "Total global não fecha com as colunas",
+  desconto_cartao_sem_compensacao: "desconto de cartão sem compensação",
+  compensacao_taxas_divergente: "compensação nas taxas divergente",
+};
+
+function finLiquidoEvidenciaTexto(s) {
+  const conf = String(s.netRevenueConfidence || "");
+  if (!conf) return null;
+  const partes = [FIN_LIQUIDO_LABEL[conf] || conf];
+  const ev = s.netRevenueEvidence || {};
+  const niveis = Object.keys(FIN_LIQUIDO_NIVEL_LABEL)
+    .filter((k) => Number(ev[k]?.count) > 0)
+    .map((k) => `${num(Number(ev[k].count))} ${FIN_LIQUIDO_NIVEL_LABEL[k]}`);
+  if (niveis.length) partes.push(`pedidos: ${niveis.join(", ")}`);
+  const motivos = (Array.isArray(s.netRevenueEstimatedReasons) ? s.netRevenueEstimatedReasons : []).map((m) => {
+    const reason = String(m?.reason || "");
+    const rotulo = FIN_LIQUIDO_MOTIVO_LABEL[reason] ||
+      (reason.startsWith("coluna_sem_semantica:") ? `coluna "${reason.slice(21)}" preenchida` : reason);
+    return `${rotulo} (${num(Number(m?.orders) || 0)}; ${brl(Number(m?.total) || 0)})`;
+  });
+  if (motivos.length) partes.push(`pendências: ${motivos.join("; ")}`);
+  return partes.join(" · ");
+}
+
 // Número ou null. Nunca converte ausência em zero.
 function finNumOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -1326,12 +1365,15 @@ function limparFinResumoExecutivo() {
     "fin-exec-tacos",
     "fin-exec-tacox",
     "fin-exec-status-fechamento",
+    "fin-exec-liquido-evidencia",
   ].forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.textContent = "—";
     el.classList.remove("vf-fin-exec__value--pos", "vf-fin-exec__value--neg", "vf-fin-exec__value--muted");
   });
+  const liquidoRow = document.getElementById("fin-exec-liquido-evidencia-row");
+  if (liquidoRow) liquidoRow.hidden = true;
 }
 
 // Métricas derivadas do fechamento, com os conceitos separados:
@@ -1468,11 +1510,28 @@ function renderFinResumoExecutivo(data) {
   if (statusEl) {
     const partes = [];
     if (m.modo) partes.push(m.modo);
-    if (m.confianca) partes.push(FIN_CONFIANCA_LABEL[m.confianca] || m.confianca);
+    // Com o eixo da receita líquida presente, a confiança exibida aqui é
+    // explicitamente a do CUSTO.
+    const temEixoLiquido = !!s.netRevenueConfidence;
+    if (m.confianca) {
+      const rotulo = FIN_CONFIANCA_LABEL[m.confianca] || m.confianca;
+      partes.push(temEixoLiquido ? `Custo: ${rotulo}` : rotulo);
+    }
     statusEl.textContent = partes.length ? partes.join(" · ") : "—";
     statusEl.classList.remove("vf-fin-exec__value--pos", "vf-fin-exec__value--neg", "vf-fin-exec__value--muted");
     if (m.confianca === "confiavel") statusEl.classList.add("vf-fin-exec__value--pos");
     else if (m.confianca) statusEl.classList.add("vf-fin-exec__value--neg");
+  }
+
+  const liquidoRow = document.getElementById("fin-exec-liquido-evidencia-row");
+  const liquidoEl = document.getElementById("fin-exec-liquido-evidencia");
+  if (liquidoRow && liquidoEl) {
+    const texto = finLiquidoEvidenciaTexto(s);
+    liquidoRow.hidden = !texto;
+    liquidoEl.textContent = texto || "—";
+    liquidoEl.classList.remove("vf-fin-exec__value--pos", "vf-fin-exec__value--neg", "vf-fin-exec__value--muted");
+    if (s.netRevenueConfidence === "comprovada") liquidoEl.classList.add("vf-fin-exec__value--pos");
+    else if (texto) liquidoEl.classList.add("vf-fin-exec__value--neg");
   }
 }
 

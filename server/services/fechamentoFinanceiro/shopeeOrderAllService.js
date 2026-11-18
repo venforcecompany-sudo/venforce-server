@@ -2647,12 +2647,25 @@ function processShopeeFinancialOrders({
       const expectedTotalGlobal = round2(orderGross - discounts + adj.buyerShipping);
       const reasons = [];
 
+      const cardDiscount = adjustmentValue("card").value;
+      let cardExplained = false;
+      let appliedDiscounts = discounts;
+
       let productSide; // líquido de descontos, sem o frete pago pelo comprador
       if (totalGlobal.present) {
         const diff = round2(totalGlobal.value - expectedTotalGlobal);
         if (Math.abs(diff) <= 0.011) {
           productSide = round2(totalGlobal.value - adj.buyerShipping);
           totalGlobalVerifiedOrders += 1;
+        } else if (cardDiscount > 0 && Math.abs(diff + cardDiscount) <= 0.011) {
+          // Total global também desconta o cartão (7/7 em out/2026), mas a
+          // compensação nas taxas líquidas cobre só o cupom: quem banca o
+          // desconto do cartão não é provável. Segue o Total global (valor
+          // menor, o que a Shopee deduziu) e declara como estimado.
+          productSide = round2(totalGlobal.value - adj.buyerShipping);
+          appliedDiscounts = round2(discounts + cardDiscount);
+          cardExplained = true;
+          reasons.push({ reason: "desconto_cartao_sem_compensacao", value: cardDiscount });
         } else {
           // Total global não fecha com as colunas: usa só o que a identidade
           // sustenta (subtotal − descontos) e declara a divergência.
@@ -2662,13 +2675,16 @@ function processShopeeFinancialOrders({
       } else {
         productSide = round2(orderGross - discounts);
       }
-      orderLevelAdjustmentsAppliedTotal = round2(orderLevelAdjustmentsAppliedTotal + discounts);
+      orderLevelAdjustmentsAppliedTotal = round2(orderLevelAdjustmentsAppliedTotal + appliedDiscounts);
 
       // A compensação da Shopee embutida nas taxas líquidas deve bater com o
       // ajuste de ação comercial; se não bater, o líquido não é reconciliável.
       const aj = adjustmentValue("commercialAdjustment");
+      // Bruta de nível pedido, com a mesma regra de colapso das líquidas
+      // (repetida = uma vez; distinta por linha = soma).
       const grossFees = round2(
-        orderLines.reduce((m, line) => Math.max(m, Math.abs(line.commissionGross || 0) + Math.abs(line.serviceGross || 0)), 0)
+        collapseOrderLevelValue(orderLines.map((line) => ({ present: line.commissionGrossProvided, value: Math.abs(line.commissionGross) }))).value +
+        collapseOrderLevelValue(orderLines.map((line) => ({ present: line.serviceGrossProvided, value: Math.abs(line.serviceGross) }))).value
       );
       if (aj.present && aj.value > 0) {
         const netFeeCredit = round2(grossFees - round2(commissionFee.value + serviceFee.value));
@@ -2678,6 +2694,7 @@ function processShopeeFinancialOrders({
       }
       // Colunas sem semântica provada, se preenchidas, não entram no cálculo.
       for (const key of ["reverseShipping", "card"]) {
+        if (key === "card" && cardExplained) continue;
         const v = adjustmentValue(key);
         if (v.present && v.value > 0) reasons.push({ reason: "coluna_sem_semantica:" + SHOPEE_ORDER_ADJUSTMENT_COLUMNS[key], value: v.value });
       }
@@ -3005,14 +3022,11 @@ function processShopeeFinancialOrders({
       "sem tarifas fora das colunas do arquivo (ex.: Devolução Fácil) e assumindo frete neutro. Não é o valor liquidado pela Shopee."
     );
   }
-  // Líquido sabidamente incompleto não pode manter confiança "confiavel".
-  let financialConfidence = coverage.financialConfidence;
-  if (
-    financialConfidence === "confiavel" &&
-    (estimatedNetOrdersCount > 0 || feesMissingOrders > 0)
-  ) {
-    financialConfidence = "parcial";
-  }
+  // Dois eixos independentes: financialConfidence/costConfidence = cobertura
+  // de CUSTO (contrato de sempre, rótulos "vendas sem custo"); a qualidade do
+  // líquido fica só em netRevenueConfidence — misturar os dois fazia um
+  // líquido estimado aparecer como "vendas sem custo".
+  const financialConfidence = coverage.financialConfidence;
 
   if (coverage.financialConfidence !== "confiavel") {
     executiveNotes.push(
@@ -3036,6 +3050,7 @@ function processShopeeFinancialOrders({
       revenueWithoutCost: coverage.revenueWithoutCost,
       calculatedCoveragePercent: coverage.calculatedCoveragePercent,
       financialConfidence,
+      costConfidence: coverage.financialConfidence,
       // Conciliação do líquido (aditivo): origem e pendências auditáveis.
       netRevenueConfidence,
       netRevenueEvidence: netEvidence,

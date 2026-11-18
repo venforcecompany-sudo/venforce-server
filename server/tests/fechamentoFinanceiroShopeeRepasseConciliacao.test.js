@@ -147,7 +147,10 @@ console.log("\n▸ 3 — Total global divergente: estimado e declarado");
   const r = run([pedidoReal({ "Total global": 277.76 })]);
   eq("usa só o que a identidade sustenta", r.detailedRows[0]["Receita líquida"], 231.06);
   eq("evidência estimada", r.detailedRows[0]["Evidência do líquido"], "estimado");
-  eq("financialConfidence rebaixada", r.summary.financialConfidence, "parcial");
+  eq("confiança do líquido estimada", r.summary.netRevenueConfidence, "estimada");
+  // Eixos separados: o custo está 100% coberto, então o custo segue confiável.
+  eq("confiança do custo preservada", r.summary.costConfidence, "confiavel");
+  eq("financialConfidence = eixo do custo", r.summary.financialConfidence, "confiavel");
   const motivo = r.summary.netRevenueEstimatedReasons.find((x) => x.reason === "total_global_divergente");
   eq("divergência declarada em R$", motivo && motivo.total, 8);
 }
@@ -218,7 +221,7 @@ console.log("\n▸ 8 — sem repasse e sem taxas: não conciliado");
   eq("origem", r.detailedRows[0]["Origem da receita líquida"], "ausente");
   eq("evidência", r.detailedRows[0]["Evidência do líquido"], "ausente");
   eq("confiança do líquido", r.summary.netRevenueConfidence, "nao_conciliada");
-  eq("financialConfidence rebaixada", r.summary.financialConfidence, "parcial");
+  eq("custo continua no seu próprio eixo", r.summary.costConfidence, "confiavel");
 }
 
 // ── 9. Pedido histórico: regras vêm da planilha, não das atuais ────────────
@@ -248,6 +251,59 @@ console.log("\n▸ 10 — pedido sem descontos inalterado");
   eq("frete negativo continua aplicado", neg.detailedRows[0]["Receita líquida"], 75);
   const moedas = run([pedidoSimples({ "Compensar Moedas Shopee": 93, "Total global": 99.07 })]);
   eq("moedas (centavos) deduzidas", moedas.detailedRows[0]["Receita líquida"], 79.07);
+}
+
+// ── 11. Desconto de cartão: Total global desconta, taxas não compensam ─────
+console.log("\n▸ 11 — desconto de cartão segue o Total global e fica estimado");
+{
+  // Padrão real (7/7 em out/2026): Total global = esperado − cartão e o ajuste
+  // de ação comercial cobre só o cupom.
+  const r = run([
+    pedidoReal({
+      "Ajuste por pagamento via PIX": 0,
+      "Total descontado Cartão de Crédito": 14.19,
+      "Ajuste por participação em ação comercial": 14.95,
+      "Taxa de comissão bruta": 30.0,
+      "Taxa de comissão líquida": 20.42,
+      "Taxa de serviço bruta": 23.65,
+      "Taxa de serviço líquida": 18.28,
+    }),
+  ]);
+  eq("líquido = 269,76 − 38,70 (Total global, valor menor)", r.detailedRows[0]["Receita líquida"], 231.06);
+  eq("estimado", r.detailedRows[0]["Evidência do líquido"], "estimado");
+  const motivo = r.summary.netRevenueEstimatedReasons.find((x) => x.reason === "desconto_cartao_sem_compensacao");
+  eq("motivo declarado com o valor do cartão", motivo && motivo.total, 14.19);
+  ok("cartão não duplica como coluna sem semântica",
+    !r.summary.netRevenueEstimatedReasons.some((x) => x.reason.startsWith("coluna_sem_semantica")));
+}
+
+// ── 12. Pedido com múltiplos itens: nível pedido conta uma vez ─────────────
+console.log("\n▸ 12 — múltiplos itens: Total global, descontos e taxas uma única vez");
+{
+  // Pedido real com 2 linhas: campos de nível pedido repetidos em cada linha.
+  const comum = {
+    "ID do pedido": "PED-MULTI",
+    "Cupom do vendedor": 1.0,
+    Cupom: 14.95,
+    "Ajuste por pagamento via PIX": 14.19,
+    "Ajuste por participação em ação comercial": 29.14,
+    "Taxa de comissão bruta": 37.66,
+    "Taxa de comissão líquida": 20.42,
+    "Taxa de serviço bruta": 30.18,
+    "Taxa de serviço líquida": 18.28,
+    "Total global": 269.76,
+  };
+  const r = run([
+    pedidoReal({ ...comum, "Número de referência SKU": "A", "Subtotal do produto": 199.9, "Preço acordado": 199.9, CMV: 100, Imposto: 19.99 }),
+    pedidoReal({ ...comum, "Número de referência SKU": "B", "Subtotal do produto": 100, "Preço acordado": 100, CMV: 55, Imposto: 10 }),
+  ]);
+  const soma = Math.round(r.detailedRows.reduce((t, d) => t + d["Receita líquida"], 0) * 100) / 100;
+  eq("líquido do pedido = 269,76 − 38,70 (não multiplicado por 2)", soma, 231.06);
+  eq("reconstruído (identidade fechou com o subtotal somado)", r.summary.netRevenueConfidence, "reconstruida");
+  eq("descontos aplicados uma vez", r.summary.orderLevelAdjustmentsAppliedTotal, 30.14);
+  eq("rateio por receita (item A): 231,06 × 199,9/299,9", r.detailedRows[0]["Receita líquida"], 154.01);
+  eq("rateio por receita (item B) recebe o resto", r.detailedRows[1]["Receita líquida"], 77.05);
+  eq("taxa registrada uma vez na linha", r.detailedRows[0]["Taxa de comissão"], 20.42);
 }
 
 console.log(`\n✓ ${checks} verificações`);
