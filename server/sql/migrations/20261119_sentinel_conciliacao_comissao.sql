@@ -20,7 +20,10 @@
 -- O que NÃO muda: margem, comissão, incidentes, checkpoints e qualquer coluna de sentinel_pedidos.
 --
 -- ROLLBACK (manual, nunca automático): o código detecta a ausência e suspende a conciliação sozinho.
+--   Preferir: node scripts/sentinel-conciliacao.js reverter-schema --confirm-host=<host> --apagar-conciliacoes
+--   Equivalente em SQL (numa transação; o marcador TEM de sair junto, senão uma reaplicação futura é ignorada pelo runner):
 --   DROP TABLE IF EXISTS sentinel_conciliacao_comissao; DROP TABLE IF EXISTS sentinel_conciliacao_controle;
+--   DELETE FROM venforce_schema_versoes WHERE chave = 'vf:schema:sentinel_conciliacao_comissao';
 
 CREATE TABLE IF NOT EXISTS sentinel_conciliacao_comissao (
   cliente_conta_id            INTEGER NOT NULL,
