@@ -142,9 +142,15 @@ async function ensureSentinelConciliacaoSchema(db) {
   await aplicarMigrationSerializada(db, ddl, SENTINEL_CONCILIACAO_LOCK_KEY);
 }
 
-// Somente leitura e SEM cache (1 consulta barata por execução): as duas tabelas existem? Erro ⇒ false (nunca lança).
-async function conciliacaoSchemaPronto(db) {
+// Somente leitura e SEM cache (1 consulta barata por execução): as duas tabelas existem? Erro ⇒ false (nunca lança),
+// salvo { lancar: true } (o coletor: banco fora do ar NÃO pode ser confundido com "migration ausente").
+async function conciliacaoSchemaPronto(db, { lancar = false } = {}) {
   if (!db || typeof db.query !== "function") return false;
+  if (lancar) {
+    const r = await db.query(
+      "SELECT to_regclass('public.sentinel_conciliacao_comissao') IS NOT NULL AND to_regclass('public.sentinel_conciliacao_controle') IS NOT NULL AS ok");
+    return r.rows[0]?.ok === true;
+  }
   try {
     const r = await db.query(
       "SELECT to_regclass('public.sentinel_conciliacao_comissao') IS NOT NULL AND to_regclass('public.sentinel_conciliacao_controle') IS NOT NULL AS ok");

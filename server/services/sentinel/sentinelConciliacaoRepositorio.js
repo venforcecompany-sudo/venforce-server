@@ -18,7 +18,9 @@ const MOTIVO_COLETA_FALHOU = "coleta_billing_falhou";
 
 // Pedidos ELEGÍVEIS da conta (o escopo provado no S1-A: 1 item, quantidade 1, pago, comissão gravada, cálculo estável),
 // na janela e com maturidade mínima (cobranças aparecem ~1 h após a venda), que precisam de (re)conciliação:
-// nunca conciliados, pedido mudou (hash), ou reconsulta/falha vencida. Concluídas e esgotadas ficam de fora.
+// nunca conciliados, pedido mudou (hash), contrato do conciliador mudou (reinterpretação: descontos já gravados são
+// reaproveitados), reconsulta/falha vencida, ou esgotada com a retentativa LONGA vencida (recuperação automática depois
+// de uma indisponibilidade do ML; o limite final é a janela). Concluídas ficam de fora.
 const SELECIONAR_SQL = `/* sentinel:CONCILIACAO_SELECIONAR */
   SELECT p.pedido_id, p.status_ml, p.itens, p.comissao, p.payload_hash, p.data_pedido,
          (c.pedido_id IS NOT NULL) AS tem_conciliacao, c.estado AS estado_anterior, c.status_coleta,
@@ -35,14 +37,26 @@ const SELECIONAR_SQL = `/* sentinel:CONCILIACAO_SELECIONAR */
      AND (p.itens -> 0 ->> 'quantidade') = '1'
      AND (c.pedido_id IS NULL
           OR c.pedido_payload_hash IS DISTINCT FROM p.payload_hash
+          OR c.contrato_versao IS DISTINCT FROM $6::smallint
           OR (c.status_coleta IN ('reconsultar', 'falha')
-              AND (c.proxima_tentativa_em IS NULL OR c.proxima_tentativa_em <= $2::timestamptz)))
+              AND (c.proxima_tentativa_em IS NULL OR c.proxima_tentativa_em <= $2::timestamptz))
+          OR (c.status_coleta = 'esgotada' AND c.proxima_tentativa_em <= $2::timestamptz))
    ORDER BY COALESCE(c.proxima_tentativa_em, p.data_pedido) ASC, p.pedido_id ASC
    LIMIT $5`;
 
 async function selecionarCandidatos(db, contaId, { agoraIso, janelaDias, maturidadeHoras, limite }) {
-  const r = await db.query(SELECIONAR_SQL, [contaId, agoraIso, janelaDias, maturidadeHoras, limite]);
+  const r = await db.query(SELECIONAR_SQL, [contaId, agoraIso, janelaDias, maturidadeHoras, limite, CONCILIACAO_CONTRATO_VERSAO]);
   return r.rows;
+}
+
+// Mesmo critério do polling (sentinelWorker.selecionarContas): só contas ML ATIVAS com seller, dentro da allowlist.
+async function contasAtivasMeli(db, contaIds) {
+  if (!contaIds.length) return [];
+  const r = await db.query(
+    `SELECT id FROM cliente_contas
+      WHERE ativo = true AND marketplace = 'meli' AND external_account_id IS NOT NULL AND id = ANY($1::int[])
+      ORDER BY id`, [contaIds]);
+  return r.rows.map((x) => Number(x.id));
 }
 
 const UPSERT_SQL = `/* sentinel:CONCILIACAO_UPSERT */
@@ -128,6 +142,7 @@ module.exports = {
   UPSERT_SQL,
   FALHA_SQL,
   selecionarCandidatos,
+  contasAtivasMeli,
   gravarConciliacao,
   registrarFalha,
   lerPausa,

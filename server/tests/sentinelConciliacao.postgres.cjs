@@ -64,6 +64,23 @@ function criarMl() {
       if (ids.length > 60) violacoes.push(`lote com ${ids.length} ids`);
       for (const id of ids) if (!dono[seller].has(id)) violacoes.push(`lote do seller ${seller} contém pedido alheio ${id}`);
       if (ml.billingResposta) { const f = ml.billingResposta(seller, ids); if (f) return f; }
+      return ml.montarBilling(seller, ids);
+    }
+    const m = path.match(/^\/orders\/(\d+)\/discounts$/);
+    if (m) {
+      if (!dono[seller].has(m[1])) violacoes.push(`descontos de pedido alheio ${m[1]} pelo seller ${seller}`);
+      if (ml.descontosResposta) { const f = ml.descontosResposta(seller, m[1]); if (f) return f; }
+      const d = descontos[seller][m[1]];
+      if (!d) return { ok: false, status: 404, data: null };
+      if (d.status) return { ok: false, status: d.status, data: null, retryAfter: d.retryAfter ?? null };
+      return { ok: true, status: 200, data: d };
+    }
+    violacoes.push(`rota inesperada ${path}`);
+    return { ok: false, status: 404, data: null };
+  };
+  // resposta NORMAL do Billing (também usada pelos cenários que a deformam)
+  ml.montarBilling = (seller, ids) => {
+    {
       const results = ids.filter((id) => billing[seller][id]).map((id) => {
         const b = billing[seller][id];
         return {
@@ -79,17 +96,6 @@ function criarMl() {
       });
       return { ok: true, status: 200, data: { offset: 0, limit: 250, total: results.length, last_id: 0, results, errors: [] } };
     }
-    const m = path.match(/^\/orders\/(\d+)\/discounts$/);
-    if (m) {
-      if (!dono[seller].has(m[1])) violacoes.push(`descontos de pedido alheio ${m[1]} pelo seller ${seller}`);
-      if (ml.descontosResposta) { const f = ml.descontosResposta(seller, m[1]); if (f) return f; }
-      const d = descontos[seller][m[1]];
-      if (!d) return { ok: false, status: 404, data: null };
-      if (d.status) return { ok: false, status: d.status, data: null, retryAfter: d.retryAfter ?? null };
-      return { ok: true, status: 200, data: d };
-    }
-    violacoes.push(`rota inesperada ${path}`);
-    return { ok: false, status: 404, data: null };
   };
   ml.contar = (filtro) => log.filter((l) => (filtro === "billing" ? l.path.startsWith("/billing") : filtro === "descontos" ? l.path.includes("/discounts") : true)).length;
   ml.zerar = () => { log.length = 0; };
@@ -243,10 +249,11 @@ async function main() {
     ml.billingResposta = (seller) => (seller === S10 ? { ok: true, status: 200, data: { results: [], errors: [{ code: "x" }] } } : null);
     await coletar(T0 + 55 * HORA);
     const f3 = (await linhas(10))["103"];
-    eq("errors[]: 3ª falha ⇒ esgotada (maxFalhas 3), sem próxima tentativa", [f3.status_coleta, f3.falhas_consecutivas, f3.proxima_tentativa_em, f3.estado], ["esgotada", 3, null, "TARIFA_LIQUIDA_COMPROVADA"]);
+    eq("errors[] sem id reconhecível: 3ª falha ⇒ esgotada (maxFalhas 3), retentativa LONGA (+7 d), estado preservado",
+      [f3.status_coleta, f3.falhas_consecutivas, new Date(f3.proxima_tentativa_em).getTime(), f3.estado], ["esgotada", 3, T0 + 55 * HORA + 7 * DIA, "TARIFA_LIQUIDA_COMPROVADA"]);
     ml.zerar();
     await coletar(T0 + 80 * HORA);
-    ok("esgotada não é mais consultada", !ml.log.some((l) => l.path.includes("103")));
+    ok("esgotada não é consultada antes da retentativa longa", !ml.log.some((l) => l.path.includes("103")));
     // timeout em pedido NOVO: nasce NAO_CONCILIADO com motivo de coleta (nunca zero)
     await pedido(10, 201, { comissao: 6.21 });
     ml.billingResposta = (seller) => { if (seller === S10) throw Object.assign(new Error("prazo"), { name: "MlTimeoutError" }); return null; };
@@ -297,6 +304,14 @@ async function main() {
     await coletar(T0 + 86 * HORA);
     const pausa2 = (await q("SELECT pausado_ate, ocorrencias FROM sentinel_conciliacao_controle"))[0];
     ok("2º 429 seguido: pausa dobra (≥ 60 min)", new Date(pausa2.pausado_ate).getTime() - Date.now() > 59 * 60000 && pausa2.ocorrencias === 2);
+    // 429 EMBRULHADO em HTTP 400 (formato real visto no Billing em produção) também pausa tudo
+    await q("UPDATE sentinel_conciliacao_controle SET pausado_ate = now() - interval '1 second'");
+    ml.billingResposta = (seller) => (seller === S10 ? { ok: false, status: 400, data: { status: 400, type: "BAD_REQUEST_ERROR", message: "Http status error with code 429" } } : null);
+    ml.zerar();
+    const antesEmb = await snapshotConc();
+    const rEmb = await coletar(T0 + 86 * HORA + 1000);
+    const pausa3 = (await q("SELECT pausado_ate, ocorrencias FROM sentinel_conciliacao_controle"))[0];
+    eq("400 com '429' no corpo: parou429, 1 chamada, nenhuma linha alterada, 3ª ocorrência", [rEmb.parou429, ml.contar(), await snapshotConc() === antesEmb, pausa3.ocorrencias], [true, 1, true, 3]);
     await q("UPDATE sentinel_conciliacao_controle SET pausado_ate = now() - interval '1 second'");
     ml.billingResposta = null;
     await coletar(T0 + 87 * HORA);
@@ -317,11 +332,15 @@ async function main() {
     const conta10 = rOrc.contas.find((c) => c.contaId === 10);
     eq("2 chamadas na conta 10 (1 Billing + 1 descontos), parada por orçamento", [ml.log.filter((l) => l.seller === S10).length, conta10.parada], [2, "orcamento"]);
     const gravadosOrc = Object.keys(await linhas(10)).filter((id) => ["203", "204", "205", "206"].includes(id));
-    eq("só 1 dos 4 pedidos novos gravado (203, o mais antigo); os outros 3 adiados", [gravadosOrc, conta10.adiados], [["203"], 3]);
+    eq("só 1 dos 4 pedidos novos gravado (203, o mais antigo)", gravadosOrc, ["203"]);
+    const loteOrc = ml.log.find((l) => l.seller === S10 && l.path.startsWith("/billing")).path.split("order_ids=")[1].split(",");
+    eq("o Billing só recebeu o que cabia no orçamento de /discounts (204–206 nem foram consultados)", loteOrc.filter((id) => ["204", "205", "206"].includes(id)), []);
+    ok("os que não couberam ficam na fila (naoProcessados ≥ 3), sem linha", conta10.naoProcessados >= 3);
     await coletar(T0 + 90 * HORA, { config: { maxChamadasConta: 20 } });
     eq("execução seguinte completa os adiados", Object.keys(await linhas(10)).filter((id) => ["203", "204", "205", "206"].includes(id)).length, 4);
     eq("adiados nascem com 1 observação (o adiamento não gastou tentativa)", Object.values(await linhas(10)).filter((r) => ["204", "205", "206"].includes(r.pedido_id)).map((r) => r.observacoes), [1, 1, 1]);
-    eq("orçamento da EXECUÇÃO (1 chamada) também é respeitado", await (async () => { ml.zerar(); await pedido(10, 207, { comissao: 6.21 }); ml.billing[S10][207] = cofin(207, 6.21, 6.21, 0, 6.16, 0.05); await coletar(T0 + 91 * HORA, { config: { maxChamadasExecucao: 1 } }); return ml.contar(); })(), 1);
+    eq("orçamento da EXECUÇÃO de 1 chamada: nenhuma chamada inútil (Billing sem vaga para /discounts não é consultado)", await (async () => { ml.zerar(); await pedido(10, 207, { comissao: 6.21 }); ml.billing[S10][207] = cofin(207, 6.21, 6.21, 0, 6.16, 0.05); await coletar(T0 + 91 * HORA, { config: { maxChamadasExecucao: 1 } }); return ml.contar(); })(), 0);
+    eq("orçamento da EXECUÇÃO (2 chamadas) respeitado entre contas", await (async () => { ml.zerar(); await coletar(T0 + 91 * HORA + 1000, { config: { maxChamadasExecucao: 2 } }); return ml.contar(); })(), 2);
 
     console.log("\n11) integridade no banco: FK por conta, CHECK de comprovação, purge em cascata");
     let erro = null;
@@ -354,6 +373,63 @@ async function main() {
     const mudou = JSON.parse(await snapshotMargem()).filter((r) => inicio.has(`${r.cliente_conta_id}:${r.pedido_id}`))
       .filter((r) => JSON.stringify({ ...r, payload_hash: null }) !== JSON.stringify({ ...inicio.get(`${r.cliente_conta_id}:${r.pedido_id}`), payload_hash: null }));
     eq("o coletor nunca alterou faturamento/comissão/frete/custo/imposto/margem/estado de nenhum pedido", mudou, []);
+    console.log("\n13) recuperação e isolamento: esgotada volta sozinha; errors[] por pedido; pedido 'venenoso'; 404 em /discounts");
+    ml.billingResposta = null; ml.descontosResposta = null; ml.zerar();
+    // 103 esgotou às T0+55 h (retentativa em +7 d): o ML voltou ⇒ reconsultado e recuperado SEM intervenção
+    await coletar(T0 + 55 * HORA + 7 * DIA + 1000, { contaIds: [10], config: { janelaDias: 30 } });
+    const rec = (await linhas(10))["103"];
+    eq("esgotada por falhas: depois da retentativa longa, volta a ser consultada e recupera (falhas zeradas)", [rec.falhas_consecutivas, rec.estado, rec.ultimo_erro], [0, "TARIFA_LIQUIDA_COMPROVADA", null]);
+    const t13 = T0 + 55 * HORA + 7 * DIA + 2 * HORA;
+    // errors[] identificando UM pedido do lote: só ele falha; os outros do mesmo lote são conciliados
+    for (const id of [401, 402, 403]) { await pedido(10, id, { comissao: 6.21, diasAtras: 1 }); ml.billing[S10][id] = cofin(id, 6.21, 6.21, 0, 6.16, 0.05, "PROCESSED"); ml.descontos[S10][id] = desc(`MLB${id}`, 1, 1, "seller"); }
+    ml.billingResposta = (seller, ids) => {
+      if (seller !== S10 || !ids.includes("402")) return null;
+      const r = { ...ml.montarBilling(seller, ids) };
+      r.data = { ...r.data, results: r.data.results.filter((x) => x.order_id !== "402"), errors: [{ order_id: 402, code: "internal_error" }] };
+      return r;
+    };
+    await coletar(t13, { contaIds: [10] });
+    const l13 = await linhas(10);
+    eq("errors[] com order_id: 401 e 403 conciliados; só 402 em falha", [l13["401"].estado, l13["403"].estado, l13["402"].status_coleta, l13["402"].ultimo_erro], ["TARIFA_LIQUIDA_COMPROVADA", "TARIFA_LIQUIDA_COMPROVADA", "falha", "billing_errors_pedido"]);
+    eq("402 nasce NAO_CONCILIADO com motivo de coleta (nunca zero)", [l13["402"].estado, l13["402"].net_centavos], ["NAO_CONCILIADO", null]);
+    // pedido 'venenoso': errors[] SEM id derruba o lote sempre que 501 está nele ⇒ o lote encolhe (60→15→3→1) e isola 501
+    for (const id of [501, 502, 503, 504]) { await pedido(10, id, { comissao: 6.21, diasAtras: 1 }); ml.billing[S10][id] = cofin(id, 6.21, 6.21, 0, 6.16, 0.05, "PROCESSED"); ml.descontos[S10][id] = desc(`MLB${id}`, 1, 1, "seller"); }
+    ml.billingResposta = (seller, ids) => (seller === S10 && ids.includes("501") ? { ok: true, status: 200, data: { results: [], errors: [{ code: "x" }] } } : null);
+    const tamanhos = [];
+    for (let k = 0; k < 6; k += 1) {
+      ml.zerar();
+      await coletar(t13 + (k + 1) * DIA, { contaIds: [10], config: { maxFalhas: 10 } });
+      tamanhos.push(ml.log.filter((l) => l.path.startsWith("/billing")).map((l) => l.path.split("order_ids=")[1].split(",").filter((id) => /^50[1-4]$/.test(id)).length));
+    }
+    const l13b = await linhas(10);
+    eq("502–504 acabam conciliados (o veneno não os leva a esgotada)", ["502", "503", "504"].map((id) => l13b[id].estado), ["TARIFA_LIQUIDA_COMPROVADA", "TARIFA_LIQUIDA_COMPROVADA", "TARIFA_LIQUIDA_COMPROVADA"]);
+    eq("501 isolado continua em falha (estado de coleta), sem valores", [l13b["501"].status_coleta, l13b["501"].net_centavos], ["falha", null]);
+    ok(`lotes encolhem a cada falha (${JSON.stringify(tamanhos)})`, tamanhos[0].includes(4) && tamanhos.at(-1).every((n) => n <= 1));
+    // 404 em /discounts: 1 consulta, marcador gravado, NAO_CONCILIADO estável (não reconsulta em loop)
+    ml.billingResposta = null;
+    await pedido(10, 601, { comissao: 6.21, diasAtras: 1 }); ml.billing[S10][601] = cofin(601, 6.21, 6.21, 0, 6.16, 0.05, "PROCESSED"); // sem descontos ⇒ 404
+    ml.zerar();
+    await coletar(t13 + 5 * DIA, { contaIds: [10] });
+    const p601 = (await linhas(10))["601"];
+    eq("404 em /discounts: NAO_CONCILIADO por motivo estável, marcador gravado, concluida", [p601.estado, p601.motivos.includes("descontos_indisponiveis_nao_validado"), p601.descontos_min, p601.status_coleta],
+      ["NAO_CONCILIADO", true, { indisponivel_http: 404 }, "concluida"]);
+    ml.zerar();
+    await coletar(t13 + 6 * DIA, { contaIds: [10] });
+    ok("404 não é reconsultado em loop", !ml.log.some((l) => l.path.includes("601")));
+    // reinterpretação futura: contrato diferente ⇒ reselecionado; marcador reaproveitado (sem nova chamada a /discounts)
+    await q("UPDATE sentinel_conciliacao_comissao SET contrato_versao = 0 WHERE cliente_conta_id = 10 AND pedido_id = '601'");
+    ml.zerar();
+    await coletar(t13 + 6 * DIA + 1000, { contaIds: [10] });
+    ok("contrato mudou ⇒ 1 Billing, nenhum /discounts", ml.log.some((l) => l.path.startsWith("/billing") && l.path.includes("601")) && !ml.log.some((l) => l.path.includes("/orders/601")));
+    eq("contrato_versao atualizado", (await linhas(10))["601"].contrato_versao, 1);
+    ml.billingResposta = null;
+    // conta inativa (ou fora do ML) nunca é processada, mesmo na allowlist
+    await q("UPDATE cliente_contas SET ativo = false WHERE id = 10");
+    ml.zerar();
+    const rInativa = await coletar(t13 + 7 * DIA, { contaIds: [10, 99] });
+    eq("conta inativa/inexistente: ignorada, 0 chamadas, nenhum lock", [rInativa.motivo, rInativa.ignoradas, ml.contar()], ["sem_contas_ativas", [10, 99], 0]);
+    await q("UPDATE cliente_contas SET ativo = true WHERE id = 10");
+
     eq("violações do ML falso ao final", ml.violacoes, []);
   } finally {
     await pool.end().catch(() => {});

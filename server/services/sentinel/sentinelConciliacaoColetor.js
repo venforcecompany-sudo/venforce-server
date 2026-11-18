@@ -26,7 +26,7 @@
 const { comLockDoCiclo, resolverContaPadrao } = require("./sentinelPollingWorker");
 const { criarMlFetchSentinel, criarEscopoMl } = require("./sentinelMlClient");
 const { conciliacaoSchemaPronto } = require("./sentinelSchema");
-const { conciliarComissaoPedido, CATEGORIA_MOTIVO, MOTIVOS_TRANSITORIOS } = require("./sentinelConciliacaoComissao");
+const { conciliarComissaoPedido, CATEGORIA_MOTIVO, MOTIVOS_TRANSITORIOS, DESCONTOS_INDISPONIVEL_CHAVE } = require("./sentinelConciliacaoComissao");
 const repo = require("./sentinelConciliacaoRepositorio");
 
 const CONCILIACAO_LOCK_KEY = "vf:sentinel:conciliacao";
@@ -46,14 +46,18 @@ function configConciliacao(env = process.env) {
   return {
     loteMax: inteiro(env.SENTINEL_CONCILIACAO_LOTE, LOTE_MAX_ML, 1, LOTE_MAX_ML),
     maxPedidosConta: inteiro(env.SENTINEL_CONCILIACAO_MAX_PEDIDOS_CONTA, 60, 1, 600),
-    maxChamadasExecucao: inteiro(env.SENTINEL_CONCILIACAO_MAX_CHAMADAS_EXECUCAO, 20, 1, 500),
-    maxChamadasConta: inteiro(env.SENTINEL_CONCILIACAO_MAX_CHAMADAS_CONTA, 8, 1, 200),
+    // piso 2: 1 Billing + 1 /discounts é o mínimo para concluir um pedido novo (com 1, nada novo seria conciliado)
+    maxChamadasExecucao: inteiro(env.SENTINEL_CONCILIACAO_MAX_CHAMADAS_EXECUCAO, 20, 2, 500),
+    maxChamadasConta: inteiro(env.SENTINEL_CONCILIACAO_MAX_CHAMADAS_CONTA, 8, 2, 200),
     janelaDias: inteiro(env.SENTINEL_CONCILIACAO_JANELA_DIAS, 30, 1, 365),
     maturidadeHoras: inteiro(env.SENTINEL_CONCILIACAO_MATURIDADE_HORAS, 6, 1, 24 * 30),
     reconsultaHoras: inteiro(env.SENTINEL_CONCILIACAO_RECONSULTA_HORAS, 24, 1, 24 * 30),
     reconsultaNaoConciliadoHoras: inteiro(env.SENTINEL_CONCILIACAO_RECONSULTA_NAO_CONCILIADO_HORAS, 12, 1, 24 * 30),
     maxObservacoes: inteiro(env.SENTINEL_CONCILIACAO_MAX_RECONSULTAS, 10, 1, 100),
     maxFalhas: inteiro(env.SENTINEL_CONCILIACAO_MAX_FALHAS, 5, 1, 50),
+    // esgotada NÃO é definitiva: nova tentativa longa (recupera sozinha depois de uma indisponibilidade do ML). O fim
+    // real é a janela (pedido fora de janelaDias nunca é selecionado).
+    esgotadaRetryMs: inteiro(env.SENTINEL_CONCILIACAO_ESGOTADA_RETRY_DIAS, 7, 1, 60) * 24 * HORA_MS,
     backoffFalhaMs: inteiro(env.SENTINEL_CONCILIACAO_BACKOFF_FALHA_MIN, 60, 1, 24 * 60) * MIN_MS,
     pausa429Ms: inteiro(env.SENTINEL_CONCILIACAO_PAUSA_429_MIN, 30, 1, 24 * 60) * MIN_MS,
     intervaloEntreChamadasMs: inteiro(env.SENTINEL_CONCILIACAO_INTERVALO_CHAMADAS_MS, 1000, 0, 60000),
@@ -72,7 +76,7 @@ function politicaAposObservacao(res, anterior, { hash, cfg, agoraMs }) {
   const mesmoPedido = anterior && anterior.tem_conciliacao && anterior.pedido_payload_hash === (hash || null);
   const observacoes = (mesmoPedido ? Number(anterior.observacoes) || 0 : 0) + 1;
   const reconsultar = (horas) => (observacoes >= cfg.maxObservacoes
-    ? { status: "esgotada", proximaMs: null, observacoes }
+    ? { status: "esgotada", proximaMs: agoraMs + cfg.esgotadaRetryMs, observacoes }
     : { status: "reconsultar", proximaMs: agoraMs + horas * HORA_MS, observacoes });
   if (res.estado !== "NAO_CONCILIADO") {
     if (res.faturamento.definitivo === true) return { status: "concluida", proximaMs: null, observacoes };
@@ -83,11 +87,11 @@ function politicaAposObservacao(res, anterior, { hash, cfg, agoraMs }) {
   return { status: "concluida", proximaMs: null, observacoes };
 }
 
-// Falha de coleta: backoff exponencial (base × 2^(n−1), teto 24 h); após maxFalhas ⇒ esgotada.
+// Falha de coleta: backoff exponencial (base × 2^(n−1), teto 24 h); após maxFalhas ⇒ esgotada (retentativa longa).
 function politicaFalha(anterior, { hash, cfg, agoraMs }) {
   const mesmoPedido = anterior && anterior.tem_conciliacao && anterior.pedido_payload_hash === (hash || null);
   const falhas = (mesmoPedido ? Number(anterior.falhas_consecutivas) || 0 : 0) + 1;
-  if (falhas >= cfg.maxFalhas) return { status: "esgotada", proximaMs: null, falhas };
+  if (falhas >= cfg.maxFalhas) return { status: "esgotada", proximaMs: agoraMs + cfg.esgotadaRetryMs, falhas };
   return { status: "falha", proximaMs: agoraMs + Math.min(PAUSA_MAX_MS, cfg.backoffFalhaMs * 2 ** (falhas - 1)), falhas };
 }
 
@@ -96,6 +100,58 @@ function duracaoPausa429({ retryAfterSeg, ocorrenciasAnteriores, cfg }) {
   const exp = cfg.pausa429Ms * 2 ** Math.min(10, Math.max(0, Number(ocorrenciasAnteriores) || 0));
   const ra = Number.isFinite(Number(retryAfterSeg)) && Number(retryAfterSeg) > 0 ? Number(retryAfterSeg) * 1000 : 0;
   return Math.min(PAUSA_MAX_MS, Math.max(exp, ra));
+}
+
+// errors[] do Billing → pedidos afetados. O formato por pedido NÃO foi observado em produção: só isola quando TODO erro
+// aponta, sem ambiguidade, um pedido DO LOTE (campo order_id/orderId/id, só dígitos). Qualquer outra forma ⇒ null
+// (o lote inteiro falha, como antes).
+function pedidosDosErros(errors, idsLote) {
+  if (!Array.isArray(errors) || !errors.length) return new Set();
+  const lote = new Set(idsLote.map(String));
+  const out = new Set();
+  for (const e of errors) {
+    if (!e || typeof e !== "object") return null;
+    const cands = [e.order_id, e.orderId, e.id].filter((v) => v !== undefined && v !== null).map(String);
+    const doLote = [...new Set(cands)].filter((v) => /^\d{1,30}$/.test(v) && lote.has(v));
+    if (doLote.length !== 1) return null;
+    out.add(doLote[0]);
+  }
+  return out;
+}
+
+// Tamanho do lote para pedidos com f falhas seguidas: 60, 15, 3, 1… Um pedido "venenoso" (que derruba o lote) é
+// isolado em poucas execuções e não leva os outros a esgotada.
+const tamanhoLote = (loteMax, falhas) => Math.max(1, loteMax >> (2 * Math.max(0, Number(falhas) || 0)));
+
+// Tira da fila o próximo lote: mesma faixa de falhas do primeiro da fila; pedidos SEM descontos em cache só entram
+// enquanto houver orçamento para consultá-los (vagasDescontos) — não se consulta o Billing de pedido que não poderá
+// ser concluído nesta execução. Fila preservada para o que não entrou.
+function tirarLote(fila, { loteMax, vagasDescontos }) {
+  if (!fila.length) return [];
+  const f = Number(fila[0].falhas_consecutivas) || 0;
+  const max = tamanhoLote(loteMax, f);
+  const lote = [];
+  let vagas = Math.max(0, vagasDescontos);
+  for (let i = 0; i < fila.length && lote.length < max; ) {
+    const l = fila[i];
+    const cabe = (Number(l.falhas_consecutivas) || 0) === f && (l.descontos_min || vagas > 0);
+    if (!cabe) { i += 1; continue; }
+    if (!l.descontos_min) vagas -= 1;
+    lote.push(l);
+    fila.splice(i, 1);
+  }
+  return lote;
+}
+
+// 429 EMBRULHADO: o Billing do ML já respondeu em produção HTTP 400 com corpo
+// {"status":400,"message":"Http status error with code 429","path":"/monthly/periods"} (log do venforce-server,
+// 17/11/2026). Para proteger o IP, qualquer resposta não-2xx cujo corpo indique 429/rate limit é tratada como 429.
+function corpoIndicaLimite(data) {
+  if (!data || typeof data !== "object") return false;
+  if (Number(data.status) === 429 || Number(data.status_code) === 429) return true;
+  const textos = [data.message, data.error, data.code, data.cause && (data.cause.message || data.cause.code)]
+    .filter((v) => typeof v === "string").join(" ");
+  return /\b429\b|too[_ ]many[_ ]requests|rate[_ ]?limit/i.test(textos);
 }
 
 // Resposta/erro do ML → classe. Nunca lança.
@@ -110,6 +166,7 @@ function classificar(resp, err) {
   if (s === 200) return resp.data && typeof resp.data === "object" ? "ok" : "erro";
   if (s === 206) return "parcial";
   if (s === 429) return "limite";
+  if (s !== 401 && corpoIndicaLimite(resp?.data)) return "limite";
   if (s === 401) return "token";
   if (s === 403) return "proibido";
   if (s === 404) return "nao_encontrado";
@@ -148,7 +205,6 @@ function centavosComissao(v) {
   return Number.isFinite(n) ? Math.round(n * 100) : null;
 }
 
-const pedacos = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (ms) => new Date(ms).toISOString();
 
@@ -224,19 +280,34 @@ async function processarContaConciliacao(contaId, deps) {
   const PARADAS = { limite: "limite_429", limite_ativo: "limite_429", token: "token_indisponivel", proibido: "sem_permissao_billing",
     orcamento: "orcamento", prazo: "prazo", erro_cliente: "erro_cliente_ml" };
 
-  for (const lote of pedacos(candidatos, cfg.loteMax)) {
-    if (resumo.parada) break;
+  const fila = [...candidatos];
+  while (fila.length && !resumo.parada) {
+    const restante = Math.min(ctl.maxChamadas - ctl.chamadas, escopo.maxChamadas - escopo.chamadas);
+    if (restante <= 0) { resumo.parada = "orcamento"; break; }
+    const lote = tirarLote(fila, { loteMax: cfg.loteMax, vagasDescontos: restante - 1 });
+    if (!lote.length) { resumo.parada = "orcamento"; break; } // só sobrou pedido que exigiria /discounts sem orçamento
     const ids = lote.map((l) => String(l.pedido_id));
     const r = await chamar(`/billing/integration/group/ML/order/details?order_ids=${ids.join(",")}`);
-    if (PARADAS[r.classe]) { resumo.parada = PARADAS[r.classe]; break; } // nada gravado: o lote volta na próxima execução
+    if (PARADAS[r.classe]) { resumo.parada = PARADAS[r.classe]; fila.unshift(...lote); break; } // nada gravado: volta na próxima
     resumo.lotes += 1;
     resumo.chamadasBilling += 1;
-    const errosLote = r.classe === "ok" && Array.isArray(r.resp.data.errors) && r.resp.data.errors.length > 0;
-    if (r.classe !== "ok" || errosLote) {
-      // 206/5xx/timeout/404/errors[]: falha do LOTE inteiro (o formato de errors[] por pedido não foi observado ⇒ conservador).
-      await falharLote(lote, errosLote ? "billing_errors" : `billing_${r.classe}${r.status ? `_${r.status}` : ""}`);
+    if (r.classe !== "ok") {
+      // 206/5xx/timeout/404: falha do LOTE inteiro; a conta para nesta execução.
+      await falharLote(lote, `billing_${r.classe}${r.status ? `_${r.status}` : ""}`);
       resumo.parada = `billing_${r.classe}`;
       break;
+    }
+    let comErro = new Set();
+    if (Array.isArray(r.resp.data.errors) && r.resp.data.errors.length > 0) {
+      const afetados = pedidosDosErros(r.resp.data.errors, ids);
+      if (!afetados) {
+        // formato não reconhecido ⇒ conservador: o lote inteiro falha (e o próximo será menor: isolamento por falhas)
+        await falharLote(lote, "billing_errors");
+        resumo.parada = "billing_errors";
+        break;
+      }
+      comErro = afetados;
+      await falharLote(lote.filter((l) => comErro.has(String(l.pedido_id))), "billing_errors_pedido");
     }
     await verificar();
     await repo.zerarOcorrencias(dbW);
@@ -252,13 +323,14 @@ async function processarContaConciliacao(contaId, deps) {
 
     for (const linha of lote) {
       const pid = String(linha.pedido_id);
+      if (comErro.has(pid)) continue; // falha já registrada só para ele
       const regs = porPedido.get(pid) || [];
-      // descontos: reaproveita o que já foi lido (não muda para pedido pago de 1 item); só consulta com registro de Billing.
+      // descontos: reaproveita o que já foi lido (inclusive o marcador de 404); só consulta com registro de Billing.
       let descontosMin = linha.descontos_min || null;
       let descontosConsultadoEm = null;
       if (!descontosMin && regs.length) {
         // Sem orçamento/prazo/429/token, a consulta NÃO aconteceu: o pedido não é gravado (nem gasta uma observação) e
-        // volta inteiro na próxima execução. Só uma tentativa REAL que falha (404, 5xx, timeout) conta como observação.
+        // volta inteiro na próxima execução. Só uma tentativa REAL que falha (5xx, timeout) conta como observação.
         if (resumo.parada) { resumo.adiados = (resumo.adiados || 0) + 1; continue; }
         const d = await chamar(`/orders/${pid}/discounts`);
         if (PARADAS[d.classe]) { resumo.parada = PARADAS[d.classe]; resumo.adiados = (resumo.adiados || 0) + 1; continue; }
@@ -266,6 +338,10 @@ async function processarContaConciliacao(contaId, deps) {
         if (d.classe === "ok") {
           descontosMin = compactarDescontos(d.resp.data);
           if (descontosMin) descontosConsultadoEm = iso(agoraMs);
+        } else if (d.classe === "nao_encontrado") {
+          // 404: guardado como MARCADOR (não "sem desconto"); evita reconsultar /discounts em loop
+          descontosMin = { [DESCONTOS_INDISPONIVEL_CHAVE]: 404 };
+          descontosConsultadoEm = iso(agoraMs);
         }
       }
       const res = conciliarComissaoPedido({
@@ -288,6 +364,7 @@ async function processarContaConciliacao(contaId, deps) {
       }
     }
   }
+  resumo.naoProcessados = fila.length; // ficam para a próxima execução, sem gastar tentativa
   return resumo;
 }
 
@@ -299,10 +376,15 @@ async function executarColeta({ contaIds, ...deps } = {}) {
   if (!db || typeof db.query !== "function") throw Object.assign(new Error("Coletor exige `db` explícito."), { code: "SENTINEL_DB_OBRIGATORIO" });
   const ids = [...new Set((contaIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
   if (!ids.length) return { executado: false, motivo: "sem_contas", contas: [] };
-  if (!(await conciliacaoSchemaPronto(db))) {
+  if (!(await conciliacaoSchemaPronto(db, { lancar: true }))) {
     console.warn("[sentinel-conciliacao] tabelas da migration 20261119 ausentes: conciliação suspensa (nenhuma chamada ao ML).");
     return { executado: false, motivo: "schema_ausente", contas: [] };
   }
+  const ativas = new Set(await repo.contasAtivasMeli(db, ids));
+  const ignoradas = ids.filter((id) => !ativas.has(id));
+  if (ignoradas.length) console.warn(`[sentinel-conciliacao] contas ignoradas (inexistentes, inativas ou não ML): ${ignoradas.join(",")}`);
+  const idsAtivos = ids.filter((id) => ativas.has(id));
+  if (!idsAtivos.length) return { executado: false, motivo: "sem_contas_ativas", ignoradas, contas: [] };
   const cfg = { ...configConciliacao(), ...(deps.config || {}) };
   const agoraMs = deps.agoraMs ?? Date.now();
   const inicio = Date.now();
@@ -321,12 +403,20 @@ async function executarColeta({ contaIds, ...deps } = {}) {
     const ctl = { chamadas: 0, maxChamadas: cfg.maxChamadasExecucao, parar429: false, deadlineMs: inicio + cfg.execucaoMaxMs,
       pausaOcorrencias: Number(p.ocorrencias) || 0 };
     try {
-      for (const id of ids) {
+      for (const id of idsAtivos) {
         if (ctl.parar429) break;
         if (deps.deveParar && deps.deveParar()) break;
         if (ctl.chamadas >= ctl.maxChamadas || Date.now() > ctl.deadlineMs) break;
         await verificar();
-        contas.push(await processarContaConciliacao(id, { ...deps, db, dbW, cfg, agoraMs, ctl, verificar }));
+        try {
+          contas.push(await processarContaConciliacao(id, { ...deps, db, dbW, cfg, agoraMs, ctl, verificar }));
+        } catch (err) {
+          if (err && err.code === "SENTINEL_LOCK_PERDIDO") throw err;
+          // erro inesperado (ex.: FK de pedido apagado no meio da execução): só ESTA conta para; as outras seguem
+          console.error(`[sentinel-conciliacao] conta ${id}: erro interno (${err && err.code ? err.code : "ERRO"}): ${String(err && err.message).slice(0, 200)}`);
+          contas.push({ contaId: id, candidatos: 0, lotes: 0, chamadasBilling: 0, chamadasDescontos: 0, gravados: 0, falhas: 0,
+            porEstado: {}, parada: "erro_interno", erro: String(err && err.message).slice(0, 200) });
+        }
       }
     } catch (err) {
       if (err && err.code === "SENTINEL_LOCK_PERDIDO") abortado = err.message;
@@ -345,7 +435,7 @@ async function executarColeta({ contaIds, ...deps } = {}) {
   }
   const gravados = contas.reduce((s, c) => s + c.gravados, 0);
   console.log(`[sentinel-conciliacao] execução ${abortado ? "ABORTADA" : "concluída"}: ${contas.length} conta(s), ${chamadas} chamada(s) ao ML, ${gravados} conciliação(ões) gravada(s), ${Date.now() - inicio}ms`);
-  return { executado: true, abortado, chamadas, parou429, contas };
+  return { executado: true, abortado, chamadas, parou429, ignoradas, contas };
 }
 
 module.exports = {
@@ -357,6 +447,9 @@ module.exports = {
   duracaoPausa429,
   classificar,
   compactarDescontos,
+  pedidosDosErros,
+  tamanhoLote,
+  tirarLote,
   pedidoDaLinha,
   processarContaConciliacao,
   executarColeta,

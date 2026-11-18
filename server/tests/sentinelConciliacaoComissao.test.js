@@ -344,6 +344,21 @@ test("N6 /discounts NÃO consultado: NAO_CONCILIADO (sem o detalhe não se sabe 
   }
 });
 
+test("N6c /discounts com 404 (marcador do coletor): NAO_CONCILIADO por motivo ESTÁVEL de escopo — nunca 'sem desconto'", () => {
+  const { DESCONTOS_INDISPONIVEL_CHAVE, CATEGORIA_MOTIVO, MOTIVOS_TRANSITORIOS } = require("../services/sentinel/sentinelConciliacaoComissao");
+  const x = r(cenarioCofinanciado({ descontos: { [DESCONTOS_INDISPONIVEL_CHAVE]: 404 } }));
+  assert.equal(x.estado, "NAO_CONCILIADO");
+  tem(x, MOTIVOS.DESCONTOS_INDISPONIVEIS);
+  assert.equal(x.motivos.includes(MOTIVOS.DESCONTOS_NAO_VERIFICADOS), false);
+  assert.equal(x.rebate.calculado_descontos_centavos, null);
+  assert.equal(x.rebate_incorporado, "desconhecido");
+  assert.equal(CATEGORIA_MOTIVO[MOTIVOS.DESCONTOS_INDISPONIVEIS], "escopo");
+  assert.equal(MOTIVOS_TRANSITORIOS.includes(MOTIVOS.DESCONTOS_INDISPONIVEIS), false);
+  // mesmo com details junto, o marcador prevalece (nunca vira "verificado")
+  const y = r(cenarioCofinanciado({ descontos: { [DESCONTOS_INDISPONIVEL_CHAVE]: 404, details: [] } }));
+  assert.equal(y.estado, "NAO_CONCILIADO");
+});
+
 test("N6b /discounts consultado e SEM detalhes: concilia pelo Billing; o cruzamento do rebate fica indisponível (visível)", () => {
   const x = r(cenarioCofinanciado({ descontos: { details: [] } }));
   assert.equal(x.estado, "TARIFA_LIQUIDA_COMPROVADA");

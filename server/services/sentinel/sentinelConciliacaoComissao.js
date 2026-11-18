@@ -41,6 +41,9 @@ const SUBTIPOS_TARIFA = Object.freeze(["CVVML", "CVVPRC", "CVVFNU"]);
 // Subtipos conhecidos que NÃO fazem parte da tarifa (frete extra, parcelamento pago pelo comprador).
 const SUBTIPOS_FORA_DA_TARIFA = Object.freeze(["CXDE", "CFONPN"]);
 
+// Chave do marcador que o coletor grava em descontos_min quando /discounts responde 404 ({ indisponivel_http: 404 }).
+const DESCONTOS_INDISPONIVEL_CHAVE = "indisponivel_http";
+
 const MOTIVOS = Object.freeze({
   // — impedem a comparação (⇒ NAO_CONCILIADO)
   PEDIDO_INVALIDO: "pedido_invalido",
@@ -74,6 +77,10 @@ const MOTIVOS = Object.freeze({
   // /orders/{id}/discounts não consultado ⇒ não se sabe se há cupom/cashback (ausência ≠ "não há"). Transitório: o
   // coletor reconsulta; nunca vira TARIFA_*_COMPROVADA sem o detalhe de descontos.
   DESCONTOS_NAO_VERIFICADOS: "descontos_nao_verificados",
+  // /orders/{id}/discounts respondeu 404 (formato/semântica NÃO observados em produção: pode ser "sem promoção" ou não).
+  // Ausência de prova ≠ "não há desconto" ⇒ NAO_CONCILIADO. ESTÁVEL (não transitório): o coletor não reconsulta o mesmo
+  // pedido em loop; o marcador fica gravado e uma versão futura do contrato pode reinterpretá-lo com evidência real.
+  DESCONTOS_INDISPONIVEIS: "descontos_indisponiveis_nao_validado",
   // — divergências (⇒ DIVERGENTE, sem ajuste)
   SALE_FEE_DIFERE_DO_NET: "sale_fee_pedido_difere_do_net",
   REBATE_POSSIVELMENTE_EM_DOBRO: "rebate_possivelmente_contado_duas_vezes",
@@ -97,7 +104,7 @@ const POR_CATEGORIA = {
     "DESCONTO_SEM_ITEM_CORRESPONDENTE"],
   escopo: ["MULTIPLOS_ITENS", "QUANTIDADE_MAIOR_QUE_1", "CUPOM_NAO_VALIDADO", "CASHBACK_NAO_VALIDADO", "DESCONTO_TIPO_DESCONHECIDO",
     "CANCELAMENTO_OU_REEMBOLSO", "PEDIDO_NAO_PAGO", "BILLING_COM_BONIFICACAO_OU_CREDITO", "FUNDING_MODE_NAO_VALIDADO", "DISCOUNT_BILLING_NAO_VALIDADO",
-    "DESCONTOS_NAO_VERIFICADOS"],
+    "DESCONTOS_NAO_VERIFICADOS", "DESCONTOS_INDISPONIVEIS"],
   divergencia: ["SALE_FEE_DIFERE_DO_NET", "REBATE_POSSIVELMENTE_EM_DOBRO", "COBRANCAS_NAO_SOMAM_NET", "IDENTIDADE_GROSS_NET", "REBATE_DIFERE_DO_CALCULADO"],
   aviso: ["DOCUMENTO_EM_PROCESSAMENTO", "CONTA_NAO_VERIFICADA", "CRUZAMENTO_DESCONTOS_INDISPONIVEL", "TARIFA_DO_PEDIDO_E_BRUTA"],
 };
@@ -178,7 +185,10 @@ function conciliarComissaoPedido(entrada) {
 
   // ── 3. /orders/{id}/discounts (cruzamento; nunca decide sozinho) ─────────────────────────────
   let calculadoMl = null; // parte do ML em centavos; null = não calculável (≠ zero)
-  if (ehObjeto(e.descontos)) {
+  if (ehObjeto(e.descontos) && e.descontos[DESCONTOS_INDISPONIVEL_CHAVE] !== undefined) {
+    // marcador interno do coletor (HTTP 404 em /discounts): nunca equivale a "sem desconto"
+    m.escopo.add(MOTIVOS.DESCONTOS_INDISPONIVEIS);
+  } else if (ehObjeto(e.descontos)) {
     const dets = Array.isArray(e.descontos.details) ? e.descontos.details : [];
     for (const d of dets) {
       const t = d?.type;
@@ -372,6 +382,7 @@ module.exports = {
   MOTIVOS,
   CATEGORIA_MOTIVO,
   MOTIVOS_TRANSITORIOS,
+  DESCONTOS_INDISPONIVEL_CHAVE,
   SUBTIPOS_TARIFA,
   SUBTIPOS_FORA_DA_TARIFA,
   conciliarComissaoPedido,
