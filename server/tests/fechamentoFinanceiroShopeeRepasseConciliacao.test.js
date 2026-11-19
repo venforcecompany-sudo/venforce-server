@@ -8,7 +8,10 @@
 //    − Compensar Moedas/100 + Taxa de envio paga pelo comprador;
 //  • "Ajuste por participação em ação comercial" = (comissão bruta − líquida)
 //    + (serviço bruto − líquido): as taxas LÍQUIDAS já embutem a compensação
-//    da Shopee, então cupom/PIX precisam ser deduzidos junto.
+//    da Shopee, então cupom/PIX precisam ser deduzidos junto;
+//  • moedas Shopee e desconto de cartão também saem do Total global, mas o
+//    ajuste de ação comercial nunca os inclui: a Shopee repõe o valor direto
+//    na Renda (demonstrativos da cortina e do pedido com cartão).
 //
 // Pedido de referência (ID sintético): Subtotal 299,90 | Cupom vendedor 1,00 |
 // Cupom 14,95 | PIX 14,19 | Total global 269,76 | comissão 37,66→20,42 |
@@ -250,31 +253,32 @@ console.log("\n▸ 10 — pedido sem descontos inalterado");
   const neg = run([pedidoSimples({ "Valor estimado do frete": -5 })]);
   eq("frete negativo continua aplicado", neg.detailedRows[0]["Receita líquida"], 75);
   const moedas = run([pedidoSimples({ "Compensar Moedas Shopee": 93, "Total global": 99.07 })]);
-  eq("moedas (centavos) deduzidas", moedas.detailedRows[0]["Receita líquida"], 79.07);
+  eq("moedas Shopee (centavos) repostas: não reduzem o líquido", moedas.detailedRows[0]["Receita líquida"], 80);
+  eq("moedas contadas na reposição", moedas.summary.shopeeDirectCompensation.coins.total, 0.93);
 }
 
-// ── 11. Desconto de cartão: Total global desconta, taxas não compensam ─────
-console.log("\n▸ 11 — desconto de cartão segue o Total global e fica estimado");
+// ── 11. Desconto de cartão: Total global desconta, Shopee repõe ──────────
+console.log("\n▸ 11 — desconto de cartão é reposto pela Shopee (pedido real com cartão)");
 {
-  // Padrão real (7/7 em out/2026): Total global = esperado − cartão e o ajuste
-  // de ação comercial cobre só o cupom.
+  // Valores do pedido real com cartão (ID sintético). Total global = 299,90
+  // − 1,00 − 14,95 − 14,19 (cartão); o ajuste de ação comercial cobre só o
+  // cupom (14,95). Renda da Shopee: 230,57 (= 231,06 − 0,49 Devolução Fácil).
   const r = run([
     pedidoReal({
       "Ajuste por pagamento via PIX": 0,
       "Total descontado Cartão de Crédito": 14.19,
       "Ajuste por participação em ação comercial": 14.95,
-      "Taxa de comissão bruta": 30.0,
-      "Taxa de comissão líquida": 20.42,
-      "Taxa de serviço bruta": 23.65,
-      "Taxa de serviço líquida": 18.28,
+      "Taxa de comissão líquida": 28.82,
+      "Taxa de serviço líquida": 24.07,
     }),
   ]);
-  eq("líquido = 269,76 − 38,70 (Total global, valor menor)", r.detailedRows[0]["Receita líquida"], 231.06);
-  eq("estimado", r.detailedRows[0]["Evidência do líquido"], "estimado");
-  const motivo = r.summary.netRevenueEstimatedReasons.find((x) => x.reason === "desconto_cartao_sem_compensacao");
-  eq("motivo declarado com o valor do cartão", motivo && motivo.total, 14.19);
-  ok("cartão não duplica como coluna sem semântica",
-    !r.summary.netRevenueEstimatedReasons.some((x) => x.reason.startsWith("coluna_sem_semantica")));
+  eq("líquido = 269,76 + 14,19 − 52,89", r.detailedRows[0]["Receita líquida"], 231.06);
+  eq("reconstruído (Total global fechou com o cartão)", r.detailedRows[0]["Evidência do líquido"], "reconstruido");
+  eq("resíduo vs. Renda 230,57 = Devolução Fácil", Math.round((231.06 - 230.57) * 100) / 100, 0.49);
+  eq("cartão registrado como reposição da Shopee", r.summary.shopeeDirectCompensation.card.total, 14.19);
+  eq("sem pendência", r.summary.netRevenueEstimatedReasons.length, 0);
+  eq("cartão não entra nos descontos do vendedor", r.summary.orderLevelAdjustmentsAppliedTotal, 15.95);
+  eq("motor anterior (216,87) subestimava em 14,19", Math.round((231.06 - 216.87) * 100) / 100, 14.19);
 }
 
 // ── 12. Pedido com múltiplos itens: nível pedido conta uma vez ─────────────
@@ -304,6 +308,148 @@ console.log("\n▸ 12 — múltiplos itens: Total global, descontos e taxas uma 
   eq("rateio por receita (item A): 231,06 × 199,9/299,9", r.detailedRows[0]["Receita líquida"], 154.01);
   eq("rateio por receita (item B) recebe o resto", r.detailedRows[1]["Receita líquida"], 77.05);
   eq("taxa registrada uma vez na linha", r.detailedRows[0]["Taxa de comissão"], 20.42);
+}
+
+// ── 13. Cortina: moedas Shopee repostas ───────────────────────────────────
+// Pedido real (ID sintético): 2 × 73,89, cupom 8,42, 3.484 moedas (34,84),
+// ajuste de ação comercial 8,42 (só o cupom). Renda da Shopee: 108,73.
+function pedidoCortina(overrides) {
+  return {
+    "ID do pedido": "PED-SINTETICO-CORTINA",
+    "Status do pedido": "Concluído",
+    "Nome do Produto": "Cortina Blackout",
+    "Número de referência SKU": "CORT-1",
+    Quantidade: 2,
+    "Preço acordado": 73.89,
+    "Subtotal do produto": 147.78,
+    Cupom: 8.42,
+    "Compensar Moedas Shopee": 3484,
+    "Ajuste por participação em ação comercial": 8.42,
+    "Taxa de comissão bruta": 27.49,
+    "Taxa de comissão líquida": 21.15,
+    "Taxa de serviço bruta": 11.07,
+    "Taxa de serviço líquida": 8.99,
+    "Total global": 104.52,
+    "Valor estimado do frete": 15.69,
+    CMV: 76,
+    Imposto: 14.78,
+    ...overrides,
+  };
+}
+console.log("\n▸ 13 — cortina: moedas Shopee não são custo do vendedor");
+{
+  const r = run([pedidoCortina()]);
+  const row = r.detailedRows[0];
+  eq("líquido = 104,52 + 34,84 − 30,14", row["Receita líquida"], 109.22);
+  eq("LC = 109,22 − 76 − 14,78", r.summary.contributionProfitTotal, 18.44);
+  eq("reconstruído", row["Evidência do líquido"], "reconstruido");
+  eq("resíduo vs. Renda 108,73 = Devolução Fácil", Math.round((109.22 - 108.73) * 100) / 100, 0.49);
+  eq("motor anterior (74,38) subestimava pelas moedas", Math.round((109.22 - 74.38) * 100) / 100, 34.84);
+  eq("moedas repostas", r.summary.shopeeDirectCompensation.coins.total, 34.84);
+  eq("moedas não entram nos descontos do vendedor", r.summary.orderLevelAdjustmentsAppliedTotal, 8.42);
+  eq("custo intocado", row.CMV, 76);
+  eq("imposto intocado", row.Imposto, 14.78);
+  ok("nota declara a reposição", r.summary.executiveNotes.some((n) => n.includes("SHOPEE_DIRECT_COMPENSATION")));
+  const comRepasse = run([pedidoCortina({ Repasse: 108.73 })]);
+  eq("com repasse, moedas não são somadas de novo", comRepasse.detailedRows[0]["Receita líquida"], 108.73);
+  eq("com repasse, nenhuma reposição contada", comRepasse.summary.shopeeDirectCompensation.coins.orders, 0);
+}
+
+// ── 14. Defesa: moedas já compensadas nas taxas não são somadas de novo ────
+console.log("\n▸ 14 — se o ajuste de ação comercial incluir as moedas, não duplica");
+{
+  // Formato nunca visto nos arquivos reais: ajuste = cupom + moedas.
+  const r = run([
+    pedidoCortina({
+      "Ajuste por participação em ação comercial": 43.26,
+      "Taxa de comissão bruta": 50,
+      "Taxa de comissão líquida": 10.74,
+      "Taxa de serviço bruta": 11.07,
+      "Taxa de serviço líquida": 7.07,
+    }),
+  ]);
+  const row = r.detailedRows[0];
+  eq("moedas ficam deduzidas (a compensação está nas taxas): 104,52 − 17,81", row["Receita líquida"], 86.71);
+  eq("estimado", row["Evidência do líquido"], "estimado");
+  ok("motivo declarado", r.summary.netRevenueEstimatedReasons.some((x) => x.reason === "compensacao_moedas_nas_taxas"));
+  eq("nenhuma reposição somada", r.summary.shopeeDirectCompensation.coins.orders, 0);
+}
+
+// ── 15. Cashback de moedas do VENDEDOR continua deduzido ───────────────────
+console.log("\n▸ 15 — cashback de moedas financiado pelo vendedor reduz o líquido");
+{
+  const r = run([pedidoSimples({ "Coin Cashback Voucher Amount Sponsored by Seller": 5, "Total global": 95 })]);
+  eq("100 − 5 − 20", r.detailedRows[0]["Receita líquida"], 75);
+  eq("reconstruído", r.detailedRows[0]["Evidência do líquido"], "reconstruido");
+}
+
+// ── 16. Múltiplos itens com moedas repetidas por linha ─────────────────────
+console.log("\n▸ 16 — múltiplos itens: moedas repetidas contam uma vez");
+{
+  const comum = {
+    "ID do pedido": "PED-MULTI-MOEDAS",
+    Cupom: 8.42,
+    "Compensar Moedas Shopee": 3484,
+    "Ajuste por participação em ação comercial": 8.42,
+    "Taxa de comissão bruta": 27.49,
+    "Taxa de comissão líquida": 21.15,
+    "Taxa de serviço bruta": 11.07,
+    "Taxa de serviço líquida": 8.99,
+    "Total global": 104.52,
+  };
+  const r = run([
+    pedidoCortina({ ...comum, "Número de referência SKU": "A", Quantidade: 1, "Subtotal do produto": 73.89, CMV: 38, Imposto: 7.39 }),
+    pedidoCortina({ ...comum, "Número de referência SKU": "B", Quantidade: 1, "Subtotal do produto": 73.89, CMV: 38, Imposto: 7.39 }),
+  ]);
+  const soma = Math.round(r.detailedRows.reduce((t, d) => t + d["Receita líquida"], 0) * 100) / 100;
+  eq("líquido do pedido = 109,22 (não 144,06)", soma, 109.22);
+  eq("moedas contadas uma vez", r.summary.shopeeDirectCompensation.coins.total, 34.84);
+  eq("um pedido com reposição", r.summary.shopeeDirectCompensation.coins.orders, 1);
+  eq("reconstruído", r.summary.netRevenueConfidence, "reconstruida");
+}
+
+// ── 17. Controle: cupom + PIX (pedido real, Renda 268,08) ──────────────────
+console.log("\n▸ 17 — controle cupom + PIX permanece 268,57");
+{
+  const r = run([
+    pedidoReal({
+      Quantidade: 2,
+      "Preço acordado": 179.9,
+      "Subtotal do produto": 359.8,
+      Cupom: 17.94,
+      "Ajuste por pagamento via PIX": 17.04,
+      "Ajuste por participação em ação comercial": 34.98,
+      "Taxa de comissão bruta": 45.21,
+      "Taxa de comissão líquida": 26.65,
+      "Taxa de serviço bruta": 45.02,
+      "Taxa de serviço líquida": 28.6,
+      "Total global": 323.82,
+    }),
+  ]);
+  eq("líquido = 323,82 − 55,25", r.detailedRows[0]["Receita líquida"], 268.57);
+  eq("reconstruído", r.detailedRows[0]["Evidência do líquido"], "reconstruido");
+  eq("resíduo vs. Renda 268,08 = Devolução Fácil", Math.round((268.57 - 268.08) * 100) / 100, 0.49);
+}
+
+// ── 18. Total global com AMP que se anula (pedido real, Renda 230,57) ──────
+console.log("\n▸ 18 — Total global divergente (AMP +48,07/−48,07) permanece 231,06 estimado");
+{
+  const base = {
+    "Ajuste por pagamento via PIX": 0,
+    "Ajuste por participação em ação comercial": 14.95,
+    "Taxa de comissão líquida": 28.82,
+    "Taxa de serviço líquida": 24.07,
+    "Taxa de envio pagas pelo comprador": 8.46,
+    "Total global": 340.48,
+  };
+  const r = run([pedidoReal(base)]);
+  eq("líquido = 299,90 − 1,00 − 14,95 − 52,89", r.detailedRows[0]["Receita líquida"], 231.06);
+  eq("estimado", r.detailedRows[0]["Evidência do líquido"], "estimado");
+  const motivo = r.summary.netRevenueEstimatedReasons.find((x) => x.reason === "total_global_divergente");
+  eq("divergência = AMP 48,07", motivo && motivo.total, 48.07);
+  // Mesmo divergente, moedas Shopee não são deduzidas.
+  const comMoedas = run([pedidoReal({ ...base, "Compensar Moedas Shopee": 500 })]);
+  eq("divergente com moedas: moedas não reduzem o líquido", comMoedas.detailedRows[0]["Receita líquida"], 231.06);
 }
 
 console.log(`\n✓ ${checks} verificações`);

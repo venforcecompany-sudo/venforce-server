@@ -38,16 +38,35 @@ O `Order.all` real **não tem** coluna `Repasse`. Conferido em 886 pedidos de
 out/2026:
 
 - `Total global = Subtotal − Cupom do vendedor − Cupom − Ajuste por pagamento
-  via PIX − Compensar Moedas Shopee/100 + Taxa de envio pagas pelo comprador`
-  (653 de 710 pedidos reconhecidos fecham ao centavo).
+  via PIX − Compensar Moedas Shopee/100 − Total descontado Cartão de Crédito +
+  Taxa de envio pagas pelo comprador` (660 de 710 pedidos reconhecidos fecham
+  ao centavo).
 - `Ajuste por participação em ação comercial = (comissão bruta − líquida) +
   (serviço bruto − líquido)` em 886/886: as taxas **líquidas** já embutem a
   compensação da Shopee por cupom/PIX.
 
-Por isso o líquido reconstruído é `Total global − frete pago pelo comprador −
-taxas líquidas − frete negativo`. Usar o Subtotal com taxas líquidas contava a
-compensação sem a dedução (pedido de referência: 261,20 em vez de 231,06; a
-Renda da Shopee foi 230,57 por uma taxa de 0,49 que não está no arquivo).
+- `Compensar Moedas Shopee` (em centavos) e `Total descontado Cartão de
+  Crédito` também saem do Total global, mas o ajuste de ação comercial **nunca**
+  os inclui (0 de ~4.500 pedidos com moedas e de ~65 com cartão, Order.all de
+  mar–out/2026). A Shopee repõe esses valores direto na Renda do pedido
+  (demonstrativos: cortina 74,38 + 34,84 de moedas − 0,49 = 108,73; pedido com
+  cartão 216,87 + 14,19 − 0,49 = 230,57). Não são custo do vendedor.
+
+Quem banca cada desconto e como entra no líquido:
+
+| Desconto | Quem banca | No líquido |
+| --- | --- | --- |
+| `Cupom do vendedor`, `Coin Cashback Voucher Amount Sponsored by Seller` | vendedor | deduzido |
+| `Cupom`, `Ajuste por pagamento via PIX` | Shopee, pelas taxas líquidas | deduzido; a compensação já está nas taxas |
+| `Compensar Moedas Shopee`, `Total descontado Cartão de Crédito` | Shopee, direto na Renda | não reduz (`summary.shopeeDirectCompensation`, nota `SHOPEE_DIRECT_COMPENSATION`) |
+
+Por isso o líquido reconstruído é `Total global − frete pago pelo comprador +
+moedas/cartão repostos − taxas líquidas − frete negativo`. Usar o Subtotal com
+taxas líquidas contava a compensação sem a dedução (pedido de referência:
+261,20 em vez de 231,06; a Renda da Shopee foi 230,57 por uma taxa de 0,49
+que não está no arquivo). Se o ajuste de ação comercial um dia incluir as
+moedas ou o cartão, o valor não é reposto de novo e o pedido fica `estimado`
+(`compensacao_moedas_nas_taxas` / `compensacao_cartao_nas_taxas`).
 
 Evidência por pedido (`detailedRows["Evidência do líquido"]`,
 `summary.netRevenueEvidence`, `summary.netRevenueConfidence`):
@@ -56,12 +75,14 @@ Evidência por pedido (`detailedRows["Evidência do líquido"]`,
 | --- | --- |
 | `comprovado` | coluna `Repasse` presente — nada é reaplicado |
 | `reconstruido` | sem Repasse, Total global fecha com a identidade (ou ausente) |
-| `estimado` | Total global não fecha, ou `Total descontado Cartão de Crédito` / `Taxa de Envio Reversa` preenchidos — usa Subtotal − descontos e declara o motivo (`netRevenueEstimatedReasons`, nota `NET_REVENUE_ESTIMATED`) |
+| `estimado` | Total global não fecha, ou `Taxa de Envio Reversa` preenchida — usa Subtotal − descontos do vendedor e declara o motivo (`netRevenueEstimatedReasons`, nota `NET_REVENUE_ESTIMATED`) |
 | `ausente` | sem Repasse e sem taxas — líquido = bruto |
 
-Pedido `estimado` ou `ausente` rebaixa `financialConfidence` de `confiavel`
-para `parcial`. Reconstruído nunca é tratado como valor liquidado: tarifas
-fora das colunas (ex.: Devolução Fácil) e o frete real não estão no arquivo.
+A qualidade do líquido fica só em `netRevenueConfidence`;
+`financialConfidence`/`costConfidence` continuam medindo a cobertura de custo.
+Reconstruído nunca é tratado como valor liquidado: tarifas fora das colunas
+(ex.: Devolução Fácil, R$ 0,49 nos demonstrativos conferidos) e o frete real
+não estão no arquivo.
 
 ### Conciliação de custo — Model ID como identidade da variação
 
