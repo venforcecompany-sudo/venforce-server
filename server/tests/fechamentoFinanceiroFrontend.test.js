@@ -359,7 +359,7 @@ console.log("\n▸ Shopee — receita líquida reconstruída/estimada não parec
   ok("nível estimado exibido", texto.startsWith("Estimada"));
   ok("contagem por nível exibida", texto.includes("653 reconstruído") && texto.includes("57 estimado"));
   ok("pendência de Total global exibida", texto.includes("Total global não fecha com as colunas (50;"));
-  ok("pendência de cartão exibida", texto.includes("desconto de cartão sem compensação (7;"));
+  ok("pendência de cartão de fechamento salvo antigo continua legível", texto.includes("desconto de cartão sem compensação (7;"));
   ok("estimado não ganha tom positivo", byId("fin-exec-liquido-evidencia").classList.contains("vf-fin-exec__value--neg"));
 
   renderFinResumoExecutivo({
@@ -367,6 +367,24 @@ console.log("\n▸ Shopee — receita líquida reconstruída/estimada não parec
   });
   ok("reconstruído rotulado como sem repasse", byId("fin-exec-liquido-evidencia").textContent.startsWith("Reconstruída (sem repasse)"));
   ok("reconstruído não ganha tom positivo", !byId("fin-exec-liquido-evidencia").classList.contains("vf-fin-exec__value--pos"));
+
+  renderFinResumoExecutivo({
+    summary: {
+      ...base,
+      netRevenueConfidence: "estimada",
+      netRevenueEvidence: { reconstruido: { count: 660 }, estimado: { count: 50 } },
+      netRevenueEstimatedReasons: [{ reason: "total_global_divergente", orders: 50, total: 564.03 }],
+      shopeeDirectCompensation: { coins: { orders: 101, total: 118.08 }, card: { orders: 7, total: 88.19 } },
+    },
+  });
+  const textoRep = byId("fin-exec-liquido-evidencia").textContent;
+  ok("moedas/cartão repostos exibidos", textoRep.includes("repostos pela Shopee: moedas") && textoRep.includes("(101)") && textoRep.includes("cartão") && textoRep.includes("(7)"));
+  ok("cartão não aparece mais como pendência", !textoRep.includes("desconto de cartão sem compensação"));
+  renderFinResumoExecutivo({
+    summary: { ...base, netRevenueConfidence: "reconstruida", netRevenueEvidence: { reconstruido: { count: 1 } }, netRevenueEstimatedReasons: [],
+      shopeeDirectCompensation: { coins: { orders: 0, total: 0 }, card: { orders: 0, total: 0 } } },
+  });
+  ok("sem reposição, nada é exibido", !byId("fin-exec-liquido-evidencia").textContent.includes("repostos"));
 
   renderFinResumoExecutivo({
     summary: { ...base, netRevenueConfidence: "comprovada", netRevenueEvidence: { comprovado: { count: 1 } }, netRevenueEstimatedReasons: [] },

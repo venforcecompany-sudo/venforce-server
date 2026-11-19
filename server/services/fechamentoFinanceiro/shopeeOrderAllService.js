@@ -2492,6 +2492,11 @@ function processShopeeFinancialOrders({
   let estimatedNetOrdersCount = 0;
   let totalGlobalVerifiedOrders = 0;
   let orderLevelAdjustmentsAppliedTotal = 0;
+  // Moedas Shopee e desconto de cartão repostos pela Shopee (fora das taxas).
+  const shopeeDirectCompensation = {
+    coins: { orders: 0, total: 0 },
+    card: { orders: 0, total: 0 },
+  };
 
   for (const [orderId, orderLines] of orders.entries()) {
     // Status do PEDIDO: o mais severo entre as linhas (uma devolução em
@@ -2630,56 +2635,84 @@ function processShopeeFinancialOrders({
         }
       }
       // Descontos de nível pedido que reduzem o que o comprador pagou e que a
-      // Shopee já reflete em "Total global". As taxas líquidas carregam a
-      // compensação; por isso o desconto precisa ser deduzido junto.
+      // Shopee já reflete em "Total global". Três grupos, por quem banca e
+      // por onde a Shopee devolve (Order.all reais, mar–out/2026):
+      //  • vendedor (cupom do vendedor, cashback de moedas do vendedor):
+      //    deduzidos, sem compensação;
+      //  • cupom Shopee e PIX: deduzidos; a Shopee devolve reduzindo as
+      //    taxas líquidas (ajuste de ação comercial = bruta − líquida);
+      //  • moedas Shopee e cartão: saem do Total global, mas o ajuste de ação
+      //    comercial NUNCA os inclui (0 de ~4.500 pedidos com moedas e de ~65
+      //    com cartão). A Shopee repõe o valor direto na Renda do pedido
+      //    (demonstrativos: cortina +34,84 de moedas; cartão +14,19). Logo,
+      //    não reduzem o líquido do vendedor.
       const adj = {
         sellerCoupon: adjustmentValue("sellerCoupon").value,
         sellerCoin: adjustmentValue("sellerCoin").value,
         coupon: adjustmentValue("coupon").value,
         pix: adjustmentValue("pix").value,
         coins: round2(adjustmentValue("coins").value / 100),
+        card: adjustmentValue("card").value,
         buyerShipping: adjustmentValue("buyerShipping").value,
       };
-      const discounts = round2(
-        adj.sellerCoupon + adj.sellerCoin + adj.coupon + adj.pix + adj.coins
+      // Descontos que de fato reduzem o líquido do vendedor (a compensação do
+      // cupom/PIX já está nas taxas líquidas).
+      const sellerSideDiscounts = round2(
+        adj.sellerCoupon + adj.sellerCoin + adj.coupon + adj.pix
       );
       // Total global esperado pela identidade (sem fonte externa).
-      const expectedTotalGlobal = round2(orderGross - discounts + adj.buyerShipping);
+      const expectedTotalGlobal = round2(
+        orderGross - sellerSideDiscounts - adj.coins - adj.card + adj.buyerShipping
+      );
       const reasons = [];
+      const aj = adjustmentValue("commercialAdjustment");
 
-      const cardDiscount = adjustmentValue("card").value;
-      let cardExplained = false;
-      let appliedDiscounts = discounts;
+      // Reposição direta da Shopee (moedas/cartão). Defesa contra contagem
+      // dupla: se o ajuste de ação comercial já incluir o valor (nunca visto
+      // nos arquivos reais), a compensação está nas taxas e não é somada.
+      const direct = { coins: 0, card: 0 };
+      for (const key of ["coins", "card"]) {
+        const value = adj[key];
+        if (!(value > 0)) continue;
+        const feeBase = round2(adj.coupon + adj.pix);
+        const alreadyInFees =
+          aj.present && Math.abs(aj.value - feeBase) > 0.011 &&
+          Math.abs(aj.value - round2(feeBase + value)) <= 0.011;
+        if (alreadyInFees) {
+          reasons.push({ reason: `compensacao_${key === "coins" ? "moedas" : "cartao"}_nas_taxas`, value });
+        } else {
+          direct[key] = value;
+        }
+      }
+      const directCompensation = round2(direct.coins + direct.card);
 
       let productSide; // líquido de descontos, sem o frete pago pelo comprador
       if (totalGlobal.present) {
         const diff = round2(totalGlobal.value - expectedTotalGlobal);
         if (Math.abs(diff) <= 0.011) {
-          productSide = round2(totalGlobal.value - adj.buyerShipping);
+          // Total global = o que o comprador pagou; moedas/cartão voltam
+          // pela Shopee.
+          productSide = round2(totalGlobal.value - adj.buyerShipping + directCompensation);
           totalGlobalVerifiedOrders += 1;
-        } else if (cardDiscount > 0 && Math.abs(diff + cardDiscount) <= 0.011) {
-          // Total global também desconta o cartão (7/7 em out/2026), mas a
-          // compensação nas taxas líquidas cobre só o cupom: quem banca o
-          // desconto do cartão não é provável. Segue o Total global (valor
-          // menor, o que a Shopee deduziu) e declara como estimado.
-          productSide = round2(totalGlobal.value - adj.buyerShipping);
-          appliedDiscounts = round2(discounts + cardDiscount);
-          cardExplained = true;
-          reasons.push({ reason: "desconto_cartao_sem_compensacao", value: cardDiscount });
         } else {
           // Total global não fecha com as colunas: usa só o que a identidade
-          // sustenta (subtotal − descontos) e declara a divergência.
-          productSide = round2(orderGross - discounts);
+          // sustenta (subtotal − descontos do vendedor) e declara a divergência.
+          productSide = round2(orderGross - sellerSideDiscounts - adj.coins - adj.card + directCompensation);
           reasons.push({ reason: "total_global_divergente", value: Math.abs(diff) });
         }
       } else {
-        productSide = round2(orderGross - discounts);
+        productSide = round2(orderGross - sellerSideDiscounts - adj.coins - adj.card + directCompensation);
       }
-      orderLevelAdjustmentsAppliedTotal = round2(orderLevelAdjustmentsAppliedTotal + appliedDiscounts);
+      orderLevelAdjustmentsAppliedTotal = round2(orderLevelAdjustmentsAppliedTotal + sellerSideDiscounts);
+      for (const key of ["coins", "card"]) {
+        if (direct[key] > 0) {
+          shopeeDirectCompensation[key].orders += 1;
+          shopeeDirectCompensation[key].total = round2(shopeeDirectCompensation[key].total + direct[key]);
+        }
+      }
 
       // A compensação da Shopee embutida nas taxas líquidas deve bater com o
       // ajuste de ação comercial; se não bater, o líquido não é reconciliável.
-      const aj = adjustmentValue("commercialAdjustment");
       // Bruta de nível pedido, com a mesma regra de colapso das líquidas
       // (repetida = uma vez; distinta por linha = soma).
       const grossFees = round2(
@@ -2693,8 +2726,7 @@ function processShopeeFinancialOrders({
         }
       }
       // Colunas sem semântica provada, se preenchidas, não entram no cálculo.
-      for (const key of ["reverseShipping", "card"]) {
-        if (key === "card" && cardExplained) continue;
+      for (const key of ["reverseShipping"]) {
         const v = adjustmentValue(key);
         if (v.present && v.value > 0) reasons.push({ reason: "coluna_sem_semantica:" + SHOPEE_ORDER_ADJUSTMENT_COLUMNS[key], value: v.value });
       }
@@ -3022,6 +3054,14 @@ function processShopeeFinancialOrders({
       "sem tarifas fora das colunas do arquivo (ex.: Devolução Fácil) e assumindo frete neutro. Não é o valor liquidado pela Shopee."
     );
   }
+  if (shopeeDirectCompensation.coins.orders + shopeeDirectCompensation.card.orders > 0) {
+    executiveNotes.push(
+      "SHOPEE_DIRECT_COMPENSATION: moedas Shopee " +
+      `(${shopeeDirectCompensation.coins.orders} pedido(s), R$ ${shopeeDirectCompensation.coins.total.toFixed(2)}) e desconto de cartão ` +
+      `(${shopeeDirectCompensation.card.orders} pedido(s), R$ ${shopeeDirectCompensation.card.total.toFixed(2)}) reduzem o Total global, ` +
+      "mas são repostos pela Shopee fora das taxas; não reduzem o líquido do vendedor."
+    );
+  }
   // Dois eixos independentes: financialConfidence/costConfidence = cobertura
   // de CUSTO (contrato de sempre, rótulos "vendas sem custo"); a qualidade do
   // líquido fica só em netRevenueConfidence — misturar os dois fazia um
@@ -3058,6 +3098,7 @@ function processShopeeFinancialOrders({
       netRevenueEstimatedReasons,
       totalGlobalVerifiedOrders,
       orderLevelAdjustmentsAppliedTotal,
+      shopeeDirectCompensation,
       contributionProfitTotal,
       averageContributionMargin: legacyRatio(contributionProfitTotal, revenueWithCost),
       contributionMarginCalculated: safeRatio(contributionProfitTotal, revenueWithCost),

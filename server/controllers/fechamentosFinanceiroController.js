@@ -131,6 +131,16 @@ function buildFechamentoContextRows(summary, marketplace) {
                 .map((m) => `${m.reason}: ${m.orders} pedido(s), R$ ${Number(m.total || 0).toFixed(2)}`)
                 .join(" | ") || "—",
           },
+          ...(s.shopeeDirectCompensation
+            ? [
+                {
+                  Item: "Reposto pela Shopee (moedas / cartão)",
+                  Valor:
+                    `moedas: ${s.shopeeDirectCompensation.coins.orders} pedido(s), R$ ${Number(s.shopeeDirectCompensation.coins.total || 0).toFixed(2)} | ` +
+                    `cartão: ${s.shopeeDirectCompensation.card.orders} pedido(s), R$ ${Number(s.shopeeDirectCompensation.card.total || 0).toFixed(2)}`,
+                },
+              ]
+            : []),
         ]
       : []),
     { Item: "Receita bruta total", Valor: formatSummaryValue(s.grossRevenueTotal) },

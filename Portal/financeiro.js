@@ -1167,8 +1167,11 @@ const FIN_LIQUIDO_NIVEL_LABEL = {
 };
 const FIN_LIQUIDO_MOTIVO_LABEL = {
   total_global_divergente: "Total global não fecha com as colunas",
+  // Mantido para fechamentos salvos antes da reposição de cartão.
   desconto_cartao_sem_compensacao: "desconto de cartão sem compensação",
   compensacao_taxas_divergente: "compensação nas taxas divergente",
+  compensacao_moedas_nas_taxas: "moedas já compensadas nas taxas",
+  compensacao_cartao_nas_taxas: "cartão já compensado nas taxas",
 };
 
 function finLiquidoEvidenciaTexto(s) {
@@ -1187,6 +1190,12 @@ function finLiquidoEvidenciaTexto(s) {
     return `${rotulo} (${num(Number(m?.orders) || 0)}; ${brl(Number(m?.total) || 0)})`;
   });
   if (motivos.length) partes.push(`pendências: ${motivos.join("; ")}`);
+  // Moedas Shopee e cartão: saem do Total global, mas a Shopee repõe.
+  const rep = s.shopeeDirectCompensation || {};
+  const repostos = [["coins", "moedas"], ["card", "cartão"]]
+    .filter(([k]) => Number(rep[k]?.orders) > 0)
+    .map(([k, rotulo]) => `${rotulo} ${brl(Number(rep[k].total) || 0)} (${num(Number(rep[k].orders))})`);
+  if (repostos.length) partes.push(`repostos pela Shopee: ${repostos.join("; ")}`);
   return partes.join(" · ");
 }
 
