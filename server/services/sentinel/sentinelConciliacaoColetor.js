@@ -50,6 +50,9 @@ function configConciliacao(env = process.env) {
     maxChamadasExecucao: inteiro(env.SENTINEL_CONCILIACAO_MAX_CHAMADAS_EXECUCAO, 20, 2, 500),
     maxChamadasConta: inteiro(env.SENTINEL_CONCILIACAO_MAX_CHAMADAS_CONTA, 8, 2, 200),
     janelaDias: inteiro(env.SENTINEL_CONCILIACAO_JANELA_DIAS, 30, 1, 365),
+    // S1.5: pedido JÁ conciliado em reconsultar/falha/esgotada continua elegível até aqui (nunca abaixo de janelaDias —
+    // aplicado na seleção); a primeira consulta continua limitada a janelaDias.
+    janelaReconsultaDias: inteiro(env.SENTINEL_CONCILIACAO_JANELA_RECONSULTA_DIAS, 60, 1, 365),
     maturidadeHoras: inteiro(env.SENTINEL_CONCILIACAO_MATURIDADE_HORAS, 6, 1, 24 * 30),
     reconsultaHoras: inteiro(env.SENTINEL_CONCILIACAO_RECONSULTA_HORAS, 24, 1, 24 * 30),
     reconsultaNaoConciliadoHoras: inteiro(env.SENTINEL_CONCILIACAO_RECONSULTA_NAO_CONCILIADO_HORAS, 12, 1, 24 * 30),
@@ -212,6 +215,8 @@ const iso = (ms) => new Date(ms).toISOString();
 // ctl: estado COMPARTILHADO da execução { chamadas, maxChamadas, parar429, deadlineMs, pausaOcorrencias }
 async function processarContaConciliacao(contaId, deps) {
   const { db, dbW, cfg, agoraMs, ctl, verificar } = deps;
+  const agoraFn = deps.agora || Date.now;
+  const deveParar = typeof deps.deveParar === "function" ? deps.deveParar : () => false;
   const resolverConta = deps.resolverConta || resolverContaPadrao;
   const dormirFn = deps.dormir || dormir;
   const resumo = {
@@ -230,6 +235,7 @@ async function processarContaConciliacao(contaId, deps) {
 
   const selecionados = await repo.selecionarCandidatos(db, contaId, {
     agoraIso: iso(agoraMs), janelaDias: cfg.janelaDias, maturidadeHoras: cfg.maturidadeHoras, limite: cfg.maxPedidosConta,
+    janelaReconsultaDias: Math.max(cfg.janelaDias, cfg.janelaReconsultaDias || 0), comIncidentes: deps.comIncidentes,
   });
   // id do ML vai para a URL: só dígitos (defesa; o polling só grava ids numéricos)
   const candidatos = selecionados.filter((l) => /^\d{1,30}$/.test(String(l.pedido_id)));
@@ -240,13 +246,17 @@ async function processarContaConciliacao(contaId, deps) {
   const escopo = criarEscopoMl({ maxChamadas: cfg.maxChamadasConta });
   const mlFetch = criarMlFetchSentinel({ base: deps.mlFetchBase, escopo });
   let primeiraChamada = true;
-  // Toda chamada passa por aqui: orçamento (execução e conta), prazo, 429 global; espaçamento entre chamadas.
+  // Toda chamada passa por aqui: parada solicitada (SIGTERM), orçamento (execução e conta), prazo, 429 global; espaçamento
+  // entre chamadas. Parada solicitada é checada ANTES e DEPOIS do espaçamento: o worker encerra ENTRE chamadas ao ML, sem
+  // gravar falha (o que não foi consultado volta inteiro na próxima execução).
   const chamar = async (path) => {
+    if (deveParar()) return { classe: "parada" };
     if (ctl.parar429) return { classe: "limite_ativo" };
     if (ctl.chamadas >= ctl.maxChamadas) return { classe: "orcamento" };
     if (escopo.chamadas >= escopo.maxChamadas) return { classe: "orcamento" };
     if (Date.now() > ctl.deadlineMs) return { classe: "prazo" };
     if (!primeiraChamada && cfg.intervaloEntreChamadasMs > 0) await dormirFn(cfg.intervaloEntreChamadasMs);
+    if (deveParar()) return { classe: "parada" };
     primeiraChamada = false;
     ctl.chamadas += 1;
     let resp = null;
@@ -265,7 +275,7 @@ async function processarContaConciliacao(contaId, deps) {
     ctl.parar429 = true;
     const dur = duracaoPausa429({ retryAfterSeg, ocorrenciasAnteriores: ctl.pausaOcorrencias, cfg });
     await verificar();
-    await repo.registrarPausa(dbW, { ateIso: iso(Date.now() + dur), motivo: `HTTP 429 do ML (conta ${contaId})`, agoraIso: iso(Date.now()) });
+    await repo.registrarPausa(dbW, { ateIso: iso(agoraFn() + dur), motivo: `HTTP 429 do ML (conta ${contaId})`, agoraIso: iso(agoraFn()) });
     console.warn(`[sentinel-conciliacao] 429 do ML: novas chamadas suspensas por ${Math.round(dur / 60000)} min (todas as contas).`);
   };
   const falharLote = async (linhas, motivo) => {
@@ -278,7 +288,7 @@ async function processarContaConciliacao(contaId, deps) {
     }
   };
   const PARADAS = { limite: "limite_429", limite_ativo: "limite_429", token: "token_indisponivel", proibido: "sem_permissao_billing",
-    orcamento: "orcamento", prazo: "prazo", erro_cliente: "erro_cliente_ml" };
+    orcamento: "orcamento", prazo: "prazo", erro_cliente: "erro_cliente_ml", parada: "parada_solicitada" };
 
   const fila = [...candidatos];
   while (fila.length && !resumo.parada) {
@@ -368,9 +378,23 @@ async function processarContaConciliacao(contaId, deps) {
   return resumo;
 }
 
+// Paradas por conta que são ROTINA (fila maior que o orçamento/prazo, ou SIGTERM): não indicam problema. Qualquer outra
+// (403 sem permissão, token, 5xx/errors[] do lote, erro interno, erro de cliente…) faz a execução sair como
+// `concluida_com_falhas` — conta como falha seguida na agenda (senão a tela mostraria "saudável" com uma conta parada).
+const PARADAS_ROTINA = new Set([null, undefined, "orcamento", "prazo", "parada_solicitada"]);
+const contaComFalha = (c) => !PARADAS_ROTINA.has(c.parada);
+
 // ── uma execução ─────────────────────────────────────────────────────────────────────────────────
 // deps: { db (obrigatório), contaIds (obrigatório; allowlist), mlFetchBase, resolverConta, criarClient, dormir,
-//         agoraMs, config, deveParar, dbEscrita (teste) }
+//         agoraMs, agora (relógio; padrão Date.now — só a pausa 429 e a agenda), config, deveParar, dbEscrita (teste),
+//         agenda (S1.5, opcional) }
+//
+// deps.agenda = { devida(dbW) → bool, registrar(dbW, resumo) } — gancho do agendador do worker (sentinelAgendaBilling).
+// Os DOIS rodam com a conexão que DETÉM o lock da conciliação: `devida` relê a agenda dentro do lock ANTES de qualquer
+// chamada ao ML (não devida ⇒ { motivo: "nao_devida" }, nada chamado nem gravado); `registrar` grava a agenda no fim,
+// ainda dentro do lock. Lock ocupado ⇒ nenhum dos dois roda (nada é gravado). Falha ao registrar só é logada.
+// resumo = { resultado, inicioMs, fimMs, chamadas, gravados, parou429, contas, erro }
+//   resultado: concluida | concluida_com_falhas | abortada | pausa_429 | parada_solicitada | erro
 async function executarColeta({ contaIds, ...deps } = {}) {
   const db = deps.db;
   if (!db || typeof db.query !== "function") throw Object.assign(new Error("Coletor exige `db` explícito."), { code: "SENTINEL_DB_OBRIGATORIO" });
@@ -386,56 +410,92 @@ async function executarColeta({ contaIds, ...deps } = {}) {
   const idsAtivos = ids.filter((id) => ativas.has(id));
   if (!idsAtivos.length) return { executado: false, motivo: "sem_contas_ativas", ignoradas, contas: [] };
   const cfg = { ...configConciliacao(), ...(deps.config || {}) };
-  const agoraMs = deps.agoraMs ?? Date.now();
+  const agoraFn = deps.agora || Date.now;
+  const agoraMs = deps.agoraMs ?? agoraFn();
   const inicio = Date.now();
+  const inicioRelogio = agoraFn();
   const contas = [];
   let abortado = null;
   let pausa = null;
   let chamadas = 0;
   let parou429 = false;
+  let paradaSolicitada = false;
+  let naoDevida = false;
+  const agenda = deps.agenda && typeof deps.agenda.devida === "function" ? deps.agenda : null;
   const lock = await comLockDoCiclo(async ({ verificar, dbEscrita }) => {
     const dbW = deps.dbEscrita || dbEscrita;
+    // Agenda relida DENTRO do lock: duas instâncias nunca executam a mesma janela (a segunda vê a agenda já empurrada).
+    if (agenda && !(await agenda.devida(dbW))) { naoDevida = true; return; }
+    const registrarAgenda = async (resumo) => {
+      if (!agenda) return;
+      try {
+        await verificar(); // perdeu o lock ⇒ não grava a agenda (a outra instância é a dona agora)
+        await agenda.registrar(dbW, { inicioMs: inicioRelogio, fimMs: agoraFn(), ...resumo });
+      } catch (err) {
+        console.warn(`[sentinel-conciliacao] agenda não gravada (${err && err.code ? err.code : "ERRO"}): ${String(err && err.message).slice(0, 160)}`);
+      }
+    };
     const p = await repo.lerPausa(db);
-    if (p.pausado_ate && new Date(p.pausado_ate).getTime() > Date.now()) {
+    if (p.pausado_ate && new Date(p.pausado_ate).getTime() > agoraFn()) {
       pausa = { ate: new Date(p.pausado_ate).toISOString(), ocorrencias: p.ocorrencias };
+      await registrarAgenda({ resultado: "pausa_429", chamadas: 0, gravados: 0, parou429: false, contas: [], erro: null });
       return;
     }
     const ctl = { chamadas: 0, maxChamadas: cfg.maxChamadasExecucao, parar429: false, deadlineMs: inicio + cfg.execucaoMaxMs,
       pausaOcorrencias: Number(p.ocorrencias) || 0 };
+    // Rotação: conta com a conciliação mais antiga primeiro (o orçamento global não penaliza sempre a mesma conta).
+    const ordem = await repo.ordenarContasPorAntiguidade(db, idsAtivos);
     try {
-      for (const id of idsAtivos) {
-        if (ctl.parar429) break;
-        if (deps.deveParar && deps.deveParar()) break;
-        if (ctl.chamadas >= ctl.maxChamadas || Date.now() > ctl.deadlineMs) break;
-        await verificar();
-        try {
-          contas.push(await processarContaConciliacao(id, { ...deps, db, dbW, cfg, agoraMs, ctl, verificar }));
-        } catch (err) {
-          if (err && err.code === "SENTINEL_LOCK_PERDIDO") throw err;
-          // erro inesperado (ex.: FK de pedido apagado no meio da execução): só ESTA conta para; as outras seguem
-          console.error(`[sentinel-conciliacao] conta ${id}: erro interno (${err && err.code ? err.code : "ERRO"}): ${String(err && err.message).slice(0, 200)}`);
-          contas.push({ contaId: id, candidatos: 0, lotes: 0, chamadasBilling: 0, chamadasDescontos: 0, gravados: 0, falhas: 0,
-            porEstado: {}, parada: "erro_interno", erro: String(err && err.message).slice(0, 200) });
+      try {
+        for (const id of ordem) {
+          if (ctl.parar429) break;
+          if (deps.deveParar && deps.deveParar()) { paradaSolicitada = true; break; }
+          if (ctl.chamadas >= ctl.maxChamadas || Date.now() > ctl.deadlineMs) break;
+          await verificar();
+          try {
+            contas.push(await processarContaConciliacao(id, { ...deps, db, dbW, cfg, agoraMs, ctl, verificar }));
+          } catch (err) {
+            if (err && err.code === "SENTINEL_LOCK_PERDIDO") throw err;
+            // erro inesperado (ex.: FK de pedido apagado no meio da execução): só ESTA conta para; as outras seguem
+            console.error(`[sentinel-conciliacao] conta ${id}: erro interno (${err && err.code ? err.code : "ERRO"}): ${String(err && err.message).slice(0, 200)}`);
+            contas.push({ contaId: id, candidatos: 0, lotes: 0, chamadasBilling: 0, chamadasDescontos: 0, gravados: 0, falhas: 0,
+              porEstado: {}, parada: "erro_interno", erro: String(err && err.message).slice(0, 200) });
+          }
         }
+      } catch (err) {
+        if (err && err.code === "SENTINEL_LOCK_PERDIDO") abortado = err.message;
+        else throw err;
       }
     } catch (err) {
-      if (err && err.code === "SENTINEL_LOCK_PERDIDO") abortado = err.message;
-      else throw err;
+      chamadas = ctl.chamadas;
+      parou429 = ctl.parar429;
+      await registrarAgenda({ resultado: "erro", chamadas, gravados: contas.reduce((s, c) => s + c.gravados, 0), parou429, contas,
+        erro: `${err && err.code ? err.code : "ERRO"}` });
+      throw err;
     }
     chamadas = ctl.chamadas;
     parou429 = ctl.parar429;
+    if (contas.some((c) => c.parada === "parada_solicitada")) paradaSolicitada = true;
+    if (!abortado) {
+      const resultado = paradaSolicitada ? "parada_solicitada" : parou429 ? "pausa_429"
+        : contas.some(contaComFalha) ? "concluida_com_falhas" : "concluida";
+      await registrarAgenda({ resultado, chamadas, gravados: contas.reduce((s, c) => s + c.gravados, 0), parou429, contas, erro: null });
+    }
   }, { criarClient: deps.criarClient, chave: CONCILIACAO_LOCK_KEY });
   if (lock.pulado) {
     console.log("[sentinel-conciliacao] execução pulada: outra instância detém o lock da conciliação.");
     return { executado: false, motivo: "lock_ocupado", contas: [] };
   }
+  if (naoDevida) return { executado: false, motivo: "nao_devida", contas: [] };
   if (pausa) {
     console.log(`[sentinel-conciliacao] em pausa por 429 até ${pausa.ate}: nenhuma chamada.`);
     return { executado: false, motivo: "pausa_429", pausa, contas: [] };
   }
   const gravados = contas.reduce((s, c) => s + c.gravados, 0);
-  console.log(`[sentinel-conciliacao] execução ${abortado ? "ABORTADA" : "concluída"}: ${contas.length} conta(s), ${chamadas} chamada(s) ao ML, ${gravados} conciliação(ões) gravada(s), ${Date.now() - inicio}ms`);
-  return { executado: true, abortado, chamadas, parou429, ignoradas, contas };
+  const resultado = abortado ? "abortada" : paradaSolicitada ? "parada_solicitada" : parou429 ? "pausa_429"
+    : contas.some(contaComFalha) ? "concluida_com_falhas" : "concluida";
+  console.log(`[sentinel-conciliacao] execução ${abortado ? "ABORTADA" : paradaSolicitada ? "INTERROMPIDA (parada solicitada)" : "concluída"}: ${contas.length} conta(s), ${chamadas} chamada(s) ao ML, ${gravados} conciliação(ões) gravada(s), ${Date.now() - inicio}ms`);
+  return { executado: true, resultado, abortado, parou429, paradaSolicitada, chamadas, gravados, ignoradas, contas };
 }
 
 module.exports = {
