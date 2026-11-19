@@ -2484,6 +2484,7 @@ async function run() {
         "Comissão Mercado Livre R$ 25,00",
         "Frete R$ 15,00",
         "Custos adicionais —",
+        "Taxa de rebate R$ 0,00",
         "Imposto (5,0%) R$ 10,00",
         "Margem R$ 70,00 (35,0%)",
       ], JSON.stringify(linhas));
@@ -2501,8 +2502,8 @@ async function run() {
                  borda: ins.every(function(i){ var c = getComputedStyle(i.parentElement); return c.borderTopStyle === 'solid'; }),
                  lapis: !!document.querySelector('#am-det-margem-body .am-margem-edit__btn') }; })()`);
       assert.strictEqual(campos.cab, "Hoje Simulação", `cabeçalho das colunas: ${campos.cab}`);
-      assert.deepStrictEqual(campos.campos, ["preco", "custoProduto", "custosAdicionais"]);
-      assert.deepStrictEqual(campos.valores, ["200.00", "80.00", ""], "os campos nascem com os números de hoje");
+      assert.deepStrictEqual(campos.campos, ["preco", "custoProduto", "custosAdicionais", "rebate"]);
+      assert.deepStrictEqual(campos.valores, ["200.00", "80.00", "", "0.00"], "os campos nascem com os números de hoje");
       assert.strictEqual(campos.borda, true, "todo campo de simulação tem moldura sólida visível, sem hover");
       assert.strictEqual(campos.lapis, false, "não existe mais o botão-lápis que 'vira' campo ao clicar");
 
@@ -2557,6 +2558,7 @@ async function run() {
         "Comissão Mercado Livre R$ 18,00",
         "Frete R$ 12,00",
         "Custos adicionais R$ 3,00",
+        "Taxa de rebate R$ 0,00",
         "Imposto (4,0%) R$ 6,00",
         "Margem R$ 30,00 (20,0%)",
       ], `MLB-B1 mostrou dados de outro item: ${JSON.stringify(linhas)}`);
@@ -2667,6 +2669,7 @@ async function run() {
           "Comissão Mercado Livre R$ 30,00",
           "Frete R$ 20,00",
           "Custos adicionais —",
+          "Taxa de rebate R$ 0,00",
           "Imposto (5,0%) R$ 10,00",
           "Margem R$ -10,00 (-5,0%)",
         ], `o prejuízo escondeu a composição em vez de mostrá-la completa: ${JSON.stringify(linhas)}`);
@@ -2871,6 +2874,49 @@ async function run() {
         assert.strictEqual(simularMargemChamadas[0].body.subsidioMl, 2.5,
           "sem promoção escolhida, a promoção ATIVA continua valendo — o rebate dela vai junto, senão a simulação perderia R$ 2,50");
         assert.strictEqual(simularMargemChamadas[0].body.preco, undefined);
+      } finally {
+        promocoesRespostaPadrao = [];
+      }
+    });
+
+    await check("36c — Taxa de rebate editável (sem promoção com rebate): o valor digitado vai como subsidioMl, só simula e nunca escreve", async () => {
+      pedidos.length = 0;
+      simularMargemChamadas.length = 0;
+      precoChamadas.length = 0;
+      await recarregarEAbrir();
+      await esperarLadder();
+      assert.strictEqual(await valorCampoSimulacao(cdp, "rebate"), "0.00", "sem rebate hoje, o campo nasce em zero");
+
+      await confirmarEdicaoMargem(cdp, "rebate", "4");
+      for (let i = 0; i < 100 && simularMargemChamadas.length === 0; i++) await sleep(50);
+      const envio = simularMargemChamadas[simularMargemChamadas.length - 1];
+      assert.ok(envio, "digitar o rebate não disparou a simulação");
+      assert.strictEqual(envio.body.subsidioMl, 4, "o rebate digitado vai como subsidioMl");
+      assert.strictEqual(envio.body.preco, undefined);
+      assert.strictEqual(envio.body.custoProduto, undefined);
+      await waitFor(cdp, "/Rebate simulado/.test(document.getElementById('am-det-margem-acoes').textContent)",
+        "a área de ação não explicou que o rebate é só visualização");
+      assert.strictEqual(await botaoAcaoSimulacao(cdp), null, "rebate simulado: nenhuma escrita a oferecer");
+      assert.strictEqual(precoChamadas.length, 0, "simular rebate nunca chama PATCH de preço");
+
+      await descartarSimulacao(cdp);
+      assert.strictEqual(await valorCampoSimulacao(cdp, "rebate"), "0.00", "descartar volta o rebate a zero");
+    });
+
+    await check("36d — promoção ATIVA com rebate do ML: a Taxa de rebate fica travada no valor dela (sem campo)", async () => {
+      promocoesRespostaPadrao = [PROMO_ATIVA];
+      try {
+        await recarregarEAbrir();
+        await esperarLadder();
+        await waitFor(cdp, "document.querySelectorAll('#am-det-promo-body .am-promo__linha').length === 1", "a promoção não apareceu");
+        await waitFor(cdp, "!document.querySelector('#am-det-margem-body .am-margem-sim__input[data-margem-campo=\"rebate\"]')",
+          "com promoção de rebate ativa, o rebate não pode ser editável");
+        const travado = await cdp.evaluate(`(function(){
+          var l = Array.from(document.querySelectorAll('#am-det-margem-body .am-margem-sim__linha'))
+            .find(function(x){ return /Taxa de rebate/.test(x.textContent); });
+          var v = l && l.querySelector('.am-margem-comp__valor--bloqueado');
+          return v ? v.getAttribute('title') : null; })()`);
+        assert.ok(travado && /rebate/.test(travado), `o rebate travado precisa explicar o motivo: ${travado}`);
       } finally {
         promocoesRespostaPadrao = [];
       }

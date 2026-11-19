@@ -391,6 +391,7 @@ function parseShopeeFinancialRows(rows) {
       grossRevenue: itemRevenue,
       paidRevenue: round2(paidRevenueRaw || itemRevenue || totalGlobalRaw || 0),
       totalGlobal: totalGlobalRaw,
+      totalGlobalProvided: rawProvided(findField(row, ["total global"])),
       tax: taxRaw,
       taxProvided: rawProvided(findField(row, ["imposto"])),
       cmv: cmvRaw,
@@ -411,6 +412,7 @@ function parseShopeeFinancialRows(rows) {
       shippingProvided: rawProvided(
         findField(row, ["valor estimado do frete", "frete", "shipping"])
       ),
+      adjustments: readShopeeOrderAdjustments(row),
       profit: profitRaw,
       isCancelled,
       isReturn,
@@ -450,6 +452,49 @@ function detectShopeeAdjustmentColumns(rows) {
     const normalized = normalizeKey(key);
     return SHOPEE_ADJUSTMENT_HINTS.some((hint) => normalized.includes(hint));
   });
+}
+
+// ── Ajustes de nível pedido do Order.all ────────────────────────────────────
+// O Order.all real NÃO tem "Repasse". Conferido em 886 pedidos de out/2026:
+//  • "Total global" já é líquido de cupom do vendedor, cupom Shopee, ajuste PIX
+//    e moedas (e soma o frete pago pelo comprador):
+//      Total global = Subtotal − Cupom do vendedor − Cupom − Ajuste PIX
+//                     − Compensar Moedas/100 + Taxa de envio paga pelo comprador
+//  • "Ajuste por participação em ação comercial" = (comissão bruta − líquida)
+//    + (serviço bruto − líquido) em 886/886 pedidos: as taxas LÍQUIDAS já
+//    embutem a compensação da Shopee por esses descontos.
+// Logo, usar taxas líquidas sobre o Subtotal (sem deduzir cupom/PIX) conta a
+// compensação sem a dedução correspondente e superestima o líquido.
+const SHOPEE_ORDER_ADJUSTMENT_COLUMNS = Object.freeze({
+  sellerCoupon: "Cupom do vendedor",
+  sellerCoin: "Coin Cashback Voucher Amount Sponsored by Seller",
+  coupon: "Cupom",
+  pix: "Ajuste por pagamento via PIX",
+  coins: "Compensar Moedas Shopee", // em CENTAVOS (confirmado em 90/90 pedidos)
+  buyerShipping: "Taxa de envio pagas pelo comprador",
+  commercialAdjustment: "Ajuste por participação em ação comercial",
+  // Sem semântica provada: se vierem preenchidos, o pedido vira "estimado".
+  reverseShipping: "Taxa de Envio Reversa",
+  card: "Total descontado Cartão de Crédito",
+});
+
+// Cabeçalho EXATO (sem a correspondência por palavra do findField, que faria
+// "Cupom" casar com "Cupom do vendedor").
+function findExactColumn(row, header) {
+  const target = normalizeKey(header);
+  for (const [key, value] of Object.entries(row)) {
+    if (normalizeKey(key) === target) return value;
+  }
+  return "";
+}
+
+function readShopeeOrderAdjustments(row) {
+  const out = {};
+  for (const [key, column] of Object.entries(SHOPEE_ORDER_ADJUSTMENT_COLUMNS)) {
+    const raw = findExactColumn(row, column);
+    out[key] = { present: rawProvided(raw), value: Math.abs(toNumber(raw)) };
+  }
+  return out;
 }
 
 // Escolhe a taxa efetivamente descontada: líquida quando presente, bruta só
@@ -2362,7 +2407,9 @@ function processShopeeFinancialOrders({
   const adjustmentColumns = detectShopeeAdjustmentColumns(salesRowsRaw);
   if (adjustmentColumns.length > 0) {
     executiveNotes.push(
-      `Colunas de cupom/rebate/ajuste detectadas e NÃO reaplicadas (o repasse já é líquido delas): ${adjustmentColumns.join(", ")}.`
+      `Colunas de cupom/rebate/ajuste detectadas: ${adjustmentColumns.join(", ")}. ` +
+      "Com repasse informado elas NÃO são reaplicadas (o repasse já é líquido delas); sem repasse, " +
+      "o líquido é reconstruído pela identidade do Order.all (ver NET_REVENUE_RECONSTRUCTED / NET_REVENUE_ESTIMATED)."
     );
   }
 
@@ -2434,6 +2481,17 @@ function processShopeeFinancialOrders({
   let revenueDirectMatched = 0;
   let revenueBridgeMatched = 0;
   const bridgeAmbiguousKeys = [];
+  // Conciliação do líquido: quantos pedidos/qual receita em cada nível de evidência.
+  const netEvidence = {
+    comprovado: { count: 0, revenue: 0 },
+    reconstruido: { count: 0, revenue: 0 },
+    estimado: { count: 0, revenue: 0 },
+    ausente: { count: 0, revenue: 0 },
+  };
+  const estimatedReasons = new Map();
+  let estimatedNetOrdersCount = 0;
+  let totalGlobalVerifiedOrders = 0;
+  let orderLevelAdjustmentsAppliedTotal = 0;
 
   for (const [orderId, orderLines] of orders.entries()) {
     // Status do PEDIDO: o mais severo entre as linhas (uma devolução em
@@ -2540,13 +2598,27 @@ function processShopeeFinancialOrders({
 
     let orderNet;
     let netSource;
+    let netEvidenceLevel;
     let shippingApplied = 0;
+
+    // Valor de nível pedido de um ajuste (repetido em cada linha do pedido).
+    const adjustmentValue = (key) =>
+      collapseOrderLevelValue(
+        orderLines.map((line) => {
+          const entry = line.adjustments && line.adjustments[key];
+          return { present: !!(entry && entry.present), value: entry ? entry.value : 0 };
+        })
+      );
+    const totalGlobal = collapseOrderLevelValue(
+      orderLines.map((line) => ({ present: line.totalGlobalProvided, value: line.totalGlobal }))
+    );
 
     if (repasse.present) {
       // Repasse já é líquido de taxas, frete, cupons e rebates. Os componentes
       // ficam informativos — descontar de novo seria contagem dupla.
       orderNet = round2(repasse.value);
       netSource = "repasse";
+      netEvidenceLevel = "comprovado";
     } else if (transactionFee.present || commissionFee.present || serviceFee.present) {
       // Frete: só é deduzido quando o sinal na planilha indica custo do
       // vendedor (negativo). Valor positivo é ambíguo => não aplicado.
@@ -2557,13 +2629,96 @@ function processShopeeFinancialOrders({
           shippingIndeterminateOrders += 1;
         }
       }
-      orderNet = round2(orderGross - feesSum - shippingApplied);
+      // Descontos de nível pedido que reduzem o que o comprador pagou e que a
+      // Shopee já reflete em "Total global". As taxas líquidas carregam a
+      // compensação; por isso o desconto precisa ser deduzido junto.
+      const adj = {
+        sellerCoupon: adjustmentValue("sellerCoupon").value,
+        sellerCoin: adjustmentValue("sellerCoin").value,
+        coupon: adjustmentValue("coupon").value,
+        pix: adjustmentValue("pix").value,
+        coins: round2(adjustmentValue("coins").value / 100),
+        buyerShipping: adjustmentValue("buyerShipping").value,
+      };
+      const discounts = round2(
+        adj.sellerCoupon + adj.sellerCoin + adj.coupon + adj.pix + adj.coins
+      );
+      // Total global esperado pela identidade (sem fonte externa).
+      const expectedTotalGlobal = round2(orderGross - discounts + adj.buyerShipping);
+      const reasons = [];
+
+      const cardDiscount = adjustmentValue("card").value;
+      let cardExplained = false;
+      let appliedDiscounts = discounts;
+
+      let productSide; // líquido de descontos, sem o frete pago pelo comprador
+      if (totalGlobal.present) {
+        const diff = round2(totalGlobal.value - expectedTotalGlobal);
+        if (Math.abs(diff) <= 0.011) {
+          productSide = round2(totalGlobal.value - adj.buyerShipping);
+          totalGlobalVerifiedOrders += 1;
+        } else if (cardDiscount > 0 && Math.abs(diff + cardDiscount) <= 0.011) {
+          // Total global também desconta o cartão (7/7 em out/2026), mas a
+          // compensação nas taxas líquidas cobre só o cupom: quem banca o
+          // desconto do cartão não é provável. Segue o Total global (valor
+          // menor, o que a Shopee deduziu) e declara como estimado.
+          productSide = round2(totalGlobal.value - adj.buyerShipping);
+          appliedDiscounts = round2(discounts + cardDiscount);
+          cardExplained = true;
+          reasons.push({ reason: "desconto_cartao_sem_compensacao", value: cardDiscount });
+        } else {
+          // Total global não fecha com as colunas: usa só o que a identidade
+          // sustenta (subtotal − descontos) e declara a divergência.
+          productSide = round2(orderGross - discounts);
+          reasons.push({ reason: "total_global_divergente", value: Math.abs(diff) });
+        }
+      } else {
+        productSide = round2(orderGross - discounts);
+      }
+      orderLevelAdjustmentsAppliedTotal = round2(orderLevelAdjustmentsAppliedTotal + appliedDiscounts);
+
+      // A compensação da Shopee embutida nas taxas líquidas deve bater com o
+      // ajuste de ação comercial; se não bater, o líquido não é reconciliável.
+      const aj = adjustmentValue("commercialAdjustment");
+      // Bruta de nível pedido, com a mesma regra de colapso das líquidas
+      // (repetida = uma vez; distinta por linha = soma).
+      const grossFees = round2(
+        collapseOrderLevelValue(orderLines.map((line) => ({ present: line.commissionGrossProvided, value: Math.abs(line.commissionGross) }))).value +
+        collapseOrderLevelValue(orderLines.map((line) => ({ present: line.serviceGrossProvided, value: Math.abs(line.serviceGross) }))).value
+      );
+      if (aj.present && aj.value > 0) {
+        const netFeeCredit = round2(grossFees - round2(commissionFee.value + serviceFee.value));
+        if (Math.abs(netFeeCredit - aj.value) > 0.011) {
+          reasons.push({ reason: "compensacao_taxas_divergente", value: Math.abs(netFeeCredit - aj.value) });
+        }
+      }
+      // Colunas sem semântica provada, se preenchidas, não entram no cálculo.
+      for (const key of ["reverseShipping", "card"]) {
+        if (key === "card" && cardExplained) continue;
+        const v = adjustmentValue(key);
+        if (v.present && v.value > 0) reasons.push({ reason: "coluna_sem_semantica:" + SHOPEE_ORDER_ADJUSTMENT_COLUMNS[key], value: v.value });
+      }
+
+      orderNet = round2(productSide - feesSum - shippingApplied);
       netSource = "componentes";
+      netEvidenceLevel = reasons.length > 0 ? "estimado" : "reconstruido";
+      if (reasons.length > 0) {
+        estimatedNetOrdersCount += 1;
+        for (const r of reasons) {
+          const acc = estimatedReasons.get(r.reason) || { reason: r.reason, orders: 0, total: 0 };
+          acc.orders += 1;
+          acc.total = round2(acc.total + r.value);
+          estimatedReasons.set(r.reason, acc);
+        }
+      }
     } else {
       feesMissingOrders += 1;
       orderNet = round2(orderGross);
       netSource = "ausente";
+      netEvidenceLevel = "ausente";
     }
+    netEvidence[netEvidenceLevel].count += 1;
+    netEvidence[netEvidenceLevel].revenue = round2(netEvidence[netEvidenceLevel].revenue + orderGross);
 
     if (shippingApplied > 0) {
       shippingFeesPresent = true;
@@ -2698,6 +2853,7 @@ function processShopeeFinancialOrders({
         "Receita bruta": lineGross,
         "Receita líquida": lineNet,
         "Origem da receita líquida": netSource,
+        "Evidência do líquido": netEvidenceLevel,
         "Taxa de transação": round2(transactionFee.value),
         "Taxa de comissão": round2(commissionFee.value),
         "Taxa de serviço": round2(serviceFee.value),
@@ -2841,6 +2997,37 @@ function processShopeeFinancialOrders({
     }
     executiveNotes.push(`COST_BASE_QUALITY: na base de custos, ${parts.join("; ")}.`);
   }
+  // Confiança do LÍQUIDO (eixo separado da cobertura de custo): o pior nível
+  // de evidência entre os pedidos reconhecidos.
+  const netRevenueEstimatedReasons = Array.from(estimatedReasons.values());
+  let netRevenueConfidence = null;
+  if (netEvidence.ausente.count > 0) netRevenueConfidence = "nao_conciliada";
+  else if (netEvidence.estimado.count > 0) netRevenueConfidence = "estimada";
+  else if (netEvidence.reconstruido.count > 0) netRevenueConfidence = "reconstruida";
+  else if (netEvidence.comprovado.count > 0) netRevenueConfidence = "comprovada";
+
+  if (estimatedNetOrdersCount > 0) {
+    const detail = netRevenueEstimatedReasons
+      .map((a) => `${a.reason}: ${a.orders} pedido(s), R$ ${a.total.toFixed(2)}`)
+      .join("; ");
+    executiveNotes.push(
+      `NET_REVENUE_ESTIMATED: ${estimatedNetOrdersCount} pedido(s) sem repasse não fecham pela identidade do Order.all (${detail}). ` +
+      "O líquido desses pedidos é estimativa: o valor divergente não foi presumido como custo nem como crédito do vendedor."
+    );
+  }
+  if (netEvidence.reconstruido.count + netEvidence.estimado.count > 0) {
+    executiveNotes.push(
+      "NET_REVENUE_RECONSTRUCTED: o Order.all não traz Repasse; o líquido de " +
+      `${netEvidence.reconstruido.count + netEvidence.estimado.count} pedido(s) foi reconstruído (Total global/Subtotal − descontos − taxas líquidas − frete negativo), ` +
+      "sem tarifas fora das colunas do arquivo (ex.: Devolução Fácil) e assumindo frete neutro. Não é o valor liquidado pela Shopee."
+    );
+  }
+  // Dois eixos independentes: financialConfidence/costConfidence = cobertura
+  // de CUSTO (contrato de sempre, rótulos "vendas sem custo"); a qualidade do
+  // líquido fica só em netRevenueConfidence — misturar os dois fazia um
+  // líquido estimado aparecer como "vendas sem custo".
+  const financialConfidence = coverage.financialConfidence;
+
   if (coverage.financialConfidence !== "confiavel") {
     executiveNotes.push(
       "Fechamento parcial: existem vendas sem custo cadastrado. O faturamento total está completo; LC e MC cobrem apenas a receita com custo identificado."
@@ -2862,7 +3049,15 @@ function processShopeeFinancialOrders({
       revenueWithCost: coverage.revenueWithCost,
       revenueWithoutCost: coverage.revenueWithoutCost,
       calculatedCoveragePercent: coverage.calculatedCoveragePercent,
-      financialConfidence: coverage.financialConfidence,
+      financialConfidence,
+      costConfidence: coverage.financialConfidence,
+      // Conciliação do líquido (aditivo): origem e pendências auditáveis.
+      netRevenueConfidence,
+      netRevenueEvidence: netEvidence,
+      estimatedNetOrdersCount,
+      netRevenueEstimatedReasons,
+      totalGlobalVerifiedOrders,
+      orderLevelAdjustmentsAppliedTotal,
       contributionProfitTotal,
       averageContributionMargin: legacyRatio(contributionProfitTotal, revenueWithCost),
       contributionMarginCalculated: safeRatio(contributionProfitTotal, revenueWithCost),
