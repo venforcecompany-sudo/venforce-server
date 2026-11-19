@@ -457,9 +457,10 @@ async function processarConta(contaId, deps = {}) {
 // Lock de SESSÃO numa conexão dedicada (fora do pool), liberado no fim do ciclo. Essa MESMA
 // conexão executa todas as ESCRITAS do ciclo (fencing real: se ela cair, o lock cai e as
 // escritas falham junto). fn recebe { verificar, dbEscrita }. verificar() confirma conexão viva
-// + a CHAVE exata no pg_locks (classid/objid de hashtext(LOCK_KEY), pid do lock);
+// + a CHAVE exata no pg_locks (classid/objid de hashtext(chave), pid do lock). `chave` padrão = LOCK_KEY do
+// polling; o coletor de Billing usa a SUA (nunca disputa o lock do polling);
 // perdeu ⇒ SENTINEL_LOCK_PERDIDO.
-async function comLockDoCiclo(fn, { criarClient } = {}) {
+async function comLockDoCiclo(fn, { criarClient, chave = LOCK_KEY } = {}) {
   const client = criarClient ? criarClient() : new Client({ ...configConexao(), query_timeout: 10000 });
   const estado = { perdido: false, motivo: null, pid: null };
   const marcarPerdido = (motivo) => { if (!estado.perdido) { estado.perdido = true; estado.motivo = motivo; } };
@@ -470,7 +471,7 @@ async function comLockDoCiclo(fn, { criarClient } = {}) {
   client.on("end", () => marcarPerdido("conexão do lock encerrada"));
   await client.connect();
   try {
-    const r = await client.query("SELECT pg_try_advisory_lock(hashtext($1)) AS ok, pg_backend_pid() AS pid", [LOCK_KEY]);
+    const r = await client.query("SELECT pg_try_advisory_lock(hashtext($1)) AS ok, pg_backend_pid() AS pid", [chave]);
     if (!r.rows[0]?.ok) return { pulado: true };
     estado.pid = r.rows[0].pid;
     const verificar = async () => {
@@ -483,7 +484,7 @@ async function comLockDoCiclo(fn, { criarClient } = {}) {
             WHERE locktype = 'advisory' AND pid = $1 AND granted AND objsubid = 1
               AND classid = (((hashtext($2)::bigint) >> 32) & 4294967295)::bigint::oid
               AND objid   = ((hashtext($2)::bigint) & 4294967295)::bigint::oid`,
-          [estado.pid, LOCK_KEY]);
+          [estado.pid, chave]);
       } catch (err) {
         marcarPerdido(`verificação falhou: ${err.message}`);
         throw erroLockPerdido(estado.motivo);
@@ -497,7 +498,7 @@ async function comLockDoCiclo(fn, { criarClient } = {}) {
     try {
       return { pulado: false, resultado: await fn({ verificar, dbEscrita }) };
     } finally {
-      await client.query("SELECT pg_advisory_unlock(hashtext($1))", [LOCK_KEY]).catch(() => {});
+      await client.query("SELECT pg_advisory_unlock(hashtext($1))", [chave]).catch(() => {});
     }
   } finally {
     await client.end().catch(() => {});
@@ -563,5 +564,6 @@ module.exports = {
   comLockDoCiclo,
   configWorker,
   listarContasMeli,
+  resolverContaPadrao,
   LOCK_KEY,
 };

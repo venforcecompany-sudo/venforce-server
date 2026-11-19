@@ -75,8 +75,10 @@ function atorDe(user) {
   return `${nome} (#${user.id})`;
 }
 
-function criarController({ db, acesso, motor }) {
+// conciliacao: leitura da conciliação da comissão (S1); injetável em teste, carregada sob demanda.
+function criarController({ db, acesso, motor, conciliacao = () => require("../services/sentinel/sentinelConciliacaoLeitura") }) {
   const incidentes = () => (typeof motor === "function" ? motor() : motor);
+  const conc = () => (typeof conciliacao === "function" ? conciliacao() : conciliacao);
 
   // Envolve handlers: erros do motor/BD viram resposta sem vazar stack/SQL.
   const seguro = (fn) => async (req, res) => {
@@ -86,7 +88,7 @@ function criarController({ db, acesso, motor }) {
       if (err && err.code === "MODULE_NOT_FOUND" && /sentinelIncidentes/.test(err.message || "")) {
         return res.status(501).json({ ok: false, code: "SENTINEL_MOTOR_INDISPONIVEL", erro: "Motor de incidentes ainda não instalado." });
       }
-      const mapa = { INCIDENTE_NAO_ENCONTRADO: 404, TRANSICAO_INVALIDA: 409, MOTIVO_OBRIGATORIO: 400 };
+      const mapa = { INCIDENTE_NAO_ENCONTRADO: 404, TRANSICAO_INVALIDA: 409, MOTIVO_OBRIGATORIO: 400, PARAMETRO_INVALIDO: 400 };
       if (err && mapa[err.code]) {
         return res.status(mapa[err.code]).json({ ok: false, code: err.code, erro: err.message });
       }
@@ -179,6 +181,38 @@ function criarController({ db, acesso, motor }) {
       const contas = await incidentes().saudeContas(db, { contaIds });
       const ativa = new Map(autorizadas.map((c) => [c.id, c.ativo]));
       res.json({ ok: true, contas: limpar((contas || []).map((c) => ({ ...c, ativo: ativa.get(c.contaId) !== false }))) });
+    }),
+
+    // ── Conciliação da comissão (S1) — SOMENTE LEITURA. Não altera margem/incidentes; DIVERGENTE ≠ prejuízo confirmado.
+    conciliacaoResumo: seguro(async (req, res) => {
+      const { contaIds } = await escopo(req);
+      const resumo = await conc().resumoConciliacao(db, { contaIds });
+      res.json({ ok: true, conciliacao: limpar(resumo) });
+    }),
+
+    conciliacaoListar: seguro(async (req, res) => {
+      const estado = req.query.estado === undefined || req.query.estado === "" ? null : String(req.query.estado);
+      if (estado !== null && !conc().ESTADOS.includes(estado)) return badRequest(res, "PARAMETRO_INVALIDO", 'Parâmetro "estado" inválido.');
+      const limit = inteiro(req.query.limit, 50, 1, 200);
+      const offset = inteiro(req.query.offset, 0, 0, 1e9);
+      if ([limit, offset].some(Number.isNaN)) return badRequest(res, "PARAMETRO_INVALIDO", "limit/offset devem ser inteiros.");
+      const { contaIds } = await escopo(req);
+      const r = await conc().listarConciliacoes(db, { contaIds, estado, limit, offset });
+      res.json({ ok: true, ...limpar(r), limit, offset });
+    }),
+
+    // Por pedido: exige ?conta= (o pedido_id do ML só é único DENTRO da conta); fora da carteira ⇒ 404, igual a inexistente.
+    conciliacaoPedido: seguro(async (req, res) => {
+      const naoEncontrado = () => res.status(404).json({ ok: false, code: "PEDIDO_NAO_ENCONTRADO", erro: "Pedido não encontrado." });
+      const contaId = Number(req.query.conta);
+      const pedidoId = String(req.params.pedidoId || "").trim();
+      if (!Number.isInteger(contaId) || contaId <= 0) return badRequest(res, "PARAMETRO_INVALIDO", 'Informe "conta".');
+      if (!/^\d{1,30}$/.test(pedidoId)) return naoEncontrado();
+      const conta = await acesso.contaAutorizadaInfo(req.user, contaId, db);
+      if (!conta) return naoEncontrado();
+      const item = await conc().obterConciliacaoPedido(db, contaId, pedidoId);
+      if (!item) return naoEncontrado();
+      res.json({ ok: true, conciliacao: limpar(item) });
     }),
   };
 }

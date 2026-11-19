@@ -57,6 +57,8 @@ const authoritative = [
   "sentinel_pedido_excecoes",
   "sentinel_incidentes",
   "sentinel_incidente_eventos",
+  // Conciliação da comissão (S1, migration 20261119): chaveada só por (Conta, pedido), FK em sentinel_pedidos.
+  "sentinel_conciliacao_comissao",
   // Shopee: grant chaveado só pela Conta (sem cliente_id); a Conta sobrevive à
   // unificação com o mesmo id ⇒ o grant segue junto, nada a mover.
   "shopee_grants",
