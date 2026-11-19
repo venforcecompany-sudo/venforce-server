@@ -190,3 +190,13 @@ o lock do polling já cobre.
 - Decidir com o financeiro o que fazer com `TARIFA_BRUTA_COMPROVADA` e `DIVERGENTE` (fila de investigação, não prejuízo).
 - Exibir a conciliação na tela do Sentinel (consumir `GET /sentinel/conciliacao/pedidos/:id?conta=`).
 - Quando a 20261117 (evidência) for aplicada e ligada, os `payload_hash` mudam ⇒ todos os elegíveis são reselecionados (custo: 1 Billing/60 pedidos; descontos reaproveitados).
+
+---
+
+## S1.5: atualização (19/11/2026)
+
+O Billing agora pode rodar **agendado dentro do worker existente** (`SENTINEL_CONCILIACAO_AGENDADA_ENABLED`, desligado por padrão) e há o endpoint `GET /sentinel/operacao`. O worker standalone e o CLI deste documento continuam válidos.
+
+A seleção do coletor mudou para prioridade por tiers, com os pedidos mais recentes primeiro, janela de reconsulta de 60 d e rotação de contas. O motivo é que o piloto real mostrou que a ordem antiga só consultava pedidos com cerca de 30 dias.
+
+Detalhes: `docs/sentinel/HANDOFF_S1_5_AUTOMACAO_OBSERVABILIDADE.md` e `docs/sentinel/CONTRATO_S1_5_OPERACAO.md`.
