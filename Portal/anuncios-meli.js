@@ -5498,6 +5498,7 @@
     FORA_DA_REFERENCIA: "O anúncio não está ativo na promoção de referência.",
     SEM_CANDIDATA: "Nenhuma promoção com subsídio do Mercado Livre disponível para este anúncio.",
     PRECO_NAO_MENOR: "As promoções com subsídio têm preço igual ou maior que o preço de hoje — o rebate não entraria.",
+    ABAIXO_FRETE_GRATIS: "As promoções com subsídio deixariam o preço abaixo de R$ 19,00 — o comprador perderia o frete grátis.",
     ERRO_ML: "O Mercado Livre não respondeu para este anúncio.",
     JA_EM_REBATE_MELHOR: "Já está numa promoção com rebate melhor — nenhuma outra melhora margem nem lucro.",
   };

@@ -6,7 +6,8 @@
 //  1. sem o gancho, participar continua idêntico (POST com offer_id);
 //  2. o gancho recebe a promoção E a lista relidas ao vivo, antes do POST;
 //  3. a revalidação do rebate bloqueia sem enviar nada quando a referência
-//     saiu ou o preço da candidata deixou de ser menor;
+//     saiu, o preço da candidata deixou de ser menor ou ficou abaixo de
+//     R$ 19,00 (o comprador perderia o frete grátis);
 //  4. a referência nunca recebe PUT/DELETE/POST.
 
 process.env.DATABASE_URL = process.env.DATABASE_URL || "postgres://localhost/vf-test";
@@ -87,6 +88,15 @@ async function run() {
   r = await participarPromocaoAceite({ clienteId: 1, itemId: "MLB1", mlUserId: "111", promotionId: "P-S", tipo: "SMART", antesDeEscrever: criarRevalidacao(REF) });
   assert.strictEqual(r.codigo, "REFERENCIA_INATIVA");
   assert.strictEqual(escritas().length, 0);
+
+  // Abaixo de R$ 19,00 o comprador perde o frete grátis: recusa na escrita real.
+  mlChamadas = [];
+  promosAoVivo = [refBruta(100), { ...smartBruta, suggested_discounted_price: 18.9 }];
+  r = await participarPromocaoAceite({ clienteId: 1, itemId: "MLB1", mlUserId: "111", promotionId: "P-S", tipo: "SMART", antesDeEscrever: criarRevalidacao(REF) });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.codigo, "ABAIXO_FRETE_GRATIS");
+  assert.ok(/R\$ 18,90/.test(r.motivo), "preço formatado em reais com vírgula");
+  assert.strictEqual(escritas().length, 0, "abaixo de R$ 19,00: nada enviado");
   ok("revalidação: referência inativa ou preço não menor bloqueiam sem enviar");
 
   // 4. Nunca uma escrita na referência.

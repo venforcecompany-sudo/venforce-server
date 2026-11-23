@@ -61,7 +61,7 @@ function cand(pid, tipo, nome, preco, margem, lucro, gm, gl, extra) {
 }
 const REF_VAL = { preco: 99.9, subsidioMl: 0, margemPercent: 12.3, lucro: 12.29 };
 const RESULTADO = {
-  resumo: { recomendado: 2, escolha: 2, sem_ganho: 1, descartado: 2 },
+  resumo: { recomendado: 2, escolha: 2, sem_ganho: 1, descartado: 3 },
   itens: [
     { itemId: "MLB-R1", titulo: "Garrafa térmica 1L", thumbnail: null, status: "recomendado", motivo: null, motivoTexto: null,
       referencia: REF_VAL, candidatas: [cand("P-1", "SMART", "Smart Outubro", 94.9, 14.1, 13.38, 1.8, 1.09, { melhorMargem: true, melhorLucro: true })],
@@ -88,6 +88,8 @@ const RESULTADO = {
     { itemId: "MLB-D1", titulo: "Faqueiro 24 peças", thumbnail: null, status: "descartado", motivo: "SEM_CUSTO", motivoTexto: null,
       referencia: null, candidatas: [], sugestao: { porMargem: null, porLucro: null } },
     { itemId: "MLB-D2", titulo: "Panela pressão", thumbnail: null, status: "descartado", motivo: "PRECO_NAO_MENOR", motivoTexto: "Texto do servidor <i>sem HTML</i>",
+      referencia: null, candidatas: [], sugestao: { porMargem: null, porLucro: null } },
+    { itemId: "MLB-D3", titulo: "Jogo de lençol", thumbnail: null, status: "descartado", motivo: "ABAIXO_FRETE_GRATIS", motivoTexto: null,
       referencia: null, candidatas: [], sugestao: { porMargem: null, porLucro: null } },
   ],
 };
@@ -120,15 +122,15 @@ function jobJson(job) {
     });
     return Object.assign(base, {
       fase: "execucao", status: fim ? "concluido" : "processando",
-      progresso: { total: 7, processados: 7 }, resultado: RESULTADO,
+      progresso: { total: 8, processados: 8 }, resultado: RESULTADO,
       execucao: { total: itens.length, processados: itens.filter((x) => x.status !== "pendente").length, itens },
     });
   }
   job.polls += 1;
   if (job.polls <= 2) {
-    return Object.assign(base, { fase: "analise", status: "processando", progresso: { total: 7, processados: job.polls, resumo: { recomendado: 1, escolha: 0, sem_ganho: 0, descartado: job.polls - 1 } }, resultado: null, execucao: null });
+    return Object.assign(base, { fase: "analise", status: "processando", progresso: { total: 8, processados: job.polls, resumo: { recomendado: 1, escolha: 0, sem_ganho: 0, descartado: job.polls - 1 } }, resultado: null, execucao: null });
   }
-  return Object.assign(base, { fase: "analise", status: "concluido", progresso: { total: 7, processados: 7 }, resultado: RESULTADO, execucao: null });
+  return Object.assign(base, { fase: "analise", status: "concluido", progresso: { total: 8, processados: 8 }, resultado: RESULTADO, execucao: null });
 }
 
 const SEMENTE = `
@@ -398,7 +400,7 @@ async function run() {
       await waitFor(cdp, q("[data-reb-progresso]"), "progresso ausente");
       const corpo = SERVIDOR.analises[SERVIDOR.analises.length - 1];
       assert.deepStrictEqual(corpo, { clienteSlug: "n97", clienteContaId: "42", referencia: { id: "C-VDX10", tipo: "SELLER_CAMPAIGN" } });
-      await waitFor(cdp, `/de 7 anúncios/.test(${texto("[data-reb-progresso]")})`, "contador do progresso ausente");
+      await waitFor(cdp, `/de 8 anúncios/.test(${texto("[data-reb-progresso]")})`, "contador do progresso ausente");
       assert.strictEqual(await cdp.evaluate(texto('[data-reb-placar="ganho"] .am-reb-placar__n')), "1", "placar ao vivo: anúncios com ganho até agora");
       assert.match(await cdp.evaluate(texto(".am-reb-placar")), /melhoram margem ou lucro/);
       await foto(cdp, "rebate-01b-analisando");
@@ -423,9 +425,9 @@ async function run() {
     // ── Passo 3: prévia ──────────────────────────────────────────────────────
     await check("V1 — resumo por grupo e Recomendados marcados por padrão", async () => {
       const r = await cdp.evaluate(texto("[data-reb-resumo]"));
-      assert.match(r, /Recomendados 2/); assert.match(r, /Escolher margem ou lucro 2/); assert.match(r, /Sem ganho 1/); assert.match(r, /Descartados 2/);
+      assert.match(r, /Recomendados 2/); assert.match(r, /Escolher margem ou lucro 2/); assert.match(r, /Sem ganho 1/); assert.match(r, /Descartados 3/);
       assert.strictEqual(await cdp.evaluate(`${q('[data-reb-aba="recomendado"]')}.getAttribute("aria-selected")`), "true", "abre na aba Recomendados");
-      assert.match(await cdp.evaluate(texto(".am-reb-sub")), /Comparando com Vendex - Outubro · 7 anúncios analisados · trocar referência/);
+      assert.match(await cdp.evaluate(texto(".am-reb-sub")), /Comparando com Vendex - Outubro · 8 anúncios analisados · trocar referência/);
       assert.strictEqual(await cdp.evaluate(`document.querySelectorAll("[data-reb-marcar]:checked").length`), 2);
       assert.strictEqual(await cdp.evaluate(contador), "2 participações selecionadas");
       assert.match(await cdp.evaluate(texto(".am-reb-resumo-sel__det")), /2 recomendadas \+ 0 escolhidas · a Vendex - Outubro continua ativa em todos/);
@@ -504,11 +506,13 @@ async function run() {
       await clicar(cdp, '[data-reb-marcar="MLB-R2"]');
       assert.strictEqual(await cdp.evaluate(contador), "3 participações selecionadas");
     });
-    await check("V5 — abas Sem ganho e Descartados, com motivo amigável (ou motivoTexto)", async () => {
+    await check("V5 — abas Sem ganho e Descartados, com motivo amigável (ou motivoTexto), inclusive ABAIXO_FRETE_GRATIS", async () => {
       await clicar(cdp, '[data-reb-aba="descartado"]');
       await waitFor(cdp, q('[data-reb-grupo="descartado"]'), "aba Descartados não abriu");
       assert.match(await cdp.evaluate(texto('[data-reb-grupo="descartado"] [data-reb-item="MLB-D1"]')), /Sem custo na Base de custos/);
       assert.match(await cdp.evaluate(texto('[data-reb-grupo="descartado"] [data-reb-item="MLB-D2"]')), /Texto do servidor <i>sem HTML<\/i>/);
+      assert.match(await cdp.evaluate(texto('[data-reb-grupo="descartado"] [data-reb-item="MLB-D3"]')), /deixariam o preço abaixo de R\$ 19,00 — o comprador perderia o frete grátis/, "ABAIXO_FRETE_GRATIS com texto amigável");
+      assert.ok(!/ABAIXO_FRETE_GRATIS/.test(await cdp.evaluate(texto('[data-reb-grupo="descartado"] [data-reb-item="MLB-D3"]'))), "não mostra o código cru");
       await clicar(cdp, '[data-reb-aba="sem_ganho"]');
       await waitFor(cdp, q('[data-reb-grupo="sem_ganho"]'), "aba Sem ganho não abriu");
       assert.match(await cdp.evaluate(texto('[data-reb-grupo="sem_ganho"]')), /Pote hermético/);
@@ -542,7 +546,7 @@ async function run() {
       await waitFor(cdp, "window.__copiado", "nada foi copiado");
       const msg = await cdp.evaluate("window.__copiado");
       assert.match(msg, /^\*Radar de subsídios · N97 Comercial\*/);
-      assert.match(msg, /Analisamos 7 anúncios da \*Vendex - Outubro\*/);
+      assert.match(msg, /Analisamos 8 anúncios da \*Vendex - Outubro\*/);
       assert.match(msg, /Encontramos 3 anúncios que ganham/);
       assert.match(msg, /1\. \*Garrafa térmica 1L\* \(MLB-R1\)/);
       assert.match(msg, /Promoção: Smart Outubro · até 30\/10\/2026/);

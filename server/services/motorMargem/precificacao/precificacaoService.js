@@ -56,6 +56,7 @@ const CODIGOS_RECUSA_SERVICO = new Set([
   "PROMOCAO_JA_PARTICIPA",
   "OFFER_ID_AUSENTE",
   "TIPO_SEM_ACEITE",
+  "ABAIXO_FRETE_GRATIS",
 ]);
 
 // Não enviados por falta de prazo/posse: `falhou` (comprovadamente sem escrita).

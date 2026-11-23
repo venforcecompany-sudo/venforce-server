@@ -26,7 +26,10 @@
 //  5. o preço confirmado é sempre o que vem na RESPOSTA do POST/PUT, nunca o
 //     valor enviado;
 //  6. este endpoint nunca toca a tabela meli_anuncios — só a API de
-//     promoções do ML.
+//     promoções do ML;
+//  7. participação em promoção ACEITE com rebate do ML tem piso de R$ 19,00:
+//     abaixo disso o comprador perderia o frete grátis — falha antes do POST
+//     (sem rebate, o piso não se aplica).
 
 process.env.DATABASE_URL = process.env.DATABASE_URL || "postgres://localhost/vf-test";
 
@@ -59,6 +62,7 @@ Module._load = function loadWithMlFetchStub(request, parent, isMain) {
 
 const pool = require("../config/database");
 const ctrl = require("../controllers/meliAnunciosController");
+const { participarPromocaoAceite } = require("../services/meliAnuncios/meliPromocoesEscritaService");
 
 Module._load = originalLoad;
 
@@ -454,6 +458,75 @@ async function run() {
     assert.deepStrictEqual(escritas[0].body, { promotion_id: "C-DUP", promotion_type: "SELLER_CAMPAIGN", deal_price: 134.9 });
     ok("integração: duplicata sem rebate + com rebate (mesmo id) — listagem expõe só a versão correta, e aplicarPromocao escreve usando exatamente esse objeto deduplicado");
   });
+
+  // ── 14. Piso de frete grátis (R$ 19,00) em participarPromocaoAceite ────────
+  // Escritor COMPARTILHADO (Radar, Central de Margem e Anúncios). Com rebate do
+  // ML, preço final < 19,00 tira o frete grátis do comprador: falha ANTES de
+  // qualquer POST. Sem rebate (bancada só pelo vendedor), a regra não se aplica.
+  const promoAceite = ({ id = "P-ACEITE", tipo = "SMART", precoFinal = 18.9, meli = 5 } = {}) => ({
+    id, type: tipo, status: "candidate", ref_id: `CANDIDATE-MLB-X-${id}`,
+    original_price: 100, suggested_discounted_price: precoFinal,
+    meli_percentage: meli, seller_percentage: 0,
+    start_date: "2026-11-01T03:00:00Z", finish_date: "2026-12-01T02:59:00Z",
+  });
+  const chamarParticipacao = (promo, promotionId = promo.id, tipo = promo.type) =>
+    participarPromocaoAceite({ clienteId: 1, itemId: "MLB-X", mlUserId: "111", promotionId, tipo });
+
+  // (a) com rebate a 18,90 → falha ABAIXO_FRETE_GRATIS, zero POST.
+  {
+    mlChamadas = [];
+    const promo = promoAceite({ id: "P-18", precoFinal: 18.9 });
+    mlHandler = (chamada) => {
+      if (/\/sale_price/.test(chamada.path)) return { ok: true, status: 200, data: {} };
+      if (chamada.metodo === "GET") return { ok: true, status: 200, data: [promo] };
+      return { ok: true, status: 201, data: { price: 18.9 } };
+    };
+    const r = await chamarParticipacao(promo);
+
+    assert.strictEqual(r.ok, false, "18,90 com rebate precisa ser recusado");
+    assert.strictEqual(r.codigo, "ABAIXO_FRETE_GRATIS");
+    assert.ok(/R\$ 18,90/.test(r.motivo), "preço formatado em reais com vírgula");
+    assert.strictEqual(mlChamadas.filter((c) => c.metodo === "POST").length, 0, "abaixo de R$ 19,00: zero POST ao ML");
+    ok("participarPromocaoAceite: rebate a 18,90 → ABAIXO_FRETE_GRATIS, zero POST");
+  }
+
+  // (b) com rebate a 19,00 → segue normal (fronteira permitida).
+  {
+    mlChamadas = [];
+    const promo = promoAceite({ id: "P-19", precoFinal: 19 });
+    mlHandler = (chamada) => {
+      if (/\/sale_price/.test(chamada.path)) return { ok: true, status: 200, data: {} };
+      if (chamada.metodo === "GET") return { ok: true, status: 200, data: [promo] };
+      return { ok: true, status: 201, data: { price: 19 } };
+    };
+    const r = await chamarParticipacao(promo);
+
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.strictEqual(r.precoConfirmado, 19);
+    const posts = mlChamadas.filter((c) => c.metodo === "POST");
+    assert.strictEqual(posts.length, 1, "R$ 19,00 exatos continuam permitidos");
+    assert.deepStrictEqual(posts[0].body, { promotion_id: "P-19", promotion_type: "SMART", offer_id: "CANDIDATE-MLB-X-P-19" });
+    ok("participarPromocaoAceite: rebate a 19,00 → POST normal (fronteira permitida)");
+  }
+
+  // (c) SEM rebate a 15,00 → não é bloqueada por esta regra.
+  {
+    mlChamadas = [];
+    const promo = promoAceite({ id: "P-15", tipo: "MARKETPLACE_CAMPAIGN", precoFinal: 15, meli: 0 });
+    mlHandler = (chamada) => {
+      if (/\/sale_price/.test(chamada.path)) return { ok: true, status: 200, data: {} };
+      if (chamada.metodo === "GET") return { ok: true, status: 200, data: [promo] };
+      return { ok: true, status: 201, data: { price: 15 } };
+    };
+    const r = await chamarParticipacao(promo);
+
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.strictEqual(r.precoConfirmado, 15);
+    const posts = mlChamadas.filter((c) => c.metodo === "POST");
+    assert.strictEqual(posts.length, 1, "sem rebate, o piso de R$ 19,00 não se aplica");
+    assert.deepStrictEqual(posts[0].body, { promotion_id: "P-15", promotion_type: "MARKETPLACE_CAMPAIGN" });
+    ok("participarPromocaoAceite: promoção SEM rebate a 15,00 não é bloqueada pelo piso");
+  }
 }
 
 run()
