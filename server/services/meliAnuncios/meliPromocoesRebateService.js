@@ -41,6 +41,8 @@ const core = require("../motorMargem/core");
 const { criarCotadorEmP, mapComLimite } = require("../motorMargem/margemCotacaoEmP");
 const { rotuloTipoPromocao } = require("./meliPromocoesService");
 const { TIPOS_ESCRITA_ACEITE } = require("./promocaoTiposSuportados");
+// Fonte única do piso de frete grátis (também aplicado no escritor de aceite).
+const { PRECO_MINIMO_FRETE_GRATIS_CENTAVOS } = require("./meliPromocoesEscritaService");
 
 // ─── Configuração ────────────────────────────────────────────────────────────
 // Concorrência BAIXA com o ML: cada item já faz algumas chamadas (promoções do
@@ -63,6 +65,7 @@ const MOTIVOS = Object.freeze({
   FORA_DA_REFERENCIA: "FORA_DA_REFERENCIA",
   SEM_CANDIDATA: "SEM_CANDIDATA",
   PRECO_NAO_MENOR: "PRECO_NAO_MENOR",
+  ABAIXO_FRETE_GRATIS: "ABAIXO_FRETE_GRATIS",
   ERRO_ML: "ERRO_ML",
   // Aditivo ao contrato: o anúncio está na referência no ML mas não existe em
   // meli_anuncios (sem título/categoria/tipo para cotar) — sincronizar resolve.
@@ -78,6 +81,7 @@ const MOTIVO_TEXTO = Object.freeze({
   FORA_DA_REFERENCIA: "O anúncio não está ativo na promoção de referência.",
   SEM_CANDIDATA: "Nenhuma promoção com subsídio do Mercado Livre disponível para este anúncio.",
   PRECO_NAO_MENOR: "As promoções com subsídio têm preço igual ou maior que o preço de hoje — o rebate nunca entraria.",
+  ABAIXO_FRETE_GRATIS: "As promoções com subsídio deixariam o preço abaixo de R$ 19,00 — o comprador perderia o frete grátis.",
   ERRO_ML: "Não foi possível ler as promoções do anúncio no Mercado Livre.",
   ANUNCIO_NAO_SINCRONIZADO: "Anúncio não encontrado no VenForce — sincronize os anúncios deste cliente.",
   JA_EM_REBATE_MELHOR: "Já está numa promoção com rebate melhor — nenhuma outra melhora margem nem lucro.",
@@ -244,14 +248,17 @@ function mesmaPromocao(a, b) {
  *   que o preço de HOJE em centavos (`base`: a promoção que forma o preço —
  *   a referência ou uma promoção com rebate já ativa) — no ML vale o menor
  *   preço para o comprador, então com preço igual ou maior o rebate nunca
- *   entra. A referência e a base nunca são candidatas.
+ *   entra. A referência e a base nunca são candidatas. Candidata que deixe o
+ *   preço final abaixo de R$ 19,00 fica fora: o comprador perderia o frete
+ *   grátis (exatamente R$ 19,00 é permitido).
  *
- * @returns {{ candidatas: object[], motivo: null|'SEM_CANDIDATA'|'PRECO_NAO_MENOR' }}
+ * @returns {{ candidatas: object[], motivo: null|'SEM_CANDIDATA'|'PRECO_NAO_MENOR'|'ABAIXO_FRETE_GRATIS' }}
  */
 function filtrarCandidatas(promocoes, referenciaPromo, base = referenciaPromo) {
   const precoRef = centavos(base && base.precoFinal);
   const candidatas = [];
   let algumaComPrecoNaoMenor = false;
+  let algumaAbaixoFreteGratis = false;
   for (const p of promocoes || []) {
     if (!p) continue;
     if (mesmaPromocao(p, referenciaPromo) || mesmaPromocao(p, base)) continue;
@@ -264,10 +271,17 @@ function filtrarCandidatas(promocoes, referenciaPromo, base = referenciaPromo) {
       algumaComPrecoNaoMenor = true;
       continue;
     }
+    if (preco < PRECO_MINIMO_FRETE_GRATIS_CENTAVOS) {
+      algumaAbaixoFreteGratis = true;
+      continue;
+    }
     candidatas.push(p);
   }
   if (candidatas.length) return { candidatas, motivo: null };
-  return { candidatas, motivo: algumaComPrecoNaoMenor ? MOTIVOS.PRECO_NAO_MENOR : MOTIVOS.SEM_CANDIDATA };
+  const motivo = algumaAbaixoFreteGratis
+    ? MOTIVOS.ABAIXO_FRETE_GRATIS
+    : algumaComPrecoNaoMenor ? MOTIVOS.PRECO_NAO_MENOR : MOTIVOS.SEM_CANDIDATA;
+  return { candidatas, motivo };
 }
 
 // ─── Margem num preço (mesma composição do cenário de preço do Simular) ──────
@@ -433,7 +447,8 @@ function validarEscolhas(escolhasBrutas, resultado, referencia) {
  * releitura ao vivo que a escrita fez (nada de cache do frontend):
  * candidata ainda candidate, com subsídio, preço ainda MENOR que o preço de
  * hoje (a promoção que forma o preço — referência ou outra com rebate já
- * ativa), e a referência ainda ativa no anúncio.
+ * ativa), preço final a partir de R$ 19,00 (abaixo disso o comprador perde o
+ * frete grátis) e a referência ainda ativa no anúncio.
  */
 function criarRevalidacao(referencia) {
   return function revalidar({ promo, lista }) {
@@ -449,6 +464,12 @@ function criarRevalidacao(referencia) {
     if (pc === null || pc >= centavos(atual.precoFinal)) {
       const deQuem = mesmaPromocao(atual, ref) ? "o da referência" : `o preço de hoje (${atual.nome || atual.id})`;
       return falha("PRECO_NAO_MENOR", `O preço desta promoção não é mais menor que ${deQuem} — o rebate não entraria. Nada foi enviado.`);
+    }
+    // Garante o bloqueio também na escrita real (executar), mesmo com um
+    // resultado antigo salvo antes desta regra.
+    if (pc < PRECO_MINIMO_FRETE_GRATIS_CENTAVOS) {
+      const emReais = (pc / 100).toFixed(2).replace(".", ",");
+      return falha("ABAIXO_FRETE_GRATIS", `O preço desta promoção (R$ ${emReais}) fica abaixo de R$ 19,00 — o comprador perderia o frete grátis. Nada foi enviado.`);
     }
     if (!(num(promo.subsidioMl) > 0)) {
       return falha("SEM_SUBSIDIO", "Esta promoção não tem mais subsídio do Mercado Livre. Nada foi enviado.");
@@ -1240,5 +1261,6 @@ module.exports = {
   criarRepositorio,
   MOTIVOS,
   MOTIVO_TEXTO,
+  PRECO_MINIMO_FRETE_GRATIS_CENTAVOS,
   JOB_ORFAO_MINUTOS,
 };

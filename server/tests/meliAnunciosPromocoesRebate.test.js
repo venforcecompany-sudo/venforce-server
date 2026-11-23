@@ -6,8 +6,9 @@
 //
 //  1. referência padrão: "vendex" + mês atual (America/Sao_Paulo), sem acento
 //     e sem caixa; sem ela, a Vendex ativa mais recente; sem Vendex, nenhuma;
-//  2. candidatas: tipo ACEITE, subsídio ML > 0, candidate, preço conhecido e
-//     ESTRITAMENTE menor que o da referência (igual/maior = PRECO_NAO_MENOR);
+//  2. candidatas: tipo ACEITE, subsídio ML > 0, candidate, preço conhecido,
+//     ESTRITAMENTE menor que o da referência (igual/maior = PRECO_NAO_MENOR) e
+//     a partir de R$ 19,00 (abaixo = ABAIXO_FRETE_GRATIS, sem frete grátis);
 //  3. margem de cada preço = mesma composição do Simular (computeMargin com
 //     comissão/frete cotados naquele preço); cotação falha → COTACAO_INDISPONIVEL,
 //     sem custo → SEM_CUSTO, nunca estimativa;
@@ -171,6 +172,23 @@ async function run() {
 
     const umCentavo = svc.filtrarCandidatas([ref, promo({ id: "P-1C", type: "MARKETPLACE_CAMPAIGN", status: "candidate", original_price: 100, suggested_discounted_price: 99.99, meli_percentage: 2 })], ref);
     assert.strictEqual(umCentavo.candidatas.length, 1, "1 centavo abaixo já é estritamente menor");
+
+    const abaixo19 = svc.filtrarCandidatas([ref, promo({ id: "P-18", type: "MARKETPLACE_CAMPAIGN", status: "candidate", original_price: 100, suggested_discounted_price: 18.99, meli_percentage: 2 })], ref);
+    assert.strictEqual(abaixo19.candidatas.length, 0, "18,99 não entra em candidatas");
+    assert.strictEqual(abaixo19.motivo, "ABAIXO_FRETE_GRATIS", "abaixo de R$ 19,00 o comprador perde o frete grátis");
+
+    const exatos19 = svc.filtrarCandidatas([ref, promo({ id: "P-19", type: "MARKETPLACE_CAMPAIGN", status: "candidate", original_price: 100, suggested_discounted_price: 19, meli_percentage: 2 })], ref);
+    assert.deepStrictEqual(exatos19.candidatas.map((c) => c.id), ["P-19"], "exatamente R$ 19,00 ainda garante o frete grátis");
+    assert.strictEqual(exatos19.motivo, null);
+
+    const base30 = refAtiva(30);
+    const mistura = svc.filtrarCandidatas([
+      base30,
+      promo({ id: "P-BAIXA", type: "MARKETPLACE_CAMPAIGN", status: "candidate", original_price: 100, suggested_discounted_price: 18.5, meli_percentage: 2 }),
+      promo({ id: "P-25", type: "MARKETPLACE_CAMPAIGN", status: "candidate", original_price: 100, suggested_discounted_price: 25, meli_percentage: 2 }),
+    ], base30);
+    assert.deepStrictEqual(mistura.candidatas.map((c) => c.id), ["P-25"], "só a de 25 sobra; a de 18,50 fica fora");
+    assert.strictEqual(mistura.motivo, null, "havendo candidata válida, não há motivo de descarte");
 
     const nada = svc.filtrarCandidatas([ref, lista[3], lista[4], lista[5]], ref);
     assert.strictEqual(nada.motivo, "SEM_CANDIDATA");
@@ -351,6 +369,10 @@ async function run() {
     assert.strictEqual((await svc.avaliarItem(entrada({ anuncio: null }), depsItem())).motivo, "ANUNCIO_NAO_SINCRONIZADO");
     assert.strictEqual((await svc.avaliarItem(entrada(), depsItem({ lista: [refAtiva(100)] }))).motivo, "SEM_CANDIDATA");
     assert.strictEqual((await svc.avaliarItem(entrada(), depsItem({ lista: [refAtiva(90), smart("P-OK")] }))).motivo, "PRECO_NAO_MENOR");
+    const abaixo19 = await svc.avaliarItem(entrada(), depsItem({ lista: [refAtiva(100), promo({ id: "P-18", type: "MARKETPLACE_CAMPAIGN", status: "candidate", original_price: 100, suggested_discounted_price: 18.99, meli_percentage: 2 })] }));
+    assert.strictEqual(abaixo19.status, "descartado");
+    assert.strictEqual(abaixo19.motivo, "ABAIXO_FRETE_GRATIS", "sem candidata acima de R$ 19,00 → descartado com o novo motivo");
+    assert.ok(/frete grátis/.test(abaixo19.motivoTexto));
     const erroMl = await svc.avaliarItem(entrada(), depsItem({ listar: async () => ({ ok: false, status: 500, promocoes: [] }) }));
     assert.strictEqual(erroMl.motivo, "ERRO_ML");
     ok("descartes: FORA_DA_REFERENCIA, ANUNCIO_NAO_SINCRONIZADO, SEM_CANDIDATA, PRECO_NAO_MENOR, ERRO_ML");

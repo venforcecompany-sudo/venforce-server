@@ -62,8 +62,21 @@ const STATUS_ALTERAVEL = new Set(["started", "active"]);
 // Participações (inscrito, mesmo que ainda não comece ou não forme o preço).
 const STATUS_PODE_SAIR = new Set(["started", "active", "pending"]);
 
+// Abaixo de R$ 19,00 o comprador perde o frete grátis no Mercado Livre. Vale
+// para promoções com rebate/subsídio do ML (quem paga a diferença é o ML);
+// promoções bancadas só pelo vendedor (sem rebate) não são afetadas aqui.
+// Exatamente R$ 19,00 ainda garante o frete grátis.
+const PRECO_MINIMO_FRETE_GRATIS_CENTAVOS = 1900;
+
 function falha(codigo, motivo) {
   return { ok: false, codigo, motivo };
+}
+
+// Preços comparados em CENTAVOS — nunca em ponto flutuante cru.
+function centavos(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
 }
 
 function normalizarPrecoPromocao(bruto) {
@@ -310,6 +323,18 @@ async function participarPromocaoAceite({ clienteId, itemId, mlUserId, promotion
     return falha("PROMOCAO_JA_PARTICIPA", "O anúncio já participa desta promoção. Atualize a tela.");
   }
 
+  // Piso de frete grátis: com rebate do ML, preço final abaixo de R$ 19,00
+  // tira o frete grátis do comprador. Vale para TODOS os chamadores deste
+  // escritor (Radar, Central de Margem e Anúncios) e é checado ANTES do hook
+  // e do POST — nada é enviado. Sem rebate (bancada pelo vendedor), não se
+  // aplica: o piso aqui é só das promoções com subsídio do ML.
+  const temRebateMl = Number(promo.subsidioMl) > 0 || Number(promo.meliPercentage) > 0;
+  const precoCentavos = centavos(promo.precoFinal);
+  if (temRebateMl && precoCentavos !== null && precoCentavos < PRECO_MINIMO_FRETE_GRATIS_CENTAVOS) {
+    const emReais = (precoCentavos / 100).toFixed(2).replace(".", ",");
+    return falha("ABAIXO_FRETE_GRATIS", `O preço desta promoção (R$ ${emReais}) fica abaixo de R$ 19,00 — o comprador perderia o frete grátis. Nada foi enviado.`);
+  }
+
   const corpo = { promotion_id: promo.id, promotion_type: promo.tipo };
   if (!TIPOS_ACEITE_SEM_OFFER_NO_POST.has(promo.tipo)) {
     if (!promo.refId) {
@@ -408,4 +433,5 @@ module.exports = {
   sairPromocao,
   normalizarPrecoPromocao,
   TIPOS_COM_ESCRITA,
+  PRECO_MINIMO_FRETE_GRATIS_CENTAVOS,
 };
