@@ -21,32 +21,120 @@ const MOTIVO_COLETA_FALHOU = "coleta_billing_falhou";
 // nunca conciliados, pedido mudou (hash), contrato do conciliador mudou (reinterpretação: descontos já gravados são
 // reaproveitados), reconsulta/falha vencida, ou esgotada com a retentativa LONGA vencida (recuperação automática depois
 // de uma indisponibilidade do ML; o limite final é a janela). Concluídas ficam de fora.
-const SELECIONAR_SQL = `/* sentinel:CONCILIACAO_SELECIONAR */
-  SELECT p.pedido_id, p.status_ml, p.itens, p.comissao, p.payload_hash, p.data_pedido,
-         (c.pedido_id IS NOT NULL) AS tem_conciliacao, c.estado AS estado_anterior, c.status_coleta,
-         c.observacoes, c.falhas_consecutivas, c.pedido_payload_hash, c.descontos_min, c.descontos_consultado_em
-    FROM sentinel_pedidos p
-    LEFT JOIN sentinel_conciliacao_comissao c ON c.cliente_conta_id = p.cliente_conta_id AND c.pedido_id = p.pedido_id
-   WHERE p.cliente_conta_id = $1
-     AND p.status_ml = 'paid'
+// Forma do pedido elegível (sem janela de datas; alias `p` = sentinel_pedidos). FONTE ÚNICA: a seleção do coletor e a
+// leitura operacional (cobertura) usam este mesmo predicado — nunca copiar.
+const ELEGIBILIDADE_SQL = `p.status_ml = 'paid'
      AND p.comissao IS NOT NULL
      AND p.estado_margem IN ('confirmada', 'sem_custo', 'custo_ambiguo')
-     AND p.data_pedido >= $2::timestamptz - make_interval(days => $3::int)
-     AND p.data_pedido <= $2::timestamptz - make_interval(hours => $4::int)
      AND jsonb_typeof(p.itens) = 'array' AND jsonb_array_length(p.itens) = 1
-     AND (p.itens -> 0 ->> 'quantidade') = '1'
-     AND (c.pedido_id IS NULL
-          OR c.pedido_payload_hash IS DISTINCT FROM p.payload_hash
-          OR c.contrato_versao IS DISTINCT FROM $6::smallint
-          OR (c.status_coleta IN ('reconsultar', 'falha')
-              AND (c.proxima_tentativa_em IS NULL OR c.proxima_tentativa_em <= $2::timestamptz))
-          OR (c.status_coleta = 'esgotada' AND c.proxima_tentativa_em <= $2::timestamptz))
-   ORDER BY COALESCE(c.proxima_tentativa_em, p.data_pedido) ASC, p.pedido_id ASC
-   LIMIT $5`;
+     AND (p.itens -> 0 ->> 'quantidade') = '1'`;
 
-async function selecionarCandidatos(db, contaId, { agoraIso, janelaDias, maturidadeHoras, limite }) {
-  const r = await db.query(SELECIONAR_SQL, [contaId, agoraIso, janelaDias, maturidadeHoras, limite, CONCILIACAO_CONTRATO_VERSAO]);
+// Política de seleção (S1.5 — starvation comprovada em produção em 19/11: a ordem antiga, por
+// COALESCE(proxima_tentativa_em, data_pedido) ASC, gastava o orçamento nos pedidos MAIS ANTIGOS da janela, que saíam dela
+// antes de qualquer reconsulta). É ORDEM de consulta, não certeza de nada:
+//   tier 0 — já conciliado, descontos em cache e reprocessamento devido (reconsulta/falha vencida, hash ou contrato mudou),
+//            exceto esgotada: custa ~0 chamada extra (vai no lote do Billing, sem /discounts);
+//   tier 1 — nunca consultado e citado por incidente aberto/reaberto/reconhecido (só se a tabela de incidentes existir);
+//   tier 2 — nunca consultado (ou 1ª consulta que falhou sem observar nada), MAIS RECENTE primeiro;
+//   tier 3 — reprocessamento devido sem descontos em cache;
+//   tier 4 — esgotada com a retentativa longa vencida.
+// Janelas: a PRIMEIRA consulta (e o reprocessamento de concluída por hash/contrato) fica em janelaDias; pedido já
+// conciliado em reconsultar/falha/esgotada continua elegível até janelaReconsultaDias (≥ janelaDias), para que o documento
+// provisório de um pedido de ~30 dias seja de fato reconsultado.
+// $1 conta, $2 agora, $3 janelaDias, $4 maturidadeHoras, $5 limite, $6 contrato, $7 janelaReconsultaDias
+function montarSelecionarSql({ comIncidentes = false } = {}) {
+  const incidente = comIncidentes
+    ? `EXISTS (SELECT 1 FROM sentinel_incidentes i
+                  WHERE i.cliente_conta_id = p.cliente_conta_id
+                    AND i.status IN ('aberto', 'reaberto', 'reconhecido')
+                    AND p.pedido_id = ANY(i.pedidos_ids))`
+    : "false";
+  // ordem DENTRO da prioridade (mesma no ROW_NUMBER e no ORDER BY final)
+  const ordem = (a) => `${a}.tier ASC,
+            CASE WHEN ${a}.tier IN (1, 2) THEN ${a}.data_pedido END DESC NULLS LAST,
+            COALESCE(${a}.proxima_tentativa_em, ${a}.data_pedido) ASC,
+            ${a}.pedido_id ASC`;
+  return `/* sentinel:CONCILIACAO_SELECIONAR${comIncidentes ? "_INC" : ""} */
+  SELECT q.pedido_id, q.status_ml, q.itens, q.comissao, q.payload_hash, q.data_pedido,
+         q.tem_conciliacao, q.estado_anterior, q.status_coleta, q.observacoes, q.falhas_consecutivas,
+         q.pedido_payload_hash, q.descontos_min, q.descontos_consultado_em, q.tier
+    FROM (
+      SELECT s.*,
+             -- COTA: o tier 0 (reprocessamento com cache: ~0 chamada extra, cabe num lote só do Billing) tem $5 vagas
+             -- PRÓPRIAS; os demais tiers outras $5. Sem isso, ≥ $5 reconsultas vencidas tomariam todo o LIMIT e nenhum
+             -- pedido novo seria consultado na execução mesmo com orçamento sobrando (achado da revisão independente).
+             ROW_NUMBER() OVER (PARTITION BY (s.tier = 0) ORDER BY ${ordem("s")}) AS rn
+        FROM (
+          SELECT p.pedido_id, p.status_ml, p.itens, p.comissao, p.payload_hash, p.data_pedido,
+                 (c.pedido_id IS NOT NULL) AS tem_conciliacao, c.estado AS estado_anterior, c.status_coleta,
+                 c.observacoes, c.falhas_consecutivas, c.pedido_payload_hash, c.descontos_min, c.descontos_consultado_em,
+                 c.proxima_tentativa_em,
+                 CASE
+                   WHEN c.pedido_id IS NULL THEN CASE WHEN ${incidente} THEN 1 ELSE 2 END
+                   WHEN c.status_coleta = 'esgotada' THEN 4
+                   WHEN c.descontos_min IS NOT NULL THEN 0
+                   -- 1ª consulta que FALHOU (5xx/timeout do lote) e nunca observou nada: equivale a "nunca consultado"
+                   -- (tier 2, por recência). No tier 3 ficaria atrás de todo o backlog novo (conta 86: ~67 novos/dia) e
+                   -- nunca seria retentada. Backoff exponencial + lote menor por falhas continuam isolando o "venenoso".
+                   WHEN c.status_coleta = 'falha' AND c.observado_em IS NULL THEN 2
+                   ELSE 3
+                 END AS tier
+            FROM sentinel_pedidos p
+            LEFT JOIN sentinel_conciliacao_comissao c ON c.cliente_conta_id = p.cliente_conta_id AND c.pedido_id = p.pedido_id
+           WHERE p.cliente_conta_id = $1
+             AND ${ELEGIBILIDADE_SQL}
+             AND p.data_pedido >= $2::timestamptz - make_interval(days => GREATEST($3::int, $7::int))
+             AND p.data_pedido <= $2::timestamptz - make_interval(hours => $4::int)
+             AND (
+                  -- primeira consulta / concluída que mudou: só dentro de janelaDias
+                  (p.data_pedido >= $2::timestamptz - make_interval(days => $3::int)
+                   AND (c.pedido_id IS NULL
+                        OR c.pedido_payload_hash IS DISTINCT FROM p.payload_hash
+                        OR c.contrato_versao IS DISTINCT FROM $6::smallint))
+                  -- reconsulta/falha/esgotada vencida: até janelaReconsultaDias
+               OR (c.status_coleta IN ('reconsultar', 'falha')
+                   AND (c.proxima_tentativa_em IS NULL OR c.proxima_tentativa_em <= $2::timestamptz))
+               OR (c.status_coleta = 'esgotada' AND c.proxima_tentativa_em <= $2::timestamptz)
+             )
+        ) s
+    ) q
+   WHERE q.rn <= $5
+   ORDER BY ${ordem("q")}
+   LIMIT 2 * $5::int`;
+}
+
+// Sem a tabela de incidentes (V0-b não aplicada) a subconsulta não pode nem ser preparada: variante sem tier 1.
+const SELECIONAR_SQL = montarSelecionarSql({ comIncidentes: false });
+const SELECIONAR_INCIDENTES_SQL = montarSelecionarSql({ comIncidentes: true });
+
+const JANELA_RECONSULTA_PADRAO_DIAS = 60;
+
+async function incidentesExistem(db) {
+  try {
+    const r = await db.query("SELECT to_regclass('public.sentinel_incidentes') IS NOT NULL AS ok");
+    return r.rows[0]?.ok === true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function selecionarCandidatos(db, contaId, { agoraIso, janelaDias, maturidadeHoras, limite, janelaReconsultaDias, comIncidentes }) {
+  const usarInc = comIncidentes === undefined ? await incidentesExistem(db) : comIncidentes === true;
+  const janelaRec = Math.max(Number(janelaDias) || 0, Number(janelaReconsultaDias) || JANELA_RECONSULTA_PADRAO_DIAS);
+  const r = await db.query(usarInc ? SELECIONAR_INCIDENTES_SQL : SELECIONAR_SQL,
+    [contaId, agoraIso, janelaDias, maturidadeHoras, limite, CONCILIACAO_CONTRATO_VERSAO, janelaRec]);
   return r.rows;
+}
+
+// Rotação: a conta cuja última conciliação gravada é a MAIS ANTIGA vai primeiro (nunca conciliada = primeiro de tudo), para
+// que o orçamento GLOBAL da execução não deixe sempre a última conta da lista com menos. Consulta barata (índice por conta).
+async function ordenarContasPorAntiguidade(db, contaIds) {
+  if (!contaIds.length) return [];
+  const r = await db.query(
+    `SELECT x.id, (SELECT MAX(c.atualizado_em) FROM sentinel_conciliacao_comissao c WHERE c.cliente_conta_id = x.id) AS ultima
+       FROM unnest($1::int[]) AS x(id)
+      ORDER BY ultima ASC NULLS FIRST, x.id ASC`, [contaIds]);
+  return r.rows.map((x) => Number(x.id));
 }
 
 // Mesmo critério do polling (sentinelWorker.selecionarContas): só contas ML ATIVAS com seller, dentro da allowlist.
@@ -138,7 +226,13 @@ async function zerarOcorrencias(dbW, chave = CHAVE_PAUSA_429) {
 module.exports = {
   CHAVE_PAUSA_429,
   MOTIVO_COLETA_FALHOU,
+  ELEGIBILIDADE_SQL,
   SELECIONAR_SQL,
+  SELECIONAR_INCIDENTES_SQL,
+  JANELA_RECONSULTA_PADRAO_DIAS,
+  montarSelecionarSql,
+  incidentesExistem,
+  ordenarContasPorAntiguidade,
   UPSERT_SQL,
   FALHA_SQL,
   selecionarCandidatos,

@@ -12,9 +12,9 @@ const pool = require("../config/database");
 const acessoReal = require("../services/sentinel/sentinelAcesso");
 const { criarController } = require("../controllers/sentinelController");
 
-function criarSentinelRouter({ auth = authMiddleware, db = pool, acesso = acessoReal, motor = () => require("../services/sentinel/sentinelIncidentes"), conciliacao } = {}) {
+function criarSentinelRouter({ auth = authMiddleware, db = pool, acesso = acessoReal, motor = () => require("../services/sentinel/sentinelIncidentes"), conciliacao, operacao } = {}) {
   const router = express.Router();
-  const c = criarController({ db, acesso, motor, ...(conciliacao ? { conciliacao } : {}) });
+  const c = criarController({ db, acesso, motor, ...(conciliacao ? { conciliacao } : {}), ...(operacao ? { operacao } : {}) });
 
   const gatePapel = (req, res, next) => {
     if (!acesso.papelPermitido(req.user)) {
@@ -35,6 +35,8 @@ function criarSentinelRouter({ auth = authMiddleware, db = pool, acesso = acesso
   router.get("/conciliacao/resumo", ...base, c.conciliacaoResumo);
   router.get("/conciliacao", ...base, c.conciliacaoListar);
   router.get("/conciliacao/pedidos/:pedidoId", ...base, c.conciliacaoPedido);
+  // Operação (S1.5): worker, polling, Billing, cobertura, grants e sinais — somente leitura.
+  router.get("/operacao", ...base, c.operacao);
   return router;
 }
 

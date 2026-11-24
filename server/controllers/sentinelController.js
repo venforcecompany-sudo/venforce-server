@@ -76,9 +76,12 @@ function atorDe(user) {
 }
 
 // conciliacao: leitura da conciliação da comissão (S1); injetável em teste, carregada sob demanda.
-function criarController({ db, acesso, motor, conciliacao = () => require("../services/sentinel/sentinelConciliacaoLeitura") }) {
+// operacao: leitura operacional consolidada (S1.5); injetável em teste, carregada sob demanda.
+function criarController({ db, acesso, motor, conciliacao = () => require("../services/sentinel/sentinelConciliacaoLeitura"),
+  operacao = () => require("../services/sentinel/sentinelOperacao") }) {
   const incidentes = () => (typeof motor === "function" ? motor() : motor);
   const conc = () => (typeof conciliacao === "function" ? conciliacao() : conciliacao);
+  const oper = () => (typeof operacao === "function" ? operacao() : operacao);
 
   // Envolve handlers: erros do motor/BD viram resposta sem vazar stack/SQL.
   const seguro = (fn) => async (req, res) => {
@@ -213,6 +216,14 @@ function criarController({ db, acesso, motor, conciliacao = () => require("../se
       const item = await conc().obterConciliacaoPedido(db, contaId, pedidoId);
       if (!item) return naoEncontrado();
       res.json({ ok: true, conciliacao: limpar(item) });
+    }),
+
+    // ── Operação (S1.5) — SOMENTE LEITURA. Blocos globais (worker/agenda/429) sem dado de cliente; por conta só a carteira.
+    // Sinais operacionais ≠ incidentes financeiros (nada de severidade de incidente nem "prejuízo").
+    operacao: seguro(async (req, res) => {
+      const { contaIds } = await escopo(req);
+      const r = await oper().lerOperacao(db, { contaIds, incidentes: incidentes() });
+      res.json({ ok: true, operacao: limpar(r) });
     }),
   };
 }
