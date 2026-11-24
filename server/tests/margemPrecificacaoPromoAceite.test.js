@@ -277,6 +277,23 @@ cenario("escritor recusa (PROMOCAO_JA_PARTICIPA na releitura dele) → 'recusado
   assert.strictEqual(c.chamadas.enviosMl.length, 0);
 });
 
+cenario("escritor recusa ABAIXO_FRETE_GRATIS (rebate < R$ 19,00) → 'recusado', não 'falhou'", async () => {
+  const c = cenarioAceite();
+  const repo = criarRepoMemoria();
+  const p = await preview(c, repo);
+  c.estado.respostaAceite = () => ({
+    ok: false,
+    codigo: "ABAIXO_FRETE_GRATIS",
+    motivo: "O preço desta promoção (R$ 18,90) fica abaixo de R$ 19,00 — o comprador perderia o frete grátis. Nada foi enviado.",
+  });
+  const r = await aplicar(c, repo, p.preview.id);
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.codigo, "ABAIXO_FRETE_GRATIS");
+  assert.strictEqual(r.aplicacao.status, "recusado", "piso de frete grátis é recusa do serviço, não falha");
+  assert.ok(/R\$ 18,90/.test(r.motivo));
+  assert.ok(/frete grátis/.test(r.motivo));
+});
+
 cenario("sugestão sumiu (ML não sugere mais preço) → PRECO_SUGERIDO_MUDOU, zero escrita", async () => {
   const c = cenarioAceite();
   const repo = criarRepoMemoria();
