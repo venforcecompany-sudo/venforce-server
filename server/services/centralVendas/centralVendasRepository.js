@@ -745,8 +745,9 @@ async function getLatestCentralVendasImport(
   if (condicaoConta) condicoes.push(condicaoConta);
 
   const rowsResult = await db.query(
+    // Sem payload_json (ver resolveImportsForRange).
     `SELECT id, cliente_id, cliente_slug, marketplace, competencia, fonte, status, confianca,
-            resumo_json, payload_json, created_at, updated_at, cliente_conta_id,
+            resumo_json, created_at, updated_at, cliente_conta_id,
             publication_status, coverage_date_from, coverage_date_to, published_at
        FROM central_vendas_imports
       WHERE ${condicoes.join(" AND ")}`,
@@ -929,7 +930,10 @@ async function resolveImportsForRange(
   if (condicaoConta) condicoes.push(condicaoConta);
 
   const rowsResult = await db.query(
-    `SELECT id, competencia, fonte, status, confianca, resumo_json, payload_json, created_at, updated_at,
+    // Sem payload_json: no formato completo é o motorPayload inteiro (TOAST) e
+    // nenhum leitor do período o usa (só resumo_json); era lido de TODOS os
+    // imports candidatos de cada competência, não só do escolhido.
+    `SELECT id, competencia, fonte, status, confianca, resumo_json, created_at, updated_at,
             cliente_conta_id, publication_status, coverage_date_from, coverage_date_to, published_at, sync_run_id
        FROM central_vendas_imports
       WHERE ${condicoes.join(" AND ")}`,
