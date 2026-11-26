@@ -5,7 +5,8 @@
 // Estratégia (read-only, não altera nada no Mercado Livre):
 //  1. lista os item_ids do vendedor via /users/{userId}/items/search (scan/scroll);
 //  2. no modo "novos", descarta os ids que já existem no banco;
-//  3. busca os itens em lotes de 20 via multiget /items?ids=...;
+//  3. lê os itens em grupos de 20 (o mlFetch faz um GET /items/{id} por item —
+//     o multiget do ML passou a recusar lotes), contando as falhas por item;
 //  4. calcula o Score VenForce de cada anúncio;
 //  5. faz upsert na tabela meli_anuncios.
 //
@@ -218,6 +219,46 @@ async function coletarItemIds(clienteId, mlUserId) {
 }
 
 // -----------------------------------------------------------------------------
+// Lê os itens no ML (o mlFetch faz uma leitura por item; ver mlClient) e separa
+// o que virou registro do que falhou, item a item — nunca descarta em silêncio.
+// `contexto(id)` devolve { slug, contaId, mlUserId } do item.
+// -----------------------------------------------------------------------------
+async function lerRegistros({ clienteId, ids, mlUserId = null, contexto }) {
+  const registros = [];
+  const falhas = [];
+  for (let i = 0; i < ids.length; i += LOTE_MULTIGET) {
+    const lote = ids.slice(i, i + LOTE_MULTIGET);
+    const resp = await mlFetch(
+      clienteId,
+      `/items?ids=${lote.join(",")}`,
+      { ...(mlUserId ? { mlUserId } : {}), bigIntFields: CAMPOS_ID_GRANDE }
+    );
+    if (!resp || !resp.ok || !Array.isArray(resp.data)) {
+      const motivo = `Mercado Livre respondeu ${(resp && resp.status) || "sem resposta"}`;
+      for (const id of lote) falhas.push({ itemId: String(id), motivo });
+      continue;
+    }
+    const vistos = new Set();
+    for (const entry of resp.data) {
+      const body = entry && entry.body;
+      const id = body && body.id ? String(body.id) : null;
+      if (entry && entry.code === 200 && id) {
+        vistos.add(id);
+        const c = contexto(id);
+        registros.push(mapearItem(body, clienteId, c.slug, c.contaId, c.mlUserId));
+      } else if (id) {
+        vistos.add(id);
+        falhas.push({ itemId: id, motivo: `Mercado Livre respondeu ${(entry && entry.code) || "sem código"}` });
+      }
+    }
+    for (const id of lote) {
+      if (!vistos.has(String(id))) falhas.push({ itemId: String(id), motivo: "Mercado Livre não devolveu o item" });
+    }
+  }
+  return { registros, falhas };
+}
+
+// -----------------------------------------------------------------------------
 // Sincronização principal.
 // modo: "novos"    -> apenas anúncios ainda não gravados (uso diário, rápido)
 //       "completo" -> reprocessa todos os anúncios (manutenção, mais lento)
@@ -298,26 +339,19 @@ async function sincronizar({ clienteId, clienteSlug, modo, clienteContaId = null
     limitado = true;
   }
 
-  // 3. multiget em lotes
-  const registros = [];
-  for (let i = 0; i < ids.length; i += LOTE_MULTIGET) {
-    const lote = ids.slice(i, i + LOTE_MULTIGET);
-    const resp = await mlFetch(
-      clienteId,
-      `/items?ids=${lote.join(",")}`,
-      { mlUserId, bigIntFields: CAMPOS_ID_GRANDE }
-    );
-
-    if (!resp || !resp.ok || !Array.isArray(resp.data)) {
-      // não aborta a sincronização inteira por causa de um lote ruim
-      continue;
-    }
-
-    for (const entry of resp.data) {
-      if (entry && entry.code === 200 && entry.body && entry.body.id) {
-        registros.push(mapearItem(entry.body, clienteId, clienteSlug, contaId, mlUserId));
-      }
-    }
+  // 3. leitura item a item (via mlFetch), com as falhas contadas
+  const { registros, falhas } = await lerRegistros({
+    clienteId,
+    ids,
+    mlUserId,
+    contexto: () => ({ slug: clienteSlug, contaId, mlUserId }),
+  });
+  if (registros.length === 0) {
+    return {
+      ok: false,
+      codigo: "ML_API_ERROR",
+      motivo: `Não foi possível ler nenhum dos ${ids.length} anúncios no Mercado Livre (${falhas[0] ? falhas[0].motivo : "sem resposta"}). Tente de novo em alguns minutos.`,
+    };
   }
 
   // 4. upsert
@@ -350,6 +384,11 @@ async function sincronizar({ clienteId, clienteSlug, modo, clienteContaId = null
     totalSalvos,
     userProducts,
     limitado,
+    totalFalhas: falhas.length,
+    falhas: falhas.slice(0, 20),
+    ...(falhas.length
+      ? { mensagem: `${falhas.length} anúncio(s) não puderam ser lidos no Mercado Livre agora e ficaram como estavam. Sincronize de novo para tentar outra vez.` }
+      : {}),
   };
 }
 
@@ -361,40 +400,35 @@ async function sincronizar({ clienteId, clienteSlug, modo, clienteContaId = null
 // -----------------------------------------------------------------------------
 async function atualizarItensConhecidos({ clienteId, itemIds }) {
   const unicos = [...new Set((itemIds || []).map((i) => String(i)).filter((i) => /^MLB\d+$/.test(i)))];
-  if (unicos.length === 0) return { ok: true, atualizados: 0 };
+  if (unicos.length === 0) return { ok: true, atualizados: 0, falhas: [] };
 
   await anunciosService.ensureSchema();
   const contexto = await anunciosService.contextoDosItens(clienteId, unicos);
-  if (contexto.length === 0) return { ok: true, atualizados: 0 };
+  if (contexto.length === 0) return { ok: true, atualizados: 0, falhas: [] };
 
   const porId = new Map(contexto.map((c) => [String(c.item_id), c]));
+  // Um cliente pode ter mais de uma conta do ML: cada item é lido com o token
+  // da conta a que pertence (ler com a conta errada dá 403 access_denied).
+  const porConta = new Map();
+  for (const c of contexto) {
+    const k = c.ml_user_id ? String(c.ml_user_id) : "";
+    if (!porConta.has(k)) porConta.set(k, []);
+    porConta.get(k).push(String(c.item_id));
+  }
   const registros = [];
-  for (let i = 0; i < contexto.length; i += LOTE_MULTIGET) {
-    const lote = contexto.slice(i, i + LOTE_MULTIGET);
-    // Um vendedor por chamada: o token vem de mlUserId.
-    const porVendedor = new Map();
-    for (const c of lote) {
-      const k = String(c.ml_user_id || "");
-      if (!porVendedor.has(k)) porVendedor.set(k, []);
-      porVendedor.get(k).push(String(c.item_id));
-    }
-    for (const [mlUserId, ids] of porVendedor) {
-      const resp = await mlFetch(
-        clienteId,
-        `/items?ids=${ids.join(",")}`,
-        { ...(mlUserId ? { mlUserId } : {}), bigIntFields: CAMPOS_ID_GRANDE }
-      );
-      if (!resp || !resp.ok || !Array.isArray(resp.data)) continue;
-      for (const entry of resp.data) {
-        if (entry && entry.code === 200 && entry.body && entry.body.id) {
-          const c = porId.get(String(entry.body.id));
-          if (!c) continue;
-          registros.push(
-            mapearItem(entry.body, clienteId, c.cliente_slug, c.cliente_conta_id, c.ml_user_id)
-          );
-        }
-      }
-    }
+  const falhas = [];
+  for (const [mlUserId, ids] of porConta) {
+    const lido = await lerRegistros({
+      clienteId,
+      ids,
+      mlUserId: mlUserId || null,
+      contexto: (id) => {
+        const c = porId.get(id);
+        return { slug: c.cliente_slug, contaId: c.cliente_conta_id, mlUserId: c.ml_user_id };
+      },
+    });
+    registros.push(...lido.registros);
+    falhas.push(...lido.falhas);
   }
 
   const atualizados = await anunciosService.upsertAnuncios(registros);
@@ -407,7 +441,7 @@ async function atualizarItensConhecidos({ clienteId, itemIds }) {
       error: error && error.message,
     }));
   }
-  return { ok: true, atualizados };
+  return { ok: true, atualizados, falhas };
 }
 
 module.exports = {

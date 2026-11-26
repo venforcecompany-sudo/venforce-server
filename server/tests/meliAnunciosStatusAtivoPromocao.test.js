@@ -9,8 +9,10 @@
 //  3. status ausente/ilegível ou falha de leitura não bloqueia (o ML decide);
 //  4. alterar (PUT) uma participação existente não é bloqueado por esse status;
 //  5. o sync "novos" rebusca os já gravados que não estão ativos (reativação);
-//  6. o webhook do tópico `items` atualiza só /items/MLB… do vendedor, com
-//     debounce, e ignora os demais tópicos e recursos fora do formato.
+//  6. o webhook (items e items_prices) atualiza só /items/MLB… do vendedor: uma
+//     leitura por item, releitura se o aviso veio durante a leitura, 3 tentativas;
+//     os demais tópicos e recursos fora do formato são ignorados;
+//  7. o sync conta as falhas por item e só devolve ok se leu algum anúncio.
 //
 // Sem PostgreSQL: o banco e o mlFetch são substituídos.
 
@@ -177,32 +179,118 @@ async function run() {
   assert.ok(!mlChamadas[0].path.includes("../x"));
   ok("atualizarItensConhecidos: relê só o que o portal já tem; id fora do formato é descartado");
 
+  // cliente com duas contas ML: cada item é lido com a conta dele.
+  anunciosService.contextoDosItens = async () => [
+    { cliente_id: 30, cliente_slug: "dm", cliente_conta_id: 9, ml_user_id: "111", item_id: "MLB10" },
+    { cliente_id: 30, cliente_slug: "dm", cliente_conta_id: 51, ml_user_id: "222", item_id: "MLB20" },
+  ];
+  salvos = [];
+  mlChamadas = [];
+  mlHandler = (c) => {
+    const ids = decodeURIComponent(c.path.split("ids=")[1]).split(",");
+    return { ok: true, status: 200, data: ids.map((id) => ({ code: 200, body: { id, title: "t", status: "active", attributes: [], pictures: [] } })) };
+  };
+  await syncService.atualizarItensConhecidos({ clienteId: 30, itemIds: ["MLB10", "MLB20"] });
+  assert.deepStrictEqual(mlChamadas.map((c) => [c.path, c.mlUserId]), [["/items?ids=MLB10", "111"], ["/items?ids=MLB20", "222"]]);
+  assert.deepStrictEqual(salvos.map((s) => [s.item_id, s.cliente_conta_id]).sort(), [["MLB10", 9], ["MLB20", 51]]);
+  ok("atualizarItensConhecidos: itens de contas ML diferentes são lidos cada um com a sua conta");
+
   // 6. webhook.
   assert.strictEqual(itemIdDaNotificacao({ topic: "items", resource: "/items/MLB123", userId: 111 }), "MLB123");
+  assert.strictEqual(itemIdDaNotificacao({ topic: "items_prices", resource: "/items/MLB123/prices", userId: 111 }), "MLB123");
   for (const n of [
     { topic: "orders_v2", resource: "/orders/1", userId: 1 },
     { topic: "items", resource: "https://evil/items/MLB1", userId: 1 },
     { topic: "items", resource: "/items/MLB1/../x", userId: 1 },
+    { topic: "items", resource: "/items/MLB1/prices", userId: 1 },
+    { topic: "items_prices", resource: "/items/MLB1", userId: 1 },
     { topic: "items", resource: "/items/MLB1", userId: null },
   ]) assert.strictEqual(itemIdDaNotificacao(n), null);
-  ok("webhook: só topic items com /items/MLB… e user_id viram atualização");
+  ok("webhook: items (/items/MLB…) e items_prices (/items/MLB…/prices) com user_id viram atualização; resto é ignorado");
 
-  const chamadas = [];
-  const deps = (t) => ({ atualizarItem: async (a) => { chamadas.push(a); }, agora: () => t });
-  await processarNotificacao({ topic: "items", resource: "/items/MLB77", userId: 111 }, deps(1000));
-  await processarNotificacao({ topic: "items", resource: "/items/MLB77", userId: 111 }, deps(2000)); // dentro da janela
-  await processarNotificacao({ topic: "items", resource: "/items/MLB77", userId: 111 }, deps(9000)); // fora da janela
-  await processarNotificacao({ topic: "orders_v2", resource: "/orders/5", userId: 111 }, deps(9000));
-  assert.deepStrictEqual(chamadas, [{ itemId: "MLB77", mlUserId: "111" }, { itemId: "MLB77", mlUserId: "111" }]);
-  ok("webhook: debounce por item; orders_v2 não dispara atualização");
+  const silenciar = (fn) => async () => { const e = console.error; console.error = () => {}; try { return await fn(); } finally { console.error = e; } };
+  const notif = (id, topic = "items") => ({ topic, resource: topic === "items" ? `/items/${id}` : `/items/${id}/prices`, userId: 111 });
 
-  const erro = console.error;
-  let logado = false;
-  console.error = () => { logado = true; };
-  await processarNotificacao({ topic: "items", resource: "/items/MLB88", userId: 111 }, { atualizarItem: async () => { throw new Error("boom"); }, agora: () => 50000 });
-  console.error = erro;
-  assert.ok(logado);
-  ok("webhook: falha na atualização é registrada e não propaga");
+  // avisos enquanto aguarda (atraso) viram UMA leitura.
+  let lidas = [];
+  let liberar;
+  const atraso = new Promise((r) => { liberar = r; });
+  const depsAtraso = { atualizarItem: async (a) => { lidas.push(a); }, esperar: () => atraso };
+  const p1 = processarNotificacao(notif("MLB77"), depsAtraso);
+  const p2 = processarNotificacao(notif("MLB77", "items_prices"), depsAtraso);
+  const p3 = processarNotificacao(notif("MLB77"), depsAtraso);
+  liberar();
+  await Promise.all([p1, p2, p3]);
+  assert.deepStrictEqual(lidas, [{ itemId: "MLB77", mlUserId: "111" }]);
+  ok("webhook: avisos durante o atraso viram uma leitura só");
+
+  // aviso DURANTE a leitura gera releitura (o último aviso nunca se perde).
+  lidas = [];
+  let destravar;
+  const lendo = new Promise((r) => { destravar = r; });
+  let primeira = true;
+  const depsLendo = {
+    esperar: async () => {},
+    atualizarItem: async (a) => { lidas.push(a); if (primeira) { primeira = false; await lendo; } },
+  };
+  const q1 = processarNotificacao(notif("MLB78"), depsLendo);
+  await new Promise((r) => setImmediate(r)); // a primeira leitura já começou
+  const q2 = processarNotificacao(notif("MLB78"), depsLendo);
+  destravar();
+  await Promise.all([q1, q2]);
+  assert.strictEqual(lidas.length, 2, "aviso durante a leitura força uma releitura");
+  ok("webhook: aviso durante a leitura gera releitura ao terminar");
+
+  // falha repete até 3 vezes e depois só registra.
+  let tentativas = 0;
+  await silenciar(async () => {
+    await processarNotificacao(notif("MLB79"), { esperar: async () => {}, atualizarItem: async () => { tentativas += 1; throw new Error("403"); } });
+  })();
+  assert.strictEqual(tentativas, 3);
+  ok("webhook: leitura que falha é repetida 3 vezes e depois só registrada (não propaga)");
+
+  // falha passageira: a 2ª tentativa funciona.
+  tentativas = 0;
+  await silenciar(async () => {
+    await processarNotificacao(notif("MLB80"), { esperar: async () => {}, atualizarItem: async () => { tentativas += 1; if (tentativas < 2) throw new Error("403"); } });
+  })();
+  assert.strictEqual(tentativas, 2);
+  ok("webhook: falha passageira se resolve na tentativa seguinte");
+
+  // orders_v2 não dispara atualização.
+  lidas = [];
+  await processarNotificacao({ topic: "orders_v2", resource: "/orders/5", userId: 111 }, { esperar: async () => {}, atualizarItem: async (a) => { lidas.push(a); } });
+  assert.strictEqual(lidas.length, 0);
+  ok("webhook: orders_v2 não dispara atualização");
+
+  // sync: item que o ML não devolveu é contado, não some em silêncio.
+  anunciosService.itemIdsExistentes = async () => new Set();
+  anunciosService.itemIdsNaoAtivos = async () => new Set();
+  salvos = [];
+  mlHandler = (c) => {
+    if (/search_type=scan/.test(c.path)) return { ok: true, status: 200, data: { results: c.path.includes("scroll_id") ? [] : ["MLB1", "MLB2"], scroll_id: c.path.includes("scroll_id") ? null : "s1" } };
+    return { ok: true, status: 200, data: [
+      { code: 200, body: { id: "MLB1", title: "t", status: "active", available_quantity: 1, attributes: [], pictures: [] } },
+      { code: 403, body: { id: "MLB2", error: "ResourceDeprecated" } },
+    ] };
+  };
+  let rs = await syncService.sincronizar({ clienteId: 30, clienteSlug: "dm1", modo: "completo" });
+  assert.strictEqual(rs.ok, true);
+  assert.strictEqual(rs.totalSalvos, 1);
+  assert.strictEqual(rs.totalFalhas, 1);
+  assert.strictEqual(rs.falhas[0].itemId, "MLB2");
+  assert.match(rs.mensagem, /1 anúncio/);
+  ok("sync: item que o ML recusou é contado em totalFalhas/falhas (com aviso), os demais são gravados");
+
+  // sync: nenhum item lido → erro claro, não "ok".
+  mlHandler = (c) => {
+    if (/search_type=scan/.test(c.path)) return { ok: true, status: 200, data: { results: c.path.includes("scroll_id") ? [] : ["MLB1"], scroll_id: c.path.includes("scroll_id") ? null : "s1" } };
+    return { ok: true, status: 200, data: [{ code: 403, body: { id: "MLB1", error: "ResourceDeprecated" } }] };
+  };
+  rs = await syncService.sincronizar({ clienteId: 30, clienteSlug: "dm1", modo: "completo" });
+  assert.strictEqual(rs.ok, false);
+  assert.strictEqual(rs.codigo, "ML_API_ERROR");
+  ok("sync: se nenhum anúncio puder ser lido, devolve ML_API_ERROR em vez de ok");
 }
 
 run()

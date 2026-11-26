@@ -218,13 +218,14 @@ async function run() {
       const u = new URL(url);
       let data = {};
       if (u.pathname.endsWith('/items/search')) data = { results: ['MLB222'], paging: { total: 1 } };
-      else if (u.pathname === '/items') data = [{ body: { id: 'MLB222', seller_id: 222, price: 100, listing_type_id: 'gold_special', category_id: 'MLB1', shipping: { logistic_type: 'fulfillment' } } }];
+      // O multiget /items?ids= é feito pelo mlFetch como um GET /items/{id} por item.
+      else if (u.pathname === '/items/MLB222') data = { id: 'MLB222', seller_id: 222, price: 100, listing_type_id: 'gold_special', category_id: 'MLB1', shipping: { logistic_type: 'fulfillment' } };
       else if (u.pathname.endsWith('/prices')) data = { prices: [] };
       return { ok: true, status: 200, headers: { get: () => null }, json: async () => data };
     };
     try {
       await gerarPreviewPrecificacaoMl(args);
-      assert.ok(calls.some((c) => c.url.includes('/items?ids=')));
+      assert.ok(calls.some((c) => new URL(c.url).pathname === '/items/MLB222'));
       assert.ok(calls.some((c) => c.url.includes('/listing_prices?')));
       assert.ok(calls.some((c) => c.url.includes('/shipping_options/free?')));
       assert.ok(calls.every((c) => c.auth === 'Bearer fixture-access-22'));
