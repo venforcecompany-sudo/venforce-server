@@ -40,6 +40,19 @@ const {
 
 const CONTRATO_VERSAO = 1;
 
+// Gravação dos componentes promocionais pelo motor: opt-in por flag + lista de
+// contas (mesmo padrão dos compactos). Desligada ⇒ o motor não muda nada.
+const ENV_NAME = "CENTRAL_VENDAS_COMPOSICAO_PROMOCIONAL";
+const ENV_CONTAS = "CENTRAL_VENDAS_COMPOSICAO_PROMOCIONAL_CONTAS";
+const VALORES_LIGADO = new Set(["true", "1", "on", "yes", "sim"]);
+function isComposicaoPromocionalHabilitada({ clienteContaId }, env = process.env) {
+  const raw = env[ENV_NAME];
+  if (raw == null || !VALORES_LIGADO.has(String(raw).trim().toLowerCase())) return false;
+  const lista = String(env[ENV_CONTAS] || "").split(",").map((v) => v.trim()).filter(Boolean);
+  if (lista.includes("*")) return true;
+  return clienteContaId != null && lista.includes(String(clienteContaId));
+}
+
 const ESTADOS_VALOR = Object.freeze([
   "comprovado",   // duas fontes independentes fecham ao centavo
   "observado",    // lido de uma fonte, sem contradição
@@ -322,6 +335,9 @@ function componentesInformativos(composicao, { pedidoId, itemIdDoIdx }) {
 
 module.exports = {
   CONTRATO_VERSAO,
+  ENV_NAME,
+  ENV_CONTAS,
+  isComposicaoPromocionalHabilitada,
   ESTADOS_VALOR,
   TIPOS_PROMOCIONAIS,
   comporPedido,
