@@ -12,7 +12,7 @@
 // É a prova exigida antes de ligar a escrita compacta para a conta (piloto).
 //
 //   DATABASE_URL=<role de LEITURA> node server/scripts/central-vendas-componentes-paridade.js \
-//     --conta=<cliente_conta_id> --de=2026-11-01 --ate=2026-11-25 [--include-legacy] [--saida=relatorio.json]
+//     --conta=<cliente_conta_id> --de=2026-11-01 --ate=2026-11-25 [--saida=relatorio.json]
 //
 // Segurança: NÃO lê server/.env (usa só o DATABASE_URL do shell) e imprime o
 // host antes de qualquer consulta; toda sessão é READ ONLY com
@@ -51,8 +51,11 @@ async function main() {
   const { rows: [conta] } = await db.query(
     `SELECT cc.id, c.slug FROM cliente_contas cc JOIN clientes c ON c.id = cc.cliente_id WHERE cc.id = $1`, [Number(args.conta)]);
   if (!conta) throw new Error("CONTA_INEXISTENTE");
-  const range = { clienteSlug: conta.slug, dateFrom: args.de, dateTo: args.ate, clienteContaId: Number(conta.id), includeLegacy: !!args["include-legacy"] };
-  const { importIds } = await repo.resolveImportsForRange(range, db);
+  // Imports publicados vigentes por competência, só com as colunas concedidas à
+  // raiox_ro (nunca payload_json) — a mesma seleção que o Resgate usa.
+  const { importsCanonicos } = require("../services/resgate/resgateLeituraRepository");
+  const competencias = repo.competenciasDoIntervalo(args.de, args.ate);
+  const importIds = (await importsCanonicos(db, { clienteContaId: Number(conta.id), competencias })).map((r) => Number(r.id));
   const carga = await repo.loadPedidosByImportIds({ importIds, dateFrom: args.de, dateTo: args.ate }, db);
   const comps = carga.componentes;
 
