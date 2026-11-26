@@ -208,8 +208,25 @@ function fonteAdsDoCacheFinanceiro(row, { clienteContaId, mes, agora = new Date(
   };
 }
 
+// Linhas cruas dos caches do Financeiro (financeiro_ads_cache / _full_cache,
+// valores como texto do NUMERIC) → fontes do contrato. Só da conta pedida.
+function fontesDosCachesDoFinanceiro({ ads = [], full = [] }, clienteContaId) {
+  const iso = (v) => (v ? new Date(v).toISOString() : null);
+  return {
+    fontesAds: ads.map((row) => fonteAdsDoCacheFinanceiro({
+      disponivel: true, investimentoAds: Number(row.investimento_ads), gmvAds: Number(row.gmv_ads), consultadoEm: iso(row.consultado_em),
+    }, { clienteContaId, mes: row.mes_ref })),
+    fontesFull: full.map((row) => ({
+      clienteContaId, mes: row.mes_ref, disponivel: true, definitivo: row.definitivo === true,
+      componentes: typeof row.componentes === "string" ? JSON.parse(row.componentes) : row.componentes || [],
+      consultadoEm: iso(row.consultado_em),
+    })),
+  };
+}
+
 module.exports = {
   CONTRATO_VERSAO,
+  fontesDosCachesDoFinanceiro,
   GRUPOS_FULL,
   SUBTIPOS_FRETE_FULL_EXCLUIDOS,
   mesesDoPeriodo,

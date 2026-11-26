@@ -16,6 +16,8 @@
 const pool = require("../../config/database");
 const { detalharPedido } = require("./centralVendasDetalheFinanceiro");
 const { assinaturaBaseCustos, compararAssinatura } = require("./centralVendasBaseCustosAssinatura");
+const custosOp = require("./centralVendasCustosOperacionais");
+const { cascataDoPeriodo } = require("./centralVendasComposicaoFinanceira");
 
 function getRepository() {
   return require("./centralVendasRepository");
@@ -426,6 +428,7 @@ function createCentralVendasReadService(repository = getRepository(), db = pool)
     const { rows, pagination, filteredSummary } = deriveListaEResumo(payload, params);
     const { produtos, totalFat } = buildAbcProdutos(payload.pedidos || [], payload.produtos || {});
     const dias = buildDiario(payload.pedidos || []);
+    const custosOperacionais = await montarCustosOperacionais({ cliente, context, periodo: { dateFrom: from, dateTo: to }, pedidos: payload.pedidos || [], marketplace });
     const t3 = nowMs();
 
     logPerf("read/bootstrap", {
@@ -449,7 +452,35 @@ function createCentralVendasReadService(repository = getRepository(), db = pool)
       dias,
       produtos,
       totalFaturamento: totalFat,
+      custosOperacionais,
     };
+  }
+
+  // Ads e Full por conta × período (contrato centralVendasCustosOperacionais),
+  // lidos dos caches do Financeiro. Período parcial com fonte mensal ⇒
+  // incompatível (valor visível, fora do resultado). Erro ⇒ indisponível,
+  // nunca derruba a carga da tela.
+  async function montarCustosOperacionais({ cliente, context, periodo, pedidos, marketplace }) {
+    const clienteContaId = context?.conta?.id ?? null;
+    if (marketplace !== "meli") return { disponivel: false, motivo: "marketplace_sem_fonte" };
+    if (clienteContaId == null) return { disponivel: false, motivo: "conta_nao_resolvida" };
+    try {
+      const meses = custosOp.mesesDoPeriodo(periodo.dateFrom, periodo.dateTo);
+      const fontes = typeof repository.getCustosOperacionaisDoFinanceiro === "function"
+        ? await repository.getCustosOperacionaisDoFinanceiro({ clienteContaId, clienteSlug: cliente?.slug, meses }, db)
+        : { ads: [], full: [] };
+      const { fontesAds, fontesFull } = custosOp.fontesDosCachesDoFinanceiro(fontes, clienteContaId);
+      const cas = cascataDoPeriodo(pedidos);
+      const r = custosOp.resultadoOperacional({
+        periodo, clienteContaId,
+        resultadoVendaCentavos: cas.pedidosNoResultado ? cas.resultadoVenda.centavos : null,
+        receitaProdutoCentavos: cas.linhas.receita_produto.centavos,
+        fontesAds, fontesFull,
+      });
+      return { disponivel: true, ...r };
+    } catch (err) {
+      return { disponivel: false, motivo: "erro_leitura_custos", detalhe: err?.code || null };
+    }
   }
 
   return {

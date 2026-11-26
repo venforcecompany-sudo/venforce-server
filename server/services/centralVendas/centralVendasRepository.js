@@ -1196,6 +1196,31 @@ async function getMetaFinanceiraDoPedido({ pedidoRowId, importId }, db = pool) {
   };
 }
 
+// Ads e Full do Financeiro para a Central: SÓ leitura dos caches por conta ×
+// competência que o Financeiro já preenche (financeiro_ads_cache /
+// financeiro_full_cache). Nenhuma chamada ao ML. Tabela ausente ⇒ sem fonte
+// (nunca zero). O filtro por cliente_slug junto da conta é o mesmo do
+// Financeiro (só volta cache de uma consulta feita para este mesmo par).
+async function getCustosOperacionaisDoFinanceiro({ clienteContaId, clienteSlug, meses }, db = pool) {
+  const vazio = { ads: [], full: [], tabelas: { ads: false, full: false } };
+  if (clienteContaId == null || !Array.isArray(meses) || !meses.length) return vazio;
+  const ex = await db.query(`/* cv:custos-op-tabelas */ SELECT to_regclass('public.financeiro_ads_cache') IS NOT NULL AS ads,
+                                    to_regclass('public.financeiro_full_cache') IS NOT NULL AS full`);
+  const tabelas = { ads: ex.rows[0]?.ads === true, full: ex.rows[0]?.full === true };
+  const params = [clienteContaId, normalizeSlug(clienteSlug), meses];
+  const [ads, full] = await Promise.all([
+    tabelas.ads
+      ? db.query(`/* cv:custos-op-ads */ SELECT mes_ref, investimento_ads::text AS investimento_ads, gmv_ads::text AS gmv_ads, campanhas, consultado_em
+                    FROM financeiro_ads_cache WHERE cliente_conta_id = $1 AND cliente_slug = $2 AND mes_ref = ANY($3::text[])`, params)
+      : { rows: [] },
+    tabelas.full
+      ? db.query(`/* cv:custos-op-full */ SELECT mes_ref, custo_full::text AS custo_full, lancamentos, componentes, definitivo, consultado_em
+                    FROM financeiro_full_cache WHERE cliente_conta_id = $1 AND cliente_slug = $2 AND mes_ref = ANY($3::text[])`, params)
+      : { rows: [] },
+  ]);
+  return { ads: ads.rows, full: full.rows, tabelas };
+}
+
 // M4, seção 9 — promove TODOS os candidates de um sync_run para published de
 // uma vez (um run pode ter gerado 1 import por competência tocada). Nunca
 // mexe em published_at de linhas já published (WHERE publication_status =
@@ -1223,6 +1248,7 @@ module.exports = {
   // M10 — leitura otimizada (ver comentários acima das funções).
   resolveImportsForRange,
   getMetaFinanceiraDoPedido,
+  getCustosOperacionaisDoFinanceiro,
   loadPedidosByImportIds,
   loadRealizadoByImportIds,
   carregarComponentesDosPedidos,
