@@ -238,7 +238,7 @@ async function pai() {
   if (process.env.SAIDA) fs.writeFileSync(process.env.SAIDA, JSON.stringify(saida, null, 2));
   for (const m of MODOS) {
     const x = R[m].medidas;
-    console.log(`  [${m}] período ${R[m].periodo.pedidos} pedidos/${R[m].periodo.componentes} comp. | carga ${x.central_carga.ms} ms | payload ${x.central_payload.ms} | detalhe×30 ${x.detalhe_30_pedidos.ms} | margem ${x.margem_realizado.ms} | c360 ${x.cliente360.ms} | resgate ${x.resgate.ms} | comp ${x.componentes_periodo.ms} ms cpu ${x.componentes_periodo.cpuMs} heap ${x.componentes_periodo.heapRetidoMB} MB${x.componentes_periodo_uniao_sql ? ` | união SQL ${x.componentes_periodo_uniao_sql.ms} ms` : ""}`);
+    console.log(`  [${m}] período ${R[m].periodo.pedidos} pedidos/${R[m].periodo.componentes} comp. | carga ${x.central_carga.ms} ms | payload ${x.central_payload ? x.central_payload.ms : "—"} | detalhe×30 ${x.detalhe_30_pedidos.ms} | margem ${x.margem_realizado.ms} | c360 ${x.cliente360.ms} | resgate ${x.resgate.ms} | comp ${x.componentes_periodo.ms} ms cpu ${x.componentes_periodo.cpuMs} heap ${x.componentes_periodo.heapRetidoMB} MB${x.componentes_periodo_uniao_sql ? ` | união SQL ${x.componentes_periodo_uniao_sql.ms} ms` : ""}`);
   }
   console.log("bench-leitura.cjs: todos os leitores idênticos nos modos medidos");
 }

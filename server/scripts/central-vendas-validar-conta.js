@@ -168,6 +168,26 @@ async function main() {
     relatorio.resgate = { pedidosResgate: r.pedidos, pedidosPagosCentral: pagos.size };
     if (r.pedidos !== pagos.size) problema(null, "C5_RESGATE_DIVERGE_DA_CENTRAL", relatorio.resgate);
   }
+  // Tempos dos leitores reais da conta (mediana de 5), somente leitura: a mesma
+  // medida antes (linha de base, R1) e depois de cada ativação (C3) — critério
+  // de latência do rollout (doc 11). Sem conta em observability_requests.
+  if (competencias.length) {
+    const margem = require("../services/motorMargem/adapters/centralVendasEvidenceAdapter");
+    const vig = await resgate.importsCanonicos(db, { clienteContaId: conta, competencias });
+    const ids = vig.map((v) => v.id);
+    const fim = "2999-12-31";
+    const medir = async (fn) => { const ts = []; for (let i = 0; i < 6; i += 1) { const t0 = process.hrtime.bigint(); await fn(); ts.push(Number(process.hrtime.bigint() - t0) / 1e6); } ts.shift(); ts.sort((x, y) => x - y); return Number(ts[2].toFixed(1)); };
+    relatorio.temposMs = {
+      central_carga: await medir(() => repo.loadPedidosByImportIds({ importIds: ids, dateFrom: "1900-01-01", dateTo: fim }, db)),
+      // Mesmo cálculo do adapter da Margem (carregarVendasDoPeriodo), sem a seleção
+      // M4 — ela lê imports.payload_json, proibido para a raiox_ro.
+      margem_realizado: await medir(async () => {
+        const c = await repo.loadRealizadoByImportIds({ importIds: ids, dateFrom: "1900-01-01", dateTo: fim }, db);
+        return margem.agregarPorMlb({ pedidosTodos: c.pedidos, pedidosResultado: c.pedidos.filter(pedidoEntraNoResultado), itens: c.itens, componentes: c.componentes });
+      }),
+      resgate: await medir(() => resgate.vendasPorItem(db, { clienteContaId: conta, desde: "1900-01-01", competencias })),
+    };
+  }
   relatorio.leitura = { ...cc.estatisticas };
   relatorio.veredito = relatorio.problemas.length ? "NO_GO" : "GO";
   if (args.saida) fs.writeFileSync(args.saida, JSON.stringify(relatorio, null, 2));
