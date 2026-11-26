@@ -5647,6 +5647,18 @@
 
   var REB_ESTOQUE_PRESETS = [5, 10, 20, 50, 100];
 
+  // Aplica o mesmo estoque a todas as relâmpagos marcadas, cada uma limitada à sua faixa.
+  function rebAplicarEstoqueTodos(valor) {
+    if (!REB || !isFinite(valor)) return;
+    valor = Math.min(100, Math.max(0, Math.round(valor)));
+    REB.estoqueTodos = valor;
+    rebEscolhasSelecionadas().forEach(function (x) {
+      var c = rebCandidata(rebItemPorId(x.itemId), x.promotionId);
+      if (!rebTemFaixa(c)) return;
+      REB.estoques[x.itemId + "|" + x.promotionId] = Math.min(Math.max(valor, Number(c.estoqueMinimo)), Number(c.estoqueMaximo));
+    });
+  }
+
   function rebEstoqueValido(c, n) {
     return Number.isInteger(n) && n >= Number(c.estoqueMinimo) && n <= Number(c.estoqueMaximo);
   }
@@ -5745,7 +5757,7 @@
     overlay.addEventListener("change", onMudancaRebate);
     overlay.addEventListener("input", function (e) {
       var t = e.target;
-      if (!t || t.type !== "range" || !t.hasAttribute("data-reb-estoque")) return;
+      if (!t || t.type !== "range" || !(t.hasAttribute("data-reb-estoque") || t.hasAttribute("data-reb-estoque-todos"))) return;
       var num = t.parentNode && t.parentNode.querySelector(".am-reb-estoque__num");
       if (num) num.value = t.value;
     });
@@ -5826,6 +5838,10 @@
       case "fechar-mesmo": REB.avisoFechar = true; fecharRebate(true); break;
       case "continuar": REB.avisoFechar = false; renderRebate(); break;
       case "recarregar-refs": carregarReferenciasRebate(); break;
+      case "estoque-todos":
+        rebAplicarEstoqueTodos(Number(b.getAttribute("data-reb-valor")));
+        renderRebate();
+        break;
       case "estoque-preset":
         REB.estoques[b.getAttribute("data-reb-chave")] = Number(b.getAttribute("data-reb-valor"));
         renderRebate();
@@ -5868,6 +5884,11 @@
     var t = e.target;
     if (t.id === "am-reb-ref") { REB.refId = t.value; renderRebate(); return; }
     if (t.name === "am-reb-modo") { REB.modoAnalise = t.value === "loja" ? "loja" : "ref"; renderRebate(); return; }
+    if (t.hasAttribute("data-reb-estoque-todos")) {
+      if (t.value !== "") rebAplicarEstoqueTodos(Number(t.value));
+      renderRebate();
+      return;
+    }
     var chaveEst = t.getAttribute("data-reb-estoque");
     if (chaveEst) {
       var valEst = t.value === "" ? "" : Number(t.value);
@@ -6715,6 +6736,18 @@
             '<input type="number" class="vf-input am-reb-estoque__num" id="' + idBase + '-n" inputmode="numeric" step="1" min="' + escapeAttr(c.estoqueMinimo) + '" max="' + escapeAttr(c.estoqueMaximo) + '" value="' + escapeAttr(x.estoque) + '"' +
               ' aria-label="Estoque a reservar" data-reb-estoque="' + escapeAttr(chave) + '"></div></div>';
       });
+      if (campos) {
+        var tv = REB.estoqueTodos === undefined || REB.estoqueTodos === "" ? 20 : Number(REB.estoqueTodos);
+        var chipsTodos = REB_ESTOQUE_PRESETS.map(function (p) {
+          return '<button type="button" class="am-reb-chip' + (tv === p ? " is-on" : "") + '" data-reb-acao="estoque-todos" data-reb-valor="' + p + '">' + p + "</button>";
+        }).join("");
+        campos = '<div class="am-reb-estoque am-reb-estoque--todos">' +
+          '<div class="am-reb-estoque__info"><span class="am-reb-estoque__rotulo">Todos os anúncios</span>' +
+            '<span class="am-reb-estoque__sub">Aplica o mesmo estoque a todos (respeitando a faixa de cada um); depois ajuste um a um se quiser.</span></div>' +
+          '<div class="am-reb-estoque__ctl"><div class="am-reb-chips" role="group" aria-label="Estoque rápido para todos">' + chipsTodos + "</div>" +
+            '<input type="range" class="am-reb-estoque__slider" id="am-reb-est-todos-sl" min="0" max="100" step="1" value="' + escapeAttr(Math.min(100, Math.max(0, tv || 0))) + '" aria-label="Estoque para todos" data-reb-estoque-todos="1">' +
+            '<input type="number" class="vf-input am-reb-estoque__num" id="am-reb-est-todos-n" inputmode="numeric" step="1" min="0" max="100" value="' + escapeAttr(tv) + '" aria-label="Estoque para todos" data-reb-estoque-todos="1"></div></div>' + campos;
+      }
       var travado = !!campos && rebEstoquesInvalidos() > 0;
       return '<div class="am-reb-confirma" role="alertdialog" aria-labelledby="am-reb-confirma-txt">' +
         '<p class="am-reb-confirma__txt" id="am-reb-confirma-txt">Participar de ' + n + (n === 1 ? " promoção" : " promoções") + " em " + nAnuncios + (nAnuncios === 1 ? " anúncio" : " anúncios") +
