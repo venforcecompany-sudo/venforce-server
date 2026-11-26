@@ -6375,14 +6375,32 @@
         "Para usar esta análise, os anúncios precisam estar numa promoção de referência (por exemplo, a Vendex do mês).");
     }
     var ref = rebRefSelecionada();
-    html += '<fieldset class="am-reb-modos"><legend class="vf-field__label">O que analisar</legend>' +
-      '<label class="am-reb-modo"><input type="radio" name="am-reb-modo" value="ref"' + (reb.modoAnalise === "ref" ? " checked" : "") + '> Anúncios de uma promoção de referência</label>' +
-      '<label class="am-reb-modo"><input type="radio" name="am-reb-modo" value="loja"' + (reb.modoAnalise === "loja" ? " checked" : "") + '> Toda a loja</label></fieldset>';
+    var modoCard = function (valor, titulo, desc, icone) {
+      var on = reb.modoAnalise === valor;
+      return '<label class="am-reb-modo' + (on ? " is-on" : "") + '">' +
+        '<input type="radio" class="am-reb-modo__input" name="am-reb-modo" value="' + valor + '"' + (on ? " checked" : "") + ">" +
+        '<span class="am-reb-modo__icone" aria-hidden="true">' + icone + "</span>" +
+        '<span class="am-reb-modo__txt"><span class="am-reb-modo__titulo">' + titulo + "</span>" +
+        '<span class="am-reb-modo__desc">' + desc + "</span></span>" +
+        '<span class="am-reb-modo__marca" aria-hidden="true"></span></label>';
+    };
+    var svgIc = function (d) {
+      return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + d + "</svg>";
+    };
+    // Os cards já explicam cada opção; troca o parágrafo genérico do topo.
+    html = '<fieldset class="am-reb-modos"><legend class="am-reb-modos__legenda">O que analisar</legend>' +
+      '<div class="am-reb-modos__grade">' +
+      modoCard("ref", "Promoção de referência", "Só os anúncios ativos de uma promoção, como a Vendex do mês.",
+        svgIc('<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.2"/>')) +
+      modoCard("loja", "Toda a loja", "Todos os anúncios ativos, incluindo a oferta relâmpago cofinanciada.",
+        svgIc('<path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/>')) +
+      "</div></fieldset>";
     if (reb.modoAnalise === "loja") {
-      html += '<p class="am-reb-intro">Procura, em todos os anúncios ativos com promoção candidata subsidiada pelo Mercado Livre (inclusive a oferta relâmpago cofinanciada), as que baixam o preço de hoje e aumentam a margem. O preço de hoje é o da promoção ativa ou o preço de venda. Nenhuma promoção é alterada.</p>';
+      html += '<p class="am-reb-intro">Procura promoções com subsídio do Mercado Livre que baixam o preço de hoje (o da promoção ativa ou o preço de venda) e aumentam a margem. Nenhuma promoção é alterada.</p>';
       if (reb.erro) html += rebBannerHtml("danger", reb.erro);
       return html;
     }
+    html += '<p class="am-reb-intro">Procura promoções com subsídio do Mercado Livre e preço menor, que deixem margem ou lucro maiores. A promoção de referência não é alterada.</p>';
     html += '<div class="vf-field am-reb-campo"><label class="vf-field__label" for="am-reb-ref">Promoção de referência</label>' +
       '<select id="am-reb-ref" class="vf-select">' +
       (reb.refId ? "" : '<option value="" selected>Escolha a promoção de referência…</option>') +
