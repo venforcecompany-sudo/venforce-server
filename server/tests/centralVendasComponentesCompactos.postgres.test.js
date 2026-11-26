@@ -34,7 +34,7 @@ function motorBase(competencia, dia) {
   const c = (pedidoId, itemId, tipo, valor, fonte = "orders_api", confianca = "real", obs = null, extras = {}) => ({ pedidoId, itemId, tipo, valor, fonte, confianca, obs, ...extras });
   return {
     pedidos: [pedido("A", { quantidadeItens: 2 }), pedido("B"), pedido("C")],
-    itens: [item("A", "A:1", "MLB1"), item("A", "A:2", "MLB2"), item("B", "B:1", "MLB3")],
+    itens: [item("A", "A:1", "MLB1"), item("A", "A:2", "MLB2"), { ...item("B", "B:1", "MLB3"), variacaoId: "777" }],
     componentes: [
       c("A", "A:1", "receita_produto", 12.345),
       c("A", "A:1", "tarifa_venda", -1.005),
@@ -87,19 +87,20 @@ async function filho({ url, modo }) {
 
   const cliente = { id: 1, slug: "loja", nome: "Loja" };
   const fimDoMes = (comp) => { const [y, m] = comp.split("-").map(Number); return `${comp}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`; };
-  async function gravar(competencia, dia, motor, fonte = "orders_api", conta = 5) {
+  async function gravar(competencia, dia, motor, fonte = "orders_api", conta = 5, resumo = {}) {
     const { rows: [run] } = await pool.query(
       `INSERT INTO central_vendas_sync_runs (cliente_id, cliente_slug, cliente_conta_id, marketplace, date_from, date_to, status)
        VALUES (1, 'loja', $3, 'meli', $1, $2, 'completed') RETURNING id`, [`${competencia}-01`, fimDoMes(competencia), conta]);
     const p = await repo.persistCentralVendasImport({
-      cliente, marketplace: "meli", competencia, fonte, motorPayload: { ...motor, resumo: {} }, resumo: {}, clienteContaId: conta,
+      cliente, marketplace: "meli", competencia, fonte, motorPayload: { ...motor, resumo }, resumo, clienteContaId: conta,
       syncRunId: fonte === "orders_api" ? Number(run.id) : null, publicationStatus: fonte === "orders_api" ? "candidate" : "legacy",
       coverageDateFrom: `${competencia}-01`, coverageDateTo: fimDoMes(competencia),
     });
     if (fonte === "orders_api") await repo.promoverCandidatesDoRun(Number(run.id));
     return p;
   }
-  const set = await gravar("2026-09", "30", motorBase("2026-09", "30"));
+  const RESUMO_SET = { composicaoPromocional: { contrato: 1, pedidos: 3 }, baseCustos: { baseId: "77", n: 2, hash: "h-set" } };
+  const set = await gravar("2026-09", "30", motorBase("2026-09", "30"), "orders_api", 5, RESUMO_SET);
   // Borda de mês: o MESMO pedido_id "A" também na competência seguinte.
   const out = await gravar("2026-10", "01", motorBase("2026-10", "01"));
   // Outra conta do MESMO cliente com os MESMOS pedido_id e valores diferentes
@@ -179,6 +180,20 @@ async function filho({ url, modo }) {
   const { rows: [fmt] } = await pool.query(
     `SELECT (SELECT COUNT(*) FROM central_vendas_componentes WHERE import_id = $1)::int AS planilha_linhas`, [planilha.importacao.id]);
 
+  // Detalhamento financeiro: variação do item, import dono e assinatura da base (por conteúdo).
+  const { assinaturaBaseCustos } = require("../services/centralVendas/centralVendasBaseCustosAssinatura");
+  const pedidoB = (await pool.query(`SELECT id FROM central_vendas_pedidos WHERE import_id = $1 AND pedido_id = 'B'`, [set.importacao.id])).rows[0];
+  const meta = await repo.getMetaFinanceiraDoPedido({ pedidoRowId: pedidoB.id, importId: set.importacao.id });
+  await pool.query(`CREATE TABLE IF NOT EXISTS custos (id serial PRIMARY KEY, base_id integer, produto_id text, custo_produto numeric(12,2), imposto_percentual numeric(6,2))`);
+  await pool.query(`INSERT INTO custos (base_id, produto_id, custo_produto, imposto_percentual) VALUES (77, 'MLB2', 20, 6), (77, 'MLB1', 10, 6), (78, 'MLB1', 99, 6)`);
+  const ass1 = await assinaturaBaseCustos(pool, 77);
+  await pool.query(`DELETE FROM custos WHERE base_id = 77`);
+  await pool.query(`INSERT INTO custos (base_id, produto_id, custo_produto, imposto_percentual) VALUES (77, 'MLB1', 10, 6), (77, 'MLB2', 20, 6)`);
+  const ass2 = await assinaturaBaseCustos(pool, 77);
+  await pool.query(`UPDATE custos SET custo_produto = 21 WHERE base_id = 77 AND produto_id = 'MLB2'`);
+  const ass3 = await assinaturaBaseCustos(pool, 77);
+  const detalheMeta = { variacoes: [...meta.variacoes], composicaoColetada: meta.composicaoColetada, baseCustos: meta.baseCustos,
+    assinatura: { n: ass1.n, reordenadaIgual: ass1.hash === ass2.hash, alteradaDiferente: ass3.hash !== ass2.hash, outraBaseFora: ass1.n === 2 } };
   const temCompacta = (await pool.query(`SELECT to_regclass('public.central_vendas_pedido_componentes') IS NOT NULL AS ok`)).rows[0].ok;
   const formatosGravados = temCompacta
     ? (await pool.query(`SELECT COALESCE(json_agg(f ORDER BY f), '[]'::json) AS f FROM (SELECT DISTINCT formato AS f FROM central_vendas_pedido_componentes) x`)).rows[0].f
@@ -186,6 +201,7 @@ async function filho({ url, modo }) {
   await pool.end();
   process.stdout.write(`@@R@@${JSON.stringify({
     formatosGravados,
+    detalheMeta,
     promo: carga.componentes.filter((c) => c.pedido_id === "B" && ["preco_cheio", "desconto_marketplace", "rebate_marketplace"].includes(c.tipo))
       .map((c) => [c.tipo, c.escopo, c.efeito, c.incluido_no_resultado]),
     leitura: JSON.stringify({ carga: { pedidos: carga.pedidos.map(sem), itens: carga.itens.map(sem), componentes: carga.componentes.map(sem) },
@@ -248,6 +264,11 @@ async function pai() {
     JSON.stringify(linhas.promo) === JSON.stringify(compacto.promo) && compacto.promo.length >= 3
     && compacto.promo.every((x) => x[2] === null && x[3] === false)
     && JSON.stringify(compacto.formatosGravados) === "[1,2]" && JSON.stringify(linhas.formatosGravados) === "[]");
+  ok("detalhamento: variação do item, import dono (composição coletada + base) e assinatura da base por conteúdo, nos dois formatos",
+    JSON.stringify(linhas.detalheMeta) === JSON.stringify(compacto.detalheMeta)
+    && JSON.stringify(compacto.detalheMeta.variacoes) === JSON.stringify([["B:1", "777"]])
+    && compacto.detalheMeta.composicaoColetada === true && compacto.detalheMeta.baseCustos.hash === "h-set"
+    && compacto.detalheMeta.assinatura.reordenadaIgual && compacto.detalheMeta.assinatura.alteradaDiferente && compacto.detalheMeta.assinatura.outraBaseFora);
   ok("estouro de NUMERIC(14,2) recusa o import nos dois formatos (22003)", linhas.estouro === "22003" && compacto.estouro === "22003");
   ok("retenção conta os componentes compactos do import", compacto.contagem[Object.keys(compacto.contagem)[0]].componentes_compactos === 2
     && linhas.contagem[Object.keys(linhas.contagem)[0]].componentes === 15);

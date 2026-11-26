@@ -1167,6 +1167,35 @@ async function getPedidoDetailByRowId({ importIds, dateFrom, dateTo, rowId }, db
   return { pedido, ...pedidosCompartilhados.itensComImportLido([pedido], itensResult.rows, componentesResult.rows) };
 }
 
+// Detalhamento financeiro do pedido (composicaoFinanceira): variação de cada
+// item (extra do payload do item, gravado com a composição promocional) e os
+// metadados do import DONO da linha do pedido (com reuso, o pedido pode ser
+// lido por outro import; quem calculou é o dono): se a composição foi
+// coletada e a assinatura da base de custos usada. Duas leituras por chave.
+async function getMetaFinanceiraDoPedido({ pedidoRowId, importId }, db = pool) {
+  const [itens, imp] = await Promise.all([
+    db.query(
+      `/* cv:detalhe-variacoes */ SELECT item_id, payload_json->>'variacaoId' AS variacao_id
+         FROM central_vendas_pedido_itens
+        WHERE pedido_row_id = $1 AND payload_json ? 'variacaoId'`,
+      [pedidoRowId]
+    ),
+    db.query(
+      `/* cv:detalhe-import-meta */ SELECT resumo_json->'baseCustos' AS base_custos,
+              (resumo_json ? 'composicaoPromocional') AS composicao_coletada
+         FROM central_vendas_imports WHERE id = $1`,
+      [importId]
+    ),
+  ]);
+  const linha = imp.rows[0] || {};
+  const base = typeof linha.base_custos === "string" ? JSON.parse(linha.base_custos) : linha.base_custos || null;
+  return {
+    variacoes: new Map(itens.rows.map((r) => [r.item_id, r.variacao_id])),
+    composicaoColetada: linha.composicao_coletada === true,
+    baseCustos: base,
+  };
+}
+
 // M4, seção 9 — promove TODOS os candidates de um sync_run para published de
 // uma vez (um run pode ter gerado 1 import por competência tocada). Nunca
 // mexe em published_at de linhas já published (WHERE publication_status =
@@ -1193,6 +1222,7 @@ module.exports = {
   getCentralVendasByRange,
   // M10 — leitura otimizada (ver comentários acima das funções).
   resolveImportsForRange,
+  getMetaFinanceiraDoPedido,
   loadPedidosByImportIds,
   loadRealizadoByImportIds,
   carregarComponentesDosPedidos,

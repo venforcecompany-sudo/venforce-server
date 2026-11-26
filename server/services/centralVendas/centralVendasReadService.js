@@ -14,6 +14,8 @@
 // snapshot paralela.
 
 const pool = require("../../config/database");
+const { detalharPedido } = require("./centralVendasDetalheFinanceiro");
+const { assinaturaBaseCustos, compararAssinatura } = require("./centralVendasBaseCustosAssinatura");
 
 function getRepository() {
   return require("./centralVendasRepository");
@@ -364,7 +366,8 @@ function createCentralVendasReadService(repository = getRepository(), db = pool)
     // (mesmo escopo account-aware que getCentralVendasByRange sempre
     // aplicou) — evita IDOR por construção, sem checagem extra de posse.
     const t0 = nowMs();
-    const { pedido } = await base.resolveOrderDetail(clienteSlug, rowIdNum, { dateFrom, dateTo, marketplace, clienteContaId });
+    const { pedido, linhaPedido, context } = await base.resolveOrderDetail(clienteSlug, rowIdNum, { dateFrom, dateTo, marketplace, clienteContaId });
+    const composicaoFinanceira = pedido ? await montarComposicaoFinanceira(pedido, linhaPedido, context) : null;
     const t1 = nowMs();
     logPerf("read/orders/:rowId", { totalMs: round1(t1 - t0) }, {
       itens: pedido?.itens?.length || 0, componentes: pedido?.componentes?.length || 0,
@@ -375,7 +378,34 @@ function createCentralVendasReadService(repository = getRepository(), db = pool)
       throw err;
     }
 
-    return { ok: true, pedido };
+    return { ok: true, pedido, composicaoFinanceira };
+  }
+
+  // Detalhamento financeiro (aditivo, ao lado de `pedido`): leitura extra por
+  // chave + assinatura da base atual. Falha de metadado nunca derruba o
+  // detalhe: a composição sai com o que se sabe e a base fica "indisponível".
+  async function montarComposicaoFinanceira(pedido, linhaPedido, context) {
+    let meta = { variacoes: new Map(), composicaoColetada: false, baseCustos: null };
+    let baseCustos = null;
+    try {
+      if (linhaPedido && typeof repository.getMetaFinanceiraDoPedido === "function") {
+        meta = await repository.getMetaFinanceiraDoPedido({ pedidoRowId: linhaPedido.id, importId: linhaPedido.import_id }, db);
+      }
+      const baseAtualId = context?.base?.base_id ?? null;
+      const atual = meta.baseCustos ? await assinaturaBaseCustos(db, baseAtualId) : null;
+      baseCustos = compararAssinatura(meta.baseCustos, atual);
+    } catch (_) {
+      baseCustos = { estado: "indisponivel", gravada: meta.baseCustos || null, atual: null };
+    }
+    const payload = linhaPedido && linhaPedido.payload_json
+      ? (typeof linhaPedido.payload_json === "string" ? JSON.parse(linhaPedido.payload_json) : linhaPedido.payload_json)
+      : {};
+    return detalharPedido(pedido, {
+      variacoes: meta.variacoes,
+      composicaoColetada: meta.composicaoColetada,
+      composicaoDoPedido: payload.composicaoPromocional || null,
+      baseCustos,
+    });
   }
 
   // M10 — resolve contexto e constrói o payload do período UMA vez só e

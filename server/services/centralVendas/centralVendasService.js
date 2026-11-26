@@ -1074,7 +1074,9 @@ function createCentralVendasService(repository = getRepository(), db = pool) {
     const detalhe = await repository.getPedidoDetailByRowId({ importIds, dateFrom: from, dateTo: to, rowId });
     if (!detalhe) return { cliente, context, pedido: null };
 
-    return { cliente, context, pedido: buildPedidoContrato(detalhe.pedido, detalhe.itens, detalhe.componentes) };
+    // `linhaPedido` (aditivo): a linha crua, para o detalhamento financeiro
+    // (payload e import dono) sem uma segunda leitura do pedido.
+    return { cliente, context, pedido: buildPedidoContrato(detalhe.pedido, detalhe.itens, detalhe.componentes), linhaPedido: detalhe.pedido };
   }
 
   // M7 — resolução de identidade + snapshot por INTERVALO, extraída de
