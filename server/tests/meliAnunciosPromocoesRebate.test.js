@@ -509,7 +509,7 @@ async function run() {
     ]);
 
     const lido = await svc.lerJob({ jobId: 1, cliente, mlUserId: "111" }, t.deps);
-    assert.deepStrictEqual(Object.keys(lido.job).sort(), ["erro", "execucao", "fase", "id", "progresso", "referencia", "resultado", "status"]);
+    assert.deepStrictEqual(Object.keys(lido.job).sort(), ["erro", "execucao", "fase", "id", "modoLoja", "progresso", "referencia", "resultado", "status"]);
     assert.deepStrictEqual(job.progresso_resumo, { recomendado: 1, escolha: 0, sem_ganho: 0, descartado: 2 }, "placar parcial por status");
     assert.deepStrictEqual(lido.job.progresso, { total: 3, processados: 3, resumo: { recomendado: 1, escolha: 0, sem_ganho: 0, descartado: 2 } });
     assert.strictEqual(lido.job.fase, "analise");
@@ -697,6 +697,133 @@ async function run() {
     assert.ok(/status <> 'processando' AND resultado IS NOT NULL/.test(qs[2].sql), "execução só a partir de análise concluída e parada");
     ok("repositório: órfão 10 min, insert, transição condicional para execução");
   }
+
+  // ── 9b. Toda a loja (sem referência) e relâmpago cofinanciada ─────────────
+  {
+    // Sem promoção ativa: o preço de hoje é o sale_price (precoVenda) e a candidata precisa ser menor.
+    const relampago = (extra = {}) => promo({
+      id: "P-LIGHT", type: "SMART_LIGHTNING", status: "candidate", ref_id: "CANDIDATE-L", original_price: 100,
+      meli_percentage: 5, seller_percentage: 0, stock: { min: 5, max: 50 }, name: "Relâmpago", ...extra,
+    });
+    const lojaDeps = (lista, precoVenda = 100) => depsItem({ listar: async () => ({ ok: true, status: 200, promocoes: lista, precoVenda }) });
+    const entradaLoja = (extra = {}) => entrada({ referencia: null, naReferencia: false, ...extra });
+
+    const l = relampago();
+    assert.strictEqual(l.estoqueMinimo, 5);
+    assert.strictEqual(l.estoqueMaximo, 50);
+    assert.strictEqual(normalizarPromocao({ id: "X", type: "SMART_LIGHTNING", status: "candidate", stock: { min: 0, max: 3 } }, 0, null).estoqueMinimo, null, "faixa inválida some");
+    assert.strictEqual(normalizarPromocao({ id: "X", type: "SMART", status: "candidate", original_price: 100, meli_percentage: 5 }, 0, null).estoqueMinimo, null, "tipos sem estoque não têm faixa");
+
+    const r = await svc.avaliarItem(entradaLoja(), lojaDeps([smart("P-OK", { original: 100, meli: 5 })], 100));
+    assert.strictEqual(r.status, "recomendado", "loja toda: candidata subsidiada sem promoção ativa");
+    assert.strictEqual(r.atual.preco, 100);
+    assert.strictEqual(r.atual.promotionId, null);
+    assert.strictEqual(r.atual.tipoLabel, "Preço de venda");
+    assert.strictEqual(r.atual.ehReferencia, false);
+    assert.strictEqual(r.candidatas[0].promotionId, "P-OK");
+    assert.strictEqual(r.candidatas[0].estoqueMinimo, null);
+
+    const rl = await svc.avaliarItem(entradaLoja(), lojaDeps([l], 100));
+    assert.strictEqual(rl.candidatas[0].tipo, "SMART_LIGHTNING");
+    assert.strictEqual(rl.candidatas[0].estoqueMinimo, 5);
+    assert.strictEqual(rl.candidatas[0].estoqueMaximo, 50);
+
+    // Referência nunca é exigida; sem preço de hoje nada é comparado.
+    const sem = await svc.avaliarItem(entradaLoja(), lojaDeps([smart("P-OK")], null));
+    assert.strictEqual(sem.motivo, "PRECO_HOJE_NAO_CONFIRMADO");
+    // Candidata de preço igual ou maior que o de hoje nunca entra.
+    const naoMenor = await svc.avaliarItem(entradaLoja(), lojaDeps([smart("P-OK")], 90));
+    assert.strictEqual(naoMenor.motivo, "PRECO_NAO_MENOR");
+    ok("toda a loja: preço de hoje = sale_price sem promoção ativa; relâmpago cofinanciada com faixa de estoque");
+
+    // Classificação por margem: lucro maior com margem menor não entra; só margem = escolha.
+    const hoje = { margemRatio: 0.2, lucro: 20 };
+    const c = (id, margemRatio, lucro) => ({ ...smart(id), margemRatio, lucro });
+    assert.strictEqual(svc.classificarItem({ referencia: hoje, candidatas: [c("A", 0.19, 25)], criterio: "margem" }).status, "sem_ganho");
+    assert.strictEqual(svc.classificarItem({ referencia: hoje, candidatas: [c("A", 0.25, 18)], criterio: "margem" }).status, "escolha");
+    const rec = svc.classificarItem({ referencia: hoje, candidatas: [c("A", 0.25, 18), c("B", 0.22, 21)], criterio: "margem" });
+    assert.strictEqual(rec.status, "recomendado");
+    assert.deepStrictEqual(rec.sugestao, { porMargem: "B", porLucro: "B" }, "a sugestão sai entre as que sobem margem E lucro");
+    assert.strictEqual(svc.classificarItem({ referencia: hoje, candidatas: [c("A", 0.19, 25)] }).status, "escolha", "por referência segue aceitando qualquer melhora");
+    ok("classificação por margem (toda a loja) × qualquer melhora (por referência)");
+
+    // Revalidação sem referência.
+    const rev = svc.criarRevalidacao({ modo: "loja" });
+    const cand = smart("P-OK", { original: 100, meli: 5 });
+    assert.deepStrictEqual(rev({ promo: cand, lista: [cand] }), { ok: true }, "preço de venda = original da candidata");
+    const ativa90 = promo({ id: "A", type: "DEAL", status: "started", price: 90, original_price: 100 });
+    ativa90.statusExibicao = "ATIVA";
+    assert.strictEqual(rev({ promo: cand, lista: [cand, ativa90] }).codigo, "PRECO_NAO_MENOR", "promoção ativa a 90 vence a candidata a 95");
+    assert.strictEqual(rev({ promo: { ...cand, subsidioMl: 0 }, lista: [cand] }).codigo, "SEM_SUBSIDIO");
+    assert.strictEqual(rev({ promo: { ...cand, status: "started" }, lista: [cand] }).codigo, "PROMOCAO_JA_PARTICIPA");
+    ok("revalidação sem referência: preço menor que hoje, subsídio e disponibilidade");
+
+    // Escolhas: estoque obrigatório e dentro da faixa na relâmpago; descartado nas demais.
+    const resultado = { itens: [{ itemId: "MLB1", candidatas: [
+      { promotionId: "P-LIGHT", tipo: "SMART_LIGHTNING", estoqueMinimo: 5, estoqueMaximo: 50 },
+      { promotionId: "P-OK", tipo: "SMART", estoqueMinimo: null, estoqueMaximo: null },
+    ] }] };
+    const esc = (extra) => svc.validarEscolhas([{ itemId: "MLB1", promotionId: "P-LIGHT", tipo: "SMART_LIGHTNING", ...extra }], resultado, { modo: "loja" });
+    assert.strictEqual(esc({}).ok, false);
+    assert.ok(/Informe o estoque/.test(esc({}).motivo));
+    assert.strictEqual(esc({ estoque: 4 }).ok, false);
+    assert.strictEqual(esc({ estoque: 51 }).ok, false);
+    assert.strictEqual(esc({ estoque: 10.5 }).ok, false);
+    assert.deepStrictEqual(esc({ estoque: 20 }).escolhas, [{ itemId: "MLB1", promotionId: "P-LIGHT", tipo: "SMART_LIGHTNING", estoque: 20 }]);
+    const outra = svc.validarEscolhas([{ itemId: "MLB1", promotionId: "P-OK", tipo: "SMART", estoque: 99 }], resultado, { modo: "loja" });
+    assert.deepStrictEqual(outra.escolhas, [{ itemId: "MLB1", promotionId: "P-OK", tipo: "SMART" }], "estoque descartado fora da relâmpago");
+    ok("escolhas: estoque da relâmpago obrigatório, inteiro e dentro da faixa");
+
+    // Análise e execução de ponta a ponta no modo loja.
+    const repo = repoMemoria();
+    repo.universoLoja = async () => ["MLB1"];
+    const participadas = [];
+    const deps = {
+      repo, ensureSchema: async () => {}, logger: { error() {} }, agendar: (fn) => fn(),
+      listarPromocoesDoItemDetalhado: async () => ({ ok: true, status: 200, promocoes: [l], precoVenda: 100 }),
+      buscarComissaoEFrete: fakeCotacao().buscarComissaoEFrete, mlFetch: fakeCotacao().mlFetch, sleep: async () => {}, now: () => OUTUBRO,
+      carregarAnuncios: async () => new Map([["MLB1", ANUNCIO]]),
+      criarCarregadorCustos: () => async () => new Map([["MLB1", CUSTOS]]),
+      registrarLog: async () => {},
+      participarPromocaoAceite: async (p) => { participadas.push(p); return { ok: true, precoConfirmado: 90, estoque: p.estoque, inicio: "2026-12-02T03:00:00.000Z", fim: "2026-12-03T02:59:00.000Z" }; },
+    };
+    const ini = await svc.iniciarAnalise({ cliente: { id: 1, slug: "x" }, contexto: { mlUserId: "111", contaId: 7 }, body: {}, user: { id: 1 } }, deps);
+    assert.ok(ini.ok, "análise sem referência é aceita");
+    assert.deepStrictEqual(repo.jobs.get(ini.jobId).referencia, { modo: "loja" });
+    await new Promise((res) => setImmediate(res));
+    const job = (await svc.lerJob({ jobId: ini.jobId, cliente: { id: 1 }, mlUserId: "111" }, deps)).job;
+    assert.strictEqual(job.modoLoja, true);
+    assert.strictEqual(job.status, "concluido");
+    assert.strictEqual(job.resultado.itens[0].candidatas[0].estoqueMaximo, 50);
+
+    const semEstoque = await svc.iniciarExecucao({ jobId: ini.jobId, cliente: { id: 1 }, mlUserId: "111", body: { escolhas: [{ itemId: "MLB1", promotionId: "P-LIGHT", tipo: "SMART_LIGHTNING" }] } }, deps);
+    assert.strictEqual(semEstoque.ok, false);
+    assert.strictEqual(semEstoque.httpStatus, 400);
+    const exe = await svc.iniciarExecucao({ jobId: ini.jobId, cliente: { id: 1 }, mlUserId: "111", body: { escolhas: [{ itemId: "MLB1", promotionId: "P-LIGHT", tipo: "SMART_LIGHTNING", estoque: 20 }] } }, deps);
+    assert.ok(exe.ok);
+    await new Promise((res) => setImmediate(res));
+    assert.strictEqual(participadas.length, 1);
+    assert.strictEqual(participadas[0].estoque, 20);
+    assert.strictEqual(participadas[0].permitirComEstoque, true);
+    assert.strictEqual(repo.jobs.get(ini.jobId).execucao.itens[0].estoque, 20);
+    assert.strictEqual(repo.jobs.get(ini.jobId).execucao.itens[0].inicio, "2026-12-02T03:00:00.000Z", "janela marcada pelo ML guardada na execução");
+    assert.strictEqual(repo.jobs.get(ini.jobId).execucao.itens[0].fim, "2026-12-03T02:59:00.000Z");
+    ok("ponta a ponta sem referência: análise na loja toda e participação na relâmpago com estoque");
+
+    // Universo da loja: SQL cobre o candidato subsidiado do snapshot e o anúncio criado depois dele.
+    let sqlUniverso = null;
+    const repoSql = svc.criarRepositorio({ query: async (sql, params) => { sqlUniverso = { sql, params }; return { rows: [{ item_id: "mlb9" }] }; } });
+    const lista = await repoSql.universoLoja({ clienteId: 1, clienteContaId: 7, sellerId: 111, tipos: ["SMART", "SMART_LIGHTNING"] });
+    assert.deepStrictEqual(lista, ["MLB9"]);
+    assert.ok(/a.created_at > c.snapshot_at/.test(sqlUniverso.sql), "anúncio novo, ainda fora do snapshot, entra");
+    assert.ok(/c.current_run_id IS NULL/.test(sqlUniverso.sql), "conta sem snapshot: todos os ativos");
+    assert.deepStrictEqual(sqlUniverso.params, [1, 7, "111", ["SMART", "SMART_LIGHTNING"]]);
+
+    // Referência pela metade continua inválida.
+    const meia = await svc.iniciarAnalise({ cliente: { id: 1, slug: "x" }, contexto: { mlUserId: "111" }, body: { referencia: { id: "X" } } }, deps);
+    assert.strictEqual(meia.codigo, "REFERENCIA_INVALIDA");
+  }
+
 
   // ── 10. Rotas antes de /:itemId ───────────────────────────────────────────
   {

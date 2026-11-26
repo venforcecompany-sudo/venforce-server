@@ -5501,6 +5501,7 @@
     ABAIXO_FRETE_GRATIS: "As promoções com subsídio deixariam o preço abaixo de R$ 19,00 — o comprador perderia o frete grátis.",
     ERRO_ML: "O Mercado Livre não respondeu para este anúncio.",
     JA_EM_REBATE_MELHOR: "Já está numa promoção com rebate melhor — nenhuma outra melhora margem nem lucro.",
+    PRECO_HOJE_NAO_CONFIRMADO: "Não foi possível confirmar o preço de hoje do anúncio no Mercado Livre — nada foi comparado.",
   };
 
   function rebChaveConta() {
@@ -5632,16 +5633,52 @@
     return Array.isArray(v) ? v : [];
   }
 
+  // Relâmpago cofinanciada: a candidata traz a faixa de estoque aceita pelo ML.
+  function rebTemFaixa(c) {
+    return !!c && rebNum(c.estoqueMinimo) !== null && rebNum(c.estoqueMaximo) !== null;
+  }
+
+  // Estoque escolhido (ou o padrão de 20, ajustado à faixa) para uma candidata com faixa.
+  function rebEstoque(itemId, c) {
+    var v = REB.estoques[itemId + "|" + c.promotionId];
+    if (v !== undefined && v !== null && v !== "") return Number(v);
+    return Math.min(Math.max(20, Number(c.estoqueMinimo)), Number(c.estoqueMaximo));
+  }
+
+  function rebEstoqueValido(c, n) {
+    return Number.isInteger(n) && n >= Number(c.estoqueMinimo) && n <= Number(c.estoqueMaximo);
+  }
+
+  function rebFaixaTexto(c) {
+    return rebTemFaixa(c) ? " · relâmpago, estoque de " + c.estoqueMinimo + " a " + c.estoqueMaximo : "";
+  }
+
   function rebEscolhasSelecionadas() {
     var out = [];
     rebItens().forEach(function (it) {
       if (it.status !== "recomendado" && it.status !== "escolha") return;
       rebMarcadas(it.itemId).forEach(function (pid) {
         var c = rebCandidata(it, pid);
-        if (c) out.push({ itemId: it.itemId, promotionId: c.promotionId, tipo: c.tipo });
+        if (!c) return;
+        var e = { itemId: it.itemId, promotionId: c.promotionId, tipo: c.tipo };
+        if (rebTemFaixa(c)) e.estoque = rebEstoque(it.itemId, c);
+        out.push(e);
       });
     });
     return out;
+  }
+
+  // Seleções de relâmpago com estoque fora da faixa travam a confirmação.
+  function rebEstoquesInvalidos() {
+    var ruins = 0;
+    rebItens().forEach(function (it) {
+      if (it.status !== "recomendado" && it.status !== "escolha") return;
+      rebMarcadas(it.itemId).forEach(function (pid) {
+        var c = rebCandidata(it, pid);
+        if (rebTemFaixa(c) && !rebEstoqueValido(c, rebEstoque(it.itemId, c))) ruins++;
+      });
+    });
+    return ruins;
   }
 
   // "Preferir margem/lucro em todos": só nos itens de Escolha, e só quando a
@@ -5671,7 +5708,7 @@
   // uma promoção com rebate em que o anúncio já entrou. Análises salvas antes
   // do campo `atual` caem na referência, como eram calculadas.
   function rebAtual(it) {
-    if (it && it.atual) return it.atual;
+    if (it && it.atual) return it.atual.nome ? it.atual : Object.assign({}, it.atual, { nome: it.atual.tipoLabel || "Preço de venda" });
     var ref = (it && it.referencia) || {};
     return {
       nome: (REB && REB.job && REB.job.referencia && REB.job.referencia.nome) || "Referência", ehReferencia: true,
@@ -5693,6 +5730,8 @@
     REB = {
       overlay: overlay, chave: rebChaveConta(), focoAnterior: document.activeElement,
       passo: "referencia", referencias: null, padraoId: null, refId: "", erroRefs: null,
+      // "ref" = anúncios de uma promoção de referência; "loja" = todos os anúncios com subsídio disponível.
+      modoAnalise: "ref", estoques: {},
       jobId: null, job: null, erro: null, iniciando: false,
       escolhas: {}, aba: "recomendado", preferencia: null,
       confirmando: false, enviando: false, erroExecutar: null,
@@ -5816,6 +5855,13 @@
     if (!REB) return;
     var t = e.target;
     if (t.id === "am-reb-ref") { REB.refId = t.value; renderRebate(); return; }
+    if (t.name === "am-reb-modo") { REB.modoAnalise = t.value === "loja" ? "loja" : "ref"; renderRebate(); return; }
+    var chaveEst = t.getAttribute("data-reb-estoque");
+    if (chaveEst) {
+      REB.estoques[chaveEst] = t.value === "" ? "" : Number(t.value);
+      renderRebate();
+      return;
+    }
     if (t.hasAttribute("data-reb-todos")) {
       rebItens("recomendado").forEach(function (it) {
         var s = it.sugestao || {};
@@ -5914,12 +5960,13 @@
   function iniciarAnaliseRebate() {
     var reb = REB;
     var ref = rebRefSelecionada();
-    if (!ref || reb.iniciando) return;
+    var loja = reb.modoAnalise === "loja";
+    if ((!ref && !loja) || reb.iniciando) return;
     reb.iniciando = true;
     reb.erro = null;
     renderRebate();
     api("/anuncios-meli/promocoes-rebate/analises", {
-      method: "POST", body: rebCorpo({ referencia: { id: ref.id, tipo: ref.tipo } }),
+      method: "POST", body: rebCorpo(loja ? {} : { referencia: { id: ref.id, tipo: ref.tipo } }),
     }).then(function (r) {
       if (REB !== reb) return;
       reb.iniciando = false;
@@ -6141,6 +6188,7 @@
     var reb = REB;
     var job = (reb && reb.job) || {};
     var nomeRef = (job.referencia && job.referencia.nome) || "promoção de referência";
+    var modoLojaMsg = !!job.modoLoja;
     var analisados = rebItens().length;
     var porItem = {}, ordem = [];
     pares.forEach(function (p) {
@@ -6158,7 +6206,7 @@
     var linhas = [];
     linhas.push("*Radar de subsídios" + (AM.clienteAtual && AM.clienteAtual.nome ? " · " + AM.clienteAtual.nome : "") + "*");
     linhas.push("");
-    linhas.push("Analisamos " + analisados + (analisados === 1 ? " anúncio" : " anúncios") + " da *" + nomeRef + "* atrás de promoções em que o Mercado Livre paga parte do desconto (rebate).");
+    linhas.push("Analisamos " + analisados + (analisados === 1 ? " anúncio" : " anúncios") + " " + (modoLojaMsg ? "da *loja toda*" : "da *" + nomeRef + "*") + " atrás de promoções em que o Mercado Livre paga parte do desconto (rebate).");
     linhas.push("");
     linhas.push(feito
       ? "✅ *" + n + (n === 1 ? " anúncio entrou" : " anúncios entraram") + " em promoção com rebate:*"
@@ -6242,14 +6290,16 @@
 
   function rebSubtituloHtml() {
     var reb = REB;
-    if (reb.passo === "referencia") return "Escolha a promoção de referência para comparar.";
+    if (reb.passo === "referencia") return "Escolha o que analisar: uma promoção de referência ou a loja toda.";
     var job = reb.job || {};
     var nomeRef = (job.referencia && job.referencia.nome) || (rebRefSelecionada() || {}).nome || "";
-    var txt = "Comparando com <strong>" + escapeHtml(nomeRef || "a referência") + "</strong>";
+    var txt = job.modoLoja || (!job.referencia && reb.modoAnalise === "loja")
+      ? "Comparando com o <strong>preço de hoje</strong> de cada anúncio"
+      : "Comparando com <strong>" + escapeHtml(nomeRef || "a referência") + "</strong>";
     if (reb.passo === "previa") {
       var total = rebItens().length;
       txt += " · " + total + (total === 1 ? " anúncio analisado" : " anúncios analisados") +
-        ' · <button type="button" class="am-reb-link" id="am-reb-trocar" data-reb-acao="trocar-ref">trocar referência</button>';
+        ' · <button type="button" class="am-reb-link" id="am-reb-trocar" data-reb-acao="trocar-ref">' + (job.modoLoja ? "trocar análise" : "trocar referência") + "</button>";
     }
     return txt;
   }
@@ -6325,6 +6375,14 @@
         "Para usar esta análise, os anúncios precisam estar numa promoção de referência (por exemplo, a Vendex do mês).");
     }
     var ref = rebRefSelecionada();
+    html += '<fieldset class="am-reb-modos"><legend class="vf-field__label">O que analisar</legend>' +
+      '<label class="am-reb-modo"><input type="radio" name="am-reb-modo" value="ref"' + (reb.modoAnalise === "ref" ? " checked" : "") + '> Anúncios de uma promoção de referência</label>' +
+      '<label class="am-reb-modo"><input type="radio" name="am-reb-modo" value="loja"' + (reb.modoAnalise === "loja" ? " checked" : "") + '> Toda a loja</label></fieldset>';
+    if (reb.modoAnalise === "loja") {
+      html += '<p class="am-reb-intro">Procura, em todos os anúncios ativos com promoção candidata subsidiada pelo Mercado Livre (inclusive a oferta relâmpago cofinanciada), as que baixam o preço de hoje e aumentam a margem. O preço de hoje é o da promoção ativa ou o preço de venda. Nenhuma promoção é alterada.</p>';
+      if (reb.erro) html += rebBannerHtml("danger", reb.erro);
+      return html;
+    }
     html += '<div class="vf-field am-reb-campo"><label class="vf-field__label" for="am-reb-ref">Promoção de referência</label>' +
       '<select id="am-reb-ref" class="vf-select">' +
       (reb.refId ? "" : '<option value="" selected>Escolha a promoção de referência…</option>') +
@@ -6345,7 +6403,7 @@
 
   function rebRodapeReferenciaHtml() {
     var reb = REB;
-    var pode = !!rebRefSelecionada() && !reb.iniciando;
+    var pode = (reb.modoAnalise === "loja" || !!rebRefSelecionada()) && !reb.iniciando;
     return '<div class="am-reb-rodape__acoes">' +
       '<button type="button" class="vf-btn vf-btn--secondary" id="am-reb-cancelar" data-reb-acao="fechar">Cancelar</button>' +
       '<button type="button" class="vf-btn vf-btn--primary" id="am-reb-analisar" data-reb-acao="analisar"' + (pode ? "" : " disabled") + ">" +
@@ -6463,6 +6521,7 @@
             medida(formatMoeda(c.lucro), rebGanhoHtml(c.ganhoLucro, "rs"), formatMoeda(hoje.lucro), " data-reb-lucro") +
             '<span role="cell" class="am-reb-medida am-reb-medida--promo">' +
               '<span class="am-reb-medida__nome"' + (c.tipoLabel ? ' title="' + escapeAttr(c.tipoLabel) + '"' : "") + ">" + escapeHtml(c.nome || c.promotionId) + "</span>" +
+              (rebTemFaixa(c) ? '<span class="am-reb-medida__hoje" data-reb-faixa>relâmpago · estoque de ' + c.estoqueMinimo + " a " + c.estoqueMaximo + "</span>" : "") +
               '<span class="am-reb-medida__hoje" data-reb-hoje-nome>hoje ' + escapeHtml(hoje.nome || "") + "</span></span>"
           : '<span role="cell" class="am-reb-medida am-reb-medida--vazia">—</span>';
         return '<div class="am-reb-tab__linha" role="row" data-reb-item="' + escapeAttr(it.itemId) + '">' +
@@ -6555,7 +6614,7 @@
         valor: c.promotionId, rotulo: rotulo, margem: c.margemPercent, lucro: c.lucro, dMargem: c.ganhoMargemPp, dLucro: c.ganhoLucro,
         // Queda do preço de venda em relação ao de hoje (centavos, sem resíduo de float).
         dPreco: rebNum(c.preco) !== null && rebNum(hoje.preco) !== null ? Math.round(c.preco * 100 - hoje.preco * 100) / 100 : null,
-        promo: c.nome || c.promotionId, preco: c.preco, subsidio: c.subsidioMl, pct: c.meliPercentage,
+        promo: (c.nome || c.promotionId) + rebFaixaTexto(c), preco: c.preco, subsidio: c.subsidioMl, pct: c.meliPercentage,
         inicio: c.inicio || null, fim: c.fim || null,
       });
     }
@@ -6594,17 +6653,31 @@
     var nAnuncios = Object.keys(vistosAn).length;
     var nomeRef = (reb.job.referencia && reb.job.referencia.nome) || "referência";
     if (reb.confirmando && n) {
+      var campos = "";
+      sel.forEach(function (x) {
+        var it = rebItemPorId(x.itemId);
+        var c = rebCandidata(it, x.promotionId);
+        if (!rebTemFaixa(c)) return;
+        var okEst = rebEstoqueValido(c, x.estoque);
+        campos += '<label class="am-reb-estoque' + (okEst ? "" : " is-invalido") + '">' +
+          '<span class="am-reb-estoque__rotulo">' + escapeHtml((it && it.titulo) || x.itemId) + " · " + escapeHtml(c.nome || c.promotionId) + " — estoque a reservar (de " + c.estoqueMinimo + " a " + c.estoqueMaximo + ")</span>" +
+          '<input type="number" class="vf-input" inputmode="numeric" step="1" min="' + escapeAttr(c.estoqueMinimo) + '" max="' + escapeAttr(c.estoqueMaximo) + '" value="' + escapeAttr(x.estoque) + '"' +
+            ' data-reb-estoque="' + escapeAttr(x.itemId + "|" + x.promotionId) + '"></label>';
+      });
+      var travado = !!campos && rebEstoquesInvalidos() > 0;
       return '<div class="am-reb-confirma" role="alertdialog" aria-labelledby="am-reb-confirma-txt">' +
         '<p class="am-reb-confirma__txt" id="am-reb-confirma-txt">Participar de ' + n + (n === 1 ? " promoção" : " promoções") + " em " + nAnuncios + (nAnuncios === 1 ? " anúncio" : " anúncios") +
-          "? A promoção <strong>" + escapeHtml(nomeRef) + "</strong> permanece ativa em todos — nada nela é alterado.</p>" +
+          (reb.job.modoLoja ? "? Nada é alterado nas promoções em que os anúncios já estão.</p>"
+            : "? A promoção <strong>" + escapeHtml(nomeRef) + "</strong> permanece ativa em todos — nada nela é alterado.</p>") +
+        (campos ? '<div class="am-reb-estoques"><p class="am-reb-confirma__txt">A oferta relâmpago reserva estoque; o Mercado Livre marca o dia depois do aceite, então o preço de hoje não muda agora.</p>' + campos + "</div>" : "") +
         '<div class="am-reb-confirma__acoes">' +
           '<button type="button" class="vf-btn vf-btn--secondary" id="am-reb-cancelar-conf" data-reb-acao="cancelar-confirmacao"' + (reb.enviando ? " disabled" : "") + ">Voltar</button>" +
-          '<button type="button" class="vf-btn vf-btn--primary" id="am-reb-confirmar" data-reb-acao="confirmar"' + (reb.enviando ? " disabled" : "") + ">" +
+          '<button type="button" class="vf-btn vf-btn--primary" id="am-reb-confirmar" data-reb-acao="confirmar"' + (reb.enviando || travado ? " disabled" : "") + ">" +
             (reb.enviando ? "Enviando…" : "Confirmar participação") + "</button>" +
         "</div></div>";
     }
     var det = nRec + (nRec === 1 ? " recomendada" : " recomendadas") + " + " + nEsc + (nEsc === 1 ? " escolhida" : " escolhidas") +
-      " · a " + escapeHtml(nomeRef) + " continua ativa em todos.";
+      (reb.job.modoLoja ? "." : " · a " + escapeHtml(nomeRef) + " continua ativa em todos.");
     return '<div class="am-reb-resumo-sel">' +
         '<span class="am-reb-contador" data-reb-contador aria-live="polite">' + (n === 1 ? "1 participação selecionada" : n + " participações selecionadas") + "</span>" +
         '<span class="am-reb-resumo-sel__det">' + det + "</span></div>" +
@@ -6617,6 +6690,14 @@
   }
 
   // --- Execução ------------------------------------------------------------------------
+  // Relâmpago aceita: estoque reservado e o dia que o ML marcou (o preço de hoje não muda até lá).
+  function rebRelampagoTexto(x) {
+    if (!x || rebNum(x.estoque) === null) return "";
+    var ini = rebData(x.inicio), fim = rebData(x.fim);
+    var janela = ini && fim ? (ini === fim ? "em " + ini : "de " + ini + " a " + fim) : ini ? "a partir de " + ini : "dia ainda não informado pelo Mercado Livre";
+    return " · relâmpago com " + x.estoque + (x.estoque === 1 ? " unidade " : " unidades ") + janela;
+  }
+
   function rebPassoExecucaoHtml() {
     var reb = REB;
     var ex = (reb.job && reb.job.execucao) || {};
@@ -6631,7 +6712,10 @@
     if (concluida) {
       html += rebBannerHtml(falhas ? "warning" : "success",
         ok + (ok === 1 ? " participação confirmada" : " participações confirmadas") + " no Mercado Livre" +
-        (falhas ? " · " + falhas + (falhas === 1 ? " falhou" : " falharam") : "") + ". A referência continua ativa.");
+        (falhas ? " · " + falhas + (falhas === 1 ? " falhou" : " falharam") : "") +
+        (reb.job && reb.job.modoLoja ? "." : ". A referência continua ativa.") +
+        (itens.some(function (x) { return x.status === "ok" && rebNum(x.estoque) !== null; })
+          ? " Nas ofertas relâmpago o preço só muda no dia marcado pelo Mercado Livre." : ""));
     } else {
       html += '<p class="am-reb-intro">Participando das promoções, um anúncio por vez. Cada um é relido no Mercado Livre antes de gravar.</p>' +
         rebProgressoHtml(proc, total, "Progresso da participação");
@@ -6643,7 +6727,7 @@
         : x.status === "falha" ? '<span class="vf-status is-danger">Falhou</span>'
         : '<span class="vf-status is-empty">Na fila</span>';
       var det = x.status === "ok"
-        ? (c ? escapeHtml(c.nome || c.promotionId) : "") + (rebNum(x.precoConfirmado) !== null ? " · " + formatMoeda(x.precoConfirmado) : "")
+        ? (c ? escapeHtml(c.nome || c.promotionId) : "") + (rebNum(x.precoConfirmado) !== null ? " · " + formatMoeda(x.precoConfirmado) : "") + rebRelampagoTexto(x)
         : x.status === "falha" ? escapeHtml(x.motivo || REB_MOTIVOS[x.codigo] || "Não foi possível participar.")
         : (c ? escapeHtml(c.nome || c.promotionId) : "");
       return '<li class="am-reb-lista__item am-reb-exec__item is-' + escapeAttr(x.status || "pendente") + '" data-reb-exec-item="' + escapeAttr(x.itemId) + '">' +
