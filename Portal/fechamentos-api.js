@@ -875,6 +875,7 @@ function resetDataState() {
   F.ok = null; F.erro = null; F.motor = null; F.completude = null; F.snapshot = null; F.contexto = null;
   F.summary = null; F.filteredSummary = null; F.rows = []; F.pagination = null;
   F.daily = []; F.products = []; F.totalFaturamento = 0; F.periodoResp = null;
+  F.custosOperacionais = null;
   F.mp.loadSeq += 1; F.mp.loading = false; F.mp.data = null; F.mp.rowsByOrderId = null;
 }
 
@@ -890,6 +891,8 @@ function applyReadResponse(resp) {
   F.rows = resp.rows; F.pagination = resp.pagination;
   F.motor = resp.motor; F.completude = resp.completude; F.snapshot = resp.snapshot; F.contexto = resp.contexto;
   F.periodoResp = resp.periodo;
+  // Só o /read/bootstrap traz Ads e Full; um /read de paginação não apaga o que veio.
+  if (Object.prototype.hasOwnProperty.call(resp, 'custosOperacionais')) F.custosOperacionais = resp.custosOperacionais || null;
 }
 
 function buildReadParams(extra) {
@@ -1234,6 +1237,62 @@ function composicaoResiduo(comps) {
   return round2(soma - total.valor);
 }
 
+/* Ads e Full do Financeiro (custosOperacionais do /read/bootstrap): depois da
+   margem de contribuição, nunca dentro dela. Valores em centavos, prontos do
+   backend; incompatível/indisponível aparece como — com o motivo. */
+const CUSTOS_OP_MOTIVO = {
+  SEM_FONTE: 'sem consulta no Financeiro para este mês (abra o fechamento da conta no Financeiro para buscar)',
+  NO_TOKEN: 'conta sem token do Mercado Livre', NO_ADS_PERMISSION: 'sem permissão no Mercado Ads',
+  NO_ADVERTISER_FOUND: 'conta sem anunciante no Mercado Ads', ML_ADS_API_ERROR: 'Mercado Ads indisponível na última consulta',
+  periodo_parcial_com_fonte_mensal: 'a fonte é mensal e o período selecionado não é um mês inteiro',
+  conta_nao_resolvida: 'escolha uma conta para ver Ads e Full', marketplace_sem_fonte: 'sem fonte de Ads e Full para este marketplace',
+  erro_leitura_custos: 'não foi possível ler os custos do Financeiro agora',
+};
+const FULL_GRUPO_LBL = { armazenagem: 'armazenagem', armazenamento_prolongado: 'armazenamento prolongado', coleta: 'coleta', retirada: 'retirada/descarte' };
+const centavosMoney = (c) => (c === null || c === undefined) ? null : c / 100;
+function custosOpMotivo(x) {
+  if (!x) return '';
+  if (x.disponivel && x.compativel === false) return CUSTOS_OP_MOTIVO[x.motivoIncompativel] || x.motivoIncompativel;
+  const cod = (x.codigos || [])[0];
+  return CUSTOS_OP_MOTIVO[cod] || cod || '';
+}
+function buildCustosOperacionaisBloco(co) {
+  if (!co) return '';
+  if (!co.disponivel) return `<p class="vf-cv-sobre">Ads e Full: ${esc(CUSTOS_OP_MOTIVO[co.motivo] || co.motivo || 'indisponível')}.</p>`;
+  const ads = co.ads || {};
+  const full = co.full || {};
+  const adsOk = ads.disponivel && ads.compativel;
+  const fullOk = full.disponivel && full.compativel;
+  const linha = (rotulo, fonte, valorC, ok, tag, obs, tipo = '') => `
+      <li class="vf-cv-linha${tipo ? ' vf-cv-linha--' + tipo : ''}" title="${esc(obs || '')}">
+        <span class="vf-cv-linha__rotulo">${esc(rotulo)} <small>${esc(fonte)}</small>${tag ? ' ' + tag : ''}</span>
+        <span class="vf-cv-linha__valor">${ok && valorC != null ? esc(moneySinal(centavosMoney(valorC))) : '<span class="is-absent">—</span>'}</span>
+      </li>`;
+  const tagDe = (x, ok) => ok ? (x.estado === 'consolidado' || (x.cobertura || []).every((c) => c.consolidado === true || c.estado === 'consolidado')
+      ? '<span class="vf-tag is-success">Consolidado</span>' : '<span class="vf-tag is-info">Mês aberto</span>')
+    : `<span class="vf-tag ${x.disponivel ? 'is-warning' : 'is-neutral'}">${x.disponivel ? 'Fora do período' : 'Indisponível'}</span>`;
+  const fullDetalhe = full.disponivel && Array.isArray(full.componentes)
+    ? full.componentes.filter((g) => g.centavos).map((g) => `${FULL_GRUPO_LBL[g.grupo] || g.grupo} ${money(g.centavos / 100)}`).join(' · ') : '';
+  const refAds = ads.disponivel && !adsOk && ads.investimento?.centavos != null ? ` Referência do mês: ${money(ads.investimento.centavos / 100)}.` : '';
+  const refFull = full.disponivel && !fullOk && full.total?.centavos != null ? ` Referência do mês: ${money(full.total.centavos / 100)}.` : '';
+  const m = ads.metricas || {};
+  const met = (k, lbl, suf = '') => m[k] && m[k].valor != null
+    ? `<span title="${esc(`${m[k].numerador?.nome || ''} ÷ ${m[k].denominador?.nome || ''}`)}">${lbl} ${esc(String(m[k].valor).replace('.', ','))}${suf}</span>` : '';
+  const metricas = adsOk ? [met('roas', 'ROAS'), met('acos', 'ACOS', '%'), met('tacos', 'TACOS', '%')].filter(Boolean).join(' · ') : '';
+  const op = co.resultadoOperacional || {};
+  return `
+      <h3 class="vf-cv-bloco__titulo" id="fapi-custos-op-titulo">Depois da margem: Ads e Full</h3>
+      <ul class="vf-cv-linhas" aria-labelledby="fapi-custos-op-titulo">
+        ${linha('Margem de contribuição', 'resultado de venda', co.resultadoVenda?.centavos, co.resultadoVenda?.centavos != null, '', 'mesma base do resultado parcial', 'inicio')}
+        ${linha('Publicidade (Mercado Ads)', 'Financeiro · por conta', ads.investimento?.centavos == null ? null : -ads.investimento.centavos, adsOk, tagDe(ads, adsOk), custosOpMotivo(ads) + refAds)}
+        ${linha('Custos Full', 'Billing · por conta', full.total?.centavos == null ? null : -full.total.centavos, fullOk, tagDe(full, fullOk), (fullDetalhe || custosOpMotivo(full)) + refFull)}
+        ${linha('Resultado após Ads e Full', 'cálculo do backend', op.centavos, op.centavos != null, op.centavos == null ? '<span class="vf-tag is-neutral">Não calculável</span>' : '', '', 'fim')}
+      </ul>
+      ${!adsOk || !fullOk ? `<p class="vf-cv-sobre">${esc([!adsOk ? `Ads: ${custosOpMotivo(ads)}.${refAds}` : '', !fullOk ? `Full: ${custosOpMotivo(full)}.${refFull}` : ''].filter(Boolean).join(' '))}</p>` : ''}
+      ${metricas ? `<p class="vf-cv-sobre">${metricas} <small>(passe o mouse para ver numerador e denominador)</small></p>` : ''}
+      ${fullDetalhe && fullOk ? `<p class="vf-cv-sobre">Full: ${esc(fullDetalhe)}. O frete das vendas Full já está no frete de cada pedido e não entra aqui.</p>` : ''}`;
+}
+
 function renderFechamentoSection() {
   const host = document.getElementById('fapi-fech-host');
   if (!host || !F.ok) return;
@@ -1366,6 +1425,7 @@ function renderFechamentoSection() {
       <p class="vf-cv-sobre">${esc(F.periodoResp?.label || '')}${F.periodoResp?.label ? ' · ' : ''}${num(s.pedidosValidos)} pedido(s) válido(s). Ausência aparece como —, nunca R$ 0,00.</p>
       <ul class="vf-cv-linhas">${linhas}${residuoLinha}</ul>
       ${semFreteNota}
+      ${quick === 'todos' ? buildCustosOperacionaisBloco(F.custosOperacionais) : ''}
     </section>`);
 
   const cob = s.cobertura || {};
