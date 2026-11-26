@@ -14,11 +14,17 @@ let checks = 0;
 const ok = (label, fn) => { fn(); checks += 1; console.log(`  ✓ ${label}`); };
 
 (async () => {
-  ok("regra do formato 1 = classificação M6 atual (mudar o ledger exige formato novo)", () => {
-    assert.deepStrictEqual({ ...cc.REGRA_FORMATO_1.efeito }, { ...ledger.EFEITO_POR_TIPO });
-    assert.deepStrictEqual([...cc.REGRA_FORMATO_1.noResultado].sort(), [...ledger.TIPOS_NO_RESULTADO].sort());
-    assert.deepStrictEqual([...cc.REGRA_FORMATO_1.informativos].sort(), [...ledger.TIPOS_INFORMATIVOS].sort());
+  ok("regra do formato 2 = classificação M6 atual; o formato 1 é ela sem os tipos promocionais (mudar o ledger exige formato novo)", () => {
+    assert.deepStrictEqual({ ...cc.REGRA_FORMATO_2.efeito }, { ...ledger.EFEITO_POR_TIPO });
+    assert.deepStrictEqual([...cc.REGRA_FORMATO_2.noResultado].sort(), [...ledger.TIPOS_NO_RESULTADO].sort());
+    assert.deepStrictEqual([...cc.REGRA_FORMATO_2.informativos].sort(), [...ledger.TIPOS_INFORMATIVOS].sort());
+    assert.deepStrictEqual([...cc.TIPOS_PROMOCIONAIS_FORMATO_2].sort(), [...ledger.TIPOS_PROMOCIONAIS].sort());
+    // formato 1 congelado: exatamente o formato 2 sem os promocionais (só acréscimo, nada reclassificado)
+    assert.deepStrictEqual([...cc.REGRA_FORMATO_1.informativos].sort(), ["cancelamento_reembolso", "receita_envio"]);
+    assert.deepStrictEqual({ ...cc.REGRA_FORMATO_1.efeito }, { ...cc.REGRA_FORMATO_2.efeito });
+    for (const t of cc.TIPOS_PROMOCIONAIS_FORMATO_2) assert.ok(!(t in cc.REGRA_FORMATO_1.efeito) && !cc.REGRA_FORMATO_1.informativos.includes(t));
     assert.ok(Object.isFrozen(cc.REGRA_FORMATO_1) && Object.isFrozen(cc.REGRA_FORMATO_1.efeito));
+    assert.ok(Object.isFrozen(cc.REGRA_FORMATO_2));
   });
 
   ok("escrita: flag + Sync + conta na lista; ausente = desligada", () => {
@@ -83,9 +89,9 @@ const ok = (label, fn) => { fn(); checks += 1; console.log(`  ✓ ${label}`); };
     });
     const id = (t) => textos.get(t);
     assert.deepStrictEqual(linhas, [
-      { p: 11, c: [id("receita_produto"), id("orders_api"), id("real"), 0, id("custo_produto"), id("ausente"), id("bloqueado"), id("MLB sem custo."), id("receita_envio"), id("shipments_api"), id("real"), 0],
+      { p: 11, f: 1, c: [id("receita_produto"), id("orders_api"), id("real"), 0, id("custo_produto"), id("ausente"), id("bloqueado"), id("MLB sem custo."), id("receita_envio"), id("shipments_api"), id("real"), 0],
         v: [100, null, 0], i: [101, 101, null], x: null },
-      { p: 12, c: [id("tarifa_venda"), id("orders_api"), id("real"), 0, id("tarifa_venda"), id("orders_api"), id("real"), 0],
+      { p: 12, f: 1, c: [id("tarifa_venda"), id("orders_api"), id("real"), 0, id("tarifa_venda"), id("orders_api"), id("real"), 0],
         v: [-1.5, -0.25], i: [102, 102], x: { 2: { lote: 7 } } },
     ]);
   });
@@ -112,6 +118,19 @@ const ok = (label, fn) => { fn(); checks += 1; console.log(`  ✓ ${label}`); };
       assert.ok(new RegExp(`WHEN tt.texto IN \\([^)]*'${tipo}'[^)]*\\) THEN '${efeito}'`).test(sql), tipo);
     }
     assert.ok(/ELSE|END/.test(sql));
+    assert.ok(/WHEN pc\.formato >= 2 AND tt\.texto IN \([^)]*'rebate_marketplace'[^)]*\) THEN FALSE/.test(sql), "tipos promocionais só são informativos no formato 2");
+  });
+
+  ok("formato por pedido: 2 só quando o pedido tem tipo promocional; formato desconhecido é corrupção", () => {
+    const componentes = [
+      { pedidoId: "1", itemId: null, tipo: "receita_envio", valor: 5, fonte: "f", confianca: "real", obs: null },
+      { pedidoId: "2", itemId: null, tipo: "rebate_marketplace", valor: 1.15, fonte: "billing_api", confianca: "comprovado", obs: "incorporado:comprovado" },
+    ];
+    const textos = new Map(["receita_envio", "f", "real", "rebate_marketplace", "billing_api", "comprovado", "incorporado:comprovado"].map((t, i) => [t, i + 1]));
+    const linhas = cc.montarLinhas({ componentes, pedidoRowsById: new Map([["1", 11], ["2", 12]]), itemRowsById: new Map(), textos, extrasDoComponente: () => null });
+    assert.deepStrictEqual(linhas.map((l) => [l.p, l.f]), [[11, 1], [12, 2]]);
+    assert.throws(() => cc.validarLinhaCompacta({ formato: 3, pedido_row_id: "9", valores: ["1"], item_row_ids: [null], codigos: [1, 0, 3, 0] }), /FORMATO_3/);
+    assert.strictEqual(cc.validarLinhaCompacta({ formato: 2, pedido_row_id: "9", valores: ["1"], item_row_ids: [null], codigos: [1, 0, 3, 0] }), 1);
   });
 
   await (async () => {
@@ -169,7 +188,7 @@ const ok = (label, fn) => { fn(); checks += 1; console.log(`  ✓ ${label}`); };
     assert.strictEqual(await cc.mesclarComponentes(db(), { linhasLegado: [], linhasCompactas: [compacta({ item_row_ids: ["999", "200", "200", null] })], colunas }), null);
     // Integridade: erro explícito, nunca componente perdido em silêncio.
     await assert.rejects(() => cc.mesclarComponentes(db(), { linhasLegado: [], linhasCompactas: [compacta({ valores: ["1.00"] })], colunas }), /DIMENSOES/);
-    await assert.rejects(() => cc.mesclarComponentes(db(), { linhasLegado: [], linhasCompactas: [compacta({ formato: 2 })], colunas }), /FORMATO_2/);
+    await assert.rejects(() => cc.mesclarComponentes(db(), { linhasLegado: [], linhasCompactas: [compacta({ formato: 9 })], colunas }), /FORMATO_9/);
     await assert.rejects(() => cc.mesclarComponentes(db({ 1: "receita_produto" }), { linhasLegado: [], linhasCompactas: [compacta()], colunas }), /TEXTO_2_AUSENTE/);
     checks += 1; console.log("  ✓ mescla em JS: ordem do banco, repetidos, NULL × 0, filtro de tipo, fallback e integridade");
     // Transporte em texto: '' = NULL nas posições; código '' = corrupção.

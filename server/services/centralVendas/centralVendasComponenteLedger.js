@@ -72,7 +72,15 @@ const TIPOS_NO_RESULTADO = new Set([
   "frete_seller",
 ]);
 // Sempre fora do resultado (conciliação) — nas duas origens.
-const TIPOS_INFORMATIVOS = new Set(["receita_envio", "cancelamento_reembolso"]);
+// Composição promocional (centralVendasComposicaoPromocional): preço cheio,
+// descontos por financiador, comissão bruta, rebate e crédito comprovado.
+// Explicam a venda; NUNCA entram no resultado (efeito null: não somam nem
+// subtraem). Nos compactos, exigem o formato 2.
+const TIPOS_PROMOCIONAIS = Object.freeze([
+  "preco_cheio", "desconto_vendedor", "desconto_marketplace",
+  "comissao_bruta", "rebate_marketplace", "credito_comissao_comprovado",
+]);
+const TIPOS_INFORMATIVOS = new Set(["receita_envio", "cancelamento_reembolso", ...TIPOS_PROMOCIONAIS]);
 
 /**
  * Classifica um componente financeiro já produzido pelo motor (M5 ou
@@ -99,4 +107,5 @@ module.exports = {
   EFEITO_POR_TIPO,
   TIPOS_NO_RESULTADO,
   TIPOS_INFORMATIVOS,
+  TIPOS_PROMOCIONAIS,
 };

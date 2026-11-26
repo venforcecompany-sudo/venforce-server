@@ -48,6 +48,10 @@ function motorBase(competencia, dia) {
       c("B", null, "receita_envio", null, "ausente", "ausente", "receiver.cost ausente na resposta de /shipments/:id/costs."),
       c("B", "B:1", "receita_produto", 50, "", "real", ""),
       c("B", "B:1", "frete_seller", -9.99, "shipments_api"),
+      // Composição promocional (formato 2 nos compactos): informativos, fora do resultado.
+      c("B", "B:1", "preco_cheio", 60, "orders_api", "observado"),
+      c("B", "B:1", "desconto_marketplace", 1.15, "discounts_api", "observado"),
+      c("B", null, "rebate_marketplace", 1.15, "billing_api", "comprovado", "incorporado:comprovado"),
     ],
   };
 }
@@ -175,8 +179,15 @@ async function filho({ url, modo }) {
   const { rows: [fmt] } = await pool.query(
     `SELECT (SELECT COUNT(*) FROM central_vendas_componentes WHERE import_id = $1)::int AS planilha_linhas`, [planilha.importacao.id]);
 
+  const temCompacta = (await pool.query(`SELECT to_regclass('public.central_vendas_pedido_componentes') IS NOT NULL AS ok`)).rows[0].ok;
+  const formatosGravados = temCompacta
+    ? (await pool.query(`SELECT COALESCE(json_agg(f ORDER BY f), '[]'::json) AS f FROM (SELECT DISTINCT formato AS f FROM central_vendas_pedido_componentes) x`)).rows[0].f
+    : [];
   await pool.end();
   process.stdout.write(`@@R@@${JSON.stringify({
+    formatosGravados,
+    promo: carga.componentes.filter((c) => c.pedido_id === "B" && ["preco_cheio", "desconto_marketplace", "rebate_marketplace"].includes(c.tipo))
+      .map((c) => [c.tipo, c.escopo, c.efeito, c.incluido_no_resultado]),
     leitura: JSON.stringify({ carga: { pedidos: carga.pedidos.map(sem), itens: carga.itens.map(sem), componentes: carga.componentes.map(sem) },
       realizado: realizado.componentes, latest: latest.componentes.map(sem), detalhes,
       payload: { resumo: payload.resumo, pedidos: payload.pedidos }, resgate }),
@@ -233,10 +244,14 @@ async function pai() {
   ok("NULL ≠ 0 preservado", compacto.amostra[3][2] === null && compacto.amostra[4][2] === "0.00");
   ok("tipo desconhecido: efeito e incluido NULL; fonte '' e obs '' viram NULL (como a coluna antiga)",
     compacto.amostra.some((x) => x[1] === "ajuste_desconhecido" && x[5] === "item" && x[6] === null && x[7] === null && x[3] === null));
+  ok("composição promocional: informativa (efeito NULL, fora do resultado) nos dois formatos; compactos gravam formato 1 e 2",
+    JSON.stringify(linhas.promo) === JSON.stringify(compacto.promo) && compacto.promo.length >= 3
+    && compacto.promo.every((x) => x[2] === null && x[3] === false)
+    && JSON.stringify(compacto.formatosGravados) === "[1,2]" && JSON.stringify(linhas.formatosGravados) === "[]");
   ok("estouro de NUMERIC(14,2) recusa o import nos dois formatos (22003)", linhas.estouro === "22003" && compacto.estouro === "22003");
   ok("retenção conta os componentes compactos do import", compacto.contagem[Object.keys(compacto.contagem)[0]].componentes_compactos === 2
-    && linhas.contagem[Object.keys(linhas.contagem)[0]].componentes === 12);
-  ok("backup CSV da retenção leva as linhas compactas e o dicionário", compacto.csv.componentes_compactos === 2 && compacto.csv.componente_textos > 0 && linhas.csv.componentes === 12);
+    && linhas.contagem[Object.keys(linhas.contagem)[0]].componentes === 15);
+  ok("backup CSV da retenção leva as linhas compactas e o dicionário", compacto.csv.componentes_compactos === 2 && compacto.csv.componente_textos > 0 && linhas.csv.componentes === 15);
   ok("backup CSV restaura o import (linhas + compactos + dicionário) e os leitores voltam idênticos",
     linhas.restauradoIgual === true && compacto.restauradoIgual === true);
   ok("DELETE do import apaga os compactos dele por CASCADE (e só os dele)", compacto.resto.linhas === 0 && compacto.resto.compactos_total === 2);

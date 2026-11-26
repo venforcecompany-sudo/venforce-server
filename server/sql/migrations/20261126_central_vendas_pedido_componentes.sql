@@ -19,6 +19,10 @@
 --                    centralVendasComponenteLedger (escopo/efeito/
 --                    incluido_no_resultado derivados na leitura). Mudar a
 --                    regra de classificação EXIGE formato novo.
+--                    2 = formato 1 + tipos informativos da composição
+--                    promocional (preço cheio, descontos por financiador,
+--                    comissão bruta, rebate, crédito comprovado), fora do
+--                    resultado. Só acrescenta tipos que o formato 1 não tem.
 -- O que a linha antiga repetia e a linha do pedido já guarda (import_id,
 -- cliente_id, cliente_slug, marketplace, competencia, pedido_id, created_at,
 -- updated_at) e item_id (linha do item) é recuperado na leitura.
@@ -56,7 +60,7 @@ CREATE TABLE IF NOT EXISTS central_vendas_pedido_componentes (
   valores NUMERIC(14,2)[] NOT NULL,
   item_row_ids BIGINT[] NOT NULL,
   extras JSONB,
-  CONSTRAINT central_vendas_pedido_componentes_formato_chk CHECK (formato = 1),
+  CONSTRAINT central_vendas_pedido_componentes_formato_chk CHECK (formato IN (1, 2)),
   CONSTRAINT central_vendas_pedido_componentes_dims_chk CHECK (
     cardinality(valores) >= 1
     AND cardinality(item_row_ids) = cardinality(valores)

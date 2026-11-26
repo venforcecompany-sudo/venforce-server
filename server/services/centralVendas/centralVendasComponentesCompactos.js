@@ -30,7 +30,11 @@ const ENV_NAME = "CENTRAL_VENDAS_COMPONENTES_COMPACTOS";
 const ENV_CONTAS = "CENTRAL_VENDAS_COMPONENTES_COMPACTOS_CONTAS";
 const TABELA = "central_vendas_pedido_componentes";
 const TABELA_TEXTOS = "central_vendas_componente_textos";
+// Formato GRAVADO por linha: 1 quando o pedido só tem os tipos do formato 1;
+// 2 quando tem algum tipo promocional informativo (composição promocional).
+// O leitor aceita os dois e classifica cada linha pela regra do SEU formato.
 const FORMATO = 1;
+const FORMATOS_CONHECIDOS = new Set([1, 2]);
 const VALORES_LIGADO = new Set(["true", "1", "on", "yes", "sim"]);
 
 // Regra de classificação do formato 1 — cópia CONGELADA de
@@ -50,6 +54,22 @@ const REGRA_FORMATO_1 = Object.freeze({
   noResultado: Object.freeze(["receita_produto", "tarifa_venda", "custo_produto", "imposto_interno", "frete_seller"]),
   informativos: Object.freeze(["receita_envio", "cancelamento_reembolso"]),
 });
+
+// Formato 2 = formato 1 + os tipos INFORMATIVOS da composição promocional
+// (centralVendasComposicaoPromocional.TIPOS_PROMOCIONAIS): fora do resultado,
+// sem efeito (null). Só ACRESCENTA tipos que nenhuma linha de formato 1 tem,
+// então nenhum dado gravado em formato 1 muda de classificação.
+const TIPOS_PROMOCIONAIS_FORMATO_2 = Object.freeze([
+  "preco_cheio", "desconto_vendedor", "desconto_marketplace",
+  "comissao_bruta", "rebate_marketplace", "credito_comissao_comprovado",
+]);
+const REGRA_FORMATO_2 = Object.freeze({
+  efeito: REGRA_FORMATO_1.efeito,
+  noResultado: REGRA_FORMATO_1.noResultado,
+  informativos: Object.freeze([...REGRA_FORMATO_1.informativos, ...TIPOS_PROMOCIONAIS_FORMATO_2]),
+});
+const REGRAS = Object.freeze({ 1: REGRA_FORMATO_1, 2: REGRA_FORMATO_2 });
+const PROMOCIONAIS = new Set(TIPOS_PROMOCIONAIS_FORMATO_2);
 
 function isEscritaCompactaHabilitada({ fonte, syncRunId, clienteContaId }, env = process.env) {
   const raw = env[ENV_NAME];
@@ -134,8 +154,9 @@ function montarLinhas({ componentes, pedidoRowsById, itemRowsById, textos, extra
   for (const c of componentes) {
     const p = pedidoRowsById.get(c.pedidoId);
     if (p == null) throw new Error(`COMPONENTES_COMPACTOS_PEDIDO_SEM_LINHA:${c.pedidoId}`);
-    if (!porPedido.has(p)) porPedido.set(p, { p, c: [], v: [], i: [], x: null });
+    if (!porPedido.has(p)) porPedido.set(p, { p, f: FORMATO, c: [], v: [], i: [], x: null });
     const l = porPedido.get(p);
+    if (PROMOCIONAIS.has(c.tipo)) l.f = 2;
     const fonte = textoOuNull(c.fonte);
     const obs = textoOuNull(c.obs);
     l.c.push(textos.get(c.tipo), fonte === null ? 0 : textos.get(fonte), textos.get(c.confianca), obs === null ? 0 : textos.get(obs));
@@ -162,7 +183,7 @@ async function gravarCompactos(linhas, db) {
   const r = await db.query(
     `/* cv:componentes-compactos-insert */
      INSERT INTO ${TABELA} (pedido_row_id, formato, codigos, valores, item_row_ids, extras)
-     SELECT (e->>'p')::bigint, ${FORMATO},
+     SELECT (e->>'p')::bigint, (e->>'f')::smallint,
             ARRAY(SELECT t::int FROM jsonb_array_elements_text(e->'c') WITH ORDINALITY AS a(t, o) ORDER BY o),
             ARRAY(SELECT t::numeric(14,2) FROM jsonb_array_elements_text(e->'v') WITH ORDINALITY AS a(t, o) ORDER BY o),
             ARRAY(SELECT t::bigint FROM jsonb_array_elements_text(e->'i') WITH ORDINALITY AS a(t, o) ORDER BY o),
@@ -186,7 +207,8 @@ function casosEfeito() {
 }
 const SQL_EFEITO = `CASE ${casosEfeito()} END`;
 const SQL_INCLUIDO = `CASE WHEN tt.texto IN (${lista(REGRA_FORMATO_1.noResultado)}) THEN TRUE
-                           WHEN tt.texto IN (${lista(REGRA_FORMATO_1.informativos)}) THEN FALSE END`;
+                           WHEN tt.texto IN (${lista(REGRA_FORMATO_1.informativos)}) THEN FALSE
+                           WHEN pc.formato >= 2 AND tt.texto IN (${lista(TIPOS_PROMOCIONAIS_FORMATO_2)}) THEN FALSE END`;
 
 // `filtro` é uma condição sobre `pc` (a linha compacta) e/ou `p` (o pedido
 // DONO da linha). Devolve o SELECT (sem ORDER BY) com as colunas pedidas.
@@ -309,7 +331,7 @@ function gruposEmOrdem(rows) {
 }
 
 const INCLUIDO_SIM = new Set(REGRA_FORMATO_1.noResultado);
-const INCLUIDO_NAO = new Set(REGRA_FORMATO_1.informativos);
+const INCLUIDO_NAO_POR_FORMATO = { 1: new Set(REGRA_FORMATO_1.informativos), 2: new Set(REGRA_FORMATO_2.informativos) };
 const EFEITO = REGRA_FORMATO_1.efeito;
 
 class ComponentesCompactosCorrompidos extends Error {
@@ -322,7 +344,7 @@ class ComponentesCompactosCorrompidos extends Error {
 // Integridade de UMA linha compacta: formato conhecido, posições alinhadas.
 // Linha inconsistente é ERRO (nunca componente perdido em silêncio).
 function validarLinhaCompacta(r) {
-  if (Number(r.formato) !== FORMATO) throw new ComponentesCompactosCorrompidos(`FORMATO_${r.formato}`, r.pedido_row_id);
+  if (!FORMATOS_CONHECIDOS.has(Number(r.formato))) throw new ComponentesCompactosCorrompidos(`FORMATO_${r.formato}`, r.pedido_row_id);
   const n = Array.isArray(r.valores) ? r.valores.length : -1;
   if (n < 1 || !Array.isArray(r.item_row_ids) || r.item_row_ids.length !== n
     || !Array.isArray(r.codigos) || r.codigos.length !== 4 * n) {
@@ -415,7 +437,7 @@ async function mesclarComponentes(db, { linhasLegado, linhasCompactas, colunas, 
         obs: r.codigos[4 * k + 3] ? texto.get(r.codigos[4 * k + 3]) : null,
         escopo: itemRowId == null ? "pedido" : "item",
         efeito: Object.prototype.hasOwnProperty.call(EFEITO, tipo) ? EFEITO[tipo] : null,
-        incluido_no_resultado: INCLUIDO_SIM.has(tipo) ? true : INCLUIDO_NAO.has(tipo) ? false : null,
+        incluido_no_resultado: INCLUIDO_SIM.has(tipo) ? true : INCLUIDO_NAO_POR_FORMATO[Number(r.formato)].has(tipo) ? false : null,
         created_at: ped.created_at, updated_at: ped.updated_at,
       };
       const o = {};
@@ -444,7 +466,11 @@ module.exports = {
   TABELA,
   TABELA_TEXTOS,
   FORMATO,
+  FORMATOS_CONHECIDOS,
   REGRA_FORMATO_1,
+  REGRA_FORMATO_2,
+  REGRAS,
+  TIPOS_PROMOCIONAIS_FORMATO_2,
   isEscritaCompactaHabilitada,
   tabelaCompactaDisponivel,
   avaliarImport,
