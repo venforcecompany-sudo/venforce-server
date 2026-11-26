@@ -5486,6 +5486,8 @@ body.vf-page-anuncios-meli.am-custos-savebar-on .vf-toast-stack {
   background: var(--vf-surface);
 }
 .am-reb-estoque.is-invalido { border-color: var(--vf-danger-strong); }
+.am-reb-estoque--todos { background: var(--vf-surface-2); border-color: var(--vf-primary); position: sticky; top: 0; z-index: 1; }
+.am-reb-estoque--todos .am-reb-estoque__sub { white-space: normal; }
 .am-reb-estoque__info { flex: 1 1 200px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .am-reb-estoque__rotulo {
   font-size: var(--vf-fs-sm);
