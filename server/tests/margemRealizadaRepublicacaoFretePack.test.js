@@ -68,7 +68,7 @@ function montarBanco(imports) {
         return { rows: componentes.filter((c) => params[0].includes(c.pedido_row_id) && params[1].includes(c.tipo)) };
       }
       // A tabela de vínculos não existe nesta fixture (reuso desligado).
-      if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
+      if (/to_regclass\('public\.central_vendas_(import_pedidos|pedido_componentes)'\)/.test(String(sql))) return { rows: [{ ok: false }] };
       throw new Error(`query não esperada no fake: ${sql.slice(0, 80)}`);
     },
   };
