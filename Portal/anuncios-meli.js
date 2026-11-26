@@ -6687,7 +6687,7 @@
         '<p class="am-reb-confirma__txt" id="am-reb-confirma-txt">Participar de ' + n + (n === 1 ? " promoção" : " promoções") + " em " + nAnuncios + (nAnuncios === 1 ? " anúncio" : " anúncios") +
           (reb.job.modoLoja ? "? Nada é alterado nas promoções em que os anúncios já estão.</p>"
             : "? A promoção <strong>" + escapeHtml(nomeRef) + "</strong> permanece ativa em todos — nada nela é alterado.</p>") +
-        (campos ? '<div class="am-reb-estoques"><p class="am-reb-confirma__txt">A oferta relâmpago reserva estoque; o Mercado Livre marca o dia depois do aceite, então o preço de hoje não muda agora.</p>' + campos + "</div>" : "") +
+        (campos ? '<div class="am-reb-estoques"><p class="am-reb-confirma__txt">A oferta relâmpago reserva estoque; o Mercado Livre marca o dia depois do aceite, então o preço de hoje não muda agora.</p><div class="am-reb-estoques__lista">' + campos + "</div></div>" : "") +
         '<div class="am-reb-confirma__acoes">' +
           '<button type="button" class="vf-btn vf-btn--secondary" id="am-reb-cancelar-conf" data-reb-acao="cancelar-confirmacao"' + (reb.enviando ? " disabled" : "") + ">Voltar</button>" +
           '<button type="button" class="vf-btn vf-btn--primary" id="am-reb-confirmar" data-reb-acao="confirmar"' + (reb.enviando || travado ? " disabled" : "") + ">" +
