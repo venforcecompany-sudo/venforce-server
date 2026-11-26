@@ -138,25 +138,22 @@ function criarFetchFake(chamadas) {
       });
     }
 
-    if (parsed.pathname === "/items" && parsed.searchParams.has("ids")) {
-      const ids = parsed.searchParams.get("ids").split(",");
-      return resposta(200, ids.map((id) => {
-        const seller = sellerDoItem(id);
-        return {
-          code: 200,
-          body: {
-            id,
-            title: `Produto ${id}`,
-            seller_id: Number(seller),
-            seller_custom_field: `SKU-${id}`,
-            status: "active",
-            listing_type_id: "gold_special",
-            category_id: "MLB1234",
-            price: id.endsWith("002") ? 80 : 150,
-            shipping: { logistic_type: "cross_docking" },
-          },
-        };
-      }));
+    // O multiget /items?ids= é feito pelo mlFetch como um GET /items/{id} por item.
+    const itemMatch = parsed.pathname.match(/^\/items\/(MLB(?:111|222)\d+)$/);
+    if (itemMatch) {
+      const id = itemMatch[1];
+      const seller = sellerDoItem(id);
+      return resposta(200, {
+        id,
+        title: `Produto ${id}`,
+        seller_id: Number(seller),
+        seller_custom_field: `SKU-${id}`,
+        status: "active",
+        listing_type_id: "gold_special",
+        category_id: "MLB1234",
+        price: id.endsWith("002") ? 80 : 150,
+        shipping: { logistic_type: "cross_docking" },
+      });
     }
 
     const salePriceMatch = parsed.pathname.match(/^\/items\/(MLB(?:111|222)\d+)\/sale_price$/);
@@ -193,8 +190,9 @@ function validarPipelineConta({ label, resultado, chamadas, seller, bearer }) {
   const search = buscar(`/users/${seller}/items/search`);
   ok(`${label} — search usa ${bearer}`, search.length === 1 && search[0].authorization === bearer);
 
-  const batch = chamadas.filter((c) => new URL(c.url).pathname === "/items");
-  ok(`${label} — batch usa ${bearer}`, batch.length === 1 && batch[0].authorization === bearer);
+  // Uma leitura GET /items/{id} por anúncio (o multiget foi trocado no mlFetch).
+  const batch = chamadas.filter((c) => /^\/items\/MLB\d+$/.test(new URL(c.url).pathname));
+  ok(`${label} — leitura dos itens usa ${bearer}`, batch.length === 2 && batch.every((c) => c.authorization === bearer));
 
   const salePrice = buscar("/sale_price");
   ok(`${label} — sale_price usa ${bearer}`, salePrice.length === 2 && salePrice.every((c) => c.authorization === bearer));

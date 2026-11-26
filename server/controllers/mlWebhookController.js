@@ -52,7 +52,7 @@ function extrairNotificacao(body) {
 
 /**
  * Processamento pós-confirmação. Registra metadados sanitizados e, para o
- * tópico `items` (/items/MLB…), relê o anúncio no ML e atualiza o portal
+ * tópicos `items` e `items_prices`, relê o anúncio no ML e atualiza o portal
  * (status, estoque, preço) — só se o portal já tem o item daquele vendedor.
  * Os demais tópicos (orders_v2 etc.) seguem só registrados. Nunca busca uma
  * URL arbitrária vinda do corpo da notificação.
@@ -71,48 +71,88 @@ async function processarNotificacao(notificacao, deps = {}) {
 
   const itemId = itemIdDaNotificacao(notificacao);
   if (!itemId) return;
-  if (!deveProcessarItem(itemId, deps.agora ? deps.agora() : Date.now())) return;
-
-  const atualizar = deps.atualizarItem || atualizarItemNoPortal;
-  try {
-    await atualizar({ itemId, mlUserId: String(notificacao.userId) });
-  } catch (err) {
-    console.error("[ML webhook] falha ao atualizar o anúncio", itemId, ":", err?.message || err);
-  }
+  return enfileirarItem(itemId, String(notificacao.userId), deps);
 }
 
-// Só o tópico `items` com resource no formato exato /items/MLB123 — nunca uma
-// URL ou caminho arbitrário vindo do corpo da notificação.
+// `items` (/items/MLB…) e `items_prices` (/items/MLB…/prices: preço ou promoção
+// trocados direto no ML) mudam o anúncio; qualquer outro formato é ignorado —
+// nunca se busca uma URL ou caminho arbitrário vindo do corpo da notificação.
 function itemIdDaNotificacao(notificacao) {
-  if (!notificacao || notificacao.topic !== "items" || notificacao.userId == null) return null;
-  const m = /^\/items\/(MLB\d+)$/.exec(notificacao.resource || "");
+  if (!notificacao || notificacao.userId == null) return null;
+  const resource = notificacao.resource || "";
+  let m = null;
+  if (notificacao.topic === "items") m = /^\/items\/(MLB\d+)$/.exec(resource);
+  else if (notificacao.topic === "items_prices") m = /^\/items\/(MLB\d+)\/prices$/.exec(resource);
   return m ? m[1] : null;
 }
 
-// O ML costuma disparar várias notificações seguidas do mesmo item (e reenvia
-// com retry): uma releitura a cada janela basta, o resto é redundante.
-const JANELA_ITEM_MS = 5000;
-const ultimoProcessamento = new Map();
-function deveProcessarItem(itemId, agora) {
-  const ult = ultimoProcessamento.get(itemId);
-  if (ult !== undefined && agora - ult < JANELA_ITEM_MS) return false;
-  ultimoProcessamento.set(itemId, agora);
-  if (ultimoProcessamento.size > 5000) {
-    for (const [k, t] of ultimoProcessamento) {
-      if (agora - t >= JANELA_ITEM_MS) ultimoProcessamento.delete(k);
+// Uma leitura por item de cada vez, sem perder o último aviso:
+//  · aviso enquanto a leitura ainda está AGUARDANDO (atraso de 2 s, para o ML
+//    convergir) é juntado a ela — vai ler o estado mais novo de qualquer jeito;
+//  · aviso DURANTE a leitura marca uma releitura ao terminar (o que ela leu
+//    pode já ser velho);
+//  · leitura que falha (403 passageiro do ML, rede) é repetida até 3 vezes.
+const ATRASO_LEITURA_MS = 2000;
+const TENTATIVAS_LEITURA = 3;
+const filaItens = new Map();
+const dormir = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function enfileirarItem(itemId, mlUserId, deps = {}) {
+  const atual = filaItens.get(itemId);
+  if (atual) {
+    if (atual.estado === "lendo") atual.repetir = true;
+    return atual.fim;
+  }
+  const atraso = deps.atrasoMs ?? ATRASO_LEITURA_MS;
+  const esperar = deps.esperar || dormir;
+  const atualizar = deps.atualizarItem || atualizarItemNoPortal;
+  const entrada = { estado: "aguardando", repetir: false, fim: null };
+  entrada.fim = (async () => {
+    try {
+      do {
+        entrada.repetir = false;
+        entrada.estado = "aguardando";
+        await esperar(atraso);
+        entrada.estado = "lendo";
+        await lerComTentativas(itemId, mlUserId, atualizar, esperar, atraso);
+      } while (entrada.repetir);
+    } finally {
+      filaItens.delete(itemId);
+    }
+  })();
+  filaItens.set(itemId, entrada);
+  return entrada.fim;
+}
+
+async function lerComTentativas(itemId, mlUserId, atualizar, esperar, atraso) {
+  for (let tentativa = 1; tentativa <= TENTATIVAS_LEITURA; tentativa += 1) {
+    try {
+      await atualizar({ itemId, mlUserId });
+      return;
+    } catch (err) {
+      const ultima = tentativa === TENTATIVAS_LEITURA;
+      console.error(
+        "[ML webhook] falha ao atualizar o anúncio", itemId,
+        `(tentativa ${tentativa}/${TENTATIVAS_LEITURA}):`, err?.message || err
+      );
+      if (ultima) return;
+      await esperar(Math.max(atraso, 1) * tentativa);
     }
   }
-  return true;
 }
 
 // Relê o item no ML e grava no portal — só para anúncios que o portal já tem
-// daquele vendedor. Carregado sob demanda para o recebimento continuar leve.
+// daquele vendedor. Lança se o ML não devolveu o item, para a leitura ser
+// repetida. Carregado sob demanda para o recebimento continuar leve.
 async function atualizarItemNoPortal({ itemId, mlUserId }) {
   const anunciosService = require("../services/meliAnuncios/meliAnunciosService");
   const syncService = require("../services/meliAnuncios/meliSyncService");
   const linhas = await anunciosService.localizarItemPorVendedorMl(itemId, mlUserId);
   for (const linha of linhas) {
-    await syncService.atualizarItensConhecidos({ clienteId: linha.cliente_id, itemIds: [itemId] });
+    const r = await syncService.atualizarItensConhecidos({ clienteId: linha.cliente_id, itemIds: [itemId] });
+    if (r && Array.isArray(r.falhas) && r.falhas.length) {
+      throw new Error(r.falhas[0].motivo || "o Mercado Livre não devolveu o anúncio");
+    }
   }
 }
 

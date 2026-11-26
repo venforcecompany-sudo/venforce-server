@@ -146,7 +146,8 @@ async function run() {
     chamadasFetch.push({ url: u, authorization: options.headers.Authorization });
     let corpo = { results: [], paging: { total: 0 } };
     if (u.includes("/users/222/items/search")) corpo = { results: ["MLB2220001"], paging: { total: 1 } };
-    else if (u.includes("/items?ids=MLB2220001")) corpo = [{ code: 200, body: { id: "MLB2220001", seller_id: 222, title: "Item conta 2" } }];
+    // O multiget /items?ids= é feito pelo mlFetch como um GET /items/{id} por item.
+    else if (/mercadolibre\.com\/items\/MLB2220001(\?|$)/.test(u)) corpo = { id: "MLB2220001", seller_id: 222, title: "Item conta 2" };
     else if (u.includes("/seller-promotions/items/")) corpo = [];
     return {
       ok: true,
@@ -171,7 +172,7 @@ async function run() {
     ok("Conta 2 — path usa o seller 222", Boolean(buscaConta2));
     ok("Conta 2 — usa o access_token de 222 (não o principal 111)", buscaConta2.authorization === "Bearer access-222");
     ok("Conta 2 — nenhuma chamada usou o token principal (access-111)", !chamadasFetch.some((c) => c.authorization === "Bearer access-111"));
-    const multiget = chamadasFetch.find((c) => c.url.includes("/items?ids=MLB2220001"));
+    const multiget = chamadasFetch.find((c) => /mercadolibre\.com\/items\/MLB2220001(\?|$)/.test(c.url));
     ok("Conta 2 — detalhe do item (multiget) com o token de 222", multiget && multiget.authorization === "Bearer access-222");
     const promosItem = chamadasFetch.find((c) => c.url.includes("/seller-promotions/items/MLB2220001"));
     ok("Conta 2 — promoções DO ITEM lidas com o token de 222 (antes caíam no principal)", promosItem && promosItem.authorization === "Bearer access-222");

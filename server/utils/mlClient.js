@@ -71,7 +71,7 @@ function agoraMonotonico() {
 //   options.signal      AbortSignal externo
 // A promessa devolvida nunca fica pendurada além do limite: até a obtenção
 // do token entra na corrida.
-async function mlFetch(clienteId, path, options = {}) {
+async function mlFetchUnico(clienteId, path, options = {}) {
   const { timeoutMs = null, deadlineAt = null, signal = null } = options;
   if (timeoutMs == null && deadlineAt == null && !signal) return mlFetchSemLimite(clienteId, path, options);
 
@@ -120,6 +120,76 @@ async function mlFetch(clienteId, path, options = {}) {
     if (signal) signal.removeEventListener("abort", aoAbortarExterno);
     abortou.catch(() => {});
   }
+}
+
+// ---------------------------------------------------------------------------
+// Multiget /items?ids=a,b,c → leituras individuais GET /items/{id}.
+//
+// Desde 2026-11-24 o Mercado Livre recusa parte das chamadas do multiget com
+// 403 ResourceDeprecated ("client no longer allowed to consume this resource")
+// — o lote INTEIRO volta sem nenhum item —, enquanto o GET individual devolve
+// o mesmo corpo. O Lucratto já migrou pelo mesmo motivo. Fica aqui, no ponto
+// único, para todo chamador do multiget (sync, margem, FULL, diagnósticos,
+// precificação, promoções) continuar recebendo o formato de sempre:
+//   { ok, status: 200, data: [ { code, body } ] }   (um item por id pedido)
+// Cada id vira UMA entrada: code 200 + corpo do item, ou o status do ML + o
+// erro dele (com o id) — falha de um item não derruba os demais.
+// 401 geral, timeout e erro de rede continuam subindo como antes.
+// ---------------------------------------------------------------------------
+const MULTIGET_ITENS = /^\/items\?ids=([^&]*)(?:&(.*))?$/;
+const MULTIGET_PARALELISMO = 6;
+const MULTIGET_TENTATIVAS = 3;
+
+function esperarMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function falhaPassageira(r) {
+  if (!r || r.ok) return false;
+  if (r.status === 429 || r.status >= 500) return true;
+  return r.status === 403 && r.data && r.data.error === "ResourceDeprecated";
+}
+
+async function lerItemComTentativas(clienteId, id, resto, options) {
+  const path = `/items/${encodeURIComponent(id)}${resto ? `?${resto}` : ""}`;
+  let r;
+  for (let tentativa = 1; tentativa <= MULTIGET_TENTATIVAS; tentativa += 1) {
+    r = await mlFetchUnico(clienteId, path, options);
+    if (!falhaPassageira(r) || tentativa === MULTIGET_TENTATIVAS) break;
+    const espera = r.status === 429 && Number(r.retryAfter) > 0 ? Math.min(Number(r.retryAfter) * 1000, 3000) : 300 * tentativa;
+    await esperarMs(espera);
+  }
+  return r;
+}
+
+async function mlFetchItensIndividuais(clienteId, ids, resto, options) {
+  const unicos = [...new Set(ids)];
+  const resultados = new Array(unicos.length);
+  let proximo = 0;
+  const trabalhadores = Array.from({ length: Math.min(MULTIGET_PARALELISMO, unicos.length) }, async () => {
+    while (proximo < unicos.length) {
+      const i = proximo++;
+      resultados[i] = await lerItemComTentativas(clienteId, unicos[i], resto, options);
+    }
+  });
+  await Promise.all(trabalhadores);
+
+  if (resultados.length && resultados.every((r) => r && r.status === 401)) return resultados[0];
+  const data = resultados.map((r, i) => ({
+    code: r.status,
+    body: r.ok ? r.data : { id: unicos[i], ...(r.data && typeof r.data === "object" ? r.data : {}) },
+  }));
+  return { ok: true, status: 200, data, retryAfter: null };
+}
+
+async function mlFetch(clienteId, path, options = {}) {
+  const m = typeof path === "string" ? MULTIGET_ITENS.exec(path) : null;
+  const metodo = String(options.method || "GET").toUpperCase();
+  if (m && metodo === "GET") {
+    const ids = decodeURIComponent(m[1]).split(",").map((s) => s.trim()).filter(Boolean);
+    if (ids.length) return mlFetchItensIndividuais(clienteId, ids, m[2] || "", options);
+  }
+  return mlFetchUnico(clienteId, path, options);
 }
 
 async function mlFetchSemLimite(clienteId, path, options = {}, hooks = {}) {
