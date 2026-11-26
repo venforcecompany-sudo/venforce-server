@@ -1,0 +1,363 @@
+{
+  "parametros": {
+    "NOITES": 30,
+    "PEDIDOS_POR_DIA": 400,
+    "REPETICOES": 5
+  },
+  "equivalencia": {
+    "compacto=linhas.central_carga": true,
+    "compacto=linhas.detalhe_30_pedidos": true,
+    "compacto=linhas.margem_realizado": true,
+    "compacto=linhas.cliente360": true,
+    "compacto=linhas.resgate": true,
+    "reuso_compacto=reuso.central_carga": true,
+    "reuso_compacto=reuso.detalhe_30_pedidos": true,
+    "reuso_compacto=reuso.margem_realizado": true,
+    "reuso_compacto=reuso.cliente360": true,
+    "reuso_compacto=reuso.resgate": true,
+    "reuso=linhas.central_carga": true,
+    "reuso=linhas.detalhe_30_pedidos": true,
+    "reuso=linhas.margem_realizado": true,
+    "reuso=linhas.resgate": true,
+    "reuso=linhas.cliente360(sem rótulo sku/título)": true,
+    "reuso=linhas.cliente360(com rótulo)": false
+  },
+  "modos": {
+    "linhas": {
+      "modo": "linhas",
+      "periodo": {
+        "pedidos": 12000,
+        "componentes": 78521
+      },
+      "msEscrita": 48639,
+      "medidas": {
+        "central_carga": {
+          "ms": 1245.1,
+          "cpuMs": 1474.2,
+          "heapRetidoMB": -0.1
+        },
+        "detalhe_30_pedidos": {
+          "ms": 60.3,
+          "cpuMs": 48.5,
+          "heapRetidoMB": -0.08
+        },
+        "margem_realizado": {
+          "ms": 222.6,
+          "cpuMs": 174.1,
+          "heapRetidoMB": 0
+        },
+        "cliente360": {
+          "ms": 102.8,
+          "cpuMs": 103.5,
+          "heapRetidoMB": -0.03
+        },
+        "resgate": {
+          "ms": 271.2,
+          "cpuMs": 107.8,
+          "heapRetidoMB": -0.01
+        },
+        "componentes_periodo": {
+          "ms": 1233.6,
+          "cpuMs": 1381.1,
+          "heapRetidoMB": 0
+        },
+        "pg_componentes_linhas": {
+          "msServidor": 186.7,
+          "buffers": 2406
+        }
+      },
+      "tamanhos": [
+        {
+          "tabela": "central_vendas_componentes",
+          "total": "22347776"
+        },
+        {
+          "tabela": "central_vendas_imports",
+          "total": "417792"
+        },
+        {
+          "tabela": "central_vendas_pedido_itens",
+          "total": "5087232"
+        },
+        {
+          "tabela": "central_vendas_pedidos",
+          "total": "13008896"
+        }
+      ],
+      "linhas": {
+        "pedidos": 12000,
+        "componentes_linhas": 78521,
+        "compactos": 0
+      },
+      "estatisticas": {
+        "legado": 272,
+        "legadoComTabela": 0,
+        "mesclaJs": 0,
+        "uniaoSql": 0
+      }
+    },
+    "compacto": {
+      "modo": "compacto",
+      "periodo": {
+        "pedidos": 12000,
+        "componentes": 78521
+      },
+      "msEscrita": 14899,
+      "medidas": {
+        "central_carga": {
+          "ms": 902.1,
+          "cpuMs": 1095.3,
+          "heapRetidoMB": -0.1
+        },
+        "detalhe_30_pedidos": {
+          "ms": 80.5,
+          "cpuMs": 55.9,
+          "heapRetidoMB": -0.14
+        },
+        "margem_realizado": {
+          "ms": 365.1,
+          "cpuMs": 399.2,
+          "heapRetidoMB": -0.03
+        },
+        "cliente360": {
+          "ms": 102,
+          "cpuMs": 110.3,
+          "heapRetidoMB": -0.1
+        },
+        "resgate": {
+          "ms": 415.6,
+          "cpuMs": 319.8,
+          "heapRetidoMB": -0.05
+        },
+        "componentes_periodo_uniao_sql": {
+          "ms": 1276.6,
+          "cpuMs": 912.8,
+          "heapRetidoMB": 0.01
+        },
+        "uniaoSqlIgualMesclaJs": true,
+        "componentes_periodo": {
+          "ms": 884.3,
+          "cpuMs": 1048.2,
+          "heapRetidoMB": -0.02
+        },
+        "pg_componentes_linhas": {
+          "msServidor": 0.2,
+          "buffers": 2
+        },
+        "pg_componentes_compactos_crus": {
+          "msServidor": 61,
+          "buffers": 1940
+        }
+      },
+      "tamanhos": [
+        {
+          "tabela": "central_vendas_componente_textos",
+          "total": "81920"
+        },
+        {
+          "tabela": "central_vendas_componentes",
+          "total": "40960"
+        },
+        {
+          "tabela": "central_vendas_imports",
+          "total": "417792"
+        },
+        {
+          "tabela": "central_vendas_pedido_componentes",
+          "total": "4833280"
+        },
+        {
+          "tabela": "central_vendas_pedido_itens",
+          "total": "5087232"
+        },
+        {
+          "tabela": "central_vendas_pedidos",
+          "total": "13008896"
+        }
+      ],
+      "linhas": {
+        "pedidos": 12000,
+        "componentes_linhas": 0,
+        "compactos": 12000
+      },
+      "estatisticas": {
+        "legado": 0,
+        "legadoComTabela": 0,
+        "mesclaJs": 273,
+        "uniaoSql": 0
+      }
+    },
+    "reuso": {
+      "modo": "reuso",
+      "periodo": {
+        "pedidos": 12000,
+        "componentes": 78521
+      },
+      "msEscrita": 89223,
+      "medidas": {
+        "central_carga": {
+          "ms": 1525.7,
+          "cpuMs": 1767.6,
+          "heapRetidoMB": -0.15
+        },
+        "detalhe_30_pedidos": {
+          "ms": 63.3,
+          "cpuMs": 41.9,
+          "heapRetidoMB": -0.19
+        },
+        "margem_realizado": {
+          "ms": 337,
+          "cpuMs": 225.7,
+          "heapRetidoMB": -0.01
+        },
+        "cliente360": {
+          "ms": 142.7,
+          "cpuMs": 115,
+          "heapRetidoMB": -0.04
+        },
+        "resgate": {
+          "ms": 341.6,
+          "cpuMs": 112.3,
+          "heapRetidoMB": -0.02
+        },
+        "componentes_periodo": {
+          "ms": 1428.6,
+          "cpuMs": 1536.6,
+          "heapRetidoMB": -0.01
+        },
+        "pg_componentes_linhas": {
+          "msServidor": 269.1,
+          "buffers": 3519
+        }
+      },
+      "tamanhos": [
+        {
+          "tabela": "central_vendas_componentes",
+          "total": "34897920"
+        },
+        {
+          "tabela": "central_vendas_import_pedidos",
+          "total": "14843904"
+        },
+        {
+          "tabela": "central_vendas_imports",
+          "total": "3981312"
+        },
+        {
+          "tabela": "central_vendas_pedido_itens",
+          "total": "7962624"
+        },
+        {
+          "tabela": "central_vendas_pedidos",
+          "total": "20774912"
+        }
+      ],
+      "linhas": {
+        "pedidos": 18787,
+        "componentes_linhas": 122077,
+        "compactos": 0
+      },
+      "estatisticas": {
+        "legado": 272,
+        "legadoComTabela": 0,
+        "mesclaJs": 0,
+        "uniaoSql": 0
+      }
+    },
+    "reuso_compacto": {
+      "modo": "reuso_compacto",
+      "periodo": {
+        "pedidos": 12000,
+        "componentes": 78521
+      },
+      "msEscrita": 36172,
+      "medidas": {
+        "central_carga": {
+          "ms": 1150.2,
+          "cpuMs": 1392.5,
+          "heapRetidoMB": -0.06
+        },
+        "detalhe_30_pedidos": {
+          "ms": 90.4,
+          "cpuMs": 55.5,
+          "heapRetidoMB": -0.26
+        },
+        "margem_realizado": {
+          "ms": 470.8,
+          "cpuMs": 442.8,
+          "heapRetidoMB": -0.02
+        },
+        "cliente360": {
+          "ms": 135.2,
+          "cpuMs": 107.6,
+          "heapRetidoMB": -0.15
+        },
+        "resgate": {
+          "ms": 441.3,
+          "cpuMs": 326.7,
+          "heapRetidoMB": 0.01
+        },
+        "componentes_periodo_uniao_sql": {
+          "ms": 1242.9,
+          "cpuMs": 859.4,
+          "heapRetidoMB": 0
+        },
+        "uniaoSqlIgualMesclaJs": true,
+        "componentes_periodo": {
+          "ms": 1030.7,
+          "cpuMs": 1227.7,
+          "heapRetidoMB": -0.01
+        },
+        "pg_componentes_linhas": {
+          "msServidor": 3,
+          "buffers": 2
+        },
+        "pg_componentes_compactos_crus": {
+          "msServidor": 58.1,
+          "buffers": 1087
+        }
+      },
+      "tamanhos": [
+        {
+          "tabela": "central_vendas_componente_textos",
+          "total": "81920"
+        },
+        {
+          "tabela": "central_vendas_componentes",
+          "total": "40960"
+        },
+        {
+          "tabela": "central_vendas_import_pedidos",
+          "total": "14893056"
+        },
+        {
+          "tabela": "central_vendas_imports",
+          "total": "3981312"
+        },
+        {
+          "tabela": "central_vendas_pedido_componentes",
+          "total": "7454720"
+        },
+        {
+          "tabela": "central_vendas_pedido_itens",
+          "total": "7962624"
+        },
+        {
+          "tabela": "central_vendas_pedidos",
+          "total": "20774912"
+        }
+      ],
+      "linhas": {
+        "pedidos": 18787,
+        "componentes_linhas": 0,
+        "compactos": 18787
+      },
+      "estatisticas": {
+        "legado": 0,
+        "legadoComTabela": 0,
+        "mesclaJs": 273,
+        "uniaoSql": 0
+      }
+    }
+  }
+}

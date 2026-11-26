@@ -331,7 +331,7 @@ central_vendas_componente_textos (id, texto UNIQUE)  — append-only, compartilh
 
 | risco | severidade | mitigação |
 |---|---|---|
-| **Resgate** (`vendasPorItem`) lê componentes por SQL direto: não enxerga compactos (perde amostras de frete) | **alta, bloqueia o piloto** | adaptar antes do piloto; SQL pronto na §12. Mesmo leitor também ignora pedidos **reusados** (`i.import_id = ANY`): achado pré-existente, §13 |
+| **Resgate** (`vendasPorItem`) lê componentes por SQL direto: não enxerga compactos (perde amostras de frete) — **RESOLVIDO na rodada 2 (§14)** | ~~alta, bloqueia o piloto~~ | adaptar antes do piloto; SQL pronto na §12. Mesmo leitor também ignora pedidos **reusados** (`i.import_id = ANY`): achado pré-existente, §13 |
 | Leitura do período via SQL +40% (154 → 227 ms / 3.000 pedidos) | média | aceitável no piloto; otimização medida (decodificar em JS: 65 ms) na implementação definitiva |
 | Dicionário crescer com textos dinâmicos | baixa (22 textos hoje) | monitorar `COUNT(*)`; obs hoje são frases fixas do motor |
 | Regra M6 mudar | média | `formato` + teste que falha |
@@ -432,3 +432,111 @@ Equivalência deste padrão já medida no benchmark (`resgateIdentico`).
   Painel de Contas; o código atual do Painel não lê componentes.
 - Escrita atual linha a linha: 1 INSERT por componente. Mesmo sem mudar o
   formato, um INSERT em lote derruba de 4,1 s para 0,5 s por snapshot [medido].
+
+---
+
+## 14. Rodada 2 (26/11, tarde): Resgate, leitura em JS e revisão
+
+### 14.1 O que mudou
+
+- **Resgate corrigido.** `vendasPorItem` e `vendasResumoConta` agora leem os
+  pedidos pela camada compartilhada (próprios ∪ vinculados, `DISTINCT`) e o
+  frete por item por `carregarComponentesDosPedidos` (linhas antigas, enxutas
+  e compactas).
+  - Corrige também o defeito pré-existente: com o reuso, o Resgate **perdia**
+    os pedidos vinculados. O teste demonstra o defeito na SQL antiga.
+- **Leitura compacta decodificada em JS.** O banco devolve:
+  - uma linha crua por pedido, com os arrays em texto (`array_to_string`,
+    `''` = NULL);
+  - a **ordem dos grupos** (collation do banco).
+
+  O JS expande e intercala com as linhas antigas. O que não encaixa
+  exatamente cai na união em SQL (mesmo resultado). Linha inconsistente é
+  **erro**, nunca omissão.
+  - O parser de arrays do node-pg custava 4× a consulta no servidor; o
+    transporte em texto o substitui.
+  - `NUMERIC[]` viraria número JS (`12.30` → `12.3`); os valores seguem como
+    texto exato.
+- **PK `id`** na tabela compacta, para não criar `CENTRAL_POLICY_DRIFT` na
+  Unificação (doc 12, §2).
+- **Guardas de escrita** (item de outro pedido, pedido/item sem linha, INSERT
+  parcial).
+- **Backup** com literal de array do PostgreSQL.
+- **Restauração testada.**
+
+### 14.2 Desempenho de leitura (código real, `bench-leitura.cjs`)
+
+Mediana; máquina compartilhada com outra carga (≈ 6/16 núcleos ocupados), ±10%.
+
+**3.000 pedidos / 19.568 componentes** (porte da maior conta real):
+
+| leitor | linhas | compacto | reuso | reuso + compacto |
+|---|---:|---:|---:|---:|
+| componentes do período | 326 ms | **210** | 358 | **241** |
+| carga da Central | 308 | **254** | 372 | **283** |
+| payload + agregações da Central¹ | 11.373 | 8.546 | 11.208 | 8.203 |
+| detalhe de 30 pedidos | 58 | 81 | 61 | 69 |
+| realizado da Margem | 61 | 93 | 76 | 105 |
+| Cliente 360 | 26 | 24 | 33 | 27 |
+| Resgate | 69 | 104 | 93 | 110 |
+
+**12.000 pedidos / 78.521 componentes** (2–4× a maior conta real; sem o payload¹):
+
+| leitor | linhas | compacto | reuso | reuso + compacto |
+|---|---:|---:|---:|---:|
+| componentes do período | 1.234 ms | **884** | 1.429 | **1.031** |
+| CPU do Node nessa leitura | 1.381 ms | **1.048** | 1.537 | **1.228** |
+| tempo no servidor PG (buffers) | 187 ms (2.406) | **61 (1.940)** | 269 (3.519) | **58 (1.087)** |
+| carga da Central | 1.245 | **902** | 1.526 | **1.150** |
+| detalhe de 30 pedidos | 60 | 81 | 63 | 90 |
+| realizado da Margem | 223 | 365 | 337 | 471 |
+| Cliente 360 | 103 | 102 | 143 | 135 |
+| Resgate | 271 | 416 | 342 | 441 |
+
+¹ O payload da Central custa P×C em `buildPedidos` (filtra todos os
+componentes para cada pedido). É pré-existente e independe do armazenamento;
+na escala de 12 mil pedidos levaria horas por execução.
+
+- **Memória retida:** em todos os modos, a diferença ficou dentro do ruído
+  (< 0,3 MB). O formato não muda o tamanho do resultado que os leitores
+  seguram.
+- **Ganhos:** a carga principal da Central é 18–28% mais rápida, com −24% de
+  CPU no Node e 3–5× menos tempo de servidor.
+- **Custo:** as leituras **filtradas por tipo** (realizado da Margem, Resgate)
+  ficam 30–64% mais lentas. São +32 ms por 3.000 pedidos e +134 ms por 12.000,
+  porque decodificam todos os componentes do pedido para usar 1 a 3 tipos.
+  O detalhe de pedido custa +1 ms por pedido (3 consultas curtas em vez de 1).
+- **Próximo passo de otimização** (não feito): consultas de grupos e de
+  arrays filtradas por tipo no servidor, ou um índice de posição por tipo
+  gravado na linha. Entra como critério de piloto (doc 11).
+
+### 14.3 Reuso sem arrays × reuso com arrays (ganho incremental desta implementação)
+
+Mesmo histórico, código real:
+
+| | reuso (hoje) | reuso + arrays | ganho |
+|---|---:|---:|---:|
+| componentes, 3.000 pedidos / 20 noites | 7,80 MB | 1,83 MB | **−77%** |
+| tabelas da Central, idem | 17,66 MB | 11,62 MB | **−34%** |
+| componentes, 12.000 pedidos / 30 noites | 33,28 MB | 7,23 MB | **−78%** |
+| tabelas da Central, idem | 78,64 MB | 52,63 MB | **−33%** |
+| gravação das 30 noites (12.000 pedidos) | 89,2 s | 36,2 s | **−59%** |
+| gravação só dos componentes de 1 snapshot (3.000 pedidos) | 4.105 ms | 112 ms | **−97%** |
+| componentes do período (12.000 pedidos) | 1.429 ms | 1.031 ms | **−28%** |
+
+A gravação total na escala média oscilou entre rodadas com a carga da
+máquina: 17 → 10 s numa, 21 → 23 s noutra. O número estável é o da gravação
+só dos componentes.
+
+### 14.4 Equivalência (rodada 2)
+
+| teste | resultado |
+|---|---|
+| 5 modos × todos os leitores, noite a noite, **incluindo o Resgate** | **392 OK** |
+| casos de borda + isolamento por conta + **restauração do backup** | **12 OK** |
+| unitário do módulo (mescla, transporte, integridade, fallback) | **11 OK** |
+| benchmark: 4 modos × 7 leitores, 2 escalas | idênticos, exceto o rótulo de SKU do Cliente 360 entre linhas × reuso (pré-existente, sem arrays envolvidos) |
+| união SQL × mescla JS | idênticas nas 2 escalas |
+| Unificação com a tabela compacta | sem drift (filha preservada) |
+| validação real como `raiox_ro` local (concessões reais) | estado/completude OK; validador **GO** em banco misto; teste negativo (1 centavo, 1 vínculo) → **NO_GO** |
+| suíte completa (433 arquivos) | só as 4 falhas preexistentes da main |
