@@ -88,11 +88,14 @@ function textoOuNull(v) { return v === null || v === undefined || v === "" ? nul
 // formato antigo (o import inteiro), nunca uma aproximação.
 function avaliarImport(motorPayload) {
   const pedidos = new Set((motorPayload.pedidos || []).map((p) => p.pedidoId));
-  const itens = new Set((motorPayload.itens || []).map((i) => i.itemId));
+  const pedidoDoItem = new Map((motorPayload.itens || []).map((i) => [i.itemId, i.pedidoId]));
   const textos = new Set();
   for (const c of motorPayload.componentes || []) {
     if (!pedidos.has(c.pedidoId)) return { elegivel: false, motivo: "COMPONENTE_SEM_PEDIDO" };
-    if (c.itemId && !itens.has(c.itemId)) return { elegivel: false, motivo: "COMPONENTE_ITEM_SEM_LINHA" };
+    if (c.itemId && !pedidoDoItem.has(c.itemId)) return { elegivel: false, motivo: "COMPONENTE_ITEM_SEM_LINHA" };
+    // Item de OUTRO pedido: a linha antiga ordenaria pelo item_id do item; aqui
+    // a composição é do pedido — fica no formato antigo.
+    if (c.itemId && pedidoDoItem.get(c.itemId) !== c.pedidoId) return { elegivel: false, motivo: "COMPONENTE_ITEM_DE_OUTRO_PEDIDO" };
     if (typeof c.tipo !== "string" || c.tipo === "") return { elegivel: false, motivo: "COMPONENTE_TIPO_INVALIDO" };
     if (typeof c.confianca !== "string" || c.confianca === "") return { elegivel: false, motivo: "COMPONENTE_CONFIANCA_INVALIDA" };
     const v = c.valor;
@@ -130,13 +133,17 @@ function montarLinhas({ componentes, pedidoRowsById, itemRowsById, textos, extra
   const porPedido = new Map();
   for (const c of componentes) {
     const p = pedidoRowsById.get(c.pedidoId);
+    if (p == null) throw new Error(`COMPONENTES_COMPACTOS_PEDIDO_SEM_LINHA:${c.pedidoId}`);
     if (!porPedido.has(p)) porPedido.set(p, { p, c: [], v: [], i: [], x: null });
     const l = porPedido.get(p);
     const fonte = textoOuNull(c.fonte);
     const obs = textoOuNull(c.obs);
     l.c.push(textos.get(c.tipo), fonte === null ? 0 : textos.get(fonte), textos.get(c.confianca), obs === null ? 0 : textos.get(obs));
     l.v.push(c.valor ?? null);
-    l.i.push(c.itemId ? itemRowsById.get(c.itemId) ?? null : null);
+    const itemRow = c.itemId ? itemRowsById.get(c.itemId) : null;
+    // Nunca rebaixar um componente de item a componente de pedido em silêncio.
+    if (c.itemId && itemRow == null) throw new Error(`COMPONENTES_COMPACTOS_ITEM_SEM_LINHA:${c.itemId}`);
+    l.i.push(itemRow ?? null);
     const extras = extrasDoComponente(c);
     if (extras && Object.keys(extras).length) {
       l.x = l.x || {};
@@ -163,6 +170,8 @@ async function gravarCompactos(linhas, db) {
        FROM jsonb_array_elements($1::jsonb) AS e`,
     [JSON.stringify(linhas)]
   );
+  // Atomicidade: exatamente uma linha por pedido, senão a transação do import aborta.
+  if (r.rowCount !== linhas.length) throw new Error(`COMPONENTES_COMPACTOS_INSERT_PARCIAL:${r.rowCount}/${linhas.length}`);
   return r.rowCount;
 }
 
@@ -229,7 +238,207 @@ function sqlUniao({ colunas, filtroLegado, filtroCompacto, ordem = "pedido", com
     ORDER BY ${chaves}, pedido_row_id ASC, id ASC NULLS LAST, ordem_compacta ASC`;
 }
 
+// ---------------------------------------------------------------------------
+// Leitura com decodificação em JS (caminho padrão). O banco faz só o que tem
+// de fazer: devolve UMA linha crua por pedido (arrays, sem unnest nem junções
+// com o dicionário) e a ORDEM dos grupos (pedido_id, item_id NULLS LAST, linha
+// do pedido) — a ordenação de texto continua com a collation do banco, nunca
+// do JS. O JS expande os arrays e intercala as linhas antigas e as compactas
+// grupo a grupo. Qualquer coisa que não encaixe exatamente devolve `null`, e
+// o chamador usa a união em SQL (sqlUniao) — nunca uma aproximação.
+// ---------------------------------------------------------------------------
+
+// Arrays como UMA string cada (array_to_string), divididos em JS: o parser de
+// arrays do node-pg custava 4× mais que a consulta no servidor (66 ms × 17 ms
+// em 3.000 pedidos). Valores ficam TEXTO — a mesma string que a coluna `valor`
+// antiga devolve ("12.30"; NUMERIC[] viraria número JS e perderia o formato).
+// '' marca NULL nos três arrays: sem o marcador, array_to_string DESCARTA os
+// NULLs e as posições desalinhariam em silêncio (em `codigos`, '' é corrupção).
+function sqlCompactosCrus(filtro) {
+  return `/* cv:componentes-compactos-crus */
+    SELECT pc.pedido_row_id::text AS pedido_row_id, pc.formato,
+           array_to_string(pc.codigos, ',', '') AS c, array_to_string(pc.valores, ',', '') AS v,
+           array_to_string(pc.item_row_ids, ',', '') AS i
+      FROM ${TABELA} pc JOIN central_vendas_pedidos p ON p.id = pc.pedido_row_id
+     WHERE ${filtro}`;
+}
+
+function lerLinhaCrua(r) {
+  if (r.codigos) return r; // já decodificada
+  const codigos = String(r.c).split(",").map((t) => {
+    if (t === "") throw new ComponentesCompactosCorrompidos("CODIGO_NULO", r.pedido_row_id);
+    return Number(t);
+  });
+  return {
+    pedido_row_id: String(r.pedido_row_id), formato: r.formato, codigos,
+    valores: String(r.v).split(",").map((t) => (t === "" ? null : t)),
+    item_row_ids: String(r.i).split(",").map((t) => (t === "" ? null : t)),
+  };
+}
+
+// Ordem dos grupos (pedido_id, item_id NULLS LAST, linha do pedido) = a da
+// consulta antiga, ordenada PELO BANCO (collation). Uma linha por item; pedido
+// sem item vem com item NULL. Os grupos "do pedido" (item NULL) de cada bloco
+// de pedido_id são postos no fim do bloco, por linha do pedido (NULLS LAST).
+// Colunas do pedido só quando o leitor as pede.
+const COLUNAS_DO_PEDIDO = ["import_id", "cliente_id", "cliente_slug", "marketplace", "competencia", "created_at", "updated_at"];
+function sqlGrupos(colunasPedido) {
+  const extra = colunasPedido.map((c) => `, p.${c}`).join("");
+  return `/* cv:componentes-grupos */
+    SELECT p.id::text AS pedido_row_id, p.pedido_id, i.id::text AS item_row_id, i.item_id${extra}
+      FROM central_vendas_pedidos p LEFT JOIN central_vendas_pedido_itens i ON i.pedido_row_id = p.id
+     WHERE p.id = ANY($1::bigint[])
+     ORDER BY p.pedido_id ASC, i.item_id ASC NULLS LAST, p.id ASC`;
+}
+function gruposEmOrdem(rows) {
+  const grupos = [];
+  let bloco = null;
+  let linhasDoBloco = [];
+  const fecharBloco = () => {
+    const unicas = [...new Set(linhasDoBloco)].sort((a, b) => (BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : 0));
+    for (const pr of unicas) grupos.push({ pedido_row_id: pr, item_row_id: null, item_id: null });
+    linhasDoBloco = [];
+  };
+  rows.forEach((r, n) => {
+    if (n === 0 || r.pedido_id !== bloco) { if (n > 0) fecharBloco(); bloco = r.pedido_id; }
+    linhasDoBloco.push(r.pedido_row_id);
+    if (r.item_row_id != null) grupos.push({ pedido_row_id: r.pedido_row_id, item_row_id: r.item_row_id, item_id: r.item_id });
+  });
+  if (rows.length) fecharBloco();
+  return grupos;
+}
+
+const INCLUIDO_SIM = new Set(REGRA_FORMATO_1.noResultado);
+const INCLUIDO_NAO = new Set(REGRA_FORMATO_1.informativos);
+const EFEITO = REGRA_FORMATO_1.efeito;
+
+class ComponentesCompactosCorrompidos extends Error {
+  constructor(motivo, pedidoRowId) {
+    super(`COMPONENTES_COMPACTOS_CORROMPIDOS:${motivo}:pedido_row_id=${pedidoRowId}`);
+    this.code = "COMPONENTES_COMPACTOS_CORROMPIDOS";
+  }
+}
+
+// Integridade de UMA linha compacta: formato conhecido, posições alinhadas.
+// Linha inconsistente é ERRO (nunca componente perdido em silêncio).
+function validarLinhaCompacta(r) {
+  if (Number(r.formato) !== FORMATO) throw new ComponentesCompactosCorrompidos(`FORMATO_${r.formato}`, r.pedido_row_id);
+  const n = Array.isArray(r.valores) ? r.valores.length : -1;
+  if (n < 1 || !Array.isArray(r.item_row_ids) || r.item_row_ids.length !== n
+    || !Array.isArray(r.codigos) || r.codigos.length !== 4 * n) {
+    throw new ComponentesCompactosCorrompidos("DIMENSOES", r.pedido_row_id);
+  }
+  return n;
+}
+
+// Contadores do processo (observabilidade e testes): qual caminho cada leitura usou.
+const estatisticas = { legado: 0, legadoComTabela: 0, mesclaJs: 0, uniaoSql: 0 };
+
+const chaveGrupo = (pedidoRowId, itemRowId) => `${pedidoRowId}|${itemRowId == null ? "" : itemRowId}`;
+
+/**
+ * Mescla as linhas antigas (já filtradas e ordenadas pelo SQL antigo) com as
+ * compactas, no formato e na ordem de sempre.
+ *   linhasLegado: linhas de central_vendas_componentes com `colunas` + as
+ *                 internas id/pedido_row_id/item_row_id/item_id (podem já estar em `colunas`)
+ *   linhasCompactas: resultado de sqlCompactosCrus
+ *   tipos: filtro por tipo (só para as compactas; o SQL antigo já filtrou as suas)
+ * Devolve as linhas, ou null quando o caminho em SQL deve ser usado.
+ */
+async function mesclarComponentes(db, { linhasLegado, linhasCompactas, colunas, tipos = null, internas = [], paralelo = false }) {
+  const pedidoIds = new Set();
+  linhasCompactas = linhasCompactas.map(lerLinhaCrua);
+  for (const r of linhasCompactas) { validarLinhaCompacta(r); pedidoIds.add(String(r.pedido_row_id)); }
+  for (const r of linhasLegado) {
+    // Componente antigo sem linha de pedido, ou com item sem linha de item: a
+    // ordem dele depende do item_id do próprio componente — só a SQL ordena.
+    if (r.pedido_row_id == null) return null;
+    if (r.item_row_id == null && r.item_id != null) return null;
+    pedidoIds.add(String(r.pedido_row_id));
+  }
+  const ids = new Set();
+  for (const r of linhasCompactas) for (let k = 0; k < r.codigos.length; k += 1) if (r.codigos[k]) ids.add(r.codigos[k]);
+  const colunasPedido = COLUNAS_DO_PEDIDO.filter((c) => colunas.includes(c));
+  const consultas = [
+    () => db.query(sqlGrupos(colunasPedido), [[...pedidoIds]]),
+    () => db.query(`/* cv:componentes-textos */ SELECT id, texto FROM ${TABELA_TEXTOS} WHERE id = ANY($1::int[])`, [[...ids]]),
+  ];
+  const [grupos, dicionario] = paralelo
+    ? await Promise.all(consultas.map((f) => f()))
+    : [await consultas[0](), await consultas[1]()];
+  const texto = new Map(dicionario.rows.map((d) => [Number(d.id), d.texto]));
+  for (const id of ids) if (!texto.has(id)) throw new ComponentesCompactosCorrompidos(`TEXTO_${id}_AUSENTE`, "?");
+
+  const doPedido = new Map();
+  for (const g of grupos.rows) if (!doPedido.has(g.pedido_row_id)) doPedido.set(g.pedido_row_id, g);
+  const ordem = gruposEmOrdem(grupos.rows);
+  const itemDoGrupo = new Map();
+  const baldes = new Map();
+  for (const g of ordem) {
+    const k = chaveGrupo(g.pedido_row_id, g.item_row_id);
+    itemDoGrupo.set(k, g.item_id);
+    baldes.set(k, []);
+  }
+  for (const r of linhasLegado) {
+    const k = chaveGrupo(r.pedido_row_id, r.item_row_id);
+    // O item_id do componente antigo precisa ser o da linha do item (a ordem vem dele).
+    if (!baldes.has(k) || (r.item_row_id != null && itemDoGrupo.get(k) !== r.item_id)) return null;
+    if (internas.length) {
+      const o = {};
+      for (const c of colunas) o[c] = r[c];
+      baldes.get(k).push(o);
+    } else {
+      baldes.get(k).push(r);
+    }
+  }
+  const quer = (c) => colunas.includes(c);
+  const filtroTipos = tipos ? new Set(tipos) : null;
+  let compactas = 0;
+  for (const r of linhasCompactas) {
+    const n = r.valores.length;
+    const pedidoRowId = String(r.pedido_row_id);
+    const ped = doPedido.get(pedidoRowId);
+    if (!ped) return null;
+    for (let k = 0; k < n; k += 1) {
+      const tipo = texto.get(r.codigos[4 * k]);
+      if (filtroTipos && !filtroTipos.has(tipo)) continue;
+      const itemRowId = r.item_row_ids[k] == null ? null : String(r.item_row_ids[k]);
+      const chave = chaveGrupo(pedidoRowId, itemRowId);
+      if (!baldes.has(chave)) return null; // item de outro pedido: a SQL ordena pelo item_id do item
+      const valores = {
+        id: null, import_id: ped.import_id, pedido_row_id: pedidoRowId, item_row_id: itemRowId,
+        cliente_id: ped.cliente_id, cliente_slug: ped.cliente_slug, marketplace: ped.marketplace, competencia: ped.competencia,
+        pedido_id: ped.pedido_id, item_id: itemRowId == null ? null : itemDoGrupo.get(chave),
+        tipo, valor: r.valores[k],
+        fonte: r.codigos[4 * k + 1] ? texto.get(r.codigos[4 * k + 1]) : null,
+        confianca: texto.get(r.codigos[4 * k + 2]),
+        obs: r.codigos[4 * k + 3] ? texto.get(r.codigos[4 * k + 3]) : null,
+        escopo: itemRowId == null ? "pedido" : "item",
+        efeito: Object.prototype.hasOwnProperty.call(EFEITO, tipo) ? EFEITO[tipo] : null,
+        incluido_no_resultado: INCLUIDO_SIM.has(tipo) ? true : INCLUIDO_NAO.has(tipo) ? false : null,
+        created_at: ped.created_at, updated_at: ped.updated_at,
+      };
+      const o = {};
+      for (const c of colunas) if (quer(c)) o[c] = valores[c];
+      baldes.get(chave).push(o);
+      compactas += 1;
+    }
+  }
+  const saida = [];
+  for (const g of ordem) for (const r of baldes.get(chaveGrupo(g.pedido_row_id, g.item_row_id))) saida.push(r);
+  // Conservação: nenhuma linha some nem duplica na mescla.
+  if (saida.length !== linhasLegado.length + compactas) throw new ComponentesCompactosCorrompidos("CONTAGEM_MESCLA", "*");
+  return saida;
+}
+
 module.exports = {
+  estatisticas,
+  ComponentesCompactosCorrompidos,
+  sqlCompactosCrus,
+  lerLinhaCrua,
+  gruposEmOrdem,
+  mesclarComponentes,
+  validarLinhaCompacta,
   ENV_NAME,
   ENV_CONTAS,
   TABELA,

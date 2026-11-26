@@ -551,11 +551,70 @@ async function gravarComponentesCompactos({ motorPayload, reusado, pedidoRowsByI
 }
 
 // Componentes de um conjunto de pedidos nos DOIS formatos (linhas antigas ∪
-// compactos), no formato e na ordem de sempre. Sem a tabela compacta: a
-// consulta antiga, literalmente (mesmo SQL, mesmo resultado).
-async function consultarComponentes(db, { sqlLegado, colunas, filtroLegado, filtroCompacto, ordem, comentario }, params) {
-  if (!(await compactos.tabelaCompactaDisponivel(db))) return db.query(sqlLegado, params);
-  return db.query(compactos.sqlUniao({ colunas, filtroLegado, filtroCompacto, ordem, comentario }), params);
+// compactos), no formato e na ordem de sempre.
+//   - Sem a tabela compacta: a consulta antiga, literalmente.
+//   - Com a tabela e sem nenhuma linha compacta no conjunto: a consulta antiga
+//     (mesmas linhas, mesma ordem; só as colunas internas de mescla são tiradas).
+//   - Com linhas compactas: arrays crus decodificados em JS e intercalados
+//     com as antigas na ordem de grupos que o BANCO devolve
+//     (compactos.mesclarComponentes). Se algo não encaixar exatamente, a união
+//     em SQL (compactos.sqlUniao) — mesmo resultado, só mais lenta.
+// spec: { sqlLegado, colunas, filtroLegado, filtroCompacto (em pc/p),
+//         paramsCompacto?, ordem?, comentario?, tipos?, filtroTiposUniao? }
+const MESCLA_INTERNAS = ["id", "pedido_row_id", "item_row_id", "item_id"];
+async function consultarComponentes(db, spec, params) {
+  if (!(await compactos.tabelaCompactaDisponivel(db))) { compactos.estatisticas.legado += 1; return db.query(spec.sqlLegado, params); }
+  const { colunas, filtroLegado, filtroCompacto, ordem = "pedido", comentario = "", tipos = null } = spec;
+  const internas = MESCLA_INTERNAS.filter((c) => !colunas.includes(c));
+  const ordemLegado = ordem === "item" ? "item_id ASC NULLS LAST, id ASC" : "pedido_id ASC, item_id ASC NULLS LAST, id ASC";
+  const sqlLegadoMescla = `${comentario}SELECT ${[...colunas, ...internas].join(", ")}
+       FROM central_vendas_componentes WHERE ${filtroLegado} ORDER BY ${ordemLegado}`;
+  const sqlCrus = compactos.sqlCompactosCrus(filtroCompacto);
+  const paramsCompacto = spec.paramsCompacto || params;
+  // Client emprestado (transação, conexão dedicada): uma consulta por vez.
+  const [legado, crus] = isPoolLike(db)
+    ? await Promise.all([db.query(sqlLegadoMescla, params), db.query(sqlCrus, paramsCompacto)])
+    : [await db.query(sqlLegadoMescla, params), await db.query(sqlCrus, paramsCompacto)];
+  const semInternas = (rows) => (internas.length
+    ? rows.map((r) => { const o = {}; for (const c of colunas) o[c] = r[c]; return o; })
+    : rows);
+  if (!crus.rows.length) { compactos.estatisticas.legadoComTabela += 1; return { rows: semInternas(legado.rows) }; }
+  const rows = await compactos.mesclarComponentes(db, {
+    linhasLegado: legado.rows, linhasCompactas: crus.rows, colunas, tipos, internas, paralelo: isPoolLike(db),
+  });
+  if (rows) { compactos.estatisticas.mesclaJs += 1; return { rows }; }
+  compactos.estatisticas.uniaoSql += 1;
+  return db.query(compactos.sqlUniao({
+    colunas, filtroLegado, filtroCompacto: `${filtroCompacto}${spec.filtroTiposUniao || ""}`, ordem, comentario,
+  }), params);
+}
+
+// Componentes de pedidos já resolvidos (pedido_row_id), nos dois formatos —
+// para leitores fora da Central (Resgate) não repetirem SQL própria sobre
+// central_vendas_componentes. `tipos` opcional.
+async function carregarComponentesDosPedidos({ pedidoRowIds, tipos = null, colunas = COMPONENTE_COLUNAS }, db = pool) {
+  if (!Array.isArray(pedidoRowIds) || !pedidoRowIds.length) return [];
+  const ids = pedidoRowIds.map(String);
+  const cols = colunas.join(", ");
+  const r = tipos
+    ? await consultarComponentes(db, {
+      sqlLegado: `/* cv:componentes-dos-pedidos */ SELECT ${cols} FROM central_vendas_componentes
+        WHERE pedido_row_id = ANY($1::bigint[]) AND tipo = ANY($2::text[])
+        ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
+      colunas, comentario: "/* cv:componentes-dos-pedidos */ ",
+      filtroLegado: "pedido_row_id = ANY($1::bigint[]) AND tipo = ANY($2::text[])",
+      filtroCompacto: "pc.pedido_row_id = ANY($1::bigint[])", paramsCompacto: [ids],
+      tipos, filtroTiposUniao: " AND tt.texto = ANY($2::text[])",
+    }, [ids, tipos])
+    : await consultarComponentes(db, {
+      sqlLegado: `/* cv:componentes-dos-pedidos */ SELECT ${cols} FROM central_vendas_componentes
+        WHERE pedido_row_id = ANY($1::bigint[])
+        ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
+      colunas, comentario: "/* cv:componentes-dos-pedidos */ ",
+      filtroLegado: "pedido_row_id = ANY($1::bigint[])",
+      filtroCompacto: "pc.pedido_row_id = ANY($1::bigint[])",
+    }, [ids]);
+  return r.rows;
 }
 
 // Manifesto do import PUBLICADO vigente da mesma tupla (cliente, conta,
@@ -1014,7 +1073,10 @@ async function loadRealizadoByImportIds({ importIds, dateFrom, dateTo }, db = po
         ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
       colunas: ["item_row_id", "pedido_row_id", "tipo", "valor"],
       filtroLegado: "pedido_row_id = ANY($1::bigint[]) AND tipo = ANY($2::text[])",
-      filtroCompacto: "pc.pedido_row_id = ANY($1::bigint[]) AND tt.texto = ANY($2::text[])",
+      filtroCompacto: "pc.pedido_row_id = ANY($1::bigint[])",
+      paramsCompacto: [pedidoRowIds],
+      tipos: TIPOS_COMPONENTE_REALIZADO,
+      filtroTiposUniao: " AND tt.texto = ANY($2::text[])",
       comentario: "/* cv:realizado-componentes */ ",
     }, [pedidoRowIds, TIPOS_COMPONENTE_REALIZADO]),
   ]);
@@ -1129,6 +1191,7 @@ module.exports = {
   resolveImportsForRange,
   loadPedidosByImportIds,
   loadRealizadoByImportIds,
+  carregarComponentesDosPedidos,
   TIPOS_COMPONENTE_REALIZADO,
   getPedidoDetailByRowId,
   promoverCandidatesDoRun,

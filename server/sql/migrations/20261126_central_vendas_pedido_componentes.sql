@@ -42,8 +42,15 @@ CREATE TABLE IF NOT EXISTS central_vendas_componente_textos (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- PK `id` própria (e não pedido_row_id): a Unificação Clientes×Contas
+-- (centralReferenceScope.centralPolicyErrors) exige PK de coluna única `id`
+-- em toda tabela da Central e usa (id, xmin) no fingerprint do subgrafo;
+-- sem isso a tabela viraria CENTRAL_POLICY_DRIFT e bloquearia a unificação.
+-- Uma linha por pedido continua garantida pelo UNIQUE (pedido_row_id), que
+-- também é o índice das leituras e do CASCADE.
 CREATE TABLE IF NOT EXISTS central_vendas_pedido_componentes (
-  pedido_row_id BIGINT PRIMARY KEY REFERENCES central_vendas_pedidos(id) ON DELETE CASCADE,
+  id BIGSERIAL PRIMARY KEY,
+  pedido_row_id BIGINT NOT NULL UNIQUE REFERENCES central_vendas_pedidos(id) ON DELETE CASCADE,
   formato SMALLINT NOT NULL DEFAULT 1,
   codigos INT[] NOT NULL,
   valores NUMERIC(14,2)[] NOT NULL,

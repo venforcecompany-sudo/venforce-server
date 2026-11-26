@@ -346,7 +346,11 @@ async function exportarImportsCsv(db, importIds, { dir, prefixo }) {
     arquivos.componentes_compactos = path.join(dir, `${prefixo}-componentes_compactos.csv`);
     for (const id of importIds) {
       const r = await db.query(
-        `SELECT pc.* FROM ${TABELA_COMPACTOS} pc JOIN central_vendas_pedidos p ON p.id = pc.pedido_row_id
+        // Arrays como LITERAL do PostgreSQL ("{12.30,NULL,0.00}"): exatos e
+        // restauráveis direto por COPY (o node-pg converteria NUMERIC[] em número JS).
+        `SELECT pc.id, pc.pedido_row_id, pc.formato, pc.codigos::text AS codigos, pc.valores::text AS valores,
+                pc.item_row_ids::text AS item_row_ids, pc.extras
+           FROM ${TABELA_COMPACTOS} pc JOIN central_vendas_pedidos p ON p.id = pc.pedido_row_id
           WHERE p.import_id = $1 ORDER BY pc.pedido_row_id`, [id]);
       anexarCsv(arquivos.componentes_compactos, r.rows);
     }
