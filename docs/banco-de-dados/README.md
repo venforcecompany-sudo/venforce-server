@@ -19,6 +19,8 @@ Branch `feat/pg-reorganizacao` (worktree `~/venforce-dev/wt-pg-reorg`, base
 | 10 | **Componentes compactos (formato v2)**: diagnóstico, 4 modelos, PoC, plano, GO/NO-GO | [10_COMPONENTES_COMPACTOS.md](10_COMPONENTES_COMPACTOS.md) · [benchmark](componentes-v2/bench_layouts_20x150.json) | branch `feat/central-vendas-persistencia-componentes-v2` |
 | 11 | **Rollout por conta: reuso → compactos** (estado, ferramentas, GO/NO-GO, rollback) | [11_ROLLOUT_REUSO_E_COMPACTOS.md](11_ROLLOUT_REUSO_E_COMPACTOS.md) | idem |
 | 12 | **Revisão de segurança e arquitetura** do diff + achados pré-existentes | [12_REVISAO_COMPONENTES_V2.md](12_REVISAO_COMPONENTES_V2.md) | idem |
+| 13 | **Evolução do motor da Central**: capacidades reaproveitáveis, lacunas, arquitetura e plano | [13_EVOLUCAO_MOTOR_CENTRAL.md](13_EVOLUCAO_MOTOR_CENTRAL.md) | idem |
+| 14 | **Contrato financeiro v1**: resultados, promoções/rebate, Ads e Full | [14_CONTRATO_FINANCEIRO.md](14_CONTRATO_FINANCEIRO.md) | idem |
 | — | **Pendências e rollout** | [PENDENCIAS_E_ROLLOUT.md](PENDENCIAS_E_ROLLOUT.md) | — |
 | — | **Checklist de publicação (flags desligadas)** | [CHECKLIST_PUBLICACAO.md](CHECKLIST_PUBLICACAO.md) | — |
 
