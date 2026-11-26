@@ -111,6 +111,27 @@ async function run() {
   assert.strictEqual((await listarPromocoesDoItem({ clienteId: 1, itemId: "MLB1", mlUserId: "111" })).length, 1);
   ok("listarPromocoesDoItemDetalhado devolve ok+lista; listarPromocoesDoItem inalterada");
 
+  // 5. Relâmpago cofinanciada: só o radar escreve (permitirComEstoque) e o stock vai no POST.
+  const luz = { id: "P-L", type: "SMART_LIGHTNING", status: "candidate", ref_id: "CANDIDATE-MLB1-9", original_price: 100, meli_percentage: 5, seller_percentage: 0, stock: { min: 5, max: 50 } };
+  const base = { clienteId: 1, itemId: "MLB1", mlUserId: "111", promotionId: "P-L", tipo: "SMART_LIGHTNING" };
+  mlChamadas = [];
+  promosAoVivo = [luz];
+  r = await participarPromocaoAceite(base);
+  assert.strictEqual(r.codigo, "TIPO_SEM_ACEITE", "Central/Anúncios continuam sem escrever na relâmpago");
+  r = await participarPromocaoAceite({ ...base, permitirComEstoque: true });
+  assert.strictEqual(r.codigo, "ESTOQUE_OBRIGATORIO");
+  r = await participarPromocaoAceite({ ...base, permitirComEstoque: true, estoque: 4 });
+  assert.strictEqual(r.codigo, "ESTOQUE_FORA_DA_FAIXA");
+  assert.strictEqual(escritas().length, 0, "estoque ausente ou fora da faixa: nada enviado");
+  r = await participarPromocaoAceite({ ...base, permitirComEstoque: true, estoque: 20 });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.estoque, 20);
+  assert.deepStrictEqual(escritas().map((c) => c.body), [{ promotion_id: "P-L", promotion_type: "SMART_LIGHTNING", offer_id: "CANDIDATE-MLB1-9", stock: 20 }]);
+  promosAoVivo = [{ ...luz, stock: undefined }];
+  r = await participarPromocaoAceite({ ...base, permitirComEstoque: true, estoque: 20 });
+  assert.strictEqual(r.codigo, "ESTOQUE_SEM_FAIXA");
+  ok("relâmpago cofinanciada: stock obrigatório dentro da faixa, só com permitirComEstoque");
+
   console.log(`\nmeliAnunciosPromocoesRebateEscrita.test.js: ${checks} verificações passaram.`);
 }
 

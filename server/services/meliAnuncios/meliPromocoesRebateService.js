@@ -40,7 +40,7 @@ const pool = require("../../config/database");
 const core = require("../motorMargem/core");
 const { criarCotadorEmP, mapComLimite } = require("../motorMargem/margemCotacaoEmP");
 const { rotuloTipoPromocao } = require("./meliPromocoesService");
-const { TIPOS_ESCRITA_ACEITE } = require("./promocaoTiposSuportados");
+const { TIPOS_RADAR, exigeEstoque } = require("./promocaoTiposSuportados");
 // Fonte única do piso de frete grátis (também aplicado no escritor de aceite).
 const { PRECO_MINIMO_FRETE_GRATIS_CENTAVOS } = require("./meliPromocoesEscritaService");
 
@@ -73,6 +73,9 @@ const MOTIVOS = Object.freeze({
   // O preço de hoje já vem de OUTRA promoção com rebate (não a referência) e
   // nenhuma candidata melhora margem nem lucro sobre ela — vai para sem_ganho.
   JA_EM_REBATE_MELHOR: "JA_EM_REBATE_MELHOR",
+  // Modo toda a loja: sem a promoção ativa nem o sale_price do ML não há preço
+  // de hoje confiável — nada é comparado (margem errada é pior que nenhuma).
+  PRECO_HOJE_NAO_CONFIRMADO: "PRECO_HOJE_NAO_CONFIRMADO",
 });
 
 const MOTIVO_TEXTO = Object.freeze({
@@ -85,6 +88,7 @@ const MOTIVO_TEXTO = Object.freeze({
   ERRO_ML: "Não foi possível ler as promoções do anúncio no Mercado Livre.",
   ANUNCIO_NAO_SINCRONIZADO: "Anúncio não encontrado no VenForce — sincronize os anúncios deste cliente.",
   JA_EM_REBATE_MELHOR: "Já está numa promoção com rebate melhor — nenhuma outra melhora margem nem lucro.",
+  PRECO_HOJE_NAO_CONFIRMADO: "Não foi possível confirmar o preço de hoje do anúncio no Mercado Livre — nada foi comparado.",
 });
 
 const STATUS_ITEM_ORDEM = { recomendado: 0, escolha: 1, sem_ganho: 2, descartado: 3 };
@@ -255,14 +259,23 @@ function mesmaPromocao(a, b) {
  * @returns {{ candidatas: object[], motivo: null|'SEM_CANDIDATA'|'PRECO_NAO_MENOR'|'ABAIXO_FRETE_GRATIS' }}
  */
 function filtrarCandidatas(promocoes, referenciaPromo, base = referenciaPromo) {
-  const precoRef = centavos(base && base.precoFinal);
+  return filtrarCandidatasNoPreco(promocoes, base && base.precoFinal, [referenciaPromo, base]);
+}
+
+/**
+ * O mesmo filtro contra um preço de hoje qualquer (modo toda a loja: o da
+ * promoção ativa ou o preço de venda sem promoção). `excluir` nunca é candidata.
+ * Além dos tipos ACEITE, a relâmpago cofinanciada (SMART_LIGHTNING) entra.
+ */
+function filtrarCandidatasNoPreco(promocoes, precoHoje, excluir = []) {
+  const precoRef = centavos(precoHoje);
   const candidatas = [];
   let algumaComPrecoNaoMenor = false;
   let algumaAbaixoFreteGratis = false;
   for (const p of promocoes || []) {
     if (!p) continue;
-    if (mesmaPromocao(p, referenciaPromo) || mesmaPromocao(p, base)) continue;
-    if (!TIPOS_ESCRITA_ACEITE.has(String(p.tipo || "").toUpperCase())) continue;
+    if (excluir.some((e) => mesmaPromocao(p, e))) continue;
+    if (!TIPOS_RADAR.has(String(p.tipo || "").toUpperCase())) continue;
     if (String(p.status || "").toLowerCase() !== "candidate") continue;
     if (!(num(p.meliPercentage) > 0) || !(num(p.subsidioMl) > 0)) continue;
     const preco = centavos(p.precoFinal);
@@ -346,18 +359,36 @@ function melhorPor(lista, comparar) {
  *
  * @returns {{ status, candidatas: object[], sugestao: null|{porMargem, porLucro} }}
  */
-function classificarItem({ referencia, candidatas }) {
+function classificarItem({ referencia, candidatas, criterio = "qualquer" }) {
   const refM = num(referencia && referencia.margemRatio);
   const refL = centavos(referencia && referencia.lucro);
   const lista = (candidatas || []).filter((c) => num(c.margemRatio) !== null && centavos(c.lucro) !== null);
-  const melhoram = lista.filter((c) => c.margemRatio > refM || centavos(c.lucro) > refL);
-  if (!melhoram.length) return { status: "sem_ganho", candidatas: [], sugestao: null };
-
-  const porMargem = melhorPor(melhoram, (a, b) => a.margemRatio - b.margemRatio || centavos(a.lucro) - centavos(b.lucro));
-  const porLucro = melhorPor(melhoram, (a, b) => centavos(a.lucro) - centavos(b.lucro) || a.margemRatio - b.margemRatio);
-  const mesma = chaveCandidata(porMargem) === chaveCandidata(porLucro);
-  const naoPiora = (c) => c.margemRatio >= refM && centavos(c.lucro) >= refL;
-  const status = mesma && naoPiora(porMargem) ? "recomendado" : "escolha";
+  let melhoram;
+  let porMargem;
+  let porLucro;
+  let status;
+  if (criterio === "margem") {
+    // Modo toda a loja (igual ao Lucratto 360, decisão de 24/11/2026): as candidatas já têm preço
+    // MENOR para o comprador; só entram as que aumentam a MARGEM (em centésimos de p.p., sem ruído
+    // de ponto flutuante). Margem E lucro maiores = recomendado (a sugestão sai entre essas); só a
+    // margem = escolha do gestor. Lucro maior com margem menor não entra.
+    const mc = (r) => Math.round(r * 10000);
+    melhoram = lista.filter((c) => mc(c.margemRatio) > mc(refM));
+    if (!melhoram.length) return { status: "sem_ganho", candidatas: [], sugestao: null };
+    const ambas = melhoram.filter((c) => centavos(c.lucro) > refL);
+    status = ambas.length ? "recomendado" : "escolha";
+    const grupo = ambas.length ? ambas : melhoram;
+    porMargem = melhorPor(grupo, (a, b) => a.margemRatio - b.margemRatio || centavos(a.lucro) - centavos(b.lucro));
+    porLucro = melhorPor(grupo, (a, b) => centavos(a.lucro) - centavos(b.lucro) || a.margemRatio - b.margemRatio);
+  } else {
+    melhoram = lista.filter((c) => c.margemRatio > refM || centavos(c.lucro) > refL);
+    if (!melhoram.length) return { status: "sem_ganho", candidatas: [], sugestao: null };
+    porMargem = melhorPor(melhoram, (a, b) => a.margemRatio - b.margemRatio || centavos(a.lucro) - centavos(b.lucro));
+    porLucro = melhorPor(melhoram, (a, b) => centavos(a.lucro) - centavos(b.lucro) || a.margemRatio - b.margemRatio);
+    const mesma = chaveCandidata(porMargem) === chaveCandidata(porLucro);
+    const naoPiora = (c) => c.margemRatio >= refM && centavos(c.lucro) >= refL;
+    status = mesma && naoPiora(porMargem) ? "recomendado" : "escolha";
+  }
 
   const saida = melhoram
     .slice()
@@ -376,6 +407,9 @@ function classificarItem({ referencia, candidatas }) {
       lucro: round2(c.lucro),
       ganhoMargemPp: round2((c.margemRatio - refM) * 100),
       ganhoLucro: round2((centavos(c.lucro) - refL) / 100),
+      // Faixa de estoque da relâmpago cofinanciada (null nas demais): o gestor escolhe o estoque dentro dela.
+      estoqueMinimo: c.estoqueMinimo ?? null,
+      estoqueMaximo: c.estoqueMaximo ?? null,
       inicio: c.inicio || null,
       fim: c.fim || null,
       melhorMargem: chaveCandidata(c) === chaveCandidata(porMargem),
@@ -437,6 +471,22 @@ function validarEscolhas(escolhasBrutas, resultado, referencia) {
     if (!candidata) {
       return falha("ESCOLHA_INVALIDA", `A promoção ${promotionId} (${tipo}) não está entre as candidatas analisadas do anúncio ${itemId}.`);
     }
+    // Relâmpago cofinanciada: o estoque reservado é escolha do gestor, dentro da faixa da candidata.
+    const min = num(candidata.estoqueMinimo);
+    const max = num(candidata.estoqueMaximo);
+    if (exigeEstoque(candidata.tipo) || (min !== null && max !== null)) {
+      if (min === null || max === null) {
+        return falha("ESCOLHA_INVALIDA", `O Mercado Livre não informou a faixa de estoque da oferta relâmpago do anúncio ${itemId}.`);
+      }
+      const bruto = e.estoque;
+      const estoque = bruto === undefined || bruto === null || bruto === "" ? null : Number(bruto);
+      if (estoque === null) return falha("ESCOLHA_INVALIDA", `Informe o estoque da oferta relâmpago do anúncio ${itemId} (de ${min} a ${max}).`);
+      if (!Number.isInteger(estoque) || estoque < min || estoque > max) {
+        return falha("ESCOLHA_INVALIDA", `O estoque da oferta relâmpago do anúncio ${itemId} precisa ficar entre ${min} e ${max}.`);
+      }
+      escolhas.push({ itemId, promotionId: candidata.promotionId, tipo: candidata.tipo, estoque });
+      continue;
+    }
     escolhas.push({ itemId, promotionId: candidata.promotionId, tipo: candidata.tipo });
   }
   return { ok: true, escolhas };
@@ -454,6 +504,28 @@ function criarRevalidacao(referencia) {
   return function revalidar({ promo, lista }) {
     if (!promo || String(promo.status || "").toLowerCase() !== "candidate") {
       return falha("PROMOCAO_JA_PARTICIPA", "A promoção não está mais disponível para entrar (o anúncio já participa ou ela saiu). Nada foi enviado.");
+    }
+    if (!referencia || !referencia.id) {
+      // Modo toda a loja: o preço de hoje é o da promoção ativa ou, sem ela, o preço original da própria
+      // candidata (o preço de venda sem desconto). Preço menor, piso de frete grátis e subsídio ainda valem.
+      const ativa = (lista || []).find((p) => p && p.statusExibicao === "ATIVA" && num(p.precoFinal) > 0) || null;
+      const hoje = centavos(ativa ? ativa.precoFinal : promo.precoOriginal);
+      if (hoje === null || hoje <= 0) {
+        return falha("PRECO_HOJE_NAO_CONFIRMADO", "Não foi possível confirmar o preço de hoje do anúncio no Mercado Livre. Nada foi enviado.");
+      }
+      const preco = centavos(promo.precoFinal);
+      if (preco === null || preco >= hoje) {
+        const deQuem = ativa ? `o preço de hoje (${ativa.nome || ativa.id})` : "o preço de venda de hoje";
+        return falha("PRECO_NAO_MENOR", `O preço desta promoção não é mais menor que ${deQuem} — o rebate não entraria. Nada foi enviado.`);
+      }
+      if (preco < PRECO_MINIMO_FRETE_GRATIS_CENTAVOS) {
+        const emReais = (preco / 100).toFixed(2).replace(".", ",");
+        return falha("ABAIXO_FRETE_GRATIS", `O preço desta promoção (R$ ${emReais}) fica abaixo de R$ 19,00 — o comprador perderia o frete grátis. Nada foi enviado.`);
+      }
+      if (!(num(promo.subsidioMl) > 0)) {
+        return falha("SEM_SUBSIDIO", "Esta promoção não tem mais subsídio do Mercado Livre. Nada foi enviado.");
+      }
+      return { ok: true };
     }
     const ref = localizarReferencia(lista, referencia);
     if (!ref) {
@@ -555,6 +627,37 @@ function criarRepositorio(db) {
           JSON.stringify(referencia), itemIds ? JSON.stringify(itemIds) : null]
       );
       return Number(r.rows[0].id);
+    },
+    /**
+     * Universo do modo toda a loja: anúncios ATIVOS da conta com alguma oferta candidata, de tipo
+     * participável pelo radar e com subsídio do ML, no snapshot atual de promoções. O snapshot só
+     * escolhe quem consultar (cada anúncio é relido ao vivo na análise). Conta sem snapshot: nada
+     * garante que não haja subsídio, então entram todos os ativos.
+     */
+    async universoLoja({ clienteId, clienteContaId, sellerId, tipos }) {
+      const r = await db.query(
+        `SELECT a.item_id
+           FROM meli_anuncios a
+           LEFT JOIN promo_snapshot_contas c
+             ON c.cliente_conta_id = $2 AND c.marketplace = 'meli' AND c.seller_id = $3
+          WHERE a.cliente_id = $1 AND a.status = 'active'
+            AND (c.current_run_id IS NULL
+                 OR EXISTS (
+                      SELECT 1 FROM promo_snapshot_itens p
+                       WHERE p.run_id = c.current_run_id AND p.cliente_conta_id = $2 AND p.seller_id = $3
+                         AND p.item_id = a.item_id AND LOWER(COALESCE(p.status, '')) = 'candidate'
+                         AND p.subsidio_ml > 0 AND p.promotion_type = ANY($4::text[]))
+                 -- Anúncio criado depois do snapshot e ainda sem nenhuma linha nele: o snapshot não o
+                 -- leu, então não se afirma que não há subsídio (o Lucratto faz o mesmo com "sem leitura").
+                 OR (a.created_at > c.snapshot_at
+                     AND NOT EXISTS (
+                       SELECT 1 FROM promo_snapshot_itens p2
+                        WHERE p2.run_id = c.current_run_id AND p2.cliente_conta_id = $2 AND p2.seller_id = $3
+                          AND p2.item_id = a.item_id)))
+          ORDER BY a.item_id`,
+        [clienteId, clienteContaId ?? null, sellerId != null ? String(sellerId) : null, tipos]
+      );
+      return r.rows.map((x) => String(x.item_id).toUpperCase());
     },
     async obter(jobId) {
       const r = await db.query(`SELECT * FROM promocoes_rebate_jobs WHERE id = $1`, [jobId]);
@@ -762,8 +865,10 @@ async function iniciarAnalise({ cliente, contexto, body, user } = {}, deps = {})
   const ref = b.referencia && typeof b.referencia === "object" ? b.referencia : {};
   const refId = ref.id != null ? String(ref.id).trim() : "";
   const refTipo = ref.tipo != null ? String(ref.tipo).trim().toUpperCase() : "";
-  if (!refId || !refTipo) {
-    return { ...falha("REFERENCIA_INVALIDA", "Informe a promoção de referência (referencia.id e referencia.tipo)."), httpStatus: 400 };
+  // Sem referência (ou { modo: "loja" }) = toda a loja. Referência só pela metade é erro.
+  const modoLoja = !refId && !refTipo;
+  if (!modoLoja && (!refId || !refTipo)) {
+    return { ...falha("REFERENCIA_INVALIDA", "Informe a promoção de referência (referencia.id e referencia.tipo) ou rode o radar na loja toda."), httpStatus: 400 };
   }
   const ids = validarItemIds(b.itemIds);
   if (!ids.ok) return { ...ids, httpStatus: 400 };
@@ -777,13 +882,17 @@ async function iniciarAnalise({ cliente, contexto, body, user } = {}, deps = {})
   }
 
   // A referência precisa existir entre as promoções da conta — de lá vem o nome.
-  const lido = await listarPromocoesDaConta(d, { clienteId: cliente.id, mlUserId: contexto.mlUserId });
-  if (!lido.ok) {
-    return falha("ERRO_ML", `Não foi possível ler as promoções da conta no Mercado Livre${lido.status ? ` (HTTP ${lido.status})` : ""}.`);
-  }
-  const achada = lido.resultados.find((p) => String(p.id) === refId && mesmoTipo(p.type, refTipo));
-  if (!achada || !STATUS_REFERENCIA_LISTAVEL.has(String(achada.status || "").toLowerCase())) {
-    return falha("REFERENCIA_NAO_ENCONTRADA", "A promoção de referência não está entre as promoções ativas ou agendadas desta conta.");
+  let referenciaJob = { modo: "loja" };
+  if (!modoLoja) {
+    const lido = await listarPromocoesDaConta(d, { clienteId: cliente.id, mlUserId: contexto.mlUserId });
+    if (!lido.ok) {
+      return falha("ERRO_ML", `Não foi possível ler as promoções da conta no Mercado Livre${lido.status ? ` (HTTP ${lido.status})` : ""}.`);
+    }
+    const achada = lido.resultados.find((p) => String(p.id) === refId && mesmoTipo(p.type, refTipo));
+    if (!achada || !STATUS_REFERENCIA_LISTAVEL.has(String(achada.status || "").toLowerCase())) {
+      return falha("REFERENCIA_NAO_ENCONTRADA", "A promoção de referência não está entre as promoções ativas ou agendadas desta conta.");
+    }
+    referenciaJob = { id: String(achada.id), tipo: achada.type, nome: achada.name || null };
   }
 
   let jobId;
@@ -794,7 +903,7 @@ async function iniciarAnalise({ cliente, contexto, body, user } = {}, deps = {})
       clienteSlug: cliente.slug,
       clienteContaId: contexto.contaId ?? null,
       mlUserId: contexto.mlUserId,
-      referencia: { id: String(achada.id), tipo: achada.type, nome: achada.name || null },
+      referencia: referenciaJob,
       itemIds: ids.itemIds,
     });
   } catch (err) {
@@ -874,33 +983,46 @@ async function avaliarItem({ itemId, anuncio, naReferencia, referencia, custos, 
   };
   const descartar = (motivo, texto = null, extra = {}) => ({ ...base, ...extra, status: "descartado", motivo, motivoTexto: texto || MOTIVO_TEXTO[motivo] });
 
-  if (!naReferencia) return descartar(MOTIVOS.FORA_DA_REFERENCIA);
+  // Sem referência (modo toda a loja) o anúncio não precisa estar em promoção nenhuma.
+  const modoLoja = !referencia || !referencia.id;
+  if (!modoLoja && !naReferencia) return descartar(MOTIVOS.FORA_DA_REFERENCIA);
   if (!anuncio) return descartar(MOTIVOS.ANUNCIO_NAO_SINCRONIZADO);
 
   const lido = await lerPromocoesComRetry(d, { clienteId, itemId, mlUserId });
   if (!lido.ok) {
     return descartar(MOTIVOS.ERRO_ML, `${MOTIVO_TEXTO.ERRO_ML}${lido.status ? ` (HTTP ${lido.status})` : ""}`);
   }
-  const refPromo = localizarReferencia(lido.promocoes, referencia);
-  if (!refPromo) return descartar(MOTIVOS.FORA_DA_REFERENCIA);
+  let refPromo = null;
+  let promoAtual;
+  let precoHoje;
+  if (modoLoja) {
+    // Preço de hoje sem referência: a promoção que o ML aponta como ativa ou, sem ela, o sale_price
+    // (preço de venda). Sem nenhum dos dois, nada é comparado — margem errada é pior que nenhuma.
+    promoAtual = (lido.promocoes || []).find((p) => p && p.statusExibicao === "ATIVA" && num(p.precoFinal) > 0) || null;
+    precoHoje = promoAtual ? num(promoAtual.precoFinal) : num(lido.precoVenda);
+    if (!(precoHoje > 0)) return descartar(MOTIVOS.PRECO_HOJE_NAO_CONFIRMADO);
+  } else {
+    refPromo = localizarReferencia(lido.promocoes, referencia);
+    if (!refPromo) return descartar(MOTIVOS.FORA_DA_REFERENCIA);
 
-  const subsidioRef = num(refPromo.subsidioMl) > 0 ? num(refPromo.subsidioMl) : 0;
-  base.referencia = {
-    preco: round2(num(refPromo.precoFinal)), subsidioMl: round2(subsidioRef),
-    meliPercentage: subsidioRef > 0 ? round2(num(refPromo.meliPercentage)) : null,
-    margemPercent: null, lucro: null,
-  };
-
-  const promoAtual = localizarPromoAtual(lido.promocoes, refPromo);
-  const atualEhReferencia = mesmaPromocao(promoAtual, refPromo);
-  const subsidioAtual = num(promoAtual.subsidioMl) > 0 ? num(promoAtual.subsidioMl) : 0;
+    const subsidioRef = num(refPromo.subsidioMl) > 0 ? num(refPromo.subsidioMl) : 0;
+    base.referencia = {
+      preco: round2(num(refPromo.precoFinal)), subsidioMl: round2(subsidioRef),
+      meliPercentage: subsidioRef > 0 ? round2(num(refPromo.meliPercentage)) : null,
+      margemPercent: null, lucro: null,
+    };
+    promoAtual = localizarPromoAtual(lido.promocoes, refPromo);
+    precoHoje = num(promoAtual.precoFinal);
+  }
+  const atualEhReferencia = !modoLoja && mesmaPromocao(promoAtual, refPromo);
+  const subsidioAtual = promoAtual && num(promoAtual.subsidioMl) > 0 ? num(promoAtual.subsidioMl) : 0;
   base.atual = {
-    promotionId: String(promoAtual.id),
-    tipo: promoAtual.tipo || null,
-    tipoLabel: promoAtual.tipoLabel || rotuloTipoPromocao(promoAtual.tipo),
-    nome: promoAtual.nome || null,
+    promotionId: promoAtual ? String(promoAtual.id) : null,
+    tipo: (promoAtual && promoAtual.tipo) || null,
+    tipoLabel: promoAtual ? promoAtual.tipoLabel || rotuloTipoPromocao(promoAtual.tipo) : "Preço de venda",
+    nome: (promoAtual && promoAtual.nome) || null,
     ehReferencia: atualEhReferencia,
-    preco: round2(num(promoAtual.precoFinal)),
+    preco: round2(precoHoje),
     subsidioMl: round2(subsidioAtual),
     meliPercentage: subsidioAtual > 0 ? round2(num(promoAtual.meliPercentage)) : null,
     margemPercent: null,
@@ -913,7 +1035,9 @@ async function avaliarItem({ itemId, anuncio, naReferencia, referencia, custos, 
     ...base, status: "sem_ganho", motivo: MOTIVOS.JA_EM_REBATE_MELHOR, motivoTexto: MOTIVO_TEXTO.JA_EM_REBATE_MELHOR,
   });
 
-  const { candidatas, motivo } = filtrarCandidatas(lido.promocoes, refPromo, promoAtual);
+  const { candidatas, motivo } = modoLoja
+    ? filtrarCandidatasNoPreco(lido.promocoes, precoHoje, promoAtual ? [promoAtual] : [])
+    : filtrarCandidatas(lido.promocoes, refPromo, promoAtual);
   if (!candidatas.length) return jaEmRebate ? semGanhoRebate() : descartar(motivo);
 
   if (!custos || custos.erro) {
@@ -928,7 +1052,7 @@ async function avaliarItem({ itemId, anuncio, naReferencia, referencia, custos, 
   const cotar = criarCotacaoDoItem(d, { clienteId, itemId, anuncio, mlUserId });
   const insumos = { custo: custos.custo, aliquota: aliq, taxaFixa: custos.taxaFixa };
 
-  const mAtual = margemNoPreco({ ...insumos, preco: promoAtual.precoFinal, rebate: subsidioAtual, cotacao: await cotar(promoAtual.precoFinal) });
+  const mAtual = margemNoPreco({ ...insumos, preco: precoHoje, rebate: subsidioAtual, cotacao: await cotar(precoHoje) });
   if (!mAtual.ok) {
     const qual = atualEhReferencia ? "preço da referência" : "preço de hoje";
     return descartar(MOTIVOS.COTACAO_INDISPONIVEL, `${MOTIVO_TEXTO.COTACAO_INDISPONIVEL} (${qual}: ${mAtual.motivo})`);
@@ -951,7 +1075,11 @@ async function avaliarItem({ itemId, anuncio, naReferencia, referencia, custos, 
   }
   if (!avaliadas.length) return descartar(MOTIVOS.COTACAO_INDISPONIVEL, null, { candidatasIgnoradas: ignoradas });
 
-  const cls = classificarItem({ referencia: { margemRatio: mAtual.margemRatio, lucro: mAtual.lucro }, candidatas: avaliadas });
+  const cls = classificarItem({
+    referencia: { margemRatio: mAtual.margemRatio, lucro: mAtual.lucro },
+    candidatas: avaliadas,
+    criterio: modoLoja ? "margem" : "qualquer",
+  });
   if (cls.status === "sem_ganho" && jaEmRebate) return { ...semGanhoRebate(), candidatasIgnoradas: ignoradas };
   return { ...base, status: cls.status, candidatas: cls.candidatas, sugestao: cls.sugestao, candidatasIgnoradas: ignoradas };
 }
@@ -982,7 +1110,14 @@ async function executarAnalise(jobId, deps = {}) {
     const clienteId = Number(job.cliente_id);
     const mlUserId = job.ml_user_id;
 
-    const universo = await listarItensDaReferencia(d, { clienteId, mlUserId, referencia });
+    const modoLoja = !referencia.id;
+    let universo;
+    if (modoLoja) {
+      const lista = await d.repo.universoLoja({ clienteId, clienteContaId: job.cliente_conta_id, sellerId: mlUserId, tipos: [...TIPOS_RADAR] });
+      universo = { ok: true, ids: new Set(lista) };
+    } else {
+      universo = await listarItensDaReferencia(d, { clienteId, mlUserId, referencia });
+    }
     if (!universo.ok) {
       await d.repo.marcarErro(jobId, `Não foi possível ler os anúncios da promoção de referência no Mercado Livre${universo.status ? ` (HTTP ${universo.status})` : ""}.`);
       return;
@@ -1000,7 +1135,7 @@ async function executarAnalise(jobId, deps = {}) {
     // Contagem parcial por status, para o placar ao vivo do Portal.
     const parcial = resumir([]);
     for (const lote of chunk(ids, LOTE_CUSTOS)) {
-      const precisamCusto = lote.filter((id) => universo.ids.has(id) && anuncios.has(id));
+      const precisamCusto = lote.filter((id) => (modoLoja || universo.ids.has(id)) && anuncios.has(id));
       let custos;
       try {
         custos = await carregarCustos(precisamCusto);
@@ -1013,7 +1148,7 @@ async function executarAnalise(jobId, deps = {}) {
           r = await avaliarItem({
             itemId,
             anuncio: anuncios.get(itemId) || null,
-            naReferencia: universo.ids.has(itemId),
+            naReferencia: modoLoja || universo.ids.has(itemId),
             referencia,
             custos: custos instanceof Map ? (custos.get(itemId) || { erro: "o Motor de Margem não devolveu este anúncio." }) : custos,
             clienteId,
@@ -1072,6 +1207,8 @@ function serializarJob(row) {
     status: row.status,
     erro: row.erro || null,
     referencia: { id: ref.id || null, tipo: ref.tipo || null, nome: ref.nome || null },
+    // true = análise na loja toda, sem promoção de referência.
+    modoLoja: !ref.id,
     progresso: {
       total: Number(row.progresso_total) || 0,
       processados: Number(row.progresso_processados) || 0,
@@ -1132,7 +1269,7 @@ async function iniciarExecucao({ jobId, cliente, mlUserId, body, user, ip = null
   const execucao = {
     total: v.escolhas.length,
     processados: 0,
-    itens: v.escolhas.map((e) => ({ itemId: e.itemId, promotionId: e.promotionId, tipo: e.tipo, status: "pendente", codigo: null, motivo: null, precoConfirmado: null })),
+    itens: v.escolhas.map((e) => ({ itemId: e.itemId, promotionId: e.promotionId, tipo: e.tipo, ...(e.estoque !== undefined ? { estoque: e.estoque } : {}), status: "pendente", codigo: null, motivo: null, precoConfirmado: null })),
   };
 
   // Marca fase 'execucao' + status 'processando' ANTES de responder: o primeiro
@@ -1172,7 +1309,7 @@ async function executarParticipacoes(ctx, escolhas, execucao, deps = {}) {
     for (const escolha of escolhas) {
       let r;
       // Defesa em profundidade: a referência nunca recebe escrita.
-      if (String(escolha.promotionId) === String(ctx.referencia && ctx.referencia.id) && mesmoTipo(escolha.tipo, ctx.referencia && ctx.referencia.tipo)) {
+      if (ctx.referencia && ctx.referencia.id && String(escolha.promotionId) === String(ctx.referencia.id) && mesmoTipo(escolha.tipo, ctx.referencia.tipo)) {
         r = falha("ESCOLHA_INVALIDA", "A promoção de referência nunca é alterada.");
       } else {
         try {
@@ -1183,6 +1320,9 @@ async function executarParticipacoes(ctx, escolhas, execucao, deps = {}) {
             promotionId: escolha.promotionId,
             tipo: escolha.tipo,
             antesDeEscrever: revalidar,
+            // O radar é o único que escreve na relâmpago cofinanciada (estoque escolhido pelo gestor).
+            permitirComEstoque: true,
+            ...(escolha.estoque !== undefined ? { estoque: escolha.estoque } : {}),
           });
         } catch (err) {
           r = falha("ERRO_INTERNO", `Erro ao participar da promoção: ${(err && err.message) || "erro desconhecido"}`);
@@ -1195,6 +1335,12 @@ async function executarParticipacoes(ctx, escolhas, execucao, deps = {}) {
         alvo.codigo = r && r.ok ? null : (r && r.codigo) || "FALHA";
         alvo.motivo = r && r.ok ? null : (r && r.motivo) || null;
         alvo.precoConfirmado = r && r.ok ? (r.precoConfirmado ?? null) : null;
+        // Relâmpago: o ML marca o dia depois do aceite (início/fim vêm na resposta).
+        if (r && r.ok && r.estoque !== undefined) {
+          alvo.estoque = r.estoque;
+          alvo.inicio = r.inicio || null;
+          alvo.fim = r.fim || null;
+        }
       }
       execucao.processados = execucao.itens.filter((it) => it.status !== "pendente").length;
       await d.repo.atualizarExecucao(ctx.jobId, execucao);
@@ -1212,6 +1358,7 @@ async function executarParticipacoes(ctx, escolhas, execucao, deps = {}) {
             item_id: escolha.itemId,
             promotion_id: escolha.promotionId,
             tipo: escolha.tipo,
+            ...(escolha.estoque !== undefined ? { estoque: escolha.estoque } : {}),
             referencia: ctx.referencia,
             preco_confirmado: r && r.ok ? (r.precoConfirmado ?? null) : null,
             codigo: r && r.ok ? null : (r && r.codigo) || null,
@@ -1251,6 +1398,7 @@ module.exports = {
   localizarReferencia,
   localizarPromoAtual,
   filtrarCandidatas,
+  filtrarCandidatasNoPreco,
   margemNoPreco,
   classificarItem,
   resumir,

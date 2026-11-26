@@ -37,6 +37,8 @@ const { listarPromocoesDoItem } = require("./meliPromocoesService");
 const {
   TIPOS_ESCRITA_PRECO,
   TIPOS_ESCRITA_ACEITE,
+  TIPOS_RADAR,
+  exigeEstoque,
   TIPOS_ACEITE_SEM_OFFER_NO_POST,
 } = require("./promocaoTiposSuportados");
 
@@ -345,10 +347,12 @@ async function relerPromocaoAceite({ clienteId, itemId, mlUserId, promotionId, t
  * `enviado:false`; no POST, como falha `incerto:true`. Sem `timeoutMs` (e sem
  * `deadlineAt` do gancho) o fluxo é exatamente o de antes, que /anuncios usa.
  */
-async function participarPromocaoAceite({ clienteId, itemId, mlUserId, promotionId, tipo, antesDeEscrever = null, timeoutMs = null }) {
+async function participarPromocaoAceite({ clienteId, itemId, mlUserId, promotionId, tipo, antesDeEscrever = null, timeoutMs = null, permitirComEstoque = false, estoque = undefined }) {
   let lido;
   try {
-    lido = await comPrazo(relerPromocaoAceite({ clienteId, itemId, mlUserId, promotionId, tipo }), timeoutMs);
+    // SMART_LIGHTNING só é aceita por quem pede (Radar de subsídios): exige o estoque do gestor.
+    const tiposAceitos = permitirComEstoque ? TIPOS_RADAR : TIPOS_ESCRITA_ACEITE;
+    lido = await comPrazo(relerPromocaoAceite({ clienteId, itemId, mlUserId, promotionId, tipo, tiposAceitos }), timeoutMs);
   } catch (err) {
     if (timeoutMs && ehTimeout(err)) return { ...falha("ML_TIMEOUT_LEITURA", "O Mercado Livre não respondeu a tempo antes da escrita. Nada foi enviado."), enviado: false };
     throw err;
@@ -381,6 +385,23 @@ async function participarPromocaoAceite({ clienteId, itemId, mlUserId, promotion
       return falha("OFFER_ID_AUSENTE", "O Mercado Livre não informou a oferta desta promoção — participe pelo painel do Mercado Livre.");
     }
     corpo.offer_id = promo.refId;
+  }
+
+  // Relâmpago cofinanciada: sem `stock` o ML responde 400 sem motivo (testado em 25/11/2026).
+  // O estoque é escolha do gestor, dentro da faixa que a candidatura informa.
+  if (exigeEstoque(promo.tipo)) {
+    const min = Number(promo.estoqueMinimo);
+    const max = Number(promo.estoqueMaximo);
+    if (!(Number.isInteger(min) && Number.isInteger(max) && min > 0 && min <= max)) {
+      return falha("ESTOQUE_SEM_FAIXA", "O Mercado Livre não informou quanto estoque esta promoção aceita. Participe pelo painel do Mercado Livre.");
+    }
+    if (estoque === undefined || estoque === null) {
+      return falha("ESTOQUE_OBRIGATORIO", `Informe quanto estoque reservar para a oferta relâmpago (de ${min} a ${max}).`);
+    }
+    if (!Number.isInteger(Number(estoque)) || Number(estoque) < min || Number(estoque) > max) {
+      return falha("ESTOQUE_FORA_DA_FAIXA", `O estoque da oferta relâmpago precisa ficar entre ${min} e ${max}.`);
+    }
+    corpo.stock = Number(estoque);
   }
 
   let deadlineAt = null;
@@ -430,6 +451,10 @@ async function participarPromocaoAceite({ clienteId, itemId, mlUserId, promotion
     promotionId: promo.id,
     tipo: promo.tipo,
     precoConfirmado: Number.isFinite(precoConfirmado) ? precoConfirmado : null,
+    // Só na relâmpago: o ML marca o dia depois do aceite — o preço de hoje não muda na escrita.
+    ...(corpo.stock !== undefined
+      ? { estoque: corpo.stock, inicio: (resp.data && resp.data.start_date) || null, fim: (resp.data && resp.data.end_date) || null }
+      : {}),
   };
 }
 

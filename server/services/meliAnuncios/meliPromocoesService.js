@@ -30,6 +30,7 @@ const ROTULO_TIPO = {
   LIGHTNING: "Oferta relâmpago",
   SELLER_CAMPAIGN: "Campanha própria",
   SMART: "Campanha cofinanciada automatizada",
+  SMART_LIGHTNING: "Oferta relâmpago cofinanciada",
   PRICE_MATCHING: "Preços competitivos",
   UNHEALTHY_STOCK: "Liquidação de estoque Full",
   SELLER_COUPON_CAMPAIGN: "Cupom do vendedor",
@@ -82,6 +83,14 @@ function round2(n) {
 // usando AGORA para formar o preço de venda (GET /items/{id}/sale_price →
 // metadata.promotion_id, ver obterPromotionIdAtivo). Usado só para decidir
 // `statusExibicao` — nunca para recalcular preço/desconto/margem.
+// `stock: { min, max }` da candidatura: inteiros positivos com min <= max, senão nada.
+function faixaEstoque(v) {
+  const min = fin(v && v.min);
+  const max = fin(v && v.max);
+  const ok = (n) => n != null && Number.isInteger(n) && n > 0;
+  return ok(min) && ok(max) && min <= max ? { estoqueMinimo: min, estoqueMaximo: max } : { estoqueMinimo: null, estoqueMaximo: null };
+}
+
 function normalizarPromocao(promo, index, promotionIdAtivo = null) {
   const status = String((promo && promo.status) || "").toLowerCase().trim();
   const precoOriginal = fin(promo && promo.original_price);
@@ -225,6 +234,9 @@ function normalizarPromocao(promo, index, promotionIdAtivo = null) {
     // ML) — não depende de o ML ter enviado preço/sugestão pronta, por isso é
     // sempre editável, mesmo quando precoFinal nasce null.
     editavelPrecoFinal: true,
+    // Faixa de estoque que a candidatura aceita (hoje só a relâmpago cofinanciada):
+    // não-null = o POST de participação exige `stock` dentro dela.
+    ...faixaEstoque(status === "candidate" ? promo && promo.stock : null),
   };
 }
 
@@ -514,7 +526,11 @@ async function listarPromocoesDoItemDetalhado({ clienteId, itemId, mlUserId }) {
     paresBrutoNormalizado: ordenada.map((p, i) => [p, normalizadas[i]]),
   });
 
-  return { ok: true, status: resp.status ?? 200, retryAfter: null, promocoes: deduplicarPromocoes(normalizadas) };
+  // precoVenda: o sale_price que o ML aponta hoje (preço do comprador, com ou sem promoção).
+  return {
+    ok: true, status: resp.status ?? 200, retryAfter: null, promocoes: deduplicarPromocoes(normalizadas),
+    precoVenda: saleInfo && saleInfo.amount != null && saleInfo.amount > 0 ? saleInfo.amount : null,
+  };
 }
 
 // Retorno ML (subsídio por unidade) da promoção que forma o preço AGORA — a
