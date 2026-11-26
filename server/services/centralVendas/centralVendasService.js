@@ -180,7 +180,41 @@ function buildProdutos(itens) {
   return produtos;
 }
 
-function buildPedidoContrato(pedido, itens, componentes) {
+// Índice das linhas (itens ou componentes) por pedido, com a MESMA regra de
+// `mesmaLinha` abaixo, para buildPedidos não filtrar a lista inteira a cada
+// pedido (era P×C: ~10 s para 3.000 pedidos). Preserva a ordem original.
+function indexarPorLinha(rows) {
+  const porRowId = new Map();
+  const semRowPorPedido = new Map();
+  const todosPorPedido = new Map();
+  const add = (mapa, chave, par) => {
+    const lista = mapa.get(chave);
+    if (lista) lista.push(par);
+    else mapa.set(chave, [par]);
+  };
+  (rows || []).forEach((row, idx) => {
+    const par = [idx, row];
+    const rowId = rowValue(row, "pedidoRowId", "pedido_row_id");
+    const pedidoId = rowValue(row, "pedidoId", "pedido_id");
+    add(todosPorPedido, pedidoId, par);
+    if (rowId === null || rowId === undefined) add(semRowPorPedido, pedidoId, par);
+    else add(porRowId, String(rowId), par);
+  });
+  return {
+    linhasDe(pedidoRowId, pedidoId) {
+      if (pedidoRowId === null || pedidoRowId === undefined) {
+        return (todosPorPedido.get(pedidoId) || []).map((par) => par[1]);
+      }
+      const doRow = porRowId.get(String(pedidoRowId)) || [];
+      const semRow = semRowPorPedido.get(pedidoId) || [];
+      if (!semRow.length) return doRow.map((par) => par[1]);
+      if (!doRow.length) return semRow.map((par) => par[1]);
+      return [...doRow, ...semRow].sort((a, b) => a[0] - b[0]).map((par) => par[1]);
+    },
+  };
+}
+
+function buildPedidoContrato(pedido, itens, componentes, indices = null) {
   const pedidoId = rowValue(pedido, "pedidoId", "pedido_id");
   // Vinculo por pedido_row_id (PK da linha de central_vendas_pedidos), nunca por
   // pedido_id. getCentralVendasByRange le imports de VARIAS competencias, entao o
@@ -199,8 +233,10 @@ function buildPedidoContrato(pedido, itens, componentes) {
     return String(rowId) === String(pedidoRowId);
   };
 
-  const pedidoItens = itens.filter(mesmaLinha);
-  const pedidoComponentes = componentes.filter(mesmaLinha);
+  const pedidoItens = indices ? indices.itens.linhasDe(pedidoRowId, pedidoId) : itens.filter(mesmaLinha);
+  const pedidoComponentes = indices
+    ? indices.componentes.linhasDe(pedidoRowId, pedidoId)
+    : componentes.filter(mesmaLinha);
   const firstItem = pedidoItens[0] || null;
   const confianca = rowValue(pedido, "confianca", "confianca");
   // logistica/full so existem no fluxo API-first (Orders API); planilha = null.
@@ -412,7 +448,8 @@ function buildPayloadFromSnapshot(cliente, competencia, snapshot) {
 function buildPedidos(snapshot) {
   const itens = snapshot.itens || [];
   const componentes = snapshot.componentes || [];
-  return (snapshot.pedidos || []).map((pedido) => buildPedidoContrato(pedido, itens, componentes));
+  const indices = { itens: indexarPorLinha(itens), componentes: indexarPorLinha(componentes) };
+  return (snapshot.pedidos || []).map((pedido) => buildPedidoContrato(pedido, itens, componentes, indices));
 }
 
 function buildClaimsState(snapshot) {
@@ -1192,6 +1229,7 @@ module.exports = {
   // otimizado (centralVendasReadService/resolveOrderDetail) sem passar por
   // buildPedidos/buildPayloadFromRange (que reconstroem o período inteiro).
   buildPedidoContrato,
+  indexarPorLinha,
   buildPedidos,
   buildContextoPayload,
   buildResumoFromRange,
