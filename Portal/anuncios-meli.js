@@ -5645,6 +5645,8 @@
     return Math.min(Math.max(20, Number(c.estoqueMinimo)), Number(c.estoqueMaximo));
   }
 
+  var REB_ESTOQUE_PRESETS = [5, 10, 20, 50, 100];
+
   function rebEstoqueValido(c, n) {
     return Number.isInteger(n) && n >= Number(c.estoqueMinimo) && n <= Number(c.estoqueMaximo);
   }
@@ -5741,6 +5743,12 @@
 
     overlay.addEventListener("click", onCliqueRebate);
     overlay.addEventListener("change", onMudancaRebate);
+    overlay.addEventListener("input", function (e) {
+      var t = e.target;
+      if (!t || t.type !== "range" || !t.hasAttribute("data-reb-estoque")) return;
+      var num = t.parentNode && t.parentNode.querySelector(".am-reb-estoque__num");
+      if (num) num.value = t.value;
+    });
     overlay.addEventListener("keydown", onTeclaRebate);
 
     var emCurso = rebJobEmCurso[REB.chave];
@@ -5818,6 +5826,10 @@
       case "fechar-mesmo": REB.avisoFechar = true; fecharRebate(true); break;
       case "continuar": REB.avisoFechar = false; renderRebate(); break;
       case "recarregar-refs": carregarReferenciasRebate(); break;
+      case "estoque-preset":
+        REB.estoques[b.getAttribute("data-reb-chave")] = Number(b.getAttribute("data-reb-valor"));
+        renderRebate();
+        break;
       case "analisar": iniciarAnaliseRebate(); break;
       case "voltar-ref":
       case "trocar-ref":
@@ -5858,7 +5870,15 @@
     if (t.name === "am-reb-modo") { REB.modoAnalise = t.value === "loja" ? "loja" : "ref"; renderRebate(); return; }
     var chaveEst = t.getAttribute("data-reb-estoque");
     if (chaveEst) {
-      REB.estoques[chaveEst] = t.value === "" ? "" : Number(t.value);
+      var valEst = t.value === "" ? "" : Number(t.value);
+      if (t.type === "range") {
+        // A barra vai de 0 a 100, mas o Mercado Livre só aceita a faixa da promoção.
+        var partes = chaveEst.split("|");
+        var itEst = rebItemPorId(partes[0]);
+        var cEst = rebCandidata(itEst, partes[1]);
+        if (rebTemFaixa(cEst)) valEst = Math.min(Math.max(valEst, Number(cEst.estoqueMinimo)), Number(cEst.estoqueMaximo));
+      }
+      REB.estoques[chaveEst] = valEst;
       renderRebate();
       return;
     }
@@ -6672,15 +6692,28 @@
     var nomeRef = (reb.job.referencia && reb.job.referencia.nome) || "referência";
     if (reb.confirmando && n) {
       var campos = "";
+      var idxEst = 0;
       sel.forEach(function (x) {
         var it = rebItemPorId(x.itemId);
         var c = rebCandidata(it, x.promotionId);
         if (!rebTemFaixa(c)) return;
         var okEst = rebEstoqueValido(c, x.estoque);
-        campos += '<label class="am-reb-estoque' + (okEst ? "" : " is-invalido") + '">' +
-          '<span class="am-reb-estoque__rotulo">' + escapeHtml((it && it.titulo) || x.itemId) + " · " + escapeHtml(c.nome || c.promotionId) + " — estoque a reservar (de " + c.estoqueMinimo + " a " + c.estoqueMaximo + ")</span>" +
-          '<input type="number" class="vf-input" inputmode="numeric" step="1" min="' + escapeAttr(c.estoqueMinimo) + '" max="' + escapeAttr(c.estoqueMaximo) + '" value="' + escapeAttr(x.estoque) + '"' +
-            ' data-reb-estoque="' + escapeAttr(x.itemId + "|" + x.promotionId) + '"></label>';
+        var chave = x.itemId + "|" + x.promotionId;
+        var idBase = "am-reb-est-" + (idxEst++);
+        var chips = REB_ESTOQUE_PRESETS.map(function (p) {
+          var fora = p < Number(c.estoqueMinimo) || p > Number(c.estoqueMaximo);
+          return '<button type="button" class="am-reb-chip' + (x.estoque === p ? " is-on" : "") + '" data-reb-acao="estoque-preset"' +
+            ' data-reb-chave="' + escapeAttr(chave) + '" data-reb-valor="' + p + '"' + (fora ? " disabled" : "") + ">" + p + "</button>";
+        }).join("");
+        campos += '<div class="am-reb-estoque' + (okEst ? "" : " is-invalido") + '">' +
+          rebThumbHtml(it && it.thumbnail) +
+          '<div class="am-reb-estoque__info"><span class="am-reb-estoque__rotulo">' + escapeHtml((it && it.titulo) || x.itemId) + "</span>" +
+            '<span class="am-reb-estoque__sub">' + escapeHtml(c.nome || c.promotionId) + " · estoque de " + c.estoqueMinimo + " a " + c.estoqueMaximo + "</span></div>" +
+          '<div class="am-reb-estoque__ctl"><div class="am-reb-chips" role="group" aria-label="Estoque rápido">' + chips + "</div>" +
+            '<input type="range" class="am-reb-estoque__slider" id="' + idBase + '-sl" min="0" max="100" step="1" value="' + escapeAttr(Math.min(100, Math.max(0, Number(x.estoque) || 0))) + '"' +
+              ' aria-label="Estoque a reservar" data-reb-estoque="' + escapeAttr(chave) + '">' +
+            '<input type="number" class="vf-input am-reb-estoque__num" id="' + idBase + '-n" inputmode="numeric" step="1" min="' + escapeAttr(c.estoqueMinimo) + '" max="' + escapeAttr(c.estoqueMaximo) + '" value="' + escapeAttr(x.estoque) + '"' +
+              ' aria-label="Estoque a reservar" data-reb-estoque="' + escapeAttr(chave) + '"></div></div>';
       });
       var travado = !!campos && rebEstoquesInvalidos() > 0;
       return '<div class="am-reb-confirma" role="alertdialog" aria-labelledby="am-reb-confirma-txt">' +
