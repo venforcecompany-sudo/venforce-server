@@ -95,50 +95,68 @@ Financeiro (caches por conta×mês) ──► custos operacionais (Ads, Full)  [
 - Os pedidos sem os tipos novos continuam gravados em formato 1.
 - Nada histórico é migrado nem apagado.
 
-## 4. Funcionalidades úteis para a tela
+## 4. Interface: adaptações pontuais (decisão de 26/11)
 
-Priorizadas por decisão que habilitam:
+**Sem redesign.** A tela atual fica como está; o protótipo visual foi
+descartado. Entraram só duas adaptações, com os componentes e classes que a
+tela já usa:
 
-1. **Cascata do resultado**: receita a preço cheio → descontos (vendedor / ML) → receita → comissão → frete → CMV → imposto → MC → Ads → Full → resultado operacional. Cada degrau mostra fonte e estado.
-2. **Resultado antes e depois de Ads e Full**, com o motivo quando não é calculável (período parcial, fonte ausente).
-3. **Produtos que geram ou destroem resultado**: MC por MLB/SKU/variação e, com Ads por anúncio na mesma janela, MC após Ads.
-4. **Curva ABC por faturamento e por lucro**, lado a lado: o produto A em faturamento e C em lucro é o alerta.
-5. **Pedidos com prejuízo** e **pedidos com divergência** (Orders × Discounts × Billing) como filas de trabalho.
-6. **Central de pendências financeiras**: custo ausente, conflito de custo por variação (L1), frete ausente, pós-venda não verificado, conciliação pendente, base alterada desde o cálculo.
-7. **Promoções**: desconto total, quanto o vendedor bancou e quanto o ML bancou, por produto e por campanha.
-8. **Filtro por qualidade do dado** (comprovado / observado / inferido / desconhecido) em toda tabela.
-9. **Comparação entre períodos** (mesmo intervalo do mês anterior), série diária de faturamento, MC e resultado.
-10. **Exportações**: pedidos com a composição auditável (CSV) e o resumo da cascata.
-
-O protótipo navegável está publicado à parte da tela real (§6).
+1. **Extrato do pedido** (drawer existente): detalhamento financeiro completo, vindo
+   de `composicaoFinanceira` (§5, E6b). Mostra:
+   - identificação, itens, SKUs e variações;
+   - preço cheio × efetivo, desconto e quem financiou;
+   - comissão do pedido × bruta × líquida, rebate, se já está na comissão e crédito comprovado;
+   - como o resultado foi calculado, com a identidade conferida;
+   - cancelamentos, reembolsos e ajustes;
+   - origem dos valores e estado da conciliação;
+   - divergências e pendências.
+2. **Fechamento** ("Para onde vai o dinheiro"): bloco "Depois da margem: Ads e
+   Full" com estado, motivo e métricas com denominador (§5, E6a).
 
 ## 5. Plano de implementação (entregas independentes)
 
 | # | entrega | commits | critério de aceite | estado |
 |---|---|---|---|---|
-| E1 | desempenho: `buildPedidos` indexado; período sem `imports.payload_json` | `1d07b561`, `11f651e2` | resultado `deepEqual` ao caminho antigo; suíte da Central e testes Postgres de 5 modos (392 verificações) verdes | **feito** |
-| E2 | contrato da composição + cascata | `2b63d8e5` | identidade com o resultado do motor; resíduo exposto | **feito** (puro) |
-| E3 | contrato de Ads e Full | `1fd2fb9d` | 12 cenários: escopo, período parcial, zero × ausente, frete Full | **feito** (puro) |
-| E4 | composição promocional e de comissão | `31190f33` | 14 cenários + invariante anti-dupla-contagem | **feito** (puro) |
-| E5 | protótipo visual | artefato | navegável, dados sintéticos | **feito** |
-| E6 | Read API: `/read/composicao` (cascata + custos operacionais por conta e período, lendo os caches do Financeiro) | — | sem chamada ao ML no GET; `null` + motivo quando incompatível | próximo |
-| E7 | formato 2 dos compactos + componentes informativos no motor (flag `CENTRAL_VENDAS_COMPOSICAO_PROMOCIONAL`, desligada) | — | 5 modos verdes; com a flag desligada, bytes e leitores idênticos | próximo |
-| E8 | coletor de Discounts e Billing da Central (flag, orçamento) | — | piloto em 1 conta; 0 chamadas no caminho de publicação | precisa de autorização para chamadas reais |
-| E9 | L1, custo por variação: comparador somente leitura → decisão → flag | — | relatório de pedidos afetados e Δ MC antes da troca | precisa de decisão |
-| E10 | identidade da base no import (L5) + aviso de base alterada | — | sem recálculo automático | próximo |
-| E11 | tela: redesign aprovado sobre o protótipo | — | nenhuma função atual removida | após aprovação |
+| E1 | desempenho: `buildPedidos` indexado; período sem `imports.payload_json` | `1d07b561`, `11f651e2` | `deepEqual` ao caminho antigo; 5 modos (392 verificações) verdes | **feito** |
+| E2 | contrato da composição + cascata | `2b63d8e5` | identidade com o resultado do motor; resíduo exposto | **feito** |
+| E3 | contrato de Ads e Full | `1fd2fb9d` | 12 cenários: escopo, período parcial, zero × ausente, frete Full | **feito** |
+| E4 | composição promocional e de comissão | `31190f33` | 14 cenários + invariante anti-dupla-contagem | **feito** |
+| E5 | protótipo visual | — | — | **descartado** (sem redesign) |
+| E6a | Ads e Full no `/read/bootstrap` (caches do Financeiro) + bloco no fechamento | `1c136a2f`, `bd38e7a6` | sem chamada ao ML; período parcial ⇒ incompatível; PG real (8) + tela (8) | **feito** |
+| E6b | detalhamento financeiro do pedido (`composicaoFinanceira`) + extrato | `c30fa39b`, `120c3d38` | identidade fecha; "não coletado" ≠ "sem desconto"; HTML sem a composição igual ao anterior; PG real + tela (18) | **feito** |
+| E7 | formato 2 dos compactos + motor grava a composição (flag `CENTRAL_VENDAS_COMPOSICAO_PROMOCIONAL` + `_CONTAS`, desligada) | `e804d290`, `fd4dd27c` | flag desligada ⇒ motor `deepEqual`; ligada ⇒ resultado, totais e pendências idênticos; PG real linhas × compacto; 5 modos verdes | **feito** |
+| E8 | coleta de Discounts e Billing no sync da Central | — | ver §5.1 | **desenhado**; precisa de autorização para chamadas reais |
+| E9 | L1, custo por variação: comparador | `4473284d` | Δ de CMV por item antes de qualquer troca | comparador **feito**; troca = **decisão** |
+| E10 | identidade da base no import (L5) + pendência "base alterada" no extrato | `38ec104d` (+ E6b) | por conteúdo; 14 ms em 20 mil linhas; sem recálculo | **feito** |
 
 A correção de armazenamento (docs 10–12) continua publicável sozinha:
-- E1 a E4 não mudam schema;
-- E7 é a única entrega que toca a persistência, e vem atrás de flag.
+- E1–E4, E6 e E10 não mudam schema. E10 só acrescenta `baseCustos` ao `resumo_json`.
+- E7 muda a migration ainda não aplicada (`CHECK formato IN (1, 2)`) e só grava algo novo com a flag ligada.
 
-## 6. Protótipo
+### 5.1 Coleta de Discounts e Billing (E8): desenho
 
-Publicado como artefato privado à parte (https://claude.ai/artifact/KbwyPRrtCNut4XL6kpGSZ8), com dados **sintéticos**. A tela real não foi
-alterada. A organização visual segue a tela de Anúncios: cabeçalho de
-contexto, KPIs, abas e tabela paginada com drawer de detalhe.
+Hoje o motor compõe só com o que a Orders API traz:
+- preço cheio: **observado**;
+- desconto: **inferido**;
+- quem bancou e rebate: **desconhecidos**.
 
-## 7. Pendências explícitas (não comprovadas)
+Para chegar a **comprovado**, o motor já aceita `evidenciasPorPedido` (Discounts e Billing por pedido). Falta a coleta:
+
+1. **Onde**: etapa própria do sync, depois de Orders e antes do motor. Fica atrás de `CENTRAL_VENDAS_COMPOSICAO_COLETA`, com orçamento por conta e por execução e prazo. A publicação nunca espera: estourou o orçamento ou o prazo, o pedido sai como `NAO_VERIFICADO`.
+2. **Quais pedidos**:
+   - Billing em lotes de até 60 (`/billing/integration/group/ML/order/details?order_ids=`);
+   - `/orders/{id}/discounts` só para pedidos com desconto (`gross_price > unit_price × q`) que tenham registro de Billing.
+
+   Mesmas regras do coletor do Sentinel: 429 (inclusive embrulhado em 400) ⇒ parar; 404 de `/discounts` ⇒ marcador, nunca "sem desconto"; `errors[]` ⇒ isolar o pedido.
+3. **Carry-over (obrigatório)**: a evidência comprovada de uma noite não pode ser perdida na seguinte. Antes de compor, o sync relê os componentes promocionais e o `composicaoPromocional` do pedido no import vigente da mesma conta. Se a tarifa e os preços do pedido não mudaram, reaproveita a evidência sem nova chamada. Sem isso, com o reuso de pedidos, um pedido já conciliado seria regravado com menos informação.
+4. **Reaproveitar o Sentinel** quando ele já conciliou o mesmo pedido (`sentinel_conciliacao_*`): só leitura, como otimização, nunca como dependência.
+5. **Validação antes de ligar**:
+   - piloto em 1 conta, com o orçamento medido;
+   - comparação dos estados com a conciliação do Sentinel nos pedidos em comum.
+
+Fica para depois porque as chamadas reais e o comportamento de 429 precisam de autorização.
+
+## 6. Pendências explícitas (não comprovadas)
 
 - O rebate incorporado à comissão foi provado só em 6 pedidos de uma conta, todos com item único e quantidade 1. Multi-item e quantidade maior que 1 ficam `NAO_CONCILIADO` até haver evidência.
 - O efeito do cupom do vendedor no repasse ainda não foi validado.

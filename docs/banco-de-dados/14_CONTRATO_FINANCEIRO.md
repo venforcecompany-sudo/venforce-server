@@ -210,3 +210,28 @@ Ela também conta:
 - as linhas ausentes por pedido (`ausentes`);
 - os cancelados;
 - os bloqueados, com a receita que ficou fora do resultado.
+
+## 7. Detalhamento do pedido (`composicaoFinanceira`)
+
+`GET /read/orders/:rowId` devolve `composicaoFinanceira` ao lado de `pedido`.
+O contrato do pedido não muda. O montador é
+`centralVendasDetalheFinanceiro.detalharPedido`, puro, sobre o que já foi
+gravado:
+
+| bloco | conteúdo |
+|---|---|
+| `identificacao` | pedido, status, logística, multi-item |
+| `itens[]` | MLB, SKU, variação, preço cheio × efetivo, desconto, parte do vendedor e do ML |
+| `precos` | totais do pedido (soma com parte desconhecida = `null`) |
+| `comissao` | do pedido (usada no resultado), bruta, líquida, natureza, rebate, incorporado, crédito comprovado (fora do oficial) |
+| `composicao` | linhas receita − comissão − frete − CMV − imposto, fonte e estado de cada uma, resultado, margem e identidade (`fecha`, `residuo`) |
+| `conciliacao` | receita de envio, reembolso, cancelamento, pós-venda, ajuste (resíduo) |
+| `evidencias` | estado da conciliação (`CONCILIADO`, `PARCIAL`, `DIVERGENTE`, `NAO_VERIFICADO`, `NAO_COLETADO`), fontes, base de custos (`igual`, `alterada`, `base_trocada`, `sem_registro`) |
+| `divergencias[]`, `pendencias[]` | códigos com origem (motor, composição, base) |
+
+Regras:
+
+- **`NAO_COLETADO`**: o import que gravou o pedido não tinha a composição ligada (sem `resumo_json.composicaoPromocional`). Nunca é lido como "sem desconto".
+- **Com composição e sem `preco_cheio`**: o pedido não teve desconto. O preço cheio é igual à receita (`inferido`).
+- **Base de custos**: `resumo_json.baseCustos` (assinatura por conteúdo) é comparado com a base atual da conta. A diferença vira pendência; nada é recalculado.
+- **Custo**: duas leituras por chave mais a assinatura da base, cerca de 14 ms numa base de 20 mil linhas. Falha de metadado não derruba o detalhe.
