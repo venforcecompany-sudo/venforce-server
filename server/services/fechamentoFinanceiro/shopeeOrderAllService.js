@@ -473,6 +473,10 @@ const SHOPEE_ORDER_ADJUSTMENT_COLUMNS = Object.freeze({
   coins: "Compensar Moedas Shopee", // em CENTAVOS (confirmado em 90/90 pedidos)
   buyerShipping: "Taxa de envio pagas pelo comprador",
   commercialAdjustment: "Ajuste por participação em ação comercial",
+  // Parte do cupom Shopee que a Shopee devolve DIRETO na Renda (fora das
+  // taxas): ajuste de ação comercial + incentivo = cupom + PIX. Conferido em
+  // Renda oficial (ver tests/fechamentoFinanceiroShopeeRendaOficial.test.js).
+  couponIncentive: "Incentivo de cupom",
   // Sem semântica provada: se vierem preenchidos, o pedido vira "estimado".
   reverseShipping: "Taxa de Envio Reversa",
   card: "Total descontado Cartão de Crédito",
@@ -2496,6 +2500,7 @@ function processShopeeFinancialOrders({
   const shopeeDirectCompensation = {
     coins: { orders: 0, total: 0 },
     card: { orders: 0, total: 0 },
+    couponIncentive: { orders: 0, total: 0 },
   };
 
   for (const [orderId, orderLines] of orders.entries()) {
@@ -2645,7 +2650,11 @@ function processShopeeFinancialOrders({
       //    comercial NUNCA os inclui (0 de ~4.500 pedidos com moedas e de ~65
       //    com cartão). A Shopee repõe o valor direto na Renda do pedido
       //    (demonstrativos: cortina +34,84 de moedas; cartão +14,19). Logo,
-      //    não reduzem o líquido do vendedor.
+      //    não reduzem o líquido do vendedor;
+      //  • incentivo de cupom: a parte do cupom Shopee que o ajuste de ação
+      //    comercial não cobre volta como crédito direto na Renda (ajuste +
+      //    incentivo = cupom + PIX nos arquivos reais). Não entra no Total
+      //    global, então é somado em qualquer ramo abaixo.
       const adj = {
         sellerCoupon: adjustmentValue("sellerCoupon").value,
         sellerCoin: adjustmentValue("sellerCoin").value,
@@ -2654,6 +2663,7 @@ function processShopeeFinancialOrders({
         coins: round2(adjustmentValue("coins").value / 100),
         card: adjustmentValue("card").value,
         buyerShipping: adjustmentValue("buyerShipping").value,
+        couponIncentive: adjustmentValue("couponIncentive").value,
       };
       // Descontos que de fato reduzem o líquido do vendedor (a compensação do
       // cupom/PIX já está nas taxas líquidas).
@@ -2685,6 +2695,7 @@ function processShopeeFinancialOrders({
         }
       }
       const directCompensation = round2(direct.coins + direct.card);
+      const couponIncentiveCredit = adj.couponIncentive > 0 ? adj.couponIncentive : 0;
 
       let productSide; // líquido de descontos, sem o frete pago pelo comprador
       if (totalGlobal.present) {
@@ -2692,16 +2703,16 @@ function processShopeeFinancialOrders({
         if (Math.abs(diff) <= 0.011) {
           // Total global = o que o comprador pagou; moedas/cartão voltam
           // pela Shopee.
-          productSide = round2(totalGlobal.value - adj.buyerShipping + directCompensation);
+          productSide = round2(totalGlobal.value - adj.buyerShipping + directCompensation + couponIncentiveCredit);
           totalGlobalVerifiedOrders += 1;
         } else {
           // Total global não fecha com as colunas: usa só o que a identidade
           // sustenta (subtotal − descontos do vendedor) e declara a divergência.
-          productSide = round2(orderGross - sellerSideDiscounts - adj.coins - adj.card + directCompensation);
+          productSide = round2(orderGross - sellerSideDiscounts - adj.coins - adj.card + directCompensation + couponIncentiveCredit);
           reasons.push({ reason: "total_global_divergente", value: Math.abs(diff) });
         }
       } else {
-        productSide = round2(orderGross - sellerSideDiscounts - adj.coins - adj.card + directCompensation);
+        productSide = round2(orderGross - sellerSideDiscounts - adj.coins - adj.card + directCompensation + couponIncentiveCredit);
       }
       orderLevelAdjustmentsAppliedTotal = round2(orderLevelAdjustmentsAppliedTotal + sellerSideDiscounts);
       for (const key of ["coins", "card"]) {
@@ -2709,6 +2720,10 @@ function processShopeeFinancialOrders({
           shopeeDirectCompensation[key].orders += 1;
           shopeeDirectCompensation[key].total = round2(shopeeDirectCompensation[key].total + direct[key]);
         }
+      }
+      if (couponIncentiveCredit > 0) {
+        shopeeDirectCompensation.couponIncentive.orders += 1;
+        shopeeDirectCompensation.couponIncentive.total = round2(shopeeDirectCompensation.couponIncentive.total + couponIncentiveCredit);
       }
 
       // A compensação da Shopee embutida nas taxas líquidas deve bater com o
