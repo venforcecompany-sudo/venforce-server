@@ -16,6 +16,7 @@ Branch `feat/pg-reorganizacao` (worktree `~/venforce-dev/wt-pg-reorg`, base
 | — | Snapshots, cache e históricos | [06_SNAPSHOTS_CACHE_HISTORICO.md](06_SNAPSHOTS_CACHE_HISTORICO.md) | — |
 | — | Retenção (integração, sem novo sistema) | [07_RETENCAO_INTEGRACAO.md](07_RETENCAO_INTEGRACAO.md) | — |
 | — | Retenção × reuso: proibição e especificação (S1–S4) | [09_RETENCAO_X_REUSO_ESPECIFICACAO.md](09_RETENCAO_X_REUSO_ESPECIFICACAO.md) | — |
+| 10 | **Componentes compactos (formato v2)**: diagnóstico, 4 modelos, PoC, plano, GO/NO-GO | [10_COMPONENTES_COMPACTOS.md](10_COMPONENTES_COMPACTOS.md) · [benchmark](componentes-v2/bench_layouts_20x150.json) | branch `feat/central-vendas-persistencia-componentes-v2` |
 | — | **Pendências e rollout** | [PENDENCIAS_E_ROLLOUT.md](PENDENCIAS_E_ROLLOUT.md) | — |
 | — | **Checklist de publicação (flags desligadas)** | [CHECKLIST_PUBLICACAO.md](CHECKLIST_PUBLICACAO.md) | — |
 

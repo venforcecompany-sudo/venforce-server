@@ -1,0 +1,1015 @@
+{
+  "parametros": {
+    "NOITES": 12,
+    "PEDIDOS_POR_DIA": 40,
+    "TAXA_MUDANCA": 0.03
+  },
+  "totalBytes": {
+    "completo": 17522688,
+    "enxuto": 11509760,
+    "reuso": 4038656,
+    "compacto": 7487488,
+    "reuso_compacto": 2908160
+  },
+  "tamanhos": {
+    "completo": [
+      {
+        "tabela": "central_vendas_componentes",
+        "total": "9814016",
+        "heap": "8077312",
+        "indices": "1695744",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_imports",
+        "total": "942080",
+        "heap": "32768",
+        "indices": "81920",
+        "toast": "794624"
+      },
+      {
+        "tabela": "central_vendas_pedido_itens",
+        "total": "3047424",
+        "heap": "2482176",
+        "indices": "524288",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedidos",
+        "total": "3719168",
+        "heap": "3284992",
+        "indices": "393216",
+        "toast": "8192"
+      }
+    ],
+    "enxuto": [
+      {
+        "tabela": "central_vendas_componentes",
+        "total": "6086656",
+        "heap": "4349952",
+        "indices": "1695744",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_imports",
+        "total": "286720",
+        "heap": "24576",
+        "indices": "81920",
+        "toast": "147456"
+      },
+      {
+        "tabela": "central_vendas_pedido_itens",
+        "total": "1417216",
+        "heap": "851968",
+        "indices": "524288",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedidos",
+        "total": "3719168",
+        "heap": "3284992",
+        "indices": "393216",
+        "toast": "8192"
+      }
+    ],
+    "reuso": [
+      {
+        "tabela": "central_vendas_componentes",
+        "total": "1818624",
+        "heap": "1245184",
+        "indices": "532480",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_import_pedidos",
+        "total": "327680",
+        "heap": "114688",
+        "indices": "180224",
+        "toast": "0"
+      },
+      {
+        "tabela": "central_vendas_imports",
+        "total": "278528",
+        "heap": "24576",
+        "indices": "81920",
+        "toast": "139264"
+      },
+      {
+        "tabela": "central_vendas_pedido_itens",
+        "total": "491520",
+        "heap": "245760",
+        "indices": "204800",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedidos",
+        "total": "1122304",
+        "heap": "933888",
+        "indices": "147456",
+        "toast": "8192"
+      }
+    ],
+    "compacto": [
+      {
+        "tabela": "central_vendas_componente_textos",
+        "total": "81920",
+        "heap": "8192",
+        "indices": "32768",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_componentes",
+        "total": "794624",
+        "heap": "491520",
+        "indices": "262144",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_imports",
+        "total": "286720",
+        "heap": "24576",
+        "indices": "81920",
+        "toast": "147456"
+      },
+      {
+        "tabela": "central_vendas_pedido_componentes",
+        "total": "1187840",
+        "heap": "1056768",
+        "indices": "90112",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedido_itens",
+        "total": "1417216",
+        "heap": "851968",
+        "indices": "524288",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedidos",
+        "total": "3719168",
+        "heap": "3284992",
+        "indices": "393216",
+        "toast": "8192"
+      }
+    ],
+    "reuso_compacto": [
+      {
+        "tabela": "central_vendas_componente_textos",
+        "total": "81920",
+        "heap": "8192",
+        "indices": "32768",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_componentes",
+        "total": "188416",
+        "heap": "81920",
+        "indices": "65536",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_import_pedidos",
+        "total": "335872",
+        "heap": "122880",
+        "indices": "180224",
+        "toast": "0"
+      },
+      {
+        "tabela": "central_vendas_imports",
+        "total": "286720",
+        "heap": "24576",
+        "indices": "81920",
+        "toast": "147456"
+      },
+      {
+        "tabela": "central_vendas_pedido_componentes",
+        "total": "401408",
+        "heap": "319488",
+        "indices": "40960",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedido_itens",
+        "total": "491520",
+        "heap": "245760",
+        "indices": "204800",
+        "toast": "8192"
+      },
+      {
+        "tabela": "central_vendas_pedidos",
+        "total": "1122304",
+        "heap": "933888",
+        "indices": "147456",
+        "toast": "8192"
+      }
+    ]
+  },
+  "linhas": {
+    "completo": {
+      "imports": 14,
+      "pedidos": 3601,
+      "itens": 3600,
+      "componentes": 21750,
+      "vinculos": 0,
+      "componentes_compactos": 0
+    },
+    "enxuto": {
+      "imports": 14,
+      "pedidos": 3601,
+      "itens": 3600,
+      "componentes": 21750,
+      "vinculos": 0,
+      "componentes_compactos": 0
+    },
+    "reuso": {
+      "imports": 14,
+      "pedidos": 1020,
+      "itens": 1019,
+      "componentes": 6165,
+      "vinculos": 2581,
+      "componentes_compactos": 0
+    },
+    "compacto": {
+      "imports": 14,
+      "pedidos": 3601,
+      "itens": 3600,
+      "componentes": 2419,
+      "vinculos": 0,
+      "componentes_compactos": 3200
+    },
+    "reuso_compacto": {
+      "imports": 14,
+      "pedidos": 1020,
+      "itens": 1019,
+      "componentes": 390,
+      "vinculos": 2581,
+      "componentes_compactos": 955
+    }
+  },
+  "msPersistirTotal": {
+    "completo": 5958,
+    "enxuto": 5437,
+    "reuso": 1821,
+    "compacto": 2973,
+    "reuso_compacto": 1142
+  },
+  "fk": {
+    "apagarDonoUsado": "23503",
+    "purgeApagou": 14,
+    "pedidosRestantes": 0,
+    "compactosRestantes": 0
+  },
+  "porNoite": [
+    {
+      "noite": 1,
+      "pedidosNoSnapshot": 40,
+      "diff": {
+        "comparavel": false,
+        "motivo": "SEM_MANIFESTO_ANTERIOR"
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 40,
+          "itens": 40,
+          "componentes": 240,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 40,
+          "itens": 40,
+          "componentes": 240,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 40,
+          "itens": 40,
+          "componentes": 240,
+          "vinculos": 0
+        },
+        "compacto": {
+          "pedidos": 40,
+          "itens": 40,
+          "componentes": 240,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 40,
+          "itens": 40,
+          "componentes": 240,
+          "vinculos": 0
+        }
+      },
+      "bytesJson": {
+        "completo": 146245,
+        "enxuto": 26794,
+        "reuso": 26794,
+        "compacto": 26314,
+        "reuso_compacto": 26314
+      },
+      "ms": {
+        "completo": 110,
+        "enxuto": 111,
+        "reuso": 107,
+        "compacto": 56,
+        "reuso_compacto": 55
+      }
+    },
+    {
+      "noite": 2,
+      "pedidosNoSnapshot": 80,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 8,
+        "inalterados": 32,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 80,
+          "itens": 80,
+          "componentes": 480,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 80,
+          "itens": 80,
+          "componentes": 480,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 48,
+          "itens": 48,
+          "componentes": 288,
+          "vinculos": 32
+        },
+        "compacto": {
+          "pedidos": 80,
+          "itens": 80,
+          "componentes": 480,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 48,
+          "itens": 48,
+          "componentes": 288,
+          "vinculos": 32
+        }
+      },
+      "bytesJson": {
+        "completo": 289425,
+        "enxuto": 53150,
+        "reuso": 32995,
+        "compacto": 52190,
+        "reuso_compacto": 32419
+      },
+      "ms": {
+        "completo": 239,
+        "enxuto": 283,
+        "reuso": 105,
+        "compacto": 60,
+        "reuso_compacto": 52
+      }
+    },
+    {
+      "noite": 3,
+      "pedidosNoSnapshot": 120,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 10,
+        "inalterados": 70,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 120,
+          "itens": 120,
+          "componentes": 721,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 120,
+          "itens": 120,
+          "componentes": 721,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 50,
+          "itens": 50,
+          "componentes": 301,
+          "vinculos": 70
+        },
+        "compacto": {
+          "pedidos": 120,
+          "itens": 120,
+          "componentes": 721,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 50,
+          "itens": 50,
+          "componentes": 301,
+          "vinculos": 70
+        }
+      },
+      "bytesJson": {
+        "completo": 433241,
+        "enxuto": 79528,
+        "reuso": 35442,
+        "compacto": 78086,
+        "reuso_compacto": 34840
+      },
+      "ms": {
+        "completo": 193,
+        "enxuto": 184,
+        "reuso": 72,
+        "compacto": 86,
+        "reuso_compacto": 40
+      }
+    },
+    {
+      "noite": 4,
+      "pedidosNoSnapshot": 160,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 12,
+        "inalterados": 108,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 160,
+          "itens": 160,
+          "componentes": 963,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 160,
+          "itens": 160,
+          "componentes": 963,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 52,
+          "itens": 52,
+          "componentes": 314,
+          "vinculos": 108
+        },
+        "compacto": {
+          "pedidos": 160,
+          "itens": 160,
+          "componentes": 963,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 52,
+          "itens": 52,
+          "componentes": 314,
+          "vinculos": 108
+        }
+      },
+      "bytesJson": {
+        "completo": 578005,
+        "enxuto": 105970,
+        "reuso": 37962,
+        "compacto": 104044,
+        "reuso_compacto": 37334
+      },
+      "ms": {
+        "completo": 314,
+        "enxuto": 295,
+        "reuso": 92,
+        "compacto": 102,
+        "reuso_compacto": 50
+      }
+    },
+    {
+      "noite": 5,
+      "pedidosNoSnapshot": 200,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 9,
+        "inalterados": 151,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 200,
+          "itens": 200,
+          "componentes": 1204,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 200,
+          "itens": 200,
+          "componentes": 1204,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 49,
+          "itens": 49,
+          "componentes": 295,
+          "vinculos": 151
+        },
+        "compacto": {
+          "pedidos": 200,
+          "itens": 200,
+          "componentes": 1204,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 49,
+          "itens": 49,
+          "componentes": 295,
+          "vinculos": 151
+        }
+      },
+      "bytesJson": {
+        "completo": 722704,
+        "enxuto": 132452,
+        "reuso": 37259,
+        "compacto": 130044,
+        "reuso_compacto": 36669
+      },
+      "ms": {
+        "completo": 301,
+        "enxuto": 282,
+        "reuso": 75,
+        "compacto": 104,
+        "reuso_compacto": 46
+      }
+    },
+    {
+      "noite": 6,
+      "pedidosNoSnapshot": 240,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 11,
+        "inalterados": 189,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 240,
+          "itens": 240,
+          "componentes": 1445,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 240,
+          "itens": 240,
+          "componentes": 1445,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 51,
+          "itens": 51,
+          "componentes": 307,
+          "vinculos": 189
+        },
+        "compacto": {
+          "pedidos": 240,
+          "itens": 240,
+          "componentes": 1445,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 51,
+          "itens": 51,
+          "componentes": 307,
+          "vinculos": 189
+        }
+      },
+      "bytesJson": {
+        "completo": 866324,
+        "enxuto": 158809,
+        "reuso": 39562,
+        "compacto": 155919,
+        "reuso_compacto": 38948
+      },
+      "ms": {
+        "completo": 453,
+        "enxuto": 437,
+        "reuso": 86,
+        "compacto": 110,
+        "reuso_compacto": 47
+      }
+    },
+    {
+      "noite": 7,
+      "pedidosNoSnapshot": 280,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 12,
+        "inalterados": 228,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 280,
+          "itens": 280,
+          "componentes": 1687,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 280,
+          "itens": 280,
+          "componentes": 1687,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 52,
+          "itens": 52,
+          "componentes": 314,
+          "vinculos": 228
+        },
+        "compacto": {
+          "pedidos": 280,
+          "itens": 280,
+          "componentes": 1687,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 52,
+          "itens": 52,
+          "componentes": 314,
+          "vinculos": 228
+        }
+      },
+      "bytesJson": {
+        "completo": 1010675,
+        "enxuto": 185188,
+        "reuso": 41337,
+        "compacto": 181814,
+        "reuso_compacto": 40709
+      },
+      "ms": {
+        "completo": 500,
+        "enxuto": 391,
+        "reuso": 93,
+        "compacto": 148,
+        "reuso_compacto": 54
+      }
+    },
+    {
+      "noite": 8,
+      "pedidosNoSnapshot": 320,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 16,
+        "inalterados": 264,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 320,
+          "itens": 320,
+          "componentes": 1931,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 320,
+          "itens": 320,
+          "componentes": 1931,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 56,
+          "itens": 56,
+          "componentes": 341,
+          "vinculos": 264
+        },
+        "compacto": {
+          "pedidos": 320,
+          "itens": 320,
+          "componentes": 1931,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 56,
+          "itens": 56,
+          "componentes": 341,
+          "vinculos": 264
+        }
+      },
+      "bytesJson": {
+        "completo": 1156605,
+        "enxuto": 211656,
+        "reuso": 45133,
+        "compacto": 207794,
+        "reuso_compacto": 44451
+      },
+      "ms": {
+        "completo": 614,
+        "enxuto": 442,
+        "reuso": 103,
+        "compacto": 193,
+        "reuso_compacto": 66
+      }
+    },
+    {
+      "noite": 9,
+      "pedidosNoSnapshot": 360,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 15,
+        "inalterados": 305,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 360,
+          "itens": 360,
+          "componentes": 2173,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 360,
+          "itens": 360,
+          "componentes": 2173,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 55,
+          "itens": 55,
+          "componentes": 332,
+          "vinculos": 305
+        },
+        "compacto": {
+          "pedidos": 360,
+          "itens": 360,
+          "componentes": 2173,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 55,
+          "itens": 55,
+          "componentes": 332,
+          "vinculos": 305
+        }
+      },
+      "bytesJson": {
+        "completo": 1301063,
+        "enxuto": 238085,
+        "reuso": 45634,
+        "compacto": 233739,
+        "reuso_compacto": 44970
+      },
+      "ms": {
+        "completo": 521,
+        "enxuto": 534,
+        "reuso": 107,
+        "compacto": 374,
+        "reuso_compacto": 64
+      }
+    },
+    {
+      "noite": 10,
+      "pedidosNoSnapshot": 400,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 24,
+        "inalterados": 336,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 400,
+          "itens": 400,
+          "componentes": 2419,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 400,
+          "itens": 400,
+          "componentes": 2419,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 64,
+          "itens": 64,
+          "componentes": 390,
+          "vinculos": 336
+        },
+        "compacto": {
+          "pedidos": 400,
+          "itens": 400,
+          "componentes": 2419,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 64,
+          "itens": 64,
+          "componentes": 390,
+          "vinculos": 336
+        }
+      },
+      "bytesJson": {
+        "completo": 1447772,
+        "enxuto": 264558,
+        "reuso": 52487,
+        "compacto": 264558,
+        "reuso_compacto": 52487
+      },
+      "ms": {
+        "completo": 679,
+        "enxuto": 594,
+        "reuso": 154,
+        "compacto": 654,
+        "reuso_compacto": 164
+      }
+    },
+    {
+      "noite": 11,
+      "pedidosNoSnapshot": 440,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 16,
+        "inalterados": 384,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 440,
+          "itens": 440,
+          "componentes": 2665,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 440,
+          "itens": 440,
+          "componentes": 2665,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 440,
+          "itens": 440,
+          "componentes": 2665,
+          "vinculos": 0
+        },
+        "compacto": {
+          "pedidos": 440,
+          "itens": 440,
+          "componentes": 2665,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 440,
+          "itens": 440,
+          "componentes": 2665,
+          "vinculos": 0
+        }
+      },
+      "bytesJson": {
+        "completo": 1594356,
+        "enxuto": 290962,
+        "reuso": 290962,
+        "compacto": 285632,
+        "reuso_compacto": 285632
+      },
+      "ms": {
+        "completo": 587,
+        "enxuto": 578,
+        "reuso": 693,
+        "compacto": 398,
+        "reuso_compacto": 425
+      }
+    },
+    {
+      "noite": 12,
+      "pedidosNoSnapshot": 480,
+      "diff": {
+        "comparavel": true,
+        "novos": 40,
+        "alterados": 22,
+        "inalterados": 418,
+        "removidos": 0,
+        "identico": false
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 480,
+          "itens": 480,
+          "componentes": 2911,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 480,
+          "itens": 480,
+          "componentes": 2911,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 62,
+          "itens": 62,
+          "componentes": 378,
+          "vinculos": 418
+        },
+        "compacto": {
+          "pedidos": 480,
+          "itens": 480,
+          "componentes": 2911,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 62,
+          "itens": 62,
+          "componentes": 378,
+          "vinculos": 418
+        }
+      },
+      "bytesJson": {
+        "completo": 1741487,
+        "enxuto": 317481,
+        "reuso": 53620,
+        "compacto": 311659,
+        "reuso_compacto": 52864
+      },
+      "ms": {
+        "completo": 647,
+        "enxuto": 713,
+        "reuso": 110,
+        "compacto": 461,
+        "reuso_compacto": 53
+      }
+    },
+    {
+      "noite": 13,
+      "pedidosNoSnapshot": 480,
+      "diff": {
+        "comparavel": true,
+        "novos": 0,
+        "alterados": 0,
+        "inalterados": 480,
+        "removidos": 0,
+        "identico": true
+      },
+      "gravados": {
+        "completo": {
+          "pedidos": 480,
+          "itens": 480,
+          "componentes": 2911,
+          "vinculos": 0
+        },
+        "enxuto": {
+          "pedidos": 480,
+          "itens": 480,
+          "componentes": 2911,
+          "vinculos": 0
+        },
+        "reuso": {
+          "pedidos": 0,
+          "itens": 0,
+          "componentes": 0,
+          "vinculos": 480
+        },
+        "compacto": {
+          "pedidos": 480,
+          "itens": 480,
+          "componentes": 2911,
+          "vinculos": 0
+        },
+        "reuso_compacto": {
+          "pedidos": 0,
+          "itens": 0,
+          "componentes": 0,
+          "vinculos": 480
+        }
+      },
+      "bytesJson": {
+        "completo": 1741487,
+        "enxuto": 317481,
+        "reuso": 14190,
+        "compacto": 311659,
+        "reuso_compacto": 14190
+      },
+      "ms": {
+        "completo": 800,
+        "enxuto": 593,
+        "reuso": 24,
+        "compacto": 227,
+        "reuso_compacto": 26
+      }
+    }
+  ]
+}
