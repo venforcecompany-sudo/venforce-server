@@ -38,6 +38,7 @@ const { buscarFretesEmLote } = require("./centralVendasFreteService");
 const { prepararEnvioCompartilhado, repartirCentavos, entraNoRateioEnvio, OBS_ENVIO_COMPARTILHADO } = require("./centralVendasEnvioCompartilhado");
 const { resolverPacksDoRun } = require("./centralVendasPackResolver");
 const composicaoPromocional = require("./centralVendasComposicaoPromocional");
+const { assinaturaBaseCustos } = require("./centralVendasBaseCustosAssinatura");
 const {
   buscarClaimsPorPeriodo,
   classificarClaimsDoPedido,
@@ -1052,6 +1053,14 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
     }
     const base = baseId ? { id: baseId, nome: context.base.nome } : null;
     const costMap = buildCostMap(custos);
+    // Identidade da base usada neste cálculo (por conteúdo). Falha aqui nunca
+    // bloqueia o sync: o import só fica sem a assinatura ("sem registro").
+    let baseCustosAssinatura = null;
+    try {
+      baseCustosAssinatura = await assinaturaBaseCustos(db, baseId);
+    } catch (_) {
+      baseCustosAssinatura = null;
+    }
 
     // Pedidos via Orders API (intervalo inteiro numa paginacao). O contrato
     // devolve {data, completeness} (M3) — nunca sucesso silencioso quando o
@@ -1467,6 +1476,7 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
       const resumoCalculado = buildResumoCentralVendas(motorResult);
       const resumo = {
         ...resumoCalculado,
+        ...(baseCustosAssinatura ? { baseCustos: baseCustosAssinatura } : {}),
         // Devolução sem pedido resolvido também rebaixa a confiança: o pós-venda
         // ficou incompleto, e incompleto nunca é "confiável".
         confianca:
