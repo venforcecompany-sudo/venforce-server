@@ -170,6 +170,10 @@ const PENDENCIA_LBL = {
   frete_seller_ausente: 'frete real ausente',
   imposto_interno_ausente: 'imposto não calculável',
   ajuste_plataforma_presente: 'ajuste de plataforma não conciliado',
+  composicao_promocional_nao_coletada: 'composição promocional não coletada neste import',
+  comissao_nao_conciliada: 'comissão ainda não conferida com o Billing',
+  base_custos_alterada_desde_o_calculo: 'base de custos alterada desde o cálculo',
+  base_custos_trocada_desde_o_calculo: 'base de custos trocada desde o cálculo',
 };
 const PENDENCIA_IMPACTO = {
   produto_ausente: 'impede atribuir custo/base e calcular resultado do item',
@@ -178,6 +182,10 @@ const PENDENCIA_IMPACTO = {
   frete_seller_ausente: 'resultado fica parcial, nunca confiável',
   imposto_interno_ausente: 'resultado fica parcial, nunca confiável',
   ajuste_plataforma_presente: 'o total líquido reportado não bate com os componentes — resíduo não conciliado (achado documentado, não corrigido)',
+  composicao_promocional_nao_coletada: 'preço cheio, descontos e rebate não foram gravados quando este período foi sincronizado',
+  comissao_nao_conciliada: 'a comissão do pedido continua valendo; rebate e comissão bruta ficam não verificados',
+  base_custos_alterada_desde_o_calculo: 'o custo/imposto deste pedido pode estar desatualizado; nada é recalculado automaticamente',
+  base_custos_trocada_desde_o_calculo: 'a conta usa outra base hoje; o resultado foi calculado com a anterior',
 };
 function pendenciaLabel(code) { return PENDENCIA_LBL[code] || String(code || '').replace(/_/g, ' '); }
 function pendenciaImpacto(code) { return PENDENCIA_IMPACTO[code] || ''; }
@@ -192,7 +200,14 @@ const COMPONENTE_LBL = {
   receita_envio: 'Receita de envio (conciliação)',
   cancelamento_reembolso: 'Cancelamento / reembolso (conciliação)',
 };
-const COMPONENTE_ORDEM = ['receita_produto', 'tarifa_venda', 'custo_produto', 'imposto_interno', 'frete_seller', 'receita_envio', 'cancelamento_reembolso'];
+COMPONENTE_LBL.preco_cheio = 'Preço cheio (informativo)';
+COMPONENTE_LBL.desconto_vendedor = 'Desconto bancado pelo vendedor (informativo)';
+COMPONENTE_LBL.desconto_marketplace = 'Desconto bancado pelo Mercado Livre (informativo)';
+COMPONENTE_LBL.comissao_bruta = 'Comissão bruta — Billing (conciliação)';
+COMPONENTE_LBL.rebate_marketplace = 'Rebate do Mercado Livre (conciliação)';
+COMPONENTE_LBL.credito_comissao_comprovado = 'Crédito adicional comprovado (conciliação)';
+const COMPONENTE_ORDEM = ['receita_produto', 'tarifa_venda', 'custo_produto', 'imposto_interno', 'frete_seller', 'receita_envio', 'cancelamento_reembolso',
+  'preco_cheio', 'desconto_vendedor', 'desconto_marketplace', 'comissao_bruta', 'rebate_marketplace', 'credito_comissao_comprovado'];
 
 /* Ícones SVG neutros para estados (sem emoji como único significado) */
 const EMPTY_ICONS = {
@@ -1930,7 +1945,152 @@ function buildMercadoPagoDrawerSection(mpRow) {
     </section>`;
 }
 
-function buildOrderDrawerBody(o, mpRow) {
+/* Detalhamento financeiro (GET /read/orders/:rowId → composicaoFinanceira).
+   Só leitura do que o backend montou — a tela não recalcula. Cada valor
+   carrega o estado: comprovado / observado / inferido / desconhecido /
+   não coletado (composição desligada quando o import foi gravado). */
+const ESTADO_VALOR = {
+  comprovado: ['is-success', 'Comprovado'], observado: ['is-info', 'Observado'], calculado: ['is-info', 'Calculado'],
+  inferido: ['is-neutral', 'Inferido'], desconhecido: ['is-neutral', 'Desconhecido'], nao_coletado: ['is-neutral', 'Não coletado'],
+  ausente: ['is-danger', 'Ausente'], bloqueado: ['is-danger', 'Bloqueado'], contraditorio: ['is-danger', 'Contraditório'],
+};
+function estadoValorTag(e) { const [cls, lbl] = ESTADO_VALOR[e] || ['is-neutral', e || '—']; return `<span class="vf-tag ${cls}">${esc(lbl)}</span>`; }
+const CONCILIACAO_LBL = {
+  CONCILIADO: ['is-success', 'Comissão comprovada no Billing'], PARCIAL: ['is-info', 'Conciliação parcial'],
+  DIVERGENTE: ['is-danger', 'Divergência Orders × Billing'], NAO_VERIFICADO: ['is-neutral', 'Comissão não conciliada (só Orders)'],
+  NAO_COLETADO: ['is-neutral', 'Composição promocional não coletada'],
+};
+const NATUREZA_LBL = {
+  liquida_comprovada: 'a comissão do pedido é a líquida: o rebate já está dentro dela',
+  bruta_comprovada: 'a comissão do pedido é a bruta: o vendedor pagou menos (crédito comprovado)',
+  divergente: 'a comissão do pedido não bate com o Billing',
+  nao_verificada: 'ainda não conferida com o Billing', nao_coletada: 'composição não coletada neste import',
+};
+const INCORPORADO_LBL = { comprovado: 'Sim (comprovado)', nao: 'Não (tarifa bruta)', nao_aplicavel: 'Sem rebate', desconhecido: 'Não verificado' };
+const BASE_LBL = {
+  igual: ['is-success', 'Base de custos igual à usada no cálculo'], alterada: ['is-warning', 'Base de custos alterada desde o cálculo'],
+  base_trocada: ['is-warning', 'Base de custos trocada desde o cálculo'], sem_registro: ['is-neutral', 'Import sem registro da base usada'],
+  base_atual_indisponivel: ['is-neutral', 'Base atual indisponível'], indisponivel: ['is-neutral', 'Base: verificação indisponível'],
+};
+const valorEstado = (v) => v ? `${esc(valOr(v.valor, money))} ${estadoValorTag(v.estado)}` : '—';
+
+function buildComposicaoFinanceiraSections(cf) {
+  if (!cf) return null;
+  const kv = pairs => `<dl class="vf-fapi-kv">${pairs.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
+  const pr = cf.precos || {};
+  const est = (vals) => vals.every((x) => x === 'nao_coletado') ? 'nao_coletado' : null;
+  const itens = cf.itens || [];
+  const precosItens = itens.length > 1 ? `
+      <div class="vf-table-wrap">
+        <table class="vf-table vf-table--compact">
+          <thead><tr><th scope="col">Item</th><th scope="col" class="num">Preço cheio</th><th scope="col" class="num">Preço efetivo</th><th scope="col" class="num">Desconto</th><th scope="col" class="num">Vendedor</th><th scope="col" class="num">Mercado Livre</th></tr></thead>
+          <tbody>${itens.map(it => `
+            <tr>
+              <td class="vf-mono">${esc(it.mlb || '—')}${it.variacaoId ? ` · var. ${esc(it.variacaoId)}` : ''}</td>
+              <td class="num">${valorEstado(it.precoCheio)}</td>
+              <td class="num">${esc(valOr(it.precoEfetivo?.valor, money))}</td>
+              <td class="num">${valorEstado(it.desconto)}</td>
+              <td class="num">${valorEstado(it.descontoVendedor)}</td>
+              <td class="num">${valorEstado(it.descontoMarketplace)}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>` : '';
+  const tot = (campo, valor) => {
+    const estados = itens.map((it) => it[campo]?.estado);
+    const e = est(estados) || (valor == null ? 'desconhecido' : (estados.find((x) => x === 'comprovado' || x === 'observado') || estados[0] || 'observado'));
+    return `${esc(valOr(valor, money))} ${estadoValorTag(e)}`;
+  };
+  const precos = `
+    <section class="vf-fapi-drawer-section" aria-label="Preço e descontos">
+      <h3 class="vf-fapi-drawer-section__title">Preço e descontos</h3>
+      ${kv([
+        ['Preço cheio', tot('precoCheio', pr.precoCheio)],
+        ['Preço efetivo (receita)', `${esc(valOr(pr.precoEfetivo, money))} ${estadoValorTag('observado')}`],
+        ['Desconto total', tot('desconto', pr.desconto)],
+        ['Bancado pelo vendedor', tot('descontoVendedor', pr.vendedorBancou)],
+        ['Bancado pelo Mercado Livre (subsídio)', tot('descontoMarketplace', pr.marketplaceBancou)],
+      ])}
+      ${precosItens}
+      <p class="vf-fapi-legend">A receita já é líquida do desconto (preço efetivo): o desconto explica a venda e nunca é subtraído de novo.</p>
+    </section>`;
+
+  const cm = cf.comissao || {};
+  const comissao = `
+    <section class="vf-fapi-drawer-section" aria-label="Comissão e rebate">
+      <h3 class="vf-fapi-drawer-section__title">Comissão e rebate</h3>
+      ${kv([
+        ['Comissão do pedido (usada no resultado)', valorEstado(cm.doPedido)],
+        ['Comissão bruta (Billing)', valorEstado(cm.bruta)],
+        ['Comissão líquida (Billing)', valorEstado(cm.liquida)],
+        ['Rebate do Mercado Livre', valorEstado(cm.rebate)],
+        ['Rebate já incorporado à comissão', esc(INCORPORADO_LBL[cm.rebate?.incorporadoNaComissao] || '—')],
+        ['Crédito adicional comprovado', `${valorEstado(cm.creditoAdicionalComprovado)}${cm.creditoAdicionalComprovado?.valor > 0 ? ' <span class="vf-tag is-warning">fora do resultado oficial</span>' : ''}`],
+      ])}
+      <p class="vf-fapi-legend">${esc(NATUREZA_LBL[cm.natureza] || '')}. O rebate nunca é somado ao resultado: ou já está na comissão, ou aparece como crédito comprovado, à parte.</p>
+    </section>`;
+
+  const comp = cf.composicao || { linhas: [] };
+  const idt = comp.identidade || {};
+  const calculo = `
+    <section class="vf-fapi-drawer-section" aria-label="Como o resultado foi calculado">
+      <h3 class="vf-fapi-drawer-section__title">Como o resultado foi calculado</h3>
+      <div class="vf-table-wrap">
+        <table class="vf-table vf-table--compact">
+          <thead><tr><th scope="col">Componente</th><th scope="col"><span class="vf-visually-hidden">Operação</span></th><th scope="col" class="num">Valor</th><th scope="col">Estado</th><th scope="col">Fonte</th></tr></thead>
+          <tbody>${(comp.linhas || []).map(l => `
+            <tr>
+              <td>${esc(l.rotulo)}${l.nota ? ` <span class="vf-fapi-fonte">(${esc(l.nota)})</span>` : ''}</td>
+              <td class="vf-fapi-op" aria-hidden="true">${l.sinal > 0 ? '+' : l.sinal < 0 ? '−' : ''}</td>
+              <td class="num${l.valor == null ? ' is-absent' : ''}">${esc(valOr(l.valor, money))}</td>
+              <td>${estadoValorTag(l.estado)}</td>
+              <td class="vf-fapi-fonte">${esc(l.fonte || '—')}</td>
+            </tr>`).join('')}
+            <tr class="vf-fapi-total-row">
+              <td>Margem de contribuição${comp.margemPercentual != null ? ` · ${esc(String(comp.margemPercentual).replace('.', ','))}%` : ''}</td>
+              <td class="vf-fapi-op" aria-hidden="true">=</td>
+              <td class="num">${comp.resultado == null ? '—' : `<span class="vf-fapi-est">${money(comp.resultado)}</span>`}</td>
+              <td colspan="2" class="vf-fapi-obs">${idt.fecha === true ? 'a soma dos componentes fecha com o resultado gravado' : idt.fecha === false ? `não fecha: resíduo de ${esc(valOr(idt.residuo, money))}` : 'resultado bloqueado — não vira R$ 0,00'}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="vf-fapi-legend">${esc(idt.formula || '')}. Margem sobre a ${esc(comp.denominador || 'receita')}.</p>
+    </section>`;
+
+  const cc = cf.conciliacao || {};
+  const pv = cc.posVenda || {};
+  const conciliacao = `
+    <section class="vf-fapi-drawer-section" aria-label="Cancelamentos, reembolsos e ajustes">
+      <h3 class="vf-fapi-drawer-section__title">Cancelamentos, reembolsos e ajustes</h3>
+      ${kv([
+        ['No resultado', cc.entraNoResultado === false ? '<span class="vf-tag is-neutral">Fora (cancelado ou em problema)</span>' : '<span class="vf-tag is-success">Sim</span>'],
+        ['Reembolso ao comprador', `${esc(valOr(cc.reembolso?.valor, money))}${cc.reembolso?.valor != null ? ' <span class="vf-fapi-fonte">(não descontado de novo)</span>' : ''}`],
+        ['Receita de envio (comprador)', esc(valOr(cc.receitaEnvio?.valor, money))],
+        ['Pós-venda', esc(pv.tipo ? `${pv.tipo}${pv.parcial ? ' parcial' : ''}${pv.quantidadeDevolvida != null ? ` · ${pv.quantidadeDevolvida} de ${pv.quantidadeComprada ?? '—'} un.` : ''}${pv.motivo ? ` · ${pv.motivo}` : ''}` : 'Nenhum registrado')],
+        ['Ajustes não explicados', cc.ajustes ? `${esc(money(cc.ajustes.valor))} <span class="vf-tag is-warning">resíduo</span>` : 'Nenhum'],
+      ])}
+    </section>`;
+
+  const ev = cf.evidencias || {};
+  const [ccls, clbl] = CONCILIACAO_LBL[ev.estadoConciliacao] || ['is-neutral', ev.estadoConciliacao || '—'];
+  const [bcls, blbl] = BASE_LBL[ev.baseCustos?.estado] || ['is-neutral', 'Base de custos não verificada'];
+  const evidencias = `
+    <section class="vf-fapi-drawer-section" aria-label="Origem dos valores e conciliação">
+      <h3 class="vf-fapi-drawer-section__title">Origem dos valores e conciliação</h3>
+      <div class="vf-fapi-drawer-ident__tags">
+        <span class="vf-tag ${ccls}">${esc(clbl)}</span>
+        <span class="vf-tag ${bcls}">${esc(blbl)}</span>
+      </div>
+      ${kv([['Fontes lidas', esc((ev.fontes || []).join(', ') || '—')]])}
+    </section>`;
+
+  const divergencias = (cf.divergencias || []);
+  const pendencias = (cf.pendencias || []).filter((p) => p.origem !== 'motor');
+  return { precos, comissao, calculo, conciliacao, evidencias, divergencias, pendencias, itens };
+}
+
+function buildOrderDrawerBody(o, mpRow, cf = null) {
+  const det = buildComposicaoFinanceiraSections(cf);
   const faltas = faltasDoPedido(o);
   const bloqueado = o.resultado == null;
   const precoUnit = (o.valor != null && o.unidades) ? round2(o.valor / o.unidades) : null;
@@ -1942,12 +2102,13 @@ function buildOrderDrawerBody(o, mpRow) {
       <h3 class="vf-fapi-drawer-section__title">Itens do pedido${o.multiItem ? ` (${esc(o.qtdItens)})` : ''}</h3>
       <div class="vf-table-wrap">
         <table class="vf-table vf-table--compact">
-          <thead><tr><th scope="col">Produto</th><th scope="col">MLB</th><th scope="col">SKU</th><th scope="col" class="num">Qtd.</th><th scope="col" class="num">Receita</th><th scope="col" class="num">Custo</th><th scope="col" class="num">Imposto</th><th scope="col" class="num">Resultado</th><th scope="col">Confiança</th></tr></thead>
+          <thead><tr><th scope="col">Produto</th><th scope="col">MLB</th><th scope="col">SKU</th>${det && det.itens.some(x => x.variacaoId) ? '<th scope="col">Variação</th>' : ''}<th scope="col" class="num">Qtd.</th><th scope="col" class="num">Receita</th><th scope="col" class="num">Custo</th><th scope="col" class="num">Imposto</th><th scope="col" class="num">Resultado</th><th scope="col">Confiança</th></tr></thead>
           <tbody>${o.itens.map(it => `
             <tr>
               <td class="vf-truncate" title="${esc(it.titulo || '—')}">${esc(it.titulo || '—')}</td>
               <td class="vf-mono">${esc(it.mlb || '—')}</td>
               <td class="vf-mono${it.sku ? '' : ' is-absent'}">${esc(it.sku || '—')}</td>
+              ${det && det.itens.some(x => x.variacaoId) ? `<td class="vf-mono">${esc((det.itens.find(x => x.itemId === (it.itemId || it.id)) || {}).variacaoId || '—')}</td>` : ''}
               <td class="num">${valOr(it.quantidade)}</td>
               <td class="num">${valOr(it.receitaProduto, money)}</td>
               <td class="num${it.custoProduto == null ? ' is-absent' : ''}">${valOr(it.custoProduto, money)}</td>
@@ -2012,7 +2173,9 @@ function buildOrderDrawerBody(o, mpRow) {
       <p class="vf-fapi-legend">Valores exatamente como persistidos pelo backend (M5/M6) — a tela nunca recalcula. Ausência nunca vira zero.</p>
     </section>
     ${itensSecao}
+    ${det ? det.precos + det.comissao + det.calculo : ''}
     ${ledgerSecao}
+    ${det ? det.conciliacao + det.evidencias : ''}
     ${buildMercadoPagoDrawerSection(mpRow)}
     <section class="vf-fapi-drawer-section" aria-label="Pedido">
       <h3 class="vf-fapi-drawer-section__title">Pedido</h3>
@@ -2024,6 +2187,21 @@ function buildOrderDrawerBody(o, mpRow) {
         ['Valor do pedido', esc(valOr(o.valor, money))],
       ])}
     </section>
+    ${det && det.divergencias.length ? `
+    <section class="vf-fapi-drawer-section" aria-label="Divergências financeiras">
+      <h3 class="vf-fapi-drawer-section__title">Divergências financeiras</h3>
+      <div class="vf-banner is-danger vf-banner--compact">
+        <div class="vf-banner__content">
+          <p class="vf-banner__title">Os valores não fecham entre as fontes — nada foi corrigido automaticamente</p>
+          <ul>${det.divergencias.map(d => `<li><strong>${esc(d.rotulo)}</strong></li>`).join('')}</ul>
+        </div>
+      </div>
+    </section>` : ''}
+    ${det && det.pendencias.length ? `
+    <section class="vf-fapi-drawer-section" aria-label="Pendências da composição">
+      <h3 class="vf-fapi-drawer-section__title">Pendências da composição</h3>
+      <ul class="vf-fapi-legend">${det.pendencias.map(p => `<li>${esc(pendenciaLabel(p.codigo))}${pendenciaImpacto(p.codigo) ? ` — ${esc(pendenciaImpacto(p.codigo))}` : ''}</li>`).join('')}</ul>
+    </section>` : ''}
     ${(bloqueado || faltas.length) ? `
     <section class="vf-fapi-drawer-section" aria-label="Pendências e confiança">
       <h3 class="vf-fapi-drawer-section__title">Pendências e confiança</h3>
@@ -2073,7 +2251,7 @@ async function openOrderDrawer(rowId, triggerRow) {
   const o = detalhe.pedido;
   if (conf) conf.innerHTML = confStatus(o.confianca);
   const mpRow = F.mp.rowsByOrderId ? F.mp.rowsByOrderId.get(String(o.id)) : null;
-  body.innerHTML = buildOrderDrawerBody(o, mpRow);
+  body.innerHTML = buildOrderDrawerBody(o, mpRow, detalhe.composicaoFinanceira || null);
 }
 
 function closeOrderDrawer({ restoreFocus = true } = {}) {
