@@ -178,6 +178,17 @@ const TABELAS_IMPORT = {
   componentes: "central_vendas_componentes",
 };
 const TABELAS_MP = { mp_payments: "central_vendas_mp_payments", mp_payment_charges: "central_vendas_mp_payment_charges" };
+// Componentes compactos (formato v2, migration 20261126): uma linha por pedido,
+// sem import_id — pertencem ao import DONO do pedido e caem por CASCADE junto
+// com ele. Contagem e backup seguem pela linha do pedido. O dicionário de
+// textos é compartilhado e append-only: nunca é apagado, só copiado no backup.
+const TABELA_COMPACTOS = "central_vendas_pedido_componentes";
+const TABELA_TEXTOS = "central_vendas_componente_textos";
+async function compactosExistem(db) {
+  const { rows } = await db.query(`SELECT to_regclass($1) IS NOT NULL AS ok`, [`public.${TABELA_COMPACTOS}`]);
+  if (!rows[0] || typeof rows[0].ok !== "boolean") throw new Error("RETENCAO_COMPACTOS_EXISTENCIA_INDETERMINADA");
+  return rows[0].ok;
+}
 
 async function estatisticasTabela(db, tabela) {
   const meta = await db.query(
@@ -219,6 +230,16 @@ async function contarFilhosPorImport(db, importIds) {
     );
     for (const r of rows) porImport.get(Number(r.import_id))[chave] = Number(r.n);
   }
+  if (await compactosExistem(db)) {
+    for (const c of porImport.values()) c.componentes_compactos = 0;
+    const { rows } = await db.query(
+      `SELECT p.import_id, COUNT(*)::bigint AS n FROM ${TABELA_COMPACTOS} pc
+         JOIN central_vendas_pedidos p ON p.id = pc.pedido_row_id
+        WHERE p.import_id = ANY($1::bigint[]) GROUP BY p.import_id`,
+      [importIds.map(Number)]
+    );
+    for (const r of rows) porImport.get(Number(r.import_id)).componentes_compactos = Number(r.n);
+  }
   return porImport;
 }
 
@@ -248,6 +269,11 @@ async function contarMpPorRun(db, runIds) {
 async function estimarEspaco(db, plano) {
   const stats = {};
   for (const tabela of [...Object.values(TABELAS_IMPORT), ...Object.values(TABELAS_MP)]) stats[tabela] = await estatisticasTabela(db, tabela);
+  const tabelasImport = { ...TABELAS_IMPORT };
+  if (await compactosExistem(db)) {
+    tabelasImport.componentes_compactos = TABELA_COMPACTOS;
+    stats[TABELA_COMPACTOS] = await estatisticasTabela(db, TABELA_COMPACTOS);
+  }
   const porImport = await contarFilhosPorImport(db, plano.elegiveis);
   const porRun = await contarMpPorRun(db, plano.mp.elegiveis);
 
@@ -262,12 +288,12 @@ async function estimarEspaco(db, plano) {
   const porContaCompetencia = {};
   for (const [id, contagem] of porImport) {
     const m = plano.motivos[id];
-    somar(porClasse[m.classe], contagem, TABELAS_IMPORT);
+    somar(porClasse[m.classe], contagem, tabelasImport);
     const [slug, marketplace, competencia, conta] = m.tupla.split("|");
     const chave = `${slug}|${marketplace}|conta=${conta}|${competencia}`;
     porContaCompetencia[chave] = porContaCompetencia[chave] || { ...vazio(), imports: 0 };
     porContaCompetencia[chave].imports += 1;
-    somar(porContaCompetencia[chave], contagem, TABELAS_IMPORT);
+    somar(porContaCompetencia[chave], contagem, tabelasImport);
   }
   for (const contagem of porRun.values()) somar(porClasse.mp_payments, contagem, TABELAS_MP);
   const total = Object.values(porClasse).reduce((s, c) => s + c.bytesEstimados, 0);
@@ -312,6 +338,21 @@ async function exportarImportsCsv(db, importIds, { dir, prefixo }) {
     for (const chave of ["pedidos", "itens", "componentes"]) {
       const r = await db.query(`SELECT * FROM ${TABELAS_IMPORT[chave]} WHERE import_id = $1 ORDER BY id`, [id]);
       anexarCsv(arquivos[chave], r.rows);
+    }
+  }
+  if (await compactosExistem(db)) {
+    // Linha compacta crua (arrays) + o dicionário inteiro (pequeno, append-only):
+    // juntos reconstroem os componentes sem depender do banco de origem.
+    arquivos.componentes_compactos = path.join(dir, `${prefixo}-componentes_compactos.csv`);
+    for (const id of importIds) {
+      const r = await db.query(
+        `SELECT pc.* FROM ${TABELA_COMPACTOS} pc JOIN central_vendas_pedidos p ON p.id = pc.pedido_row_id
+          WHERE p.import_id = $1 ORDER BY pc.pedido_row_id`, [id]);
+      anexarCsv(arquivos.componentes_compactos, r.rows);
+    }
+    arquivos.componente_textos = path.join(dir, `${prefixo}-componente_textos.csv`);
+    if (!fs.existsSync(arquivos.componente_textos)) {
+      anexarCsv(arquivos.componente_textos, (await db.query(`SELECT * FROM ${TABELA_TEXTOS} ORDER BY id`)).rows);
     }
   }
   return arquivos;

@@ -8,6 +8,7 @@ const { prazos } = require("./centralVendasPrazos");
 const { aplicarSchemaVersionado } = require("../schema/schemaVersionado");
 const persistenciaEnxuta = require("./centralVendasPersistenciaEnxuta");
 const pedidosCompartilhados = require("./centralVendasPedidosCompartilhados");
+const compactos = require("./centralVendasComponentesCompactos");
 
 const schemaPath = path.join(__dirname, "..", "..", "sql", "central_vendas_schema.sql");
 
@@ -359,11 +360,25 @@ async function insertComponente({
 // + medição de escrita. Formato completo (flag desligada): payloads idênticos
 // aos de antes; só a medição (bytes de JSON e duração) é acrescentada.
 // `iniciar` roda DENTRO da transação (a cada tentativa do retry, do zero).
-function planejarPersistencia({ fonte, syncRunId, motorPayload, resumo }) {
+function planejarPersistencia({ fonte, syncRunId, motorPayload, resumo, clienteContaId = null }) {
   const enxuta = persistenciaEnxuta.aplicaPersistenciaEnxuta({ fonte, syncRunId });
   const manifesto = enxuta ? persistenciaEnxuta.construirManifesto({ motorPayload, resumo }) : null;
   const inicioMs = Date.now();
+  // Componentes compactos (formato v2, opt-in por conta): decididos e com o
+  // dicionário garantido ANTES da transação do import (ver
+  // centralVendasComponentesCompactos.garantirTextos).
+  const formatoComponentes = { compacto: false, motivo: "FLAG_DESLIGADA", textos: null };
   return {
+    async preparar() {
+      if (!compactos.isEscritaCompactaHabilitada({ fonte, syncRunId, clienteContaId })) return;
+      if (!(await compactos.tabelaCompactaDisponivel(pool))) { formatoComponentes.motivo = "TABELA_AUSENTE"; return; }
+      const avaliacao = compactos.avaliarImport(motorPayload);
+      if (!avaliacao.elegivel) { formatoComponentes.motivo = avaliacao.motivo; return; }
+      formatoComponentes.textos = await compactos.garantirTextos(avaliacao.textos, pool);
+      formatoComponentes.compacto = true;
+      formatoComponentes.motivo = null;
+    },
+    formatoComponentes,
     async iniciar(tupla, db) {
       let bytesJson = 0;
       const medir = (obj) => { bytesJson += Buffer.byteLength(asJson(obj, {}), "utf8"); return obj; };
@@ -394,6 +409,11 @@ function planejarPersistencia({ fonte, syncRunId, motorPayload, resumo }) {
         payloadComponente: (c) => medir(enxuta ? persistenciaEnxuta.extrasDoComponente(c) : c),
         fechar: () => ({
           formato: enxuta ? persistenciaEnxuta.FORMATO_MANIFESTO : "completo",
+          // Só com a escrita compacta ligada para a conta (flag desligada =
+          // medição idêntica à de antes).
+          ...(formatoComponentes.motivo === "FLAG_DESLIGADA" ? {} : {
+            componentes: formatoComponentes.compacto ? { formato: "compacto_v1" } : { formato: "linhas", motivo: formatoComponentes.motivo },
+          }),
           bytesJsonEstimados: bytesJson,
           duracaoMs: Date.now() - inicioMs,
           ...(diff ? { diff } : {}),
@@ -439,7 +459,8 @@ async function persistCentralVendasImport({
   coverageDateFrom = null,
   coverageDateTo = null,
 }) {
-  const plano = planejarPersistencia({ fonte, syncRunId, motorPayload, resumo });
+  const plano = planejarPersistencia({ fonte, syncRunId, motorPayload, resumo, clienteContaId });
+  await plano.preparar();
   return withTransaction(async (db) => {
     const { payloadImport, payloadItem, payloadComponente, medir, fechar, reusado, vincular, totalReusados } = await plano.iniciar(
       { clienteSlug: cliente.slug, marketplace, competencia, clienteContaId }, db
@@ -487,7 +508,10 @@ async function persistCentralVendasImport({
       itemRowsById.set(item.itemId, itemRow.id);
     }
 
-    for (const componente of motorPayload.componentes || []) {
+    if (plano.formatoComponentes.compacto) {
+      await gravarComponentesCompactos({ motorPayload, reusado, pedidoRowsById, itemRowsById, textos: plano.formatoComponentes.textos }, db);
+    }
+    for (const componente of plano.formatoComponentes.compacto ? [] : motorPayload.componentes || []) {
       if (reusado(componente.pedidoId)) continue;
       await insertComponente({
         payloadJson: payloadComponente(componente),
@@ -513,6 +537,25 @@ async function persistCentralVendasImport({
     // ANTES): reexecutar do zero depois de 40P01/40001 é seguro e idempotente,
     // porque a tentativa abortada foi revertida por inteiro.
   }, { retryTransient: true, queryTimeoutMs: prazos().dbQueryMs });
+}
+
+// Formato v2: UMA linha por pedido com a composição inteira (ver
+// centralVendasComponentesCompactos). Mesmos componentes, mesma ordem e os
+// mesmos extras que a persistência enxuta guardaria no payload_json.
+async function gravarComponentesCompactos({ motorPayload, reusado, pedidoRowsById, itemRowsById, textos }, db) {
+  const componentes = (motorPayload.componentes || []).filter((c) => !reusado(c.pedidoId));
+  const linhas = compactos.montarLinhas({
+    componentes, pedidoRowsById, itemRowsById, textos, extrasDoComponente: persistenciaEnxuta.extrasDoComponente,
+  });
+  return compactos.gravarCompactos(linhas, db);
+}
+
+// Componentes de um conjunto de pedidos nos DOIS formatos (linhas antigas ∪
+// compactos), no formato e na ordem de sempre. Sem a tabela compacta: a
+// consulta antiga, literalmente (mesmo SQL, mesmo resultado).
+async function consultarComponentes(db, { sqlLegado, colunas, filtroLegado, filtroCompacto, ordem, comentario }, params) {
+  if (!(await compactos.tabelaCompactaDisponivel(db))) return db.query(sqlLegado, params);
+  return db.query(compactos.sqlUniao({ colunas, filtroLegado, filtroCompacto, ordem, comentario }), params);
 }
 
 // Manifesto do import PUBLICADO vigente da mesma tupla (cliente, conta,
@@ -670,12 +713,14 @@ async function getLatestCentralVendasImport(
           ORDER BY pedido_id ASC, id ASC`,
         [[importacao.id]]
       ),
-      db.query(
-        `SELECT ${COMPONENTE_READ_COLUMNS} FROM central_vendas_componentes
+      consultarComponentes(db, {
+        sqlLegado: `SELECT ${COMPONENTE_READ_COLUMNS} FROM central_vendas_componentes
           WHERE pedido_row_id IN (SELECT pedido_row_id FROM ${fonte})
           ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
-        [[importacao.id]]
-      ),
+        colunas: COMPONENTE_COLUNAS,
+        filtroLegado: `pedido_row_id IN (SELECT pedido_row_id FROM ${fonte})`,
+        filtroCompacto: `pc.pedido_row_id IN (SELECT pedido_row_id FROM ${fonte})`,
+      }, [[importacao.id]]),
     ]);
     const lido = (rows) => rows.map((r) => ({ ...r, import_id: importacao.id }));
     return {
@@ -701,13 +746,15 @@ async function getLatestCentralVendasImport(
         ORDER BY pedido_id ASC, id ASC`,
       [importacao.id]
     ),
-    db.query(
-      `SELECT ${COMPONENTE_READ_COLUMNS}
+    consultarComponentes(db, {
+      sqlLegado: `SELECT ${COMPONENTE_READ_COLUMNS}
          FROM central_vendas_componentes
         WHERE import_id = $1
         ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
-      [importacao.id]
-    ),
+      colunas: COMPONENTE_COLUNAS,
+      filtroLegado: "import_id = $1",
+      filtroCompacto: "p.import_id = $1",
+    }, [importacao.id]),
   ]);
 
   return {
@@ -733,6 +780,7 @@ const ITEM_READ_COLUMNS = `id, import_id, pedido_row_id, cliente_id, cliente_slu
 const COMPONENTE_READ_COLUMNS = `id, import_id, pedido_row_id, item_row_id, cliente_id, cliente_slug, marketplace,
        competencia, pedido_id, item_id, tipo, valor, fonte, confianca, obs, escopo, efeito,
        incluido_no_resultado, created_at, updated_at`;
+const COMPONENTE_COLUNAS = COMPONENTE_READ_COLUMNS.split(",").map((c) => c.trim());
 
 // M10 — extraído de getCentralVendasByRange (mesma regra M4 exata, apenas
 // separada da carga pesada de pedidos/itens/componentes): resolve SÓ os
@@ -899,13 +947,15 @@ async function loadPedidosByImportIds({ importIds, dateFrom, dateTo }, db = pool
         ORDER BY pedido_id ASC, id ASC`,
       [pedidoRowIds]
     ),
-    db.query(
-      `SELECT ${COMPONENTE_READ_COLUMNS}
+    consultarComponentes(db, {
+      sqlLegado: `SELECT ${COMPONENTE_READ_COLUMNS}
          FROM central_vendas_componentes
         WHERE pedido_row_id = ANY($1::bigint[])
         ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
-      [pedidoRowIds]
-    ),
+      colunas: COMPONENTE_COLUNAS,
+      filtroLegado: "pedido_row_id = ANY($1::bigint[])",
+      filtroCompacto: "pc.pedido_row_id = ANY($1::bigint[])",
+    }, [pedidoRowIds]),
   ]);
 
   return { pedidos, ...pedidosCompartilhados.itensComImportLido(pedidos, itensResult.rows, componentesResult.rows) };
@@ -956,14 +1006,17 @@ async function loadRealizadoByImportIds({ importIds, dateFrom, dateTo }, db = po
         ORDER BY pedido_id ASC, id ASC`,
       [pedidoRowIds]
     ),
-    db.query(
-      `/* cv:realizado-componentes */ SELECT item_row_id, pedido_row_id, tipo, valor
+    consultarComponentes(db, {
+      sqlLegado: `/* cv:realizado-componentes */ SELECT item_row_id, pedido_row_id, tipo, valor
          FROM central_vendas_componentes
         WHERE pedido_row_id = ANY($1::bigint[])
           AND tipo = ANY($2::text[])
         ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
-      [pedidoRowIds, TIPOS_COMPONENTE_REALIZADO]
-    ),
+      colunas: ["item_row_id", "pedido_row_id", "tipo", "valor"],
+      filtroLegado: "pedido_row_id = ANY($1::bigint[]) AND tipo = ANY($2::text[])",
+      filtroCompacto: "pc.pedido_row_id = ANY($1::bigint[]) AND tt.texto = ANY($2::text[])",
+      comentario: "/* cv:realizado-componentes */ ",
+    }, [pedidoRowIds, TIPOS_COMPONENTE_REALIZADO]),
   ]);
 
   return { pedidos, itens: itensResult.rows, componentes: componentesResult.rows };
@@ -1033,13 +1086,16 @@ async function getPedidoDetailByRowId({ importIds, dateFrom, dateTo, rowId }, db
         ORDER BY id ASC`,
       [pedido.id]
     ),
-    db.query(
-      `SELECT ${COMPONENTE_READ_COLUMNS}
+    consultarComponentes(db, {
+      sqlLegado: `SELECT ${COMPONENTE_READ_COLUMNS}
          FROM central_vendas_componentes
         WHERE pedido_row_id = $1
         ORDER BY item_id ASC NULLS LAST, id ASC`,
-      [pedido.id]
-    ),
+      colunas: COMPONENTE_COLUNAS,
+      filtroLegado: "pedido_row_id = $1",
+      filtroCompacto: "pc.pedido_row_id = $1",
+      ordem: "item",
+    }, [pedido.id]),
   ]);
 
   return { pedido, ...pedidosCompartilhados.itensComImportLido([pedido], itensResult.rows, componentesResult.rows) };

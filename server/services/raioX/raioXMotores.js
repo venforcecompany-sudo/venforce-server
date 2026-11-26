@@ -23,6 +23,8 @@ const N = "nao_mapeado";
 // marcadas `foraDoRegistro` (sem contagem por cliente).
 const EXTRAS = [
   ["central_vendas_import_pedidos", "Central de Vendas", "vinculo", false, "sim", "reuso de pedidos (migration manual 20261111)"],
+  ["central_vendas_pedido_componentes", "Central de Vendas", "snapshot", false, "sim", "componentes compactos por pedido (migration manual 20261126)"],
+  ["central_vendas_componente_textos", "Central de Vendas", "config", false, "sim", "dicionário append-only dos componentes compactos"],
   ["central_vendas_mp_settlement_movements", "Mercado Pago", "historico", false, "parcial", "Settlement Report MP"],
   ["cliente_360_diagnostico_itens", "Cliente 360", "derivada", false, "sim", "motor de diagnóstico"],
   ["promo_snapshot_runs", "Promoções", "auditoria", false, "sim", "worker de promoções"],
@@ -65,6 +67,7 @@ const MOTORES = [
       f("central_vendas_mp_payments", C), f("central_vendas_mp_payment_charges", C),
       f("central_vendas_mp_settlement_reports", C), f("central_vendas_mp_settlement_movements", C),
       f("central_vendas_import_pedidos", C, "só com o reuso de pedidos ligado"),
+      f("central_vendas_pedido_componentes", C, "só com CENTRAL_VENDAS_COMPONENTES_COMPACTOS ligada"),
     ],
     telas: ["Central de Vendas", "Painel de Contas (status do sync)"],
     naoMapeado: ["Quantos clientes/contas o scheduler noturno cobre hoje em produção (depende de env)."],
