@@ -3077,13 +3077,6 @@ function processShopeeFinancialOrders({
       "mas são repostos pela Shopee fora das taxas; não reduzem o líquido do vendedor."
     );
   }
-  if (shopeeDirectCompensation.couponIncentive.orders > 0) {
-    executiveNotes.push(
-      "SHOPEE_COUPON_INCENTIVE: incentivo de cupom " +
-      `(${shopeeDirectCompensation.couponIncentive.orders} pedido(s), R$ ${shopeeDirectCompensation.couponIncentive.total.toFixed(2)}) ` +
-      "é a parte do cupom Shopee devolvida direto na Renda (fora das taxas); somado ao líquido do vendedor."
-    );
-  }
   // Dois eixos independentes: financialConfidence/costConfidence = cobertura
   // de CUSTO (contrato de sempre, rótulos "vendas sem custo"); a qualidade do
   // líquido fica só em netRevenueConfidence — misturar os dois fazia um
