@@ -111,6 +111,38 @@ function ehTimeout(err) {
   return Boolean(err && err.name === "MlTimeoutError");
 }
 
+// Participar de promoção exige anúncio ATIVO. Lê o status ao vivo no ML (nunca
+// o da tabela local, que pode estar defasado) e recusa antes de qualquer POST
+// quando está pausado/em revisão/encerrado. Não grava nada em meliAnuncios.
+// Se o ML não responder ou o status não vier, NÃO bloqueia — o ML decide.
+async function conferirAnuncioAtivo({ clienteId, itemId, mlUserId, timeoutMs = null }) {
+  let resp;
+  try {
+    resp = await comPrazo(
+      mlFetch(clienteId, `/items/${encodeURIComponent(itemId)}?attributes=id,status,sub_status,available_quantity`, { mlUserId }),
+      timeoutMs
+    );
+  } catch (err) {
+    if (timeoutMs && ehTimeout(err)) return { ...falha("ML_TIMEOUT_LEITURA", "O Mercado Livre não respondeu a tempo antes da escrita. Nada foi enviado."), enviado: false };
+    throw err;
+  }
+  const d = resp && resp.ok ? resp.data : null;
+  const status = d && typeof d.status === "string" ? d.status : null;
+  if (!status || status === "active") return null;
+
+  const sub = Array.isArray(d.sub_status) ? d.sub_status : [];
+  if (status === "paused") {
+    const semEstoque = sub.includes("out_of_stock") || Number(d.available_quantity) === 0;
+    return falha(
+      "ANUNCIO_NAO_ATIVO",
+      semEstoque
+        ? "O anúncio está pausado no Mercado Livre por falta de estoque. Reponha o estoque e reative o anúncio antes de participar da promoção. Nada foi enviado."
+        : "O anúncio está pausado no Mercado Livre. Reative o anúncio antes de participar da promoção. Nada foi enviado."
+    );
+  }
+  return falha("ANUNCIO_NAO_ATIVO", `O anúncio não está ativo no Mercado Livre (status: ${status}). Só anúncios ativos participam de promoção. Nada foi enviado.`);
+}
+
 /**
  * Parâmetros OPCIONAIS (camada segura da Central de Margem; sem eles o fluxo
  * é exatamente o de antes, que /anuncios usa):
@@ -185,6 +217,11 @@ async function aplicarPromocao({ clienteId, itemId, mlUserId, promotionId, preco
   }
 
   const metodo = podeAlterar ? "PUT" : "POST";
+
+  if (metodo === "POST") {
+    const inativo = await conferirAnuncioAtivo({ clienteId, itemId: id, mlUserId, timeoutMs });
+    if (inativo) return inativo;
+  }
 
   let deadlineAt = null;
   if (antesDeEscrever) {
@@ -322,6 +359,9 @@ async function participarPromocaoAceite({ clienteId, itemId, mlUserId, promotion
   if (promo.status !== "candidate") {
     return falha("PROMOCAO_JA_PARTICIPA", "O anúncio já participa desta promoção. Atualize a tela.");
   }
+
+  const inativo = await conferirAnuncioAtivo({ clienteId, itemId: id, mlUserId, timeoutMs });
+  if (inativo) return inativo;
 
   // Piso de frete grátis: com rebate do ML, preço final abaixo de R$ 19,00
   // tira o frete grátis do comprador. Vale para TODOS os chamadores deste

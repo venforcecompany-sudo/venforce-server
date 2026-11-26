@@ -266,9 +266,13 @@ async function sincronizar({ clienteId, clienteSlug, modo, clienteContaId = null
   let ids = coleta.ids.slice();
 
   // 2. modo novos -> remove os já existentes
+  // Os já gravados que NÃO estão ativos (pausado, em revisão…) voltam junto:
+  // reativar no Mercado Livre não faz o anúncio "novo", e sem isso o status
+  // gravado ficava pausado para sempre.
   if (modoFinal === "novos") {
     const existentes = await anunciosService.itemIdsExistentes(clienteId);
-    ids = ids.filter((id) => !existentes.has(String(id)));
+    const naoAtivos = await anunciosService.itemIdsNaoAtivos(clienteId);
+    ids = ids.filter((id) => !existentes.has(String(id)) || naoAtivos.has(String(id)));
   }
 
   if (ids.length === 0) {
@@ -349,8 +353,66 @@ async function sincronizar({ clienteId, clienteSlug, modo, clienteContaId = null
   };
 }
 
+// -----------------------------------------------------------------------------
+// Atualiza só os itens informados (que o portal JÁ conhece) relendo-os no ML.
+// Usado pelo webhook de `items`: status/estoque/preço mudam no ML e o portal
+// acompanha sem esperar um sync manual. Itens desconhecidos são ignorados — a
+// entrada de anúncio novo continua sendo do sync.
+// -----------------------------------------------------------------------------
+async function atualizarItensConhecidos({ clienteId, itemIds }) {
+  const unicos = [...new Set((itemIds || []).map((i) => String(i)).filter((i) => /^MLB\d+$/.test(i)))];
+  if (unicos.length === 0) return { ok: true, atualizados: 0 };
+
+  await anunciosService.ensureSchema();
+  const contexto = await anunciosService.contextoDosItens(clienteId, unicos);
+  if (contexto.length === 0) return { ok: true, atualizados: 0 };
+
+  const porId = new Map(contexto.map((c) => [String(c.item_id), c]));
+  const registros = [];
+  for (let i = 0; i < contexto.length; i += LOTE_MULTIGET) {
+    const lote = contexto.slice(i, i + LOTE_MULTIGET);
+    // Um vendedor por chamada: o token vem de mlUserId.
+    const porVendedor = new Map();
+    for (const c of lote) {
+      const k = String(c.ml_user_id || "");
+      if (!porVendedor.has(k)) porVendedor.set(k, []);
+      porVendedor.get(k).push(String(c.item_id));
+    }
+    for (const [mlUserId, ids] of porVendedor) {
+      const resp = await mlFetch(
+        clienteId,
+        `/items?ids=${ids.join(",")}`,
+        { ...(mlUserId ? { mlUserId } : {}), bigIntFields: CAMPOS_ID_GRANDE }
+      );
+      if (!resp || !resp.ok || !Array.isArray(resp.data)) continue;
+      for (const entry of resp.data) {
+        if (entry && entry.code === 200 && entry.body && entry.body.id) {
+          const c = porId.get(String(entry.body.id));
+          if (!c) continue;
+          registros.push(
+            mapearItem(entry.body, clienteId, c.cliente_slug, c.cliente_conta_id, c.ml_user_id)
+          );
+        }
+      }
+    }
+  }
+
+  const atualizados = await anunciosService.upsertAnuncios(registros);
+  try {
+    await familiaService.registrarUserProducts(registros);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "meli_user_products_falhou",
+      cliente_id: clienteId,
+      error: error && error.message,
+    }));
+  }
+  return { ok: true, atualizados };
+}
+
 module.exports = {
   sincronizar,
+  atualizarItensConhecidos,
   calcularScore,
   mapearItem,
 };

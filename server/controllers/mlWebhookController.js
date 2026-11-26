@@ -51,14 +51,13 @@ function extrairNotificacao(body) {
 }
 
 /**
- * Processamento pós-confirmação. Nesta primeira etapa apenas registra
- * metadados sanitizados — não consulta a API do Mercado Livre.
- * Próximo passo (fora deste escopo): buscar `resource` via mlFetch usando o
- * token do cliente vinculado, aceitando somente os caminhos internos
- * esperados da API oficial (ex.: /orders/:id, /items/:id) — nunca uma URL
- * arbitrária vinda do corpo da notificação.
+ * Processamento pós-confirmação. Registra metadados sanitizados e, para o
+ * tópico `items` (/items/MLB…), relê o anúncio no ML e atualiza o portal
+ * (status, estoque, preço) — só se o portal já tem o item daquele vendedor.
+ * Os demais tópicos (orders_v2 etc.) seguem só registrados. Nunca busca uma
+ * URL arbitrária vinda do corpo da notificação.
  */
-async function processarNotificacao(notificacao) {
+async function processarNotificacao(notificacao, deps = {}) {
   console.log(
     "[ML webhook] notificação recebida:",
     JSON.stringify({
@@ -69,6 +68,52 @@ async function processarNotificacao(notificacao) {
       attempts: notificacao.attempts,
     })
   );
+
+  const itemId = itemIdDaNotificacao(notificacao);
+  if (!itemId) return;
+  if (!deveProcessarItem(itemId, deps.agora ? deps.agora() : Date.now())) return;
+
+  const atualizar = deps.atualizarItem || atualizarItemNoPortal;
+  try {
+    await atualizar({ itemId, mlUserId: String(notificacao.userId) });
+  } catch (err) {
+    console.error("[ML webhook] falha ao atualizar o anúncio", itemId, ":", err?.message || err);
+  }
+}
+
+// Só o tópico `items` com resource no formato exato /items/MLB123 — nunca uma
+// URL ou caminho arbitrário vindo do corpo da notificação.
+function itemIdDaNotificacao(notificacao) {
+  if (!notificacao || notificacao.topic !== "items" || notificacao.userId == null) return null;
+  const m = /^\/items\/(MLB\d+)$/.exec(notificacao.resource || "");
+  return m ? m[1] : null;
+}
+
+// O ML costuma disparar várias notificações seguidas do mesmo item (e reenvia
+// com retry): uma releitura a cada janela basta, o resto é redundante.
+const JANELA_ITEM_MS = 5000;
+const ultimoProcessamento = new Map();
+function deveProcessarItem(itemId, agora) {
+  const ult = ultimoProcessamento.get(itemId);
+  if (ult !== undefined && agora - ult < JANELA_ITEM_MS) return false;
+  ultimoProcessamento.set(itemId, agora);
+  if (ultimoProcessamento.size > 5000) {
+    for (const [k, t] of ultimoProcessamento) {
+      if (agora - t >= JANELA_ITEM_MS) ultimoProcessamento.delete(k);
+    }
+  }
+  return true;
+}
+
+// Relê o item no ML e grava no portal — só para anúncios que o portal já tem
+// daquele vendedor. Carregado sob demanda para o recebimento continuar leve.
+async function atualizarItemNoPortal({ itemId, mlUserId }) {
+  const anunciosService = require("../services/meliAnuncios/meliAnunciosService");
+  const syncService = require("../services/meliAnuncios/meliSyncService");
+  const linhas = await anunciosService.localizarItemPorVendedorMl(itemId, mlUserId);
+  for (const linha of linhas) {
+    await syncService.atualizarItensConhecidos({ clienteId: linha.cliente_id, itemIds: [itemId] });
+  }
 }
 
 function receberNotificacaoMlController(req, res) {
@@ -98,4 +143,5 @@ module.exports = {
   receberNotificacaoMlController,
   extrairNotificacao,
   processarNotificacao,
+  itemIdDaNotificacao,
 };

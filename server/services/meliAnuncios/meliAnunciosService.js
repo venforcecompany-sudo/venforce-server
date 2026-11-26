@@ -301,6 +301,44 @@ async function itemIdsExistentes(clienteId) {
   return new Set(rows.map((r) => String(r.item_id)));
 }
 
+// Ids já gravados cujo status NÃO é "active" (pausado, em revisão, encerrado…).
+// O sync "novos" os rebusca: um anúncio reativado direto no Mercado Livre
+// continuaria "pausado" aqui para sempre, já que ele nunca é "novo".
+async function itemIdsNaoAtivos(clienteId) {
+  const { rows } = await db.query(
+    `SELECT item_id FROM meli_anuncios
+      WHERE cliente_id = $1 AND status IS DISTINCT FROM 'active';`,
+    [clienteId]
+  );
+  return new Set(rows.map((r) => String(r.item_id)));
+}
+
+// Linhas já gravadas de um item para um vendedor do ML (user_id da
+// notificação). Só devolve o que o portal já conhece — nada é inferido.
+async function localizarItemPorVendedorMl(itemId, mlUserId) {
+  await ensureSchema();
+  const { rows } = await db.query(
+    `SELECT cliente_id, cliente_slug, cliente_conta_id, ml_user_id, item_id
+       FROM meli_anuncios
+      WHERE item_id = $1 AND ml_user_id = $2;`,
+    [String(itemId), String(mlUserId)]
+  );
+  return rows;
+}
+
+// Linhas já gravadas de vários itens de UM cliente (slug/conta/vendedor do ML
+// para refazer a leitura com o token certo).
+async function contextoDosItens(clienteId, itemIds) {
+  await ensureSchema();
+  const { rows } = await db.query(
+    `SELECT cliente_id, cliente_slug, cliente_conta_id, ml_user_id, item_id
+       FROM meli_anuncios
+      WHERE cliente_id = $1 AND item_id = ANY($2::text[]);`,
+    [clienteId, itemIds.map(String)]
+  );
+  return rows;
+}
+
 // Listagem paginada com filtros. Filtros possíveis em `filtro`:
 //   sem_fotos | score_baixo | sem_sku | ficha_incompleta | pausados |
 //   score_muito_bom | score_medio | mercado_full | sem_agrupamento
@@ -780,6 +818,9 @@ module.exports = {
   resolverContextoConta,
   resolverContaDoAnuncio,
   itemIdsExistentes,
+  itemIdsNaoAtivos,
+  localizarItemPorVendedorMl,
+  contextoDosItens,
   listarAnuncios,
   obterResumo,
   obterAnuncio,
