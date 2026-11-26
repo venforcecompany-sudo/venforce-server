@@ -105,6 +105,14 @@ async function filho({ url, modo }) {
   const painelRepo = require("../services/painelContas/painelContasRepository");
   const c360 = require("../services/centralVendas/centralVendasCliente360Adapter");
   const pe = require("../services/centralVendas/centralVendasPersistenciaEnxuta");
+  const resgateRepo = require("../services/resgate/resgateLeituraRepository");
+  const compactosMod = require("../services/centralVendas/centralVendasComponentesCompactos");
+  // SQL do Resgate ANTES desta branch (main): itens só por import_id — ignora pedidos vinculados.
+  const resgateMain = async (desde) => (await pool.query(
+    `SELECT i.mlb AS item_id, COUNT(*)::int AS n, SUM(i.quantidade)::text AS unidades
+       FROM central_vendas_pedido_itens i JOIN central_vendas_pedidos p ON p.id = i.pedido_row_id
+      WHERE i.import_id = ANY($1::bigint[]) AND p.status = 'paid' AND p.data_pedido >= $2::date AND i.mlb IS NOT NULL
+      GROUP BY 1 ORDER BY 1`, [(await resgateRepo.importsCanonicos(pool, { clienteContaId: 5, competencias: ["2026-09"] })).map((r) => Number(r.id)), desde])).rows;
 
   const helper = fs.readFileSync(path.join(__dirname, "helpers", "centralVendasRetencaoPostgres.js"), "utf8");
   await pool.query(helper.split("const FIXTURES = `")[1].split("`;")[0]);
@@ -145,7 +153,16 @@ async function filho({ url, modo }) {
     const c = await c360.carregarPedidosEItens(importIds, pool);
     const consolidado = c360.consolidarCentral({ imports, pedidos: c.pedidos, itens: c.itens });
     const ids = importIds.map(String);
+    // Resgate (vendas reais por item + resumo da conta) pela camada compartilhada.
+    const rv = await resgateRepo.vendasPorItem(pool, { clienteContaId: 5, desde: "2026-09-01", competencias: ["2026-09"] });
+    const rr = await resgateRepo.vendasResumoConta(pool, { clienteContaId: 5, desde: "2026-09-01", competencias: ["2026-09"] });
+    const resgate = { porItem: [...rv.porItem.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)), resumo: rr };
+    const resgateItensMain = await resgateMain("2026-09-01");
+    const resgateItensNovo = [...rv.porItem.entries()].map(([k, v]) => [k, v.unidades]).sort((a, b) => (a[0] < b[0] ? -1 : 1));
     return {
+      resgate: JSON.stringify(resgate),
+      // A SQL antiga do Resgate só enxerga as linhas próprias do import vigente.
+      resgateMainIgual: JSON.stringify(resgateItensMain.map((r) => [r.item_id, Number(r.unidades)])) === JSON.stringify(resgateItensNovo),
       // Todo leitor por import devolve o import LIDO (nunca o dono da linha).
       importLidoOk: carga.pedidos.every((p) => ids.includes(String(p.import_id)))
         && painelPedidos.every((p) => ids.includes(String(p.import_id)))
@@ -230,6 +247,7 @@ async function filho({ url, modo }) {
     noites.push({
       noite, pedidosNoSnapshot: motor.pedidos.length, persistencia: persisted.persistencia, msPersistir: ms, formatoGravado: fmt,
       candidateIsolado, reconstrucaoOk, leitura: leitura.texto, financeiro: leitura.financeiro, importLidoOk: leitura.importLidoOk,
+      resgate: leitura.resgate, resgateMainIgual: leitura.resgateMainIgual, estatisticasLeitura: { ...compactosMod.estatisticas },
     });
     anterior = { dateTo, leitura };
   }
@@ -336,6 +354,7 @@ async function pai() {
       ok(`noite ${a.noite} ${m}: todos os leitores idênticos à main`, a.leitura === b.leitura);
       ok(`noite ${a.noite} ${m}: resultado financeiro idêntico`, a.financeiro === b.financeiro);
       ok(`noite ${a.noite} ${m}: reconstrução sem perda`, b.reconstrucaoOk === true);
+      ok(`noite ${a.noite} ${m}: Resgate (vendas por item, frete, resumo) idêntico à main sem reuso`, a.resgate === b.resgate);
     }
     for (const m of MODOS) {
       ok(`noite ${a.noite} ${m}: candidate não vaza antes de publicar`, R[m].noites[i].candidateIsolado === true);
@@ -355,6 +374,14 @@ async function pai() {
       ok(`noite ${a.noite} reuso: só novos+alterados são gravados; inalterados viram vínculo`,
         g.gravados.pedidos === g.diff.novos + g.diff.alterados && g.gravados.vinculos === g.diff.inalterados);
     }
+  }
+  // O defeito antigo do Resgate existe de verdade (só com vínculos) e está corrigido.
+  ok("Resgate: SQL antiga == nova quando não há vínculos (completo)", completo.noites.every((n) => n.resgateMainIgual));
+  ok("Resgate: SQL antiga PERDIA pedidos vinculados (reuso), a nova não", reuso.noites.slice(1).some((n) => !n.resgateMainIgual));
+  // A leitura compacta usou a mescla em JS (não o fallback SQL) — inclusive com formatos misturados.
+  for (const m of ["compacto", "reuso_compacto"]) {
+    const e = R[m].noites[R[m].noites.length - 1].estatisticasLeitura;
+    ok(`${m}: leitura pela mescla em JS (${e.mesclaJs}), sem fallback SQL (${e.uniaoSql})`, e.mesclaJs > 0 && e.uniaoSql === 0);
   }
   ok("planilha manual com payload completo (enxuto)", enxuto.planilhaPayloadCompleto === true);
   ok("planilha manual com payload completo (reuso)", reuso.planilhaPayloadCompleto === true);

@@ -47,8 +47,24 @@ function motorBase(competencia, dia) {
       c("A", null, "cancelamento_reembolso", -12.34, "orders_api_payments", "real", "Reembolso efetivado ao comprador."),
       c("B", null, "receita_envio", null, "ausente", "ausente", "receiver.cost ausente na resposta de /shipments/:id/costs."),
       c("B", "B:1", "receita_produto", 50, "", "real", ""),
+      c("B", "B:1", "frete_seller", -9.99, "shipments_api"),
     ],
   };
+}
+
+// CSV do backup da retenção (csvValor): aspas duplicadas, campos com vírgula/quebra entre aspas.
+function lerCsv(texto) {
+  const linhas = []; let campo = ""; let linha = []; let aspas = false;
+  for (let i = 0; i < texto.length; i += 1) {
+    const ch = texto[i];
+    if (aspas) {
+      if (ch === '"' && texto[i + 1] === '"') { campo += '"'; i += 1; } else if (ch === '"') aspas = false; else campo += ch;
+    } else if (ch === '"') aspas = true;
+    else if (ch === ",") { linha.push(campo); campo = ""; } else if (ch === "\n") { linha.push(campo); linhas.push(linha); linha = []; campo = ""; } else campo += ch;
+  }
+  if (campo || linha.length) { linha.push(campo); linhas.push(linha); }
+  const [cab, ...corpo] = linhas;
+  return corpo.map((l) => Object.fromEntries(cab.map((c, i) => [c, l[i]])));
 }
 
 async function filho({ url, modo }) {
@@ -67,12 +83,12 @@ async function filho({ url, modo }) {
 
   const cliente = { id: 1, slug: "loja", nome: "Loja" };
   const fimDoMes = (comp) => { const [y, m] = comp.split("-").map(Number); return `${comp}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`; };
-  async function gravar(competencia, dia, motor, fonte = "orders_api") {
+  async function gravar(competencia, dia, motor, fonte = "orders_api", conta = 5) {
     const { rows: [run] } = await pool.query(
       `INSERT INTO central_vendas_sync_runs (cliente_id, cliente_slug, cliente_conta_id, marketplace, date_from, date_to, status)
-       VALUES (1, 'loja', 5, 'meli', $1, $2, 'completed') RETURNING id`, [`${competencia}-01`, fimDoMes(competencia)]);
+       VALUES (1, 'loja', $3, 'meli', $1, $2, 'completed') RETURNING id`, [`${competencia}-01`, fimDoMes(competencia), conta]);
     const p = await repo.persistCentralVendasImport({
-      cliente, marketplace: "meli", competencia, fonte, motorPayload: { ...motor, resumo: {} }, resumo: {}, clienteContaId: 5,
+      cliente, marketplace: "meli", competencia, fonte, motorPayload: { ...motor, resumo: {} }, resumo: {}, clienteContaId: conta,
       syncRunId: fonte === "orders_api" ? Number(run.id) : null, publicationStatus: fonte === "orders_api" ? "candidate" : "legacy",
       coverageDateFrom: `${competencia}-01`, coverageDateTo: fimDoMes(competencia),
     });
@@ -82,6 +98,11 @@ async function filho({ url, modo }) {
   const set = await gravar("2026-09", "30", motorBase("2026-09", "30"));
   // Borda de mês: o MESMO pedido_id "A" também na competência seguinte.
   const out = await gravar("2026-10", "01", motorBase("2026-10", "01"));
+  // Outra conta do MESMO cliente com os MESMOS pedido_id e valores diferentes
+  // (fora da lista do compacto ⇒ grava em linhas): nada dela pode vazar na conta 5.
+  const outra = motorBase("2026-09", "30");
+  for (const c of outra.componentes) if (typeof c.valor === "number") c.valor = c.valor * 3;
+  await gravar("2026-09", "30", outra, "orders_api", 6);
   // Planilha manual: sempre em linhas.
   const planilha = await gravar("2026-08", "15", motorBase("2026-08", "15"), "planilha_vendas");
 
@@ -106,18 +127,51 @@ async function filho({ url, modo }) {
     detalhes.push(d.componentes.map(sem));
   }
   const snapshot = await repo.getCentralVendasByRange(range);
+  const resgateRepo = require("../services/resgate/resgateLeituraRepository");
+  const resgate = {};
+  for (const conta of [5, 6]) {
+    // eslint-disable-next-line no-await-in-loop
+    const v = await resgateRepo.vendasPorItem(pool, { clienteContaId: conta, desde: "2026-08-01", competencias: ["2026-09", "2026-10"] });
+    // eslint-disable-next-line no-await-in-loop
+    const r = await resgateRepo.vendasResumoConta(pool, { clienteContaId: conta, desde: "2026-08-01", competencias: ["2026-09", "2026-10"] });
+    resgate[conta] = { porItem: [...v.porItem.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)), resumo: r };
+  }
   const payload = buildPayloadFromRange(cliente, { dateFrom: range.dateFrom, dateTo: range.dateTo }, snapshot);
 
   // Retenção: contagem por import e backup CSV antes do DELETE; CASCADE.
   const contagem = Object.fromEntries([...(await ret.contarFilhosPorImport(pool, [Number(set.importacao.id)])).entries()]);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cv-compactos-"));
   const arquivos = await ret.exportarImportsCsv(pool, [Number(set.importacao.id)], { dir, prefixo: "t" });
-  const csv = Object.fromEntries(Object.entries(arquivos).map(([k, f]) => [k, fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim().split("\n").length - 1 : 0]));
+  const csvLinhas = Object.fromEntries(Object.entries(arquivos).map(([k, f]) => [k, fs.existsSync(f) ? lerCsv(fs.readFileSync(f, "utf8")) : []]));
+  const csv = Object.fromEntries(Object.entries(csvLinhas).map(([k, r]) => [k, r.length]));
   fs.rmSync(dir, { recursive: true, force: true });
+  const ler = async () => {
+    const c = await repo.loadPedidosByImportIds({ importIds, dateFrom: range.dateFrom, dateTo: range.dateTo });
+    const rz = await repo.loadRealizadoByImportIds({ importIds, dateFrom: range.dateFrom, dateTo: range.dateTo });
+    const pl = buildPayloadFromRange(cliente, { dateFrom: range.dateFrom, dateTo: range.dateTo }, await repo.getCentralVendasByRange(range));
+    return JSON.stringify({ c: { p: c.pedidos.map(sem), i: c.itens.map(sem), k: c.componentes.map(sem) }, rz: rz.componentes, r: pl.resumo, pp: pl.pedidos });
+  };
+  const antesDoDelete = await ler();
   await pool.query(`DELETE FROM central_vendas_imports WHERE id = $1`, [set.importacao.id]);
   const { rows: [resto] } = await pool.query(
     `SELECT (SELECT COUNT(*) FROM central_vendas_componentes WHERE import_id = $1)::int AS linhas,
             ${modo === "compacto" ? `(SELECT COUNT(*) FROM central_vendas_pedido_componentes)::int` : "0"} AS compactos_total`, [set.importacao.id]);
+  // Restauração a partir do backup CSV (ordem das FKs), e releitura pelos leitores reais.
+  const restaurar = async (tabela, rows, conflito = "") => {
+    if (!rows.length) return;
+    const { rows: tipos } = await pool.query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_name = $1`, [tabela]);
+    const json = new Set(tipos.filter((t) => t.data_type === "jsonb").map((t) => t.column_name));
+    const cols = Object.keys(rows[0]);
+    const valores = rows.map((r) => Object.fromEntries(cols.map((c) => [c, r[c] === "" ? null : json.has(c) ? JSON.parse(r[c]) : r[c]])));
+    await pool.query(`INSERT INTO ${tabela} (${cols.join(", ")}) SELECT ${cols.join(", ")} FROM json_populate_recordset(NULL::${tabela}, $1::json) ${conflito}`, [JSON.stringify(valores)]);
+  };
+  await restaurar("central_vendas_componente_textos", csvLinhas.componente_textos || [], "ON CONFLICT (id) DO NOTHING");
+  await restaurar("central_vendas_imports", csvLinhas.imports);
+  await restaurar("central_vendas_pedidos", csvLinhas.pedidos);
+  await restaurar("central_vendas_pedido_itens", csvLinhas.itens);
+  await restaurar("central_vendas_componentes", csvLinhas.componentes);
+  if (csvLinhas.componentes_compactos) await restaurar("central_vendas_pedido_componentes", csvLinhas.componentes_compactos);
+  const restauradoIgual = (await ler()) === antesDoDelete;
   const { rows: [fmt] } = await pool.query(
     `SELECT (SELECT COUNT(*) FROM central_vendas_componentes WHERE import_id = $1)::int AS planilha_linhas`, [planilha.importacao.id]);
 
@@ -125,8 +179,9 @@ async function filho({ url, modo }) {
   process.stdout.write(`@@R@@${JSON.stringify({
     leitura: JSON.stringify({ carga: { pedidos: carga.pedidos.map(sem), itens: carga.itens.map(sem), componentes: carga.componentes.map(sem) },
       realizado: realizado.componentes, latest: latest.componentes.map(sem), detalhes,
-      payload: { resumo: payload.resumo, pedidos: payload.pedidos } }),
-    estouro, contagem, csv, resto, fmt,
+      payload: { resumo: payload.resumo, pedidos: payload.pedidos }, resgate }),
+    resgate,
+    estouro, contagem, csv, resto, fmt, restauradoIgual,
     formatos: { set: set.persistencia.componentes, out: out.persistencia.componentes, planilha: planilha.persistencia.componentes },
     amostra: carga.componentes.filter((c) => c.pedido_id === "A" && String(c.pedido_row_id) === String(Math.min(...carga.componentes.filter((x) => x.pedido_id === "A").map((x) => Number(x.pedido_row_id))))).map((c) => [c.item_id, c.tipo, c.valor, c.fonte, c.obs, c.escopo, c.efeito, c.incluido_no_resultado]),
   })}\n`);
@@ -165,6 +220,14 @@ async function pai() {
   ok("formato gravado: Sync em compacto; planilha e flag desligada em linhas (sem campo novo na medição)", compacto.formatos.set.formato === "compacto_v1" && compacto.formatos.out.formato === "compacto_v1"
     && compacto.formatos.planilha === undefined && linhas.formatos.set === undefined && compacto.fmt.planilha_linhas > 0);
   ok("todos os leitores idênticos (carga, realizado, getLatest, detalhe, resumo financeiro)", linhas.leitura === compacto.leitura);
+  const r5 = compacto.resgate[5]; const r6 = compacto.resgate[6];
+  const unidades = (r) => r.porItem.reduce((s, [, v]) => s + v.unidades, 0);
+  ok("Resgate isolado por conta: conta 5 (compacto) só vê os próprios pedidos; conta 6 (linhas) só os dela",
+    unidades(r5) === 6 && unidades(r6) === 3 && r5.resumo.pedidos === 2 && r6.resumo.pedidos === 2);
+  ok("Resgate: frete por item igual nos dois formatos e sem mistura entre contas",
+    JSON.stringify(r5) === JSON.stringify(linhas.resgate[5]) && JSON.stringify(r6) === JSON.stringify(linhas.resgate[6])
+    && JSON.stringify(r5.porItem.find(([k]) => k === "MLB3")[1].amostras.map((a) => a.frete)) === "[9.99,9.99]"
+    && JSON.stringify(r6.porItem.find(([k]) => k === "MLB3")[1].amostras.map((a) => a.frete)) === "[29.97]");
   ok("arredondamento NUMERIC(14,2) idêntico (12.345→12.35, -1.005→-1.01, -0.005→-0.01)",
     JSON.stringify(compacto.amostra.slice(0, 3).map((x) => x[2])) === JSON.stringify(["12.35", "-1.01", "-0.01"]));
   ok("NULL ≠ 0 preservado", compacto.amostra[3][2] === null && compacto.amostra[4][2] === "0.00");
@@ -172,8 +235,10 @@ async function pai() {
     compacto.amostra.some((x) => x[1] === "ajuste_desconhecido" && x[5] === "item" && x[6] === null && x[7] === null && x[3] === null));
   ok("estouro de NUMERIC(14,2) recusa o import nos dois formatos (22003)", linhas.estouro === "22003" && compacto.estouro === "22003");
   ok("retenção conta os componentes compactos do import", compacto.contagem[Object.keys(compacto.contagem)[0]].componentes_compactos === 2
-    && linhas.contagem[Object.keys(linhas.contagem)[0]].componentes === 11);
-  ok("backup CSV da retenção leva as linhas compactas e o dicionário", compacto.csv.componentes_compactos === 2 && compacto.csv.componente_textos > 0 && linhas.csv.componentes === 11);
+    && linhas.contagem[Object.keys(linhas.contagem)[0]].componentes === 12);
+  ok("backup CSV da retenção leva as linhas compactas e o dicionário", compacto.csv.componentes_compactos === 2 && compacto.csv.componente_textos > 0 && linhas.csv.componentes === 12);
+  ok("backup CSV restaura o import (linhas + compactos + dicionário) e os leitores voltam idênticos",
+    linhas.restauradoIgual === true && compacto.restauradoIgual === true);
   ok("DELETE do import apaga os compactos dele por CASCADE (e só os dele)", compacto.resto.linhas === 0 && compacto.resto.compactos_total === 2);
   console.log(`centralVendasComponentesCompactos.postgres.test.js: ${checks} verificacoes OK`);
 }
