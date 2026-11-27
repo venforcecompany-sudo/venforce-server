@@ -101,20 +101,104 @@ Legenda:
 | item | I | T | R | P | evidência | ação |
 |---|---|---|---|---|---|---|
 | B1 publicar a branch com flags desligadas | ✓ | ✓ | — | ✓ | 0 conflitos com `origin/main` (c129922e); nenhuma migration nova é aplicada no boot; flags desligadas ⇒ motor `deepEqual` e leitores iguais (5 modos, 392 verificações) | revisão, merge e deploy (seu) |
-| B2 retenção (onda 3) × reuso | — | — | — | — | trava S3 global, deliberada, da frente de retenção; não alterada aqui | decidir a ordem: onda 3 antes de ligar o reuso, ou adiar a retenção |
-| B3 leitura de valores pela `raiox_ro` | ✓ | ✓ | — | — | `componentes-v2/raiox_ro_paridade_central.sql` (revogável) | admin aplica, ou valida com outra role autorizada |
-| B4 estado real de produção | ✓ | ✓ | — | — | `central_vendas_rollout_estado.raiox_ro.sql` | rodar com a `raiox_ro` |
+| B2 retenção (onda 3) × reuso | — | — | — | — | **decidido 27/11: retenção histórica adiada**; prioridade é parar o crescimento (reuso + compacto). Trava S3 intocada | nenhuma; não rodar retenção enquanto o reuso estiver ligado |
+| B3 leitura de valores pela `raiox_ro` | ✓ | ✓ ciclo | — | — | concessão temporária autorizada 27/11; SQL conferido contra os privilégios reais de produção (a revogação devolve exatamente `pedidos(id, import_id)`); ciclo concede→revoga provado em PG local | aplicar como admin na janela de R1/C0 e revogar no mesmo dia |
+| B4 estado real de produção | ✓ | ✓ | ✓ 27/11 | — | leitura de 27/11 (§7.1): tabela compacta ausente, vínculos do reuso presentes, banco 5,3 GB, componentes 2,5 GB; **sync noturno sem rodada da carteira desde 10/11** | religar o noturno é pré-requisito da fase R (achado, fora desta frente) |
 | B5 migration 20261126 | ✓ | ✓ | — | ✓ | idempotente (aplicada 2× em PG local), transação com `lock_timeout` 5 s, manual (fora do boot), `CHECK formato IN (1,2)` | aplicar na fase C1 (doc 11) |
 | Composição promocional no motor (flag) | ✓ | ✓ | — | ✓ desligada | formato 2; resultado, totais e pendências idênticos com a flag ligada | ligar só depois da validação real |
-| Rebate comprovado (Discounts + Billing) | parcial | ✓ | — | — | o motor aceita evidências; a coleta no sync não existe (desenho no doc 13 §5.1); validador real pronto (`scripts/central-vendas-rebate-validar.js`) | autorizar `executar` em 1 conta com ~10 pedidos e teto de ~25 chamadas |
-| Custo por variação (L1) | ✓ comparador | ✓ | — | — | `scripts/central-vendas-custo-variacao-comparar.js` (read only) | rodar na conta piloto e só então decidir a regra |
-| Ads e Full na Central | ✓ | ✓ | — | ✓ | mesmas linhas de cache que o Financeiro grava (conta + slug), mesma consolidação; **corrigido**: cache consultado antes do fim do mês não cobre o mês inteiro | conferir com os caches reais depois do deploy |
+| Rebate comprovado (Discounts + Billing) | parcial | ✓ | ✓ 10 pedidos | — | §7.2: comissão da Central = `sale_fee` = Billing `net` em 10/10; rebate já incorporado; crédito comprovado 0; nenhuma diferença financeira. Coleta no sync ainda não existe (doc 13 §5.1) | conta complementar com multi-item, quantidade > 1 e Full antes de ligar a composição |
+| Custo por variação (L1) | ✓ comparador | ✓ | ✓ | — | §7.3: conta piloto 587/587 itens iguais, ΔCMV 0; **nenhuma base ML de produção tem MLB com custos diferentes** (0 conflitos) | manter a regra; reavaliar só se uma base passar a ter custo por variação |
+| Ads e Full na Central | ✓ | ✓ | ✓ caches | ✓ | caches reais conferidos (§7.4); estados consolidado/provisório/parcial/indisponível (doc 14 §5.1); Ads da janela das vendas por conta atrás de `CENTRAL_VENDAS_ADS_JANELA` (desligada) | ligar a flag na conta piloto junto com o noturno |
 | Detalhamento do pedido (drawer) | ✓ | ✓ | — | ✓ | seções novas com as classes existentes; sem composição, o HTML é igual ao anterior | conferir 3 pedidos na tela depois do deploy |
 | Desempenho | ✓ | ✓ medido | — | ✓ | `buildPedidos` 16,3 s → 53 ms (3 mil pedidos); seleção de imports 966 ms → 0,8 ms (45 imports de 3,9 MB); detalhe +2 leituras por chave + 14 ms de assinatura (20 mil linhas) | — |
 
-Achados de precisão pré-existentes, sem mudança de fórmula, para decisão:
+Achados de precisão pré-existentes, medidos em produção em 27/11 (§7.5).
+Nenhuma fórmula mudou:
 
-- **Devolução parcial**: o pedido continua no resultado com a receita cheia, e o reembolso parcial não é abatido. As quantidades ficam gravadas.
-- **Imposto**: a regra `> 1` × `≤ 1` (M5) continua como estava.
-- **Cupom do vendedor**: não modelado; é exposto como sinal.
-- **Ajuste de plataforma (planilha)**: sem componente próprio; o resíduo aparece no detalhe.
+- **Reembolso parcial**: lacuna REAL. Pedidos `partially_refunded` ficam no resultado com a receita cheia e o reembolso (gravado como `cancelamento_reembolso`) não é abatido. Out–nov: 32 pedidos com resultado em 13 contas, R$ 1.731,44 não abatidos. Decisão pendente: provar quem bancou o reembolso.
+- **Imposto**: sem efeito hoje. Todas as linhas ML estão em fração entre 0,03 e 0,30 (ou 0); nenhum valor = 1 ou > 1.
+- **Cupom do vendedor**: sem efeito na receita. O cupom está dentro de cheio → pago, e a receita já é o preço pago (2 casos reais).
+- **Ajuste de plataforma (planilha)**: sem efeito hoje. Desde setembro só há imports da API; resíduo 0 em 59.186 pedidos.
+
+
+## 7. Validação com dados reais (27/11)
+
+Autorizada pelo responsável:
+- conta piloto ML, identidade e elegibilidade conferidas: conta principal do cliente, seller presente, grant válido;
+- até 25 chamadas ao ML, sem refresh, sem gravação no banco, parada em limite;
+- sessão de banco forçada em READ ONLY (`default_transaction_read_only=on`).
+
+Evidências brutas fora do repositório, que é público (backups locais do responsável).
+
+### 7.1 Estado de produção (B4, só leitura)
+
+| item | valor |
+|---|---|
+| banco | 5,3 GB de 10 GB |
+| `central_vendas_componentes` / `_pedidos` / `_pedido_itens` | 2,5 GB / 0,9 GB / 0,9 GB |
+| `central_vendas_pedido_componentes` (migration 20261126) | ausente, como esperado |
+| `central_vendas_import_pedidos` (reuso, 20261111) | presente |
+| imports publicados por dia | 62–71 contas/dia de 07 a 10/11; **1–5/dia desde 11/11** |
+| `raiox_ro` | existe, READ ONLY, 8 s, 2 conexões, sem leitura de valores |
+
+O sync noturno da carteira não roda desde 10/11. É pré-requisito para a fase R e para o Ads da janela, porque ambos dependem do noturno. O motivo fica fora desta frente.
+
+### 7.2 Rebate, descontos e comissão
+
+22 chamadas: 1 busca de 50 pedidos, para escolher a amostra sem gastar orçamento; 10 `/orders/{id}`; 1 Billing em lote; 10 Discounts. Nenhum 429.
+
+| grupo (pedidos) | o que o ML mostrou | estado | Central × ML |
+|---|---|---|---|
+| cofinanciado ML (2) | comissão bruta 17,50, líquida 10,00, rebate 7,50; desconto 45,00 (vendedor 37,50, ML 7,50) | 1 CONCILIADO (crédito 0, rebate já incorporado); 1 PARCIAL por cashback, mesmos números | tarifa = `sale_fee` = `net` |
+| desconto só do vendedor (3) | rebate 0, comissão bruta = líquida | CONCILIADO | igual |
+| cupom (2) | cupom dentro de cheio → pago, todo do vendedor | PARCIAL (`cupom_nao_validado`) | igual |
+| comissão com tarifa fixa (1) | 24% (preço abaixo do mínimo) | CONCILIADO | igual |
+| cancelado com cupom (1) | sem cobranças de tarifa no Billing | PARCIAL | Central grava a tarifa do pedido; fora do resultado |
+| controle (1) | cashback | PARCIAL | igual |
+
+Conclusão:
+- o rebate **já está incorporado** à comissão que a Central usa;
+- somá-lo seria dupla contagem;
+- não houve nenhum caso de diferença financeira (crédito comprovado = 0);
+- a amostra não tem multi-item, quantidade > 1 nem Full. É preciso uma conta complementar.
+
+### 7.3 Custo por variação (L1)
+
+| medida | valor |
+|---|---|
+| base da conta piloto | 322 linhas, nenhuma com `id_model` ou SKU |
+| itens comparados (60 dias) | 604: 587 iguais, 17 sem custo nas duas regras |
+| ΔCMV | 0 |
+| produção inteira: MLB com 2+ custos ou impostos diferentes na mesma base | **0** (39.290 linhas MLB) |
+
+A regra "primeiro custo do MLB" não muda nenhum número hoje.
+
+### 7.4 Ads e Full (caches reais)
+
+Conta piloto, novembro:
+- cache do Financeiro: R$ 766,32, consultado em 10/11 de manhã, ou seja, com parte do dia 10;
+- sync noturno: R$ 747,56 até 09/11, mas só a soma do cliente em `ads_resumos_mensais`;
+- nenhum cache de Full.
+
+Pela regra corrigida, o cache de 10/11 é `incompativel` com vendas de 01 a 09/11. Por isso entrou o Ads da janela (doc 14 §4): com a flag, o mês aberto fica **parcial**, com Ads abatido como provisório e Full declarado como faltando.
+
+### 7.5 Precisão: exemplos reais (sem mudança de fórmula)
+
+Reembolso parcial: 3 pedidos reais de quantidade 1, valores em R$.
+
+| receita | custo | frete | tarifa | imposto | resultado atual | reembolso | proposto | diferença |
+|---|---|---|---|---|---|---|---|---|
+| 1.056,23 | 549,00 | 79,35 | 72,73 | 0,00 | 355,15 | 31,69 | 323,46 | −31,69 |
+| 176,48 | 108,00 | 26,35 | 21,18 | 13,24 | 7,71 | 12,35 | −4,64 | −12,35 |
+| 39,00 | 17,07 | 8,95 | 4,37 | 3,90 | 4,71 | 1,95 | 2,76 | −1,95 |
+
+Total de out–nov:
+- resultado atual dos 32 pedidos: R$ 1.352,53;
+- proposto: −R$ 378,91;
+- 26 pedidos viram negativos.
+
+Nenhum desses pedidos tem claim. Em produção não há `mp_payments` para provar quem bancou o reembolso. Proposta, a decidir:
+1. abater o `cancelamento_reembolso` dos pedidos que ficam no resultado (`partially_refunded`), atrás de flag;
+2. antes, validar 2–3 pedidos da conta com mais casos: payment/refund e Billing.
+
+Isso exige autorização de chamadas nessa conta.

@@ -1,4 +1,4 @@
-# 14 — Contrato financeiro da Central de Vendas (v1)
+# 14 — Contrato financeiro da Central de Vendas (v1; Ads/Full v2)
 
 O código é a fonte da verdade: este documento resume o contrato e o código o
 implementa. Os módulos são puros e têm testes.
@@ -122,6 +122,21 @@ continua disponível.
 As pendências seguem `VALIDACOES_PENDENTES` do Sentinel e são listadas no
 doc 13 §7.
 
+**Validação real de 27/11** (segunda conta, depois da S1-A; 10 pedidos, 22
+chamadas, nenhum 429, nada gravado):
+- nos 10 pedidos, `sale_fee` do pedido = tarifa gravada na Central = `net`
+  do Billing. O rebate já vem descontado da comissão;
+- 2 pedidos cofinanciados (comissão bruta R$ 17,50, líquida R$ 10,00,
+  rebate R$ 7,50): 1 `CONCILIADO` com crédito 0
+  (`rebate_ja_incorporado_na_comissao`); o outro tem os mesmos números, mas
+  fica `PARCIAL` por cashback no Discounts (regra conservadora mantida);
+- 3 pedidos `CONCILIADO` sem rebate (desconto bancado só pelo vendedor);
+- 2 pedidos com cupom: o cupom está DENTRO da diferença preço cheio →
+  preço pago (desconto do Discounts = cheio − efetivo ao centavo, todo do
+  vendedor). A receita da Central (`unit_price × q`) já está líquida dele;
+- nenhum caso de diferença financeira (crédito comprovado = 0). Sem pedido
+  multi-item, quantidade > 1 ou Full na amostra: continuam `NAO_CONCILIADO`.
+
 ### 3.5 Armazenamento
 
 Componentes informativos nos mesmos arrays compactos (formato 2, entrega E7):
@@ -151,10 +166,26 @@ Custo medido no PG local:
 ## 4. Ads
 
 Fontes aceitas são só as da **conta**:
-- `financeiro_ads_cache` (conta × mês);
-- ou `buscarPerformanceML` numa **janela exata** do período.
+- `financeiro_ads_cache` (conta × mês), só para mês inteiro consultado
+  depois do fim do mês;
+- ou uma **janela exata**: o Ads que o sync noturno consulta por conta na
+  janela que sincronizou (`buscarPerformanceML`, a mesma função do
+  Financeiro), gravado no run da conta
+  (`central_vendas_sync_runs.metadata_json.adsDaJanela`, flag
+  `CENTRAL_VENDAS_ADS_JANELA` + `_CONTAS`, desligada).
 
 `ads_resumos_mensais` (soma do cliente) é recusado.
+
+O período é partido por mês. Cada pedaço precisa de uma fonte que o cubra
+exatamente: a janela com as mesmas datas, ou a fonte mensal quando o pedaço
+é o mês inteiro. Com a flag, o período dos custos é o período pedido ∩ a
+cobertura contínua dos imports da conta (até onde há vendas sincronizadas);
+com buraco na cobertura não há recorte.
+
+Situação de cada fonte: `consolidado` (consultada depois do fim do mês + 3
+dias, a regra do Financeiro), `provisorio` (cobre a janela, o ML ainda pode
+ajustar), `incompativel` (valor de outra janela, só referência),
+`indisponivel`.
 
 | situação | estado | entra no resultado? |
 |---|---|---|
@@ -196,7 +227,22 @@ Estados:
 Limitações declaradas na resposta:
 - estornos não são abatidos;
 - a competência é a data do lançamento;
-- sobras da fatura M+2 ficam fora.
+- sobras da fatura M+2 ficam fora;
+- não há janela parcial: o Billing do Full só existe por mês no Financeiro.
+  Cada lançamento tem data, então dá para recortar, mas exige coleta nova
+  (mudança no serviço do Financeiro ou duplicá-lo). Mês aberto ⇒ Full fora.
+
+### 5.1 Estado do resultado depois de Ads e Full
+
+| estado | quando | o que a resposta traz |
+|---|---|---|
+| `consolidado` | Ads e Full cobrem o período e estão consolidados | `resultadoOperacional` |
+| `provisorio` | Ads e Full cobrem exatamente o período; algum ainda pode mudar | `resultadoOperacional` |
+| `parcial` | só um dos dois cobre (ex.: mês aberto: Ads da janela, Full sem fonte) | `resultadoParcial` = venda − o que tem fonte, com `incluidos` e `faltando`; `resultadoOperacional` = `null` |
+| `indisponivel` | nenhum cobre | nada abatido |
+
+O que falta nunca é tratado como zero. A tela mostra "Resultado após Ads
+(Full não incluído)" com a etiqueta Parcial.
 
 ## 6. Cascata
 

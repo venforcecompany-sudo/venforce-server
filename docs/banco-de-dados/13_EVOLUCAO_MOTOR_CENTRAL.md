@@ -158,11 +158,15 @@ Fica para depois porque as chamadas reais e o comportamento de 429 precisam de a
 
 ## 6. Pendências explícitas (não comprovadas)
 
-- O rebate incorporado à comissão foi provado só em 6 pedidos de uma conta, todos com item único e quantidade 1. Multi-item e quantidade maior que 1 ficam `NAO_CONCILIADO` até haver evidência.
-- O efeito do cupom do vendedor no repasse ainda não foi validado.
+Atualizado em 27/11 com a validação real (doc 12 §7):
+
+- O rebate incorporado à comissão está provado em 16 pedidos de duas contas: os 6 da S1-A e os 10 de 27/11, todos com item único e quantidade 1. Multi-item, quantidade maior que 1 e Full ficam `NAO_CONCILIADO` até haver evidência, e precisam de uma conta complementar.
+- Cupom do vendedor: em 2 casos reais o cupom está dentro de cheio → pago, então a receita já é líquida dele. A conciliação continua conservadora (`cupom_nao_validado`) até cobrir cupom do ML.
+- Cashback mantém o pedido `PARCIAL`, mesmo com os números batendo (1 caso real).
 - O `discount` do Billing nunca foi observado; ele bloqueia a conciliação.
 - O significado de `funding_mode` é só indício.
 - A atribuição de Ads por produto (receita indireta) é a do ML, não comprovada pela venda.
-- Estornos de Full não foram observados.
+- Estornos de Full não foram observados. O Full não tem janela parcial (só mensal no Financeiro).
 - O filtro incremental por `date_last_updated` em `/orders/search` ainda não foi validado com conta real.
-- Na troca da resolução de custo por variação (L1), cada pedido afetado vai mudar de margem; precisa da sua decisão.
+- L1 (custo por variação): nenhuma base ML de produção tem custo diferente por variação; a regra fica como está.
+- Reembolso parcial (`partially_refunded`) não abatido: lacuna real (doc 12 §7.5); a decisão depende de provar quem bancou.
