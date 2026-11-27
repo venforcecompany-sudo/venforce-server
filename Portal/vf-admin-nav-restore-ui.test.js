@@ -32,14 +32,17 @@ const PORTAL_DIR = __dirname;
 const PROD_HOST = "venforce-server.onrender.com";
 
 // Menu atual (sidebar) dos perfis NÃO admin — baseline lida da main (61344c17).
-const MENU_NAO_ADMIN = ["visao", "painel-contas", "financeiro", "ads", "anuncios", "central-full", "curva-abc", "automacoes", "diagnosticos", "promocoes-ml", "resgate", "pessoas", "clientes-contas", "relatorios", "bases", "ferramentas"];
+// 27/11/2026: Diagnósticos, Promoções ML e Resgate saíram da sidebar (abrem por URL);
+// Ferramentas foi para o grupo Execução.
+const MENU_NAO_ADMIN = ["visao", "painel-contas", "financeiro", "ads", "anuncios", "central-full", "curva-abc", "automacoes", "ferramentas", "pessoas", "clientes-contas", "relatorios", "bases"];
 // Os 4 itens restaurados SÓ para admin, com a rota esperada.
 const ITENS_ADMIN = [
   { id: "cliente-360-v3", rota: "cliente-360-v3.html" },
   { id: "sentinel", rota: "sentinel.html" },
   { id: "central-vendas", rota: "fechamentos-api.html" },
-  { id: "margem", rota: "central-margem.html" },
 ];
+// Margem também saiu da sidebar do admin (27/11/2026) — segue abrindo por URL.
+const IDS_FORA_DA_SIDEBAR = ["margem", "diagnosticos", "promocoes-ml", "resgate"];
 const PAPEIS_NAO_ADMIN = ["user", "membro", "interno", "gestor", "coordenador"];
 
 const g = (id, status) => ({ id, ml_user_id: String(1000 + id), token_status: status || "valid", is_primary: true });
@@ -175,11 +178,11 @@ async function run() {
     await check("admin: Sentinel (global) aponta direto para sentinel.html; os de módulo ficam inertes (#) até haver contexto", async () => {
       const href = (id) => cdp.evaluate(`(function(){var a=document.querySelector('.vf-shell__nav .vf-shell__item[data-module="${id}"]');return a?(a.getAttribute('href')||''):null;})()`);
       assert.strictEqual((await href("sentinel")).split("?")[0], "sentinel.html");
-      for (const id of ["cliente-360-v3", "central-vendas", "margem"]) assert.strictEqual(await href(id), "#", `${id}: sem contexto o link deveria ser inerte`);
+      for (const id of ["cliente-360-v3", "central-vendas"]) assert.strictEqual(await href(id), "#", `${id}: sem contexto o link deveria ser inerte`);
     });
     await check("admin: sem cliente/operação, itens de módulo ficam inertes (aria-disabled) — Sentinel (global) não", async () => {
       const dis = (id) => cdp.evaluate(`(function(){var a=document.querySelector('.vf-shell__nav .vf-shell__item[data-module="${id}"]');return a?a.getAttribute('aria-disabled')==='true'||a.classList.contains('is-disabled'):null;})()`);
-      for (const id of ["cliente-360-v3", "central-vendas", "margem"]) assert.strictEqual(await dis(id), true, `${id} deveria exigir contexto`);
+      for (const id of ["cliente-360-v3", "central-vendas"]) assert.strictEqual(await dis(id), true, `${id} deveria exigir contexto`);
       assert.notStrictEqual(await dis("sentinel"), true, "Sentinel é global: não pode exigir contexto");
     });
 
@@ -200,7 +203,7 @@ async function run() {
     await waitFor(cdp, "window.VF.context && window.VF.context.getState() === 'READY'", "contexto n97/42 não chegou a READY");
     await sleep(200);
     await check("admin + n97/ML: itens de módulo habilitados e com ?cliente=n97&conta=42", async () => {
-      for (const id of ["cliente-360-v3", "central-vendas", "margem"]) {
+      for (const id of ["cliente-360-v3", "central-vendas"]) {
         const info = await cdp.evaluate(`(function(){var a=document.querySelector('.vf-shell__nav .vf-shell__item[data-module="${id}"]');return a?{href:a.getAttribute('href')||'',dis:a.getAttribute('aria-disabled')==='true'||a.classList.contains('is-disabled')}:null;})()`);
         assert.ok(info, `${id} ausente`);
         assert.strictEqual(info.dis, false, `${id} deveria estar habilitado com contexto`);
@@ -215,7 +218,7 @@ async function run() {
       const disponivel = (id) => cdp.evaluate(`Boolean(document.querySelector('.vf-shell__nav .vf-shell__item[data-module="${id}"]:not(.is-disabled):not([aria-disabled="true"])')) && !document.querySelector('.vf-shell__unavailable .vf-shell__item[data-module="${id}"]')`);
       assert.strictEqual(await disponivel("central-vendas"), true, "Central de Vendas deveria estar disponível");
       assert.strictEqual(await disponivel("cliente-360-v3"), true, "Cliente 360 V3 deveria estar disponível");
-      assert.strictEqual(await disponivel("margem"), false, "Margem não deveria estar disponível para conta Shopee");
+      for (const id of IDS_FORA_DA_SIDEBAR) assert.strictEqual(await cdp.evaluate(`Boolean(document.querySelector('.vf-shell__item[data-module="${id}"]'))`), false, `${id} não deveria estar na sidebar`);
     });
 
     // ═══ 4. admin ABRE as 4 telas por clique real ═══
@@ -225,7 +228,6 @@ async function run() {
       { id: "central-vendas", arquivo: "fechamentos-api.html", modulo: "central-vendas", classe: "vf-page-fechamentos-api" },
       { id: "cliente-360-v3", arquivo: "cliente-360-v3.html", modulo: "cliente-360-v3" },
       { id: "sentinel", arquivo: "sentinel.html", modulo: "sentinel" },
-      { id: "margem", arquivo: "central-margem.html", modulo: "margem" },
     ];
     for (const t of telas) {
       await abrirComo("admin", "painel-contas.html?cliente=n97&conta=42");

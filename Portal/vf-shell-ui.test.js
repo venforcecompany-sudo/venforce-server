@@ -405,9 +405,11 @@ async function run() {
       `);
       // F2.3 — "margem" ganhou marketplaces:["meli"] (achado lendo o código
       // real: Motor de Margem só resolve base MELI). 3 → 4 módulos ML-only.
-      assert.ok(grupo, "grupo de indisponíveis não apareceu com 4 módulos ML-only");
-      assert.ok(grupo.summary.includes("Shopee") && grupo.summary.includes("4"));
-      assert.strictEqual(grupo.itens, 4);
+      assert.ok(grupo, "grupo de indisponíveis não apareceu com 3 módulos ML-only");
+      // Margem (e Automações, em outro grupo) não estão em Performance: sobram Ads,
+      // Anúncios e Central Full — ainda ≥3, ainda colapsam.
+      assert.ok(grupo.summary.includes("Shopee") && grupo.summary.includes("3"));
+      assert.strictEqual(grupo.itens, 3);
 
       const adsItem = await cdp.evaluate(`
         (function(){ var a = document.querySelector('.vf-shell__item[data-module=ads]'); return a ? { disabled: a.getAttribute('aria-disabled'), title: a.title } : null; })();
@@ -435,7 +437,7 @@ async function run() {
       assert.ok(href && href.startsWith("financeiro-v3.html"), `esperado financeiro-v3.html com MELI em tela, achei: ${href}`);
       const outrosItens = await cdp.evaluate(`
         (function(){
-          var mods = ['visao', 'ads', 'anuncios', 'margem', 'diagnosticos', 'automacoes'];
+          var mods = ['visao', 'ads', 'anuncios', 'central-full', 'automacoes'];
           return mods.map(function(id){
             var a = document.querySelector('.vf-shell__item[data-module=' + id + ']');
             return a ? a.getAttribute('href') : 'AUSENTE';

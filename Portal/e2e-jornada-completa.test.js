@@ -293,8 +293,11 @@ async function run() {
       assert.strictEqual(await cdp.evaluate("document.body.dataset.vfScope"), "client");
     });
 
-    // ═══ 5. Sidebar → Diagnósticos ═══
-    await clicarModulo("diagnosticos", "diagnostico-inicial.html");
+    // ═══ 5. URL → Diagnósticos (saiu da sidebar em 27/11/2026; só por URL,
+    //         contexto de novo pelo sessionStorage) ═══
+    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${serverPort}/diagnostico-inicial.html` });
+    await waitFor(cdp, "window.location.href.indexOf('diagnostico-inicial.html') >= 0", "não navegou para diagnostico-inicial.html");
+    await waitFor(cdp, "window.VF && window.VF.context", "diagnostico-inicial.html não montou o Shell");
     await sleep(300);
 
     await check("5. Diagnósticos: contexto continua n97 após três navegações reais em sequência", async () => {
