@@ -736,6 +736,23 @@ async function executarRodadaNoturna(
     }
   }
 
+  // Piloto por conta (CENTRAL_VENDAS_NOTURNO_CONTAS): vazio ou "*" = carteira
+  // inteira (comportamento de sempre); lista de ids = só essas contas. Serve
+  // para religar o noturno junto com o reuso sem que as demais contas
+  // regravem o mês inteiro toda noite. Lista inválida ⇒ a rodada NÃO roda
+  // (nunca cai para "todas" por engano de configuração).
+  const contasPiloto = resolverContasPiloto(env.CENTRAL_VENDAS_NOTURNO_CONTAS);
+  if (contasPiloto.invalida) {
+    const err = new Error(`CENTRAL_VENDAS_NOTURNO_CONTAS inválida (${JSON.stringify(String(env.CENTRAL_VENDAS_NOTURNO_CONTAS))}) — rodada não executada`);
+    err.code = "CONTAS_PILOTO_INVALIDAS";
+    throw err;
+  }
+  if (contasPiloto.ids) {
+    const filtroMes = filtroUnidade;
+    filtroUnidade = (conta, periodo) => contasPiloto.ids.has(Number(conta.clienteContaId)) && (!filtroMes || filtroMes(conta, periodo));
+    deps.logger.log(`${LOG} piloto: só as contas ${[...contasPiloto.ids].join(",")} (CENTRAL_VENDAS_NOTURNO_CONTAS)`);
+  }
+
   return executarRodada({
     periodos,
     concorrencia: resolverConcorrencia(env.SYNC_CENTRAL_CONCURRENCY),
@@ -745,6 +762,14 @@ async function executarRodadaNoturna(
     onProgresso,
     filtroUnidade,
   }, deps);
+}
+
+function resolverContasPiloto(valor) {
+  const bruto = String(valor ?? "").trim();
+  if (!bruto || bruto === "*") return { ids: null, invalida: false };
+  const partes = bruto.split(",").map((v) => v.trim()).filter(Boolean);
+  if (!partes.length || partes.some((v) => !/^\d{1,9}$/.test(v))) return { ids: null, invalida: true };
+  return { ids: new Set(partes.map(Number)), invalida: false };
 }
 
 async function expirarOrfaosForaDaJanela(env, deps, agoraMs = deps.agora()) {
@@ -860,6 +885,7 @@ function exitCodeDoResumo(resumo) {
 }
 
 module.exports = {
+  resolverContasPiloto,
   executarRodada,
   executarRodadaNoturna,
   recuperarRodadasPendentes,
