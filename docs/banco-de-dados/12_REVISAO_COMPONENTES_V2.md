@@ -87,3 +87,34 @@ depois de R4 (7 noites verdes) e B5.
 
 **Ainda NO-GO**: migrar o histórico, expandir para todas as contas sem passar
 por C3/C4, e qualquer `DROP` depois da 1ª gravação compacta.
+
+## 6. Revisão final (27/11) — estado para publicação
+
+Revisão independente do trabalho de 26/11, com as correções locais.
+
+Legenda:
+- **I** implementado;
+- **T** testado (unitário e PG local);
+- **R** validado com dados reais;
+- **P** pronto para produção.
+
+| item | I | T | R | P | evidência | ação |
+|---|---|---|---|---|---|---|
+| B1 publicar a branch com flags desligadas | ✓ | ✓ | — | ✓ | 0 conflitos com `origin/main` (c129922e); nenhuma migration nova é aplicada no boot; flags desligadas ⇒ motor `deepEqual` e leitores iguais (5 modos, 392 verificações) | revisão, merge e deploy (seu) |
+| B2 retenção (onda 3) × reuso | — | — | — | — | trava S3 global, deliberada, da frente de retenção; não alterada aqui | decidir a ordem: onda 3 antes de ligar o reuso, ou adiar a retenção |
+| B3 leitura de valores pela `raiox_ro` | ✓ | ✓ | — | — | `componentes-v2/raiox_ro_paridade_central.sql` (revogável) | admin aplica, ou valida com outra role autorizada |
+| B4 estado real de produção | ✓ | ✓ | — | — | `central_vendas_rollout_estado.raiox_ro.sql` | rodar com a `raiox_ro` |
+| B5 migration 20261126 | ✓ | ✓ | — | ✓ | idempotente (aplicada 2× em PG local), transação com `lock_timeout` 5 s, manual (fora do boot), `CHECK formato IN (1,2)` | aplicar na fase C1 (doc 11) |
+| Composição promocional no motor (flag) | ✓ | ✓ | — | ✓ desligada | formato 2; resultado, totais e pendências idênticos com a flag ligada | ligar só depois da validação real |
+| Rebate comprovado (Discounts + Billing) | parcial | ✓ | — | — | o motor aceita evidências; a coleta no sync não existe (desenho no doc 13 §5.1); validador real pronto (`scripts/central-vendas-rebate-validar.js`) | autorizar `executar` em 1 conta com ~10 pedidos e teto de ~25 chamadas |
+| Custo por variação (L1) | ✓ comparador | ✓ | — | — | `scripts/central-vendas-custo-variacao-comparar.js` (read only) | rodar na conta piloto e só então decidir a regra |
+| Ads e Full na Central | ✓ | ✓ | — | ✓ | mesmas linhas de cache que o Financeiro grava (conta + slug), mesma consolidação; **corrigido**: cache consultado antes do fim do mês não cobre o mês inteiro | conferir com os caches reais depois do deploy |
+| Detalhamento do pedido (drawer) | ✓ | ✓ | — | ✓ | seções novas com as classes existentes; sem composição, o HTML é igual ao anterior | conferir 3 pedidos na tela depois do deploy |
+| Desempenho | ✓ | ✓ medido | — | ✓ | `buildPedidos` 16,3 s → 53 ms (3 mil pedidos); seleção de imports 966 ms → 0,8 ms (45 imports de 3,9 MB); detalhe +2 leituras por chave + 14 ms de assinatura (20 mil linhas) | — |
+
+Achados de precisão pré-existentes, sem mudança de fórmula, para decisão:
+
+- **Devolução parcial**: o pedido continua no resultado com a receita cheia, e o reembolso parcial não é abatido. As quantidades ficam gravadas.
+- **Imposto**: a regra `> 1` × `≤ 1` (M5) continua como estava.
+- **Cupom do vendedor**: não modelado; é exposto como sinal.
+- **Ajuste de plataforma (planilha)**: sem componente próprio; o resíduo aparece no detalhe.
