@@ -227,3 +227,43 @@ Isso exige autorização de chamadas nessa conta.
 - ligar a composição antes da conta complementar (multi-item, quantidade > 1, Full);
 - mudar a fórmula do reembolso parcial antes de provar quem bancou;
 - rodar retenção com o reuso ligado.
+
+## 9. Sync noturno parado e plano de religação (27/11)
+
+**Causa (comprovada):**
+- o agendador interno está desligado por configuração: o boot de 27/11 registra `[sync-scheduler] desabilitado (CENTRAL_VENDAS_NOTURNO_ENABLED != true)`;
+- os eventos do serviço mostram 4 deploys por alteração de variável de ambiente em 10/11, entre 18:07 e 18:39 UTC;
+- o último dia com rodada é 10/11: cerca de 70 runs por noite às 06:00 UTC até lá, zero runs sem usuário desde 11/11;
+- não há trava presa, Render Cron nem fila travada. Os runs depois de 11/11 são todos manuais ("Atualizar dados").
+
+**Por que não religar já:**
+- sem reuso, cada noite regrava o mês inteiro de cada conta;
+- a noite de 10/11 gravou cerca de 241 MB (65 imports, 16 mil pedidos até o dia 9);
+- no fim do mês seriam cerca de 700–800 MB por noite, com 4,6 GB livres no disco de 10 GB.
+
+**Mecanismo:**
+- um único agendador, com trava global no banco e índice que impede 2 runs ativos da mesma conta e período;
+- `CENTRAL_VENDAS_NOTURNO_CONTAS` (novo; vazio = carteira inteira) limita o noturno às contas do piloto. Lista inválida não roda nada.
+
+**Plano coordenado com o reuso** (doc 11, fase R):
+
+| passo | variáveis | critério para seguir |
+|---|---|---|
+| N0 | deploy deste código (flags iguais) | boot limpo, `[sync-scheduler] desabilitado` |
+| N1 piloto (2–3 noites) | `CENTRAL_VENDAS_NOTURNO_ENABLED=true`, `CENTRAL_VENDAS_NOTURNO_CONTAS=<3 contas>`, `CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS=true`, `CENTRAL_VENDAS_SYNC_REUSO_CONTAS=<as mesmas>` | runs só das contas do piloto, vínculos > 0 só nelas, bytes por noite ≈ pedidos novos ou alterados, telas iguais |
+| N2 carteira | `CENTRAL_VENDAS_NOTURNO_CONTAS=` (vazio) e `…_REUSO_CONTAS=*` | crescimento diário ≈ pedidos novos; duração mediana ≤ 1,2× |
+| C | compactos (fase C do doc 11), depois de 7 noites verdes | doc 11 |
+
+**Rollback:**
+- N1: desligar `CENTRAL_VENDAS_NOTURNO_ENABLED`;
+- reuso: só a flag; os vínculos continuam legíveis;
+- retenção: continua adiada.
+
+## 10. Full na janela das vendas: desenho (não implementado)
+
+- **De onde vem:** o Billing do Full já é lido pelo Financeiro (`financeiroFullService`), lançamento a lançamento, com `creation_date_time`. O cache, porém, guarda só a soma do mês.
+- **Reuso sem duplicar:**
+  - o mesmo `somarDoMes` agrega também por dia (`porDia` dentro de cada item de `componentes`, JSONB, sem mudança de schema; o Financeiro continua lendo `valor`);
+  - a Central soma `porDia` de 01 a D quando a consulta é posterior ao fim do dia D (00:00 BRT) e marca o Full como `provisorio`;
+  - para haver dado no mês corrente, o noturno chama o MESMO `obterFullDoFechamento` (mesmo cache) só para as contas com Full, uma vez por noite. O custo é a paginação do Billing, espaçada de ~14 s: ~30–45 s por conta.
+- **Depende de:** mudança aditiva no serviço do Financeiro, que precisa de autorização própria.

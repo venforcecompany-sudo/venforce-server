@@ -218,6 +218,25 @@ async function blocoBC() {
     await noturno.executarRodadaNoturna({ env: {}, dataReferencia: "2026-10-20" }, deps);
     eq("C: depois do dia 15 nem consulta", [chamadas.incompletas, chamadas.criar.length], [0, 3]);
   }
+  // Piloto por conta (CENTRAL_VENDAS_NOTURNO_CONTAS).
+  {
+    const { deps, chamadas } = depsRodada({ incompletas: new Set([2]) });
+    await noturno.executarRodadaNoturna({ env: { CENTRAL_VENDAS_NOTURNO_CONTAS: "2, 3" }, dataReferencia: "2026-10-10" }, deps);
+    eq("P: lista ⇒ só as contas do piloto (e o mês anterior só se incompleto)", chamadas.criar.sort(), [
+      "2:2026-09-01..2026-09-30", "2:2026-10-01..2026-10-09", "3:2026-10-01..2026-10-09",
+    ]);
+  }
+  for (const valor of [undefined, "", "*", "  "]) {
+    const { deps, chamadas } = depsRodada({ incompletas: new Set() });
+    await noturno.executarRodadaNoturna({ env: { CENTRAL_VENDAS_NOTURNO_CONTAS: valor }, dataReferencia: "2026-10-10" }, deps);
+    eq(`P: ${JSON.stringify(valor)} ⇒ carteira inteira (como sempre)`, chamadas.criar.length, 3);
+  }
+  for (const valor of ["21;41", "abc", "1,,x"]) {
+    const { deps, chamadas } = depsRodada({ incompletas: new Set() });
+    let codigo = null;
+    try { await noturno.executarRodadaNoturna({ env: { CENTRAL_VENDAS_NOTURNO_CONTAS: valor }, dataReferencia: "2026-10-10" }, deps); } catch (err) { codigo = err.code; }
+    eq(`P: lista inválida ${JSON.stringify(valor)} ⇒ não roda nada (nunca cai para todas)`, [codigo, chamadas.criar.length], ["CONTAS_PILOTO_INVALIDAS", 0]);
+  }
   {
     const { deps, chamadas } = depsRodada({ incompletas: new Set([1]) });
     await noturno.executarRodadaNoturna({ env: {}, dataReferencia: "2026-10-03" }, deps);
