@@ -61,8 +61,8 @@ export const MODULOS = [
   // não suportado por V3 (TikTok legado) ou sem conta resolvida cai em
   // `rota` (o legado) — nunca fica sem destino algum. Ver resolverRota().
   { id: "financeiro", label: "Financeiro", rota: "financeiro.html", rotaPorMarketplace: { meli: "financeiro-v3.html", shopee: "financeiro-v3.html" } },
-  // Central de Vendas: restaurada SÓ para o ROLE global admin (ver GRUPOS_NAV_ADMIN). A página
-  // redireciona os demais perfis ao Financeiro; a sidebar não é mecanismo de segurança.
+  // Central de Vendas: no grupo Performance para todos os perfis (27/11/2026). Ler é
+  // requireAutomacoesAccess na API; sincronizar segue requireAdmin.
   { id: "central-vendas", label: "Central de Vendas", rota: "fechamentos-api.html" },
   { id: "ads", label: "Ads", rota: "ads.html", marketplaces: ["meli"] },
   { id: "anuncios", label: "Anúncios", rota: "anuncios-meli.html", marketplaces: ["meli"] },
@@ -236,7 +236,7 @@ function svgIcone(paths, cls, tam = 18) {
 // Diagnósticos — continuam registradas e abrem por URL direta.
 export const GRUPOS_NAV = [
   { titulo: "Operação", ids: ["visao", "painel-contas"] },
-  { titulo: "Performance", ids: ["financeiro", "ads", "anuncios", "central-full", "curva-abc"] },
+  { titulo: "Performance", ids: ["central-vendas", "financeiro", "ads", "anuncios", "central-full", "curva-abc"] },
   { titulo: "Execução", ids: ["automacoes", "ferramentas"] },
   { titulo: "Gestão", ids: ["pessoas", "clientes-contas", "relatorios", "bases"] },
 ];
@@ -246,11 +246,13 @@ export const GRUPOS_NAV = [
 // Central de Margem. Mesmos ids/rotas/regras de contexto e marketplace de MODULOS/GLOBAIS
 // (nenhum item novo é criado); só decide sob qual grupo cada id aparece. Os demais perfis
 // continuam com GRUPOS_NAV exatamente como está. Não é mecanismo de segurança: a API autoriza.
-export const GRUPOS_NAV_ADMIN = [
-  { titulo: "Operação", ids: ["visao", "painel-contas", "sentinel", "cliente-360-v3"] },
-  { titulo: "Performance", ids: ["central-vendas", "financeiro", "ads", "anuncios", "central-full", "curva-abc"] },
-  ...GRUPOS_NAV.slice(2),
-];
+// 27/11/2026: Central de Vendas voltou para todos (grupo Performance). Sentinel, Cliente 360 V3,
+// Margem, Diagnósticos, Promoções ML e Resgate ficam só no dropdown Administração
+// (IDS_NO_DROPDOWN_ADMIN) — o admin vê nos grupos o mesmo menu dos demais perfis.
+export const GRUPOS_NAV_ADMIN = GRUPOS_NAV;
+// Itens de MODULOS/GLOBAIS que o admin acessa pelo dropdown Administração, no topo dele,
+// com as mesmas regras de contexto e marketplace que tinham nos grupos.
+export const IDS_NO_DROPDOWN_ADMIN = ["cliente-360-v3", "sentinel", "margem", "diagnosticos", "promocoes-ml", "resgate"];
 export function gruposNavPara(role) {
   return String(role || "").toLowerCase() === "admin" ? GRUPOS_NAV_ADMIN : GRUPOS_NAV;
 }
@@ -734,7 +736,8 @@ export function createVfShell(options = {}) {
 
     if (String(user.role || "").toLowerCase() === "admin") {
       const admin = el("details", "vf-shell__admin");
-      const itensAdmin = ADMIN.filter((mod) => !mod.unificacaoUi || unificacaoUiEnabled);
+      const extrasAdmin = IDS_NO_DROPDOWN_ADMIN.map(porId).filter(Boolean);
+      const itensAdmin = [...extrasAdmin, ...ADMIN.filter((mod) => !mod.unificacaoUi || unificacaoUiEnabled)];
       // Aberto se o usuário deixou aberto, ou se a página atual é uma delas
       // (antes fechava a cada re-render e escondia o item ativo).
       if (adminAberto || itensAdmin.some((mod) => mod.id === doc.body.dataset.vfModule)) admin.open = true;
@@ -749,7 +752,15 @@ export function createVfShell(options = {}) {
       });
       const navA = el("nav", "vf-shell__nav");
       itensAdmin.forEach((mod, i) => {
-        const item = itemNav(mod, null, null);
+        let item;
+        if (extrasAdmin.includes(mod)) {
+          let motivo = null;
+          if (requerContexto(mod.id) && estado !== "READY") motivo = "Escolha um cliente e uma operação para abrir este módulo";
+          else if (requerContexto(mod.id) && meta && !moduloDisponivel(mod, meta)) motivo = motivoIndisponivel(mod, meta);
+          item = itemNav(mod, motivo, meta);
+        } else {
+          item = itemNav(mod, null, null);
+        }
         item.style.setProperty("--j", String(i));
         navA.appendChild(item);
       });
