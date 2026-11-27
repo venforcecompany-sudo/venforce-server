@@ -47,6 +47,11 @@ async function run() {
     const h = depsCom({ 10: { investimentoAds: 100, gmvAds: 500 } });
     const r = await sincronizarAdsCliente({ ...base, contas: [{ clienteContaId: 10 }] }, h.deps);
     eq("1 conta: agregado persistido", [r.investimentoAds, r.gmvAds], [100, 500]);
+    eq("1 conta: valor POR CONTA com a janela consultada (para o Ads da janela)",
+      r.porConta.map((x) => [x.clienteContaId, x.dateFrom, x.dateTo, x.investimentoAds, x.gmvAds, typeof x.consultadoEm]),
+      [[10, "2026-09-01", "2026-09-24", 100, 500, "string"]]);
+    const semSeg = await sincronizarAdsCliente({ ...base, segmento: null, contas: [{ clienteContaId: 10 }] }, depsCom({ 10: { investimentoAds: 1, gmvAds: 2 } }).deps);
+    eq("sem segmento: janela = competência inteira", [semSeg.porConta[0].dateFrom, semSeg.porConta[0].dateTo], ["2026-09-01", "2026-09-30"]);
     eq("1 conta: um unico upsert do cliente", h.chamadas.salvar.length, 1);
     eq("1 conta: chave mensal", {
       slug: h.chamadas.salvar[0].clienteSlug,

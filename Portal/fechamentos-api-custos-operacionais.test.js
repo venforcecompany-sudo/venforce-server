@@ -61,4 +61,22 @@ const json = (x) => JSON.parse(JSON.stringify({ disponivel: true, ...x }));
   const h = buildCustosOperacionaisBloco(co);
   ok("mês ainda aberto: Ads consultado antes do fim do mês não é abatido e o motivo é dito", h.includes("consultada antes do fim do mês") && h.includes("Fora do período") && h.includes("Não calculável"));
 }
+{
+  // Mês aberto com o Ads da janela das vendas (sync noturno), sem Full: PARCIAL.
+  const janela = { escopo: "conta", clienteContaId: 21, cobertura: { tipo: "janela", dateFrom: "2026-11-01", dateTo: "2026-11-09" }, disponivel: true,
+    investimentoAds: 747.56, gmvAds: 4003.25, consultadoEm: "2026-11-10T06:17:54Z", origem: "mercado_ads_sync_noturno" };
+  const co = json(ops.resultadoOperacional({ periodo: { dateFrom: "2026-11-01", dateTo: "2026-11-09" }, periodoSelecionado: { dateFrom: "2026-11-01", dateTo: "2026-11-27" },
+    clienteContaId: 21, resultadoVendaCentavos: 500000, receitaProdutoCentavos: 2000000, fontesAds: [janela], fontesFull: [] }));
+  const h = buildCustosOperacionaisBloco(co);
+  ok("parcial: Ads da janela abatido como provisório, fonte dita", h.includes("− R$ 747,56") && h.includes("Provisório") && h.includes("janela das vendas"));
+  ok("parcial: resultado após Ads rotulado, Full não incluído e nunca R$ 0,00", h.includes("Resultado após Ads") && h.includes("R$ 4.252,44") && h.includes("Parcial") && h.includes("Full não incluído") && !h.includes("Resultado após Ads e Full"));
+  ok("parcial: diz até onde vai a janela dos custos", h.includes("Ads e Full de 01/11 a 09/11"));
+}
+{
+  const out = { dateFrom: "2026-10-01", dateTo: "2026-10-31" };
+  const co = json(ops.resultadoOperacional({ periodo: out, clienteContaId: 21, resultadoVendaCentavos: 500000, receitaProdutoCentavos: 2500000,
+    fontesAds: [adsMes("2026-10", 2150.1, 15200.33, "2026-11-02T10:00:00Z")], fontesFull: [{ ...fullMes, definitivo: false }] }));
+  const h = buildCustosOperacionaisBloco(co);
+  ok("provisório: mês fechado ainda não consolidado ⇒ resultado após Ads e Full com etiqueta Provisório", co.estado === "provisorio" && h.includes("Resultado após Ads e Full") && h.includes("R$ 2.142,50") && (h.match(/Provisório/g) || []).length >= 2);
+}
 console.log(`\nfechamentos-api-custos-operacionais.test.js: ${checks} verificações OK`);

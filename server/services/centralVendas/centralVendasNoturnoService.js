@@ -256,6 +256,7 @@ function defaultDeps() {
   const worker = require("./centralVendasSyncWorker");
   const adapter = require("./centralVendasCliente360Adapter");
   const adsSync = require("./centralVendasAdsSyncService");
+  const adsJanela = require("./centralVendasAdsJanela");
   const repository = require("./centralVendasRepository");
   return {
     db: pool,
@@ -266,6 +267,8 @@ function defaultDeps() {
     marcarRunFailed: runService.marcarRunFailed,
     executarSyncRun: worker.executarSyncRun,
     sincronizarAdsCliente: adsSync.sincronizarAdsCliente,
+    adsDaJanelaHabilitado: (c) => adsJanela.isAdsDaJanelaHabilitado(c),
+    gravarAdsDaJanela: adsJanela.gravarAdsDaJanela,
     reconstruirSnapshotMensal: adapter.reconstruirSnapshotMensal,
     listarPeriodosNoturnosPendentes: runService.listarPeriodosNoturnosPendentes,
     reconciliarRunsNoturnosInterrompidos: runService.reconciliarRunsNoturnosInterrompidos,
@@ -281,6 +284,28 @@ function defaultDeps() {
     fechamentoTimeoutMs: prazos().fechamentoMs,
     logger: console,
   };
+}
+
+// Ads POR CONTA na janela do run (centralVendasAdsJanela), flag desligada por
+// padrão. Só depois do Ads do grupo dar certo; erro aqui nunca muda o
+// resultado da rodada (só log) e nada é gravado em ads_resumos_mensais.
+async function registrarAdsDaJanelaDoGrupo(grupo, rotulo, deps) {
+  const porConta = Array.isArray(grupo.ads?.porConta) ? grupo.ads.porConta : [];
+  if (!porConta.length || typeof deps.adsDaJanelaHabilitado !== "function" || typeof deps.gravarAdsDaJanela !== "function") return;
+  for (const r of grupo.resultados) {
+    let habilitado = false;
+    try { habilitado = !!deps.adsDaJanelaHabilitado({ clienteContaId: r?.clienteContaId }); } catch (_) { habilitado = false; }
+    if (!r || !r.publicado || !r.runId || !habilitado) continue;
+    const ads = porConta.find((x) => Number(x.clienteContaId) === Number(r.clienteContaId));
+    if (!ads || ads.dateFrom !== r.dateFrom || ads.dateTo !== r.dateTo) continue;
+    try {
+      const ok = await deps.gravarAdsDaJanela(deps.db, { runId: r.runId, ...ads });
+      deps.logger.log(`${LOG} ads da janela ${rotulo} conta=${r.clienteContaId} run=#${r.runId} ${ok ? "gravado" : "nao gravado (run/janela nao conferem)"}`);
+    } catch (err) {
+      const e = resumirErro(err);
+      deps.logger.warn(`${LOG} ads da janela ${rotulo} conta=${r.clienteContaId} nao gravado: ${e.code ? `${e.code} ` : ""}${e.message}`);
+    }
+  }
 }
 
 async function listarImportsPublicadosDoRun(runId, db) {
@@ -601,6 +626,7 @@ async function executarRodada(opts, depsOverride = {}) {
           `${LOG} ads ${rotulo} não atualizado: ${grupo.ads.erro.code ? `${grupo.ads.erro.code} ` : ""}${grupo.ads.erro.message}`
         );
       }
+      if (grupo.ads?.atualizado) await registrarAdsDaJanelaDoGrupo(grupo, rotulo, deps);
     } else {
       grupo.ads = { atualizado: false, motivo: "VENDAS_NAO_PUBLICADAS_PARA_TODAS_CONTAS" };
       deps.logger.log(`${LOG} ads ${rotulo} não atualizado: ${grupo.ads.motivo}`);

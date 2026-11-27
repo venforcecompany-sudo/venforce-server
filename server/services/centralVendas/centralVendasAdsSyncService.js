@@ -38,6 +38,11 @@ function agregarPerformances(performances) {
   };
 }
 
+function ultimoDiaDaCompetencia(competencia) {
+  const [a, m] = competencia.split("-").map(Number);
+  return `${competencia}-${String(new Date(Date.UTC(a, m, 0)).getUTCDate()).padStart(2, "0")}`;
+}
+
 function defaultDeps() {
   return {
     buscarPerformanceML: mlAdsService.buscarPerformanceML,
@@ -71,10 +76,10 @@ async function sincronizarAdsCliente({ cliente, competencia, contas, segmento },
       err.clienteContaId = conta.clienteContaId;
       throw err;
     }
-    resultados.push(performance);
+    resultados.push({ clienteContaId: conta.clienteContaId, performance, consultadoEm: new Date().toISOString() });
   }
 
-  const agregado = agregarPerformances(resultados);
+  const agregado = agregarPerformances(resultados.map((r) => r.performance));
   await deps.ensureAdsResumoTables();
   const resumo = await deps.salvarResumoMensalAds({
     clienteSlug: cliente.slug,
@@ -92,6 +97,16 @@ async function sincronizarAdsCliente({ cliente, competencia, contas, segmento },
     gmvAds: agregado.gmvAds,
     roas: agregado.roas,
     updatedAt: resumo?.updatedAt || null,
+    // Por conta e com a janela consultada (para centralVendasAdsJanela). A soma
+    // acima continua sendo o que vai para ads_resumos_mensais, sem mudança.
+    porConta: resultados.map((r) => ({
+      clienteContaId: r.clienteContaId,
+      dateFrom: segmento ? segmento.dateFrom : `${competencia}-01`,
+      dateTo: segmento ? segmento.dateTo : ultimoDiaDaCompetencia(competencia),
+      investimentoAds: numeroValido(r.performance?.investimentoAds),
+      gmvAds: numeroValido(r.performance?.gmvAds),
+      consultadoEm: r.consultadoEm,
+    })),
   };
 }
 

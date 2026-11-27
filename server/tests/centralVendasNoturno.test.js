@@ -518,6 +518,51 @@ async function run() {
   }
 
   // =========================================================================
+  // 12b. Ads da janela por conta (flag): grava no run da conta publicada com a
+  //      MESMA janela; falha ao gravar não muda a rodada; desligado = nada
+  // =========================================================================
+  {
+    const rows = [contaRow({ contaId: 1, clienteId: 10, slug: "alfa" }), contaRow({ contaId: 2, clienteId: 10, slug: "alfa" })];
+    const { deps, chamadas } = makeDeps({ rows });
+    const gravados = [];
+    deps.sincronizarAdsCliente = async (p) => {
+      chamadas.ads.push(p);
+      return { atualizado: true, contas: 2, investimentoAds: 30, gmvAds: 90,
+        porConta: [
+          { clienteContaId: 1, dateFrom: p.segmento.dateFrom, dateTo: p.segmento.dateTo, investimentoAds: 10, gmvAds: 40, consultadoEm: "2026-09-24T06:00:00.000Z" },
+          { clienteContaId: 2, dateFrom: p.segmento.dateFrom, dateTo: p.segmento.dateTo, investimentoAds: 20, gmvAds: 50, consultadoEm: "2026-09-24T06:00:00.000Z" },
+        ] };
+    };
+    deps.adsDaJanelaHabilitado = ({ clienteContaId }) => clienteContaId === 1 || clienteContaId === 2;
+    deps.gravarAdsDaJanela = async (_db, a) => {
+      if (a.clienteContaId === 2) throw new Error("conexao perdida");
+      gravados.push(a);
+      return true;
+    };
+    const resumo = await svc.executarRodada({ periodos: PERIODO_SET, concorrencia: 2 }, deps);
+    eq("ads janela: vendas e ads seguem sucesso mesmo com falha ao gravar", [resumo.sucesso, resumo.falha, resumo.ads.atualizados], [2, 0, 1]);
+    eq("ads janela: gravou só a conta 1, no run dela e com a janela do run",
+      gravados.map((g) => [g.clienteContaId, typeof g.runId, g.dateFrom, g.dateTo, g.investimentoAds]),
+      [[1, "number", "2026-09-01", "2026-09-23", 10]]);
+  }
+  {
+    const rows = [contaRow({ contaId: 1, clienteId: 10, slug: "alfa" })];
+    const { deps } = makeDeps({ rows });
+    let tentativas = 0;
+    deps.sincronizarAdsCliente = async (p) => ({ atualizado: true, contas: 1, investimentoAds: 10, gmvAds: 40,
+      porConta: [{ clienteContaId: 1, dateFrom: "2026-09-01", dateTo: "2026-09-22", investimentoAds: 10, gmvAds: 40 }] });
+    deps.adsDaJanelaHabilitado = () => true;
+    deps.gravarAdsDaJanela = async () => { tentativas += 1; return true; };
+    await svc.executarRodada({ periodos: PERIODO_SET, concorrencia: 1 }, deps);
+    eq("ads janela: janela consultada diferente da do run ⇒ não grava", tentativas, 0);
+    deps.sincronizarAdsCliente = async (p) => ({ atualizado: true, contas: 1, investimentoAds: 10, gmvAds: 40,
+      porConta: [{ clienteContaId: 1, dateFrom: p.segmento.dateFrom, dateTo: p.segmento.dateTo, investimentoAds: 10, gmvAds: 40 }] });
+    deps.adsDaJanelaHabilitado = () => false;
+    await svc.executarRodada({ periodos: PERIODO_SET, concorrencia: 1 }, deps);
+    eq("ads janela: flag desligada ⇒ não grava", tentativas, 0);
+  }
+
+  // =========================================================================
   // 13. Nenhuma ingestão Orders API fora do worker
   // =========================================================================
   {

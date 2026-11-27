@@ -77,6 +77,28 @@ async function main() {
     const outraConta = ops.resultadoOperacional({ periodo: { dateFrom: "2026-10-01", dateTo: "2026-10-31" }, clienteContaId: 22,
       resultadoVendaCentavos: 1, receitaProdutoCentavos: 1, ...fontes });
     ok("fontes lidas para a conta 21 nunca servem à conta 22", outraConta.ads.disponivel === false && outraConta.full.disponivel === false);
+
+    // Ads da janela no run (centralVendasAdsJanela): SQL real de gravação e leitura.
+    const aj = require("../services/centralVendas/centralVendasAdsJanela");
+    await db.query(`CREATE TABLE central_vendas_sync_runs (id BIGSERIAL PRIMARY KEY, cliente_conta_id BIGINT, date_from DATE NOT NULL, date_to DATE NOT NULL,
+      metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb, updated_at TIMESTAMPTZ NOT NULL DEFAULT '2026-11-10T06:00:00Z')`);
+    await db.query(`INSERT INTO central_vendas_sync_runs (cliente_conta_id, date_from, date_to, metadata_json) VALUES
+      (21, '2026-11-01', '2026-11-09', '{"ordersLidos": 103}'), (22, '2026-11-01', '2026-11-09', '{}'), (21, '2026-10-01', '2026-10-31', '{}')`);
+    const ads = { clienteContaId: 21, dateFrom: "2026-11-01", dateTo: "2026-11-09", investimentoAds: 747.56, gmvAds: 4003.25, consultadoEm: "2026-11-10T06:17:54Z" };
+    ok("grava no run da conta com a mesma janela", await aj.gravarAdsDaJanela(db, { runId: 1, ...ads }) === true);
+    ok("run de outra conta ou de outra janela: não grava",
+      await aj.gravarAdsDaJanela(db, { runId: 2, ...ads }) === false && await aj.gravarAdsDaJanela(db, { runId: 3, ...ads }) === false);
+    const run1 = (await db.query("SELECT metadata_json, updated_at FROM central_vendas_sync_runs WHERE id = 1")).rows[0];
+    ok("preserva o metadata existente e não mexe no updated_at",
+      run1.metadata_json.ordersLidos === 103 && run1.metadata_json.adsDaJanela.investimentoAds === 747.56 && new Date(run1.updated_at).toISOString() === "2026-11-10T06:00:00.000Z");
+    const lidas = await aj.lerAdsDaJanela(db, { clienteContaId: 21, syncRunIds: ["1", 2, "3"] });
+    const fonte = aj.fonteAdsDaJanela(lidas[0], 21);
+    ok("lê só runs da conta com o registro; vira fonte janela exata",
+      lidas.length === 1 && lidas[0].date_from === "2026-11-01" && fonte.cobertura.dateTo === "2026-11-09" && fonte.investimentoAds === 747.56);
+    const r = ops.resultadoOperacional({ periodo: { dateFrom: "2026-11-01", dateTo: "2026-11-09" }, clienteContaId: 21, resultadoVendaCentavos: 500000, receitaProdutoCentavos: 2000000,
+      fontesAds: [fonte], fontesFull: [] });
+    ok("mês aberto com a janela: PARCIAL = venda − Ads da janela, Full declarado como faltando",
+      r.estado === "parcial" && r.resultadoParcial.centavos === 425244 && r.resultadoParcial.faltando[0] === "full" && r.resultadoOperacional.centavos === null);
   } finally {
     await db.end();
     await adm.query(`DROP DATABASE IF EXISTS ${nome}`);

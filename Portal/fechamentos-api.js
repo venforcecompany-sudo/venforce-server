@@ -1269,9 +1269,16 @@ function buildCustosOperacionaisBloco(co) {
         <span class="vf-cv-linha__rotulo">${esc(rotulo)} <small>${esc(fonte)}</small>${tag ? ' ' + tag : ''}</span>
         <span class="vf-cv-linha__valor">${ok && valorC != null ? esc(moneySinal(centavosMoney(valorC))) : '<span class="is-absent">—</span>'}</span>
       </li>`;
-  const tagDe = (x, ok) => ok ? (x.estado === 'consolidado' || (x.cobertura || []).every((c) => c.consolidado === true || c.estado === 'consolidado')
-      ? '<span class="vf-tag is-success">Consolidado</span>' : '<span class="vf-tag is-info">Mês aberto</span>')
+  const tagDe = (x, ok) => ok ? ((x.situacao ? x.situacao === 'consolidado' : (x.estado === 'consolidado' || (x.cobertura || []).every((c) => c.consolidado === true || c.estado === 'consolidado')))
+      ? '<span class="vf-tag is-success">Consolidado</span>' : '<span class="vf-tag is-info" title="o Mercado Livre ainda pode ajustar este valor">Provisório</span>')
     : `<span class="vf-tag ${x.disponivel ? 'is-warning' : 'is-neutral'}">${x.disponivel ? 'Fora do período' : 'Indisponível'}</span>`;
+  const adsDaJanela = (ads.cobertura || []).some((c) => c.origem === 'mercado_ads_sync_noturno');
+  const dataBr = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : '');
+  const sel = co.periodoSelecionado || co.periodo || {};
+  const recorte = co.periodo && sel.dateTo && (co.periodo.dateFrom !== sel.dateFrom || co.periodo.dateTo !== sel.dateTo)
+    ? `Ads e Full de ${dataBr(co.periodo.dateFrom)} a ${dataBr(co.periodo.dateTo)}: até onde há vendas sincronizadas.` : '';
+  const parcial = co.estado === 'parcial' && co.resultadoParcial ? co.resultadoParcial : null;
+  const FALTA_LBL = { ads: 'Ads', full: 'Full' };
   const fullDetalhe = full.disponivel && Array.isArray(full.componentes)
     ? full.componentes.filter((g) => g.centavos).map((g) => `${FULL_GRUPO_LBL[g.grupo] || g.grupo} ${money(g.centavos / 100)}`).join(' · ') : '';
   const refAds = ads.disponivel && !adsOk && ads.investimento?.centavos != null ? ` Referência do mês: ${money(ads.investimento.centavos / 100)}.` : '';
@@ -1285,10 +1292,13 @@ function buildCustosOperacionaisBloco(co) {
       <h3 class="vf-cv-bloco__titulo" id="fapi-custos-op-titulo">Depois da margem: Ads e Full</h3>
       <ul class="vf-cv-linhas" aria-labelledby="fapi-custos-op-titulo">
         ${linha('Margem de contribuição', 'resultado de venda', co.resultadoVenda?.centavos, co.resultadoVenda?.centavos != null, '', 'mesma base do resultado parcial', 'inicio')}
-        ${linha('Publicidade (Mercado Ads)', 'Financeiro · por conta', ads.investimento?.centavos == null ? null : -ads.investimento.centavos, adsOk, tagDe(ads, adsOk), custosOpMotivo(ads) + refAds)}
+        ${linha('Publicidade (Mercado Ads)', adsDaJanela ? 'Mercado Ads · janela das vendas' : 'Financeiro · por conta', ads.investimento?.centavos == null ? null : -ads.investimento.centavos, adsOk, tagDe(ads, adsOk), custosOpMotivo(ads) + refAds)}
         ${linha('Custos Full', 'Billing · por conta', full.total?.centavos == null ? null : -full.total.centavos, fullOk, tagDe(full, fullOk), (fullDetalhe || custosOpMotivo(full)) + refFull)}
-        ${linha('Resultado após Ads e Full', 'cálculo do backend', op.centavos, op.centavos != null, op.centavos == null ? '<span class="vf-tag is-neutral">Não calculável</span>' : '', '', 'fim')}
+        ${parcial
+          ? linha(`Resultado após ${parcial.incluidos.map((k) => FALTA_LBL[k] || k).join(' e ')}`, `${parcial.faltando.map((k) => FALTA_LBL[k] || k).join(' e ')} não incluído`, parcial.centavos, true, '<span class="vf-tag is-warning">Parcial</span>', `${parcial.faltando.map((k) => FALTA_LBL[k] || k).join(' e ')} sem fonte para este período: não foi tratado como zero`, 'fim')
+          : linha('Resultado após Ads e Full', 'cálculo do backend', op.centavos, op.centavos != null, op.centavos == null ? '<span class="vf-tag is-neutral">Não calculável</span>' : (co.estado === 'provisorio' ? '<span class="vf-tag is-info">Provisório</span>' : (co.estado === 'consolidado' ? '<span class="vf-tag is-success">Consolidado</span>' : '')), '', 'fim')}
       </ul>
+      ${recorte ? `<p class="vf-cv-sobre">${esc(recorte)}</p>` : ''}
       ${!adsOk || !fullOk ? `<p class="vf-cv-sobre">${esc([!adsOk ? `Ads: ${custosOpMotivo(ads)}.${refAds}` : '', !fullOk ? `Full: ${custosOpMotivo(full)}.${refFull}` : ''].filter(Boolean).join(' '))}</p>` : ''}
       ${metricas ? `<p class="vf-cv-sobre">${metricas} <small>(passe o mouse para ver numerador e denominador)</small></p>` : ''}
       ${fullDetalhe && fullOk ? `<p class="vf-cv-sobre">Full: ${esc(fullDetalhe)}. O frete das vendas Full já está no frete de cada pedido e não entra aqui.</p>` : ''}`;
