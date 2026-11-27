@@ -4,7 +4,10 @@
 //   completo — comportamento da main (flags desligadas);
 //   enxuto   — CENTRAL_VENDAS_SYNC_PERSISTENCIA_ENXUTA=true;
 //   reuso    — enxuto + CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS=true + migration
-//              20261111_central_vendas_import_pedidos aplicada.
+//              20261111_central_vendas_import_pedidos aplicada;
+//   compacto — enxuto + componentes compactos (CENTRAL_VENDAS_COMPONENTES_COMPACTOS
+//              + migration 20261126_central_vendas_pedido_componentes);
+//   reuso_compacto — reuso + componentes compactos.
 //
 //   CENTRAL_VENDAS_PG_TEST_DATABASE_URL=postgres://vf@127.0.0.1:57651/postgres \
 //     node tests/centralVendasPersistenciaEnxuta.postgres.test.js
@@ -33,7 +36,9 @@ const LOCAL = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 const NOITES = Number(process.env.NOITES || 12);
 const PEDIDOS_POR_DIA = Number(process.env.PEDIDOS_POR_DIA || 40);
 const TAXA_MUDANCA = Number(process.env.TAXA_MUDANCA || 0.03);
-const MODOS = ["completo", "enxuto", "reuso"];
+const MODOS = ["completo", "enxuto", "reuso", "compacto", "reuso_compacto"];
+const REUSO = new Set(["reuso", "reuso_compacto"]);
+const COMPACTO = new Set(["compacto", "reuso_compacto"]);
 
 function prng(seed) {
   let s = seed >>> 0;
@@ -87,8 +92,10 @@ async function filho({ url, modo }) {
   process.env.DATABASE_URL = url;
   delete process.env.CENTRAL_VENDAS_SYNC_PERSISTENCIA_ENXUTA;
   delete process.env.CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS;
+  delete process.env.CENTRAL_VENDAS_COMPONENTES_COMPACTOS;
   if (modo !== "completo") process.env.CENTRAL_VENDAS_SYNC_PERSISTENCIA_ENXUTA = "true";
-  if (modo === "reuso") { process.env.CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS = "true"; process.env.CENTRAL_VENDAS_SYNC_REUSO_CONTAS = "5"; }
+  if (REUSO.has(modo)) { process.env.CENTRAL_VENDAS_SYNC_REUSO_PEDIDOS = "true"; process.env.CENTRAL_VENDAS_SYNC_REUSO_CONTAS = "5"; }
+  if (COMPACTO.has(modo)) { process.env.CENTRAL_VENDAS_COMPONENTES_COMPACTOS = "true"; process.env.CENTRAL_VENDAS_COMPONENTES_COMPACTOS_CONTAS = "5"; }
 
   const pool = require("../config/database");
   const repo = require("../services/centralVendas/centralVendasRepository");
@@ -98,12 +105,23 @@ async function filho({ url, modo }) {
   const painelRepo = require("../services/painelContas/painelContasRepository");
   const c360 = require("../services/centralVendas/centralVendasCliente360Adapter");
   const pe = require("../services/centralVendas/centralVendasPersistenciaEnxuta");
+  const resgateRepo = require("../services/resgate/resgateLeituraRepository");
+  const compactosMod = require("../services/centralVendas/centralVendasComponentesCompactos");
+  // SQL do Resgate ANTES desta branch (main): itens só por import_id — ignora pedidos vinculados.
+  const resgateMain = async (desde) => (await pool.query(
+    `SELECT i.mlb AS item_id, COUNT(*)::int AS n, SUM(i.quantidade)::text AS unidades
+       FROM central_vendas_pedido_itens i JOIN central_vendas_pedidos p ON p.id = i.pedido_row_id
+      WHERE i.import_id = ANY($1::bigint[]) AND p.status = 'paid' AND p.data_pedido >= $2::date AND i.mlb IS NOT NULL
+      GROUP BY 1 ORDER BY 1`, [(await resgateRepo.importsCanonicos(pool, { clienteContaId: 5, competencias: ["2026-09"] })).map((r) => Number(r.id)), desde])).rows;
 
   const helper = fs.readFileSync(path.join(__dirname, "helpers", "centralVendasRetencaoPostgres.js"), "utf8");
   await pool.query(helper.split("const FIXTURES = `")[1].split("`;")[0]);
   await pool.query(fs.readFileSync(path.join(__dirname, "..", "sql", "central_vendas_schema.sql"), "utf8"));
-  if (modo === "reuso") {
+  if (REUSO.has(modo)) {
     await pool.query(fs.readFileSync(path.join(__dirname, "..", "sql", "migrations", "20261111_central_vendas_import_pedidos.sql"), "utf8"));
+  }
+  if (COMPACTO.has(modo)) {
+    await pool.query(fs.readFileSync(path.join(__dirname, "..", "sql", "migrations", "20261126_central_vendas_pedido_componentes.sql"), "utf8"));
   }
 
   const cliente = { id: 1, slug: "loja", nome: "Loja" };
@@ -135,7 +153,16 @@ async function filho({ url, modo }) {
     const c = await c360.carregarPedidosEItens(importIds, pool);
     const consolidado = c360.consolidarCentral({ imports, pedidos: c.pedidos, itens: c.itens });
     const ids = importIds.map(String);
+    // Resgate (vendas reais por item + resumo da conta) pela camada compartilhada.
+    const rv = await resgateRepo.vendasPorItem(pool, { clienteContaId: 5, desde: "2026-09-01", competencias: ["2026-09"] });
+    const rr = await resgateRepo.vendasResumoConta(pool, { clienteContaId: 5, desde: "2026-09-01", competencias: ["2026-09"] });
+    const resgate = { porItem: [...rv.porItem.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)), resumo: rr };
+    const resgateItensMain = await resgateMain("2026-09-01");
+    const resgateItensNovo = [...rv.porItem.entries()].map(([k, v]) => [k, v.unidades]).sort((a, b) => (a[0] < b[0] ? -1 : 1));
     return {
+      resgate: JSON.stringify(resgate),
+      // A SQL antiga do Resgate só enxerga as linhas próprias do import vigente.
+      resgateMainIgual: JSON.stringify(resgateItensMain.map((r) => [r.item_id, Number(r.unidades)])) === JSON.stringify(resgateItensNovo),
       // Todo leitor por import devolve o import LIDO (nunca o dono da linha).
       importLidoOk: carga.pedidos.every((p) => ids.includes(String(p.import_id)))
         && painelPedidos.every((p) => ids.includes(String(p.import_id)))
@@ -171,7 +198,10 @@ async function filho({ url, modo }) {
     );
     // Rollout por conta: na penúltima noite a conta sai da lista (grava
     // completo) e volta na seguinte — leitores precisam seguir idênticos.
-    if (modo === "reuso") process.env.CENTRAL_VENDAS_SYNC_REUSO_CONTAS = noite === NOITES - 1 ? "" : "5";
+    if (REUSO.has(modo)) process.env.CENTRAL_VENDAS_SYNC_REUSO_CONTAS = noite === NOITES - 1 ? "" : "5";
+    // Idem para os componentes compactos: a noite NOITES-2 grava em linhas
+    // (formatos misturados no mesmo período) e as demais voltam ao compacto.
+    if (COMPACTO.has(modo)) process.env.CENTRAL_VENDAS_COMPONENTES_COMPACTOS_CONTAS = noite === NOITES - 2 ? "" : "5";
     const resumo = { ...buildResumoCentralVendas(motor), syncRunId: Number(run.id) };
     const { coverageFrom, coverageTo } = coverageParaCompetencia("2026-09", "2026-09-01", dateTo);
     const t0 = Date.now();
@@ -192,7 +222,10 @@ async function filho({ url, modo }) {
     const conteudo = await repo.loadPedidosByImportIds({ importIds: [persisted.importacao.id], dateFrom: "2026-09-01", dateTo });
     const rowIds = conteudo.pedidos.map((p) => p.id);
     const { rows: itensDb } = await pool.query(`SELECT * FROM central_vendas_pedido_itens WHERE pedido_row_id = ANY($1::bigint[])`, [rowIds]);
-    const { rows: compsDb } = await pool.query(`SELECT * FROM central_vendas_componentes WHERE pedido_row_id = ANY($1::bigint[])`, [rowIds]);
+    // Compacto: a composição vem da leitura compatível (as linhas antigas não existem).
+    const { rows: compsDb } = COMPACTO.has(modo)
+      ? { rows: conteudo.componentes }
+      : await pool.query(`SELECT * FROM central_vendas_componentes WHERE pedido_row_id = ANY($1::bigint[])`, [rowIds]);
     const norm = (o) => JSON.parse(JSON.stringify(o));
     const comNulls = (orig, rec) => { const out = norm(orig); for (const k of Object.keys(rec)) if (!(k in out)) out[k] = null; return out; };
     let reconstrucaoOk = conteudo.pedidos.length === motor.pedidos.length
@@ -207,9 +240,14 @@ async function filho({ url, modo }) {
       } catch { reconstrucaoOk = false; }
     }
 
+    const { rows: [fmt] } = COMPACTO.has(modo)
+      ? await pool.query(`SELECT (SELECT COUNT(*) FROM central_vendas_componentes WHERE import_id = $1)::int AS linhas,
+                                 (SELECT COUNT(*) FROM central_vendas_pedido_componentes pc JOIN central_vendas_pedidos p ON p.id = pc.pedido_row_id WHERE p.import_id = $1)::int AS compactos`, [persisted.importacao.id])
+      : { rows: [null] };
     noites.push({
-      noite, pedidosNoSnapshot: motor.pedidos.length, persistencia: persisted.persistencia, msPersistir: ms,
+      noite, pedidosNoSnapshot: motor.pedidos.length, persistencia: persisted.persistencia, msPersistir: ms, formatoGravado: fmt,
       candidateIsolado, reconstrucaoOk, leitura: leitura.texto, financeiro: leitura.financeiro, importLidoOk: leitura.importLidoOk,
+      resgate: leitura.resgate, resgateMainIgual: leitura.resgateMainIgual, estatisticasLeitura: { ...compactosMod.estatisticas },
     });
     anterior = { dateTo, leitura };
   }
@@ -223,7 +261,8 @@ async function filho({ url, modo }) {
   const { rows: [pl] } = await pool.query(`SELECT payload_json FROM central_vendas_imports WHERE id = $1`, [planilha.importacao.id]);
 
   await pool.query("VACUUM ANALYZE");
-  const TABELAS = ["central_vendas_imports", "central_vendas_pedidos", "central_vendas_pedido_itens", "central_vendas_componentes", "central_vendas_import_pedidos"];
+  const TABELAS = ["central_vendas_imports", "central_vendas_pedidos", "central_vendas_pedido_itens", "central_vendas_componentes", "central_vendas_import_pedidos",
+    "central_vendas_pedido_componentes", "central_vendas_componente_textos"];
   const { rows: tamanhos } = await pool.query(
     `SELECT c.relname AS tabela, pg_total_relation_size(c.oid)::bigint AS total, pg_relation_size(c.oid)::bigint AS heap,
             pg_indexes_size(c.oid)::bigint AS indices, COALESCE(pg_total_relation_size(NULLIF(c.reltoastrelid, 0)), 0)::bigint AS toast
@@ -235,13 +274,14 @@ async function filho({ url, modo }) {
             (SELECT COUNT(*) FROM central_vendas_pedidos)::int AS pedidos,
             (SELECT COUNT(*) FROM central_vendas_pedido_itens)::int AS itens,
             (SELECT COUNT(*) FROM central_vendas_componentes)::int AS componentes,
-            ${modo === "reuso" ? "(SELECT COUNT(*) FROM central_vendas_import_pedidos)::int" : "0"} AS vinculos`
+            ${REUSO.has(modo) ? "(SELECT COUNT(*) FROM central_vendas_import_pedidos)::int" : "0"} AS vinculos,
+            ${COMPACTO.has(modo) ? "(SELECT COUNT(*) FROM central_vendas_pedido_componentes)::int" : "0"} AS componentes_compactos`
   );
 
   // Segurança da FK (só reuso): apagar o import DONO de linhas usadas por
   // outro import falha; apagar dono + referenciadores juntos (purge) passa.
   let fk = null;
-  if (modo === "reuso") {
+  if (REUSO.has(modo)) {
     const cli = await pool.connect();
     try {
       await cli.query("BEGIN");
@@ -251,7 +291,9 @@ async function filho({ url, modo }) {
       catch (err) { codigo = err.code; await cli.query("ROLLBACK TO SAVEPOINT s"); }
       const purge = await cli.query(`DELETE FROM central_vendas_imports WHERE cliente_id = 1`);
       const { rows: [{ n }] } = await cli.query(`SELECT COUNT(*)::int AS n FROM central_vendas_pedidos`);
-      fk = { apagarDonoUsado: codigo, purgeApagou: purge.rowCount, pedidosRestantes: n };
+      const { rows: [{ nc }] } = COMPACTO.has(modo)
+        ? await cli.query(`SELECT COUNT(*)::int AS nc FROM central_vendas_pedido_componentes`) : { rows: [{ nc: 0 }] };
+      fk = { apagarDonoUsado: codigo, purgeApagou: purge.rowCount, pedidosRestantes: n, compactosRestantes: nc };
     } finally {
       await cli.query("ROLLBACK");
       cli.release();
@@ -303,19 +345,27 @@ async function pai() {
 
   let checks = 0;
   const ok = (label, cond) => { assert.ok(cond, `FALHOU: ${label}`); checks += 1; };
-  const { completo, enxuto, reuso } = R;
+  const { completo, enxuto, reuso, compacto } = R;
   ok("fechamento: getLatest exercitado", JSON.parse(completo.noites[NOITES].leitura).latest !== null);
   for (let i = 0; i < completo.noites.length; i++) {
     const a = completo.noites[i];
-    for (const m of ["enxuto", "reuso"]) {
+    for (const m of ["enxuto", "reuso", "compacto", "reuso_compacto"]) {
       const b = R[m].noites[i];
       ok(`noite ${a.noite} ${m}: todos os leitores idênticos à main`, a.leitura === b.leitura);
       ok(`noite ${a.noite} ${m}: resultado financeiro idêntico`, a.financeiro === b.financeiro);
       ok(`noite ${a.noite} ${m}: reconstrução sem perda`, b.reconstrucaoOk === true);
+      ok(`noite ${a.noite} ${m}: Resgate (vendas por item, frete, resumo) idêntico à main sem reuso`, a.resgate === b.resgate);
     }
     for (const m of MODOS) {
       ok(`noite ${a.noite} ${m}: candidate não vaza antes de publicar`, R[m].noites[i].candidateIsolado === true);
       ok(`noite ${a.noite} ${m}: leitores devolvem o import lido`, R[m].noites[i].importLidoOk === true);
+    }
+    for (const m of ["compacto", "reuso_compacto"]) {
+      const n = R[m].noites[i];
+      const esperadoLinhas = a.noite === NOITES - 2;
+      ok(`noite ${a.noite} ${m}: formato gravado = ${esperadoLinhas ? "linhas (conta fora da lista)" : "compacto"}`,
+        esperadoLinhas ? n.formatoGravado.compactos === 0 && (n.persistencia.componentes?.formato ?? "linhas") === "linhas"
+          : n.formatoGravado.linhas === 0 && n.persistencia.componentes.formato === "compacto_v1");
     }
     const g = reuso.noites[i].persistencia;
     if (a.noite === NOITES - 1) {
@@ -325,14 +375,27 @@ async function pai() {
         g.gravados.pedidos === g.diff.novos + g.diff.alterados && g.gravados.vinculos === g.diff.inalterados);
     }
   }
+  // O defeito antigo do Resgate existe de verdade (só com vínculos) e está corrigido.
+  ok("Resgate: SQL antiga == nova quando não há vínculos (completo)", completo.noites.every((n) => n.resgateMainIgual));
+  ok("Resgate: SQL antiga PERDIA pedidos vinculados (reuso), a nova não", reuso.noites.slice(1).some((n) => !n.resgateMainIgual));
+  // A leitura compacta usou a mescla em JS (não o fallback SQL) — inclusive com formatos misturados.
+  for (const m of ["compacto", "reuso_compacto"]) {
+    const e = R[m].noites[R[m].noites.length - 1].estatisticasLeitura;
+    ok(`${m}: leitura pela mescla em JS (${e.mesclaJs}), sem fallback SQL (${e.uniaoSql})`, e.mesclaJs > 0 && e.uniaoSql === 0);
+  }
   ok("planilha manual com payload completo (enxuto)", enxuto.planilhaPayloadCompleto === true);
   ok("planilha manual com payload completo (reuso)", reuso.planilhaPayloadCompleto === true);
   ok("FK: apagar import dono de linhas em uso FALHA (23503)", reuso.fk && reuso.fk.apagarDonoUsado === "23503");
   ok("FK: purge do cliente (dono + referenciadores) passa e não deixa órfão", reuso.fk.pedidosRestantes === 0);
+  ok("FK (reuso_compacto): apagar import dono em uso FALHA (23503)", R.reuso_compacto.fk && R.reuso_compacto.fk.apagarDonoUsado === "23503");
+  ok("purge (reuso_compacto) leva os componentes compactos junto (CASCADE)", R.reuso_compacto.fk.pedidosRestantes === 0 && R.reuso_compacto.fk.compactosRestantes === 0);
+  ok("planilha manual com payload completo (compacto)", compacto.planilhaPayloadCompleto === true);
 
   const total = (r) => r.tamanhos.reduce((s, t) => s + Number(t.total), 0);
   ok("reuso ocupa menos que enxuto", total(reuso) < total(enxuto));
   ok("enxuto ocupa menos que completo", total(enxuto) < total(completo));
+  ok("compacto ocupa menos que enxuto", total(compacto) < total(enxuto));
+  ok("reuso_compacto ocupa menos que reuso", total(R.reuso_compacto) < total(reuso));
 
   const relatorio = {
     parametros: { NOITES, PEDIDOS_POR_DIA, TAXA_MUDANCA },
@@ -351,7 +414,7 @@ async function pai() {
   };
   if (process.env.SAIDA_RELATORIO) fs.writeFileSync(process.env.SAIDA_RELATORIO, JSON.stringify(relatorio, null, 2));
   const mb = (b) => (b / 1048576).toFixed(2);
-  console.log(`  disco: completo=${mb(total(completo))} MB enxuto=${mb(total(enxuto))} MB reuso=${mb(total(reuso))} MB`);
+  console.log(`  disco: ${MODOS.map((m) => `${m}=${mb(total(R[m]))} MB`).join(" ")}`);
   console.log(`  linhas: ${MODOS.map((m) => `${m}=${JSON.stringify(R[m].linhas)}`).join(" ")}`);
   console.log(`centralVendasPersistenciaEnxuta.postgres.test.js: ${checks} verificacoes OK`);
 }

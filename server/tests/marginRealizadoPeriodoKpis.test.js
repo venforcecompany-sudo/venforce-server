@@ -385,7 +385,7 @@ cenario("leitura do realizado é ENXUTA: sem payload_json/SELECT *, só os 3 tip
   const db = {
     async query(sql, params) {
       chamadas.push({ sql, params });
-      if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
+      if (/to_regclass\('public\.central_vendas_(import_pedidos|pedido_componentes)'\)/.test(String(sql))) return { rows: [{ ok: false }] };
       if (sql.includes("FROM central_vendas_imports")) {
         return { rows: [{ id: 11, competencia: "2026-09", publication_status: "published", coverage_date_from: "2026-09-01", coverage_date_to: "2026-09-27", published_at: "2026-09-28T06:00:00Z" }] };
       }

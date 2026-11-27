@@ -8,6 +8,7 @@ const { prazos } = require("./centralVendasPrazos");
 const { aplicarSchemaVersionado } = require("../schema/schemaVersionado");
 const persistenciaEnxuta = require("./centralVendasPersistenciaEnxuta");
 const pedidosCompartilhados = require("./centralVendasPedidosCompartilhados");
+const compactos = require("./centralVendasComponentesCompactos");
 
 const schemaPath = path.join(__dirname, "..", "..", "sql", "central_vendas_schema.sql");
 
@@ -359,11 +360,25 @@ async function insertComponente({
 // + medição de escrita. Formato completo (flag desligada): payloads idênticos
 // aos de antes; só a medição (bytes de JSON e duração) é acrescentada.
 // `iniciar` roda DENTRO da transação (a cada tentativa do retry, do zero).
-function planejarPersistencia({ fonte, syncRunId, motorPayload, resumo }) {
+function planejarPersistencia({ fonte, syncRunId, motorPayload, resumo, clienteContaId = null }) {
   const enxuta = persistenciaEnxuta.aplicaPersistenciaEnxuta({ fonte, syncRunId });
   const manifesto = enxuta ? persistenciaEnxuta.construirManifesto({ motorPayload, resumo }) : null;
   const inicioMs = Date.now();
+  // Componentes compactos (formato v2, opt-in por conta): decididos e com o
+  // dicionário garantido ANTES da transação do import (ver
+  // centralVendasComponentesCompactos.garantirTextos).
+  const formatoComponentes = { compacto: false, motivo: "FLAG_DESLIGADA", textos: null };
   return {
+    async preparar() {
+      if (!compactos.isEscritaCompactaHabilitada({ fonte, syncRunId, clienteContaId })) return;
+      if (!(await compactos.tabelaCompactaDisponivel(pool))) { formatoComponentes.motivo = "TABELA_AUSENTE"; return; }
+      const avaliacao = compactos.avaliarImport(motorPayload);
+      if (!avaliacao.elegivel) { formatoComponentes.motivo = avaliacao.motivo; return; }
+      formatoComponentes.textos = await compactos.garantirTextos(avaliacao.textos, pool);
+      formatoComponentes.compacto = true;
+      formatoComponentes.motivo = null;
+    },
+    formatoComponentes,
     async iniciar(tupla, db) {
       let bytesJson = 0;
       const medir = (obj) => { bytesJson += Buffer.byteLength(asJson(obj, {}), "utf8"); return obj; };
@@ -394,6 +409,11 @@ function planejarPersistencia({ fonte, syncRunId, motorPayload, resumo }) {
         payloadComponente: (c) => medir(enxuta ? persistenciaEnxuta.extrasDoComponente(c) : c),
         fechar: () => ({
           formato: enxuta ? persistenciaEnxuta.FORMATO_MANIFESTO : "completo",
+          // Só com a escrita compacta ligada para a conta (flag desligada =
+          // medição idêntica à de antes).
+          ...(formatoComponentes.motivo === "FLAG_DESLIGADA" ? {} : {
+            componentes: formatoComponentes.compacto ? { formato: "compacto_v1" } : { formato: "linhas", motivo: formatoComponentes.motivo },
+          }),
           bytesJsonEstimados: bytesJson,
           duracaoMs: Date.now() - inicioMs,
           ...(diff ? { diff } : {}),
@@ -439,7 +459,8 @@ async function persistCentralVendasImport({
   coverageDateFrom = null,
   coverageDateTo = null,
 }) {
-  const plano = planejarPersistencia({ fonte, syncRunId, motorPayload, resumo });
+  const plano = planejarPersistencia({ fonte, syncRunId, motorPayload, resumo, clienteContaId });
+  await plano.preparar();
   return withTransaction(async (db) => {
     const { payloadImport, payloadItem, payloadComponente, medir, fechar, reusado, vincular, totalReusados } = await plano.iniciar(
       { clienteSlug: cliente.slug, marketplace, competencia, clienteContaId }, db
@@ -487,7 +508,10 @@ async function persistCentralVendasImport({
       itemRowsById.set(item.itemId, itemRow.id);
     }
 
-    for (const componente of motorPayload.componentes || []) {
+    if (plano.formatoComponentes.compacto) {
+      await gravarComponentesCompactos({ motorPayload, reusado, pedidoRowsById, itemRowsById, textos: plano.formatoComponentes.textos }, db);
+    }
+    for (const componente of plano.formatoComponentes.compacto ? [] : motorPayload.componentes || []) {
       if (reusado(componente.pedidoId)) continue;
       await insertComponente({
         payloadJson: payloadComponente(componente),
@@ -513,6 +537,84 @@ async function persistCentralVendasImport({
     // ANTES): reexecutar do zero depois de 40P01/40001 é seguro e idempotente,
     // porque a tentativa abortada foi revertida por inteiro.
   }, { retryTransient: true, queryTimeoutMs: prazos().dbQueryMs });
+}
+
+// Formato v2: UMA linha por pedido com a composição inteira (ver
+// centralVendasComponentesCompactos). Mesmos componentes, mesma ordem e os
+// mesmos extras que a persistência enxuta guardaria no payload_json.
+async function gravarComponentesCompactos({ motorPayload, reusado, pedidoRowsById, itemRowsById, textos }, db) {
+  const componentes = (motorPayload.componentes || []).filter((c) => !reusado(c.pedidoId));
+  const linhas = compactos.montarLinhas({
+    componentes, pedidoRowsById, itemRowsById, textos, extrasDoComponente: persistenciaEnxuta.extrasDoComponente,
+  });
+  return compactos.gravarCompactos(linhas, db);
+}
+
+// Componentes de um conjunto de pedidos nos DOIS formatos (linhas antigas ∪
+// compactos), no formato e na ordem de sempre.
+//   - Sem a tabela compacta: a consulta antiga, literalmente.
+//   - Com a tabela e sem nenhuma linha compacta no conjunto: a consulta antiga
+//     (mesmas linhas, mesma ordem; só as colunas internas de mescla são tiradas).
+//   - Com linhas compactas: arrays crus decodificados em JS e intercalados
+//     com as antigas na ordem de grupos que o BANCO devolve
+//     (compactos.mesclarComponentes). Se algo não encaixar exatamente, a união
+//     em SQL (compactos.sqlUniao) — mesmo resultado, só mais lenta.
+// spec: { sqlLegado, colunas, filtroLegado, filtroCompacto (em pc/p),
+//         paramsCompacto?, ordem?, comentario?, tipos?, filtroTiposUniao? }
+const MESCLA_INTERNAS = ["id", "pedido_row_id", "item_row_id", "item_id"];
+async function consultarComponentes(db, spec, params) {
+  if (!(await compactos.tabelaCompactaDisponivel(db))) { compactos.estatisticas.legado += 1; return db.query(spec.sqlLegado, params); }
+  const { colunas, filtroLegado, filtroCompacto, ordem = "pedido", comentario = "", tipos = null } = spec;
+  const internas = MESCLA_INTERNAS.filter((c) => !colunas.includes(c));
+  const ordemLegado = ordem === "item" ? "item_id ASC NULLS LAST, id ASC" : "pedido_id ASC, item_id ASC NULLS LAST, id ASC";
+  const sqlLegadoMescla = `${comentario}SELECT ${[...colunas, ...internas].join(", ")}
+       FROM central_vendas_componentes WHERE ${filtroLegado} ORDER BY ${ordemLegado}`;
+  const sqlCrus = compactos.sqlCompactosCrus(filtroCompacto);
+  const paramsCompacto = spec.paramsCompacto || params;
+  // Client emprestado (transação, conexão dedicada): uma consulta por vez.
+  const [legado, crus] = isPoolLike(db)
+    ? await Promise.all([db.query(sqlLegadoMescla, params), db.query(sqlCrus, paramsCompacto)])
+    : [await db.query(sqlLegadoMescla, params), await db.query(sqlCrus, paramsCompacto)];
+  const semInternas = (rows) => (internas.length
+    ? rows.map((r) => { const o = {}; for (const c of colunas) o[c] = r[c]; return o; })
+    : rows);
+  if (!crus.rows.length) { compactos.estatisticas.legadoComTabela += 1; return { rows: semInternas(legado.rows) }; }
+  const rows = await compactos.mesclarComponentes(db, {
+    linhasLegado: legado.rows, linhasCompactas: crus.rows, colunas, tipos, internas, paralelo: isPoolLike(db),
+  });
+  if (rows) { compactos.estatisticas.mesclaJs += 1; return { rows }; }
+  compactos.estatisticas.uniaoSql += 1;
+  return db.query(compactos.sqlUniao({
+    colunas, filtroLegado, filtroCompacto: `${filtroCompacto}${spec.filtroTiposUniao || ""}`, ordem, comentario,
+  }), params);
+}
+
+// Componentes de pedidos já resolvidos (pedido_row_id), nos dois formatos —
+// para leitores fora da Central (Resgate) não repetirem SQL própria sobre
+// central_vendas_componentes. `tipos` opcional.
+async function carregarComponentesDosPedidos({ pedidoRowIds, tipos = null, colunas = COMPONENTE_COLUNAS }, db = pool) {
+  if (!Array.isArray(pedidoRowIds) || !pedidoRowIds.length) return [];
+  const ids = pedidoRowIds.map(String);
+  const cols = colunas.join(", ");
+  const r = tipos
+    ? await consultarComponentes(db, {
+      sqlLegado: `/* cv:componentes-dos-pedidos */ SELECT ${cols} FROM central_vendas_componentes
+        WHERE pedido_row_id = ANY($1::bigint[]) AND tipo = ANY($2::text[])
+        ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
+      colunas, comentario: "/* cv:componentes-dos-pedidos */ ",
+      filtroLegado: "pedido_row_id = ANY($1::bigint[]) AND tipo = ANY($2::text[])",
+      filtroCompacto: "pc.pedido_row_id = ANY($1::bigint[])", paramsCompacto: [ids],
+      tipos, filtroTiposUniao: " AND tt.texto = ANY($2::text[])",
+    }, [ids, tipos])
+    : await consultarComponentes(db, {
+      sqlLegado: `/* cv:componentes-dos-pedidos */ SELECT ${cols} FROM central_vendas_componentes
+        WHERE pedido_row_id = ANY($1::bigint[])
+        ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
+      colunas, comentario: "/* cv:componentes-dos-pedidos */ ",
+      filtroLegado: "pedido_row_id = ANY($1::bigint[])",
+      filtroCompacto: "pc.pedido_row_id = ANY($1::bigint[])",
+    }, [ids]);
+  return r.rows;
 }
 
 // Manifesto do import PUBLICADO vigente da mesma tupla (cliente, conta,
@@ -643,8 +745,9 @@ async function getLatestCentralVendasImport(
   if (condicaoConta) condicoes.push(condicaoConta);
 
   const rowsResult = await db.query(
+    // Sem payload_json (ver resolveImportsForRange).
     `SELECT id, cliente_id, cliente_slug, marketplace, competencia, fonte, status, confianca,
-            resumo_json, payload_json, created_at, updated_at, cliente_conta_id,
+            resumo_json, created_at, updated_at, cliente_conta_id,
             publication_status, coverage_date_from, coverage_date_to, published_at
        FROM central_vendas_imports
       WHERE ${condicoes.join(" AND ")}`,
@@ -670,12 +773,14 @@ async function getLatestCentralVendasImport(
           ORDER BY pedido_id ASC, id ASC`,
         [[importacao.id]]
       ),
-      db.query(
-        `SELECT ${COMPONENTE_READ_COLUMNS} FROM central_vendas_componentes
+      consultarComponentes(db, {
+        sqlLegado: `SELECT ${COMPONENTE_READ_COLUMNS} FROM central_vendas_componentes
           WHERE pedido_row_id IN (SELECT pedido_row_id FROM ${fonte})
           ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
-        [[importacao.id]]
-      ),
+        colunas: COMPONENTE_COLUNAS,
+        filtroLegado: `pedido_row_id IN (SELECT pedido_row_id FROM ${fonte})`,
+        filtroCompacto: `pc.pedido_row_id IN (SELECT pedido_row_id FROM ${fonte})`,
+      }, [[importacao.id]]),
     ]);
     const lido = (rows) => rows.map((r) => ({ ...r, import_id: importacao.id }));
     return {
@@ -701,13 +806,15 @@ async function getLatestCentralVendasImport(
         ORDER BY pedido_id ASC, id ASC`,
       [importacao.id]
     ),
-    db.query(
-      `SELECT ${COMPONENTE_READ_COLUMNS}
+    consultarComponentes(db, {
+      sqlLegado: `SELECT ${COMPONENTE_READ_COLUMNS}
          FROM central_vendas_componentes
         WHERE import_id = $1
         ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
-      [importacao.id]
-    ),
+      colunas: COMPONENTE_COLUNAS,
+      filtroLegado: "import_id = $1",
+      filtroCompacto: "p.import_id = $1",
+    }, [importacao.id]),
   ]);
 
   return {
@@ -733,6 +840,7 @@ const ITEM_READ_COLUMNS = `id, import_id, pedido_row_id, cliente_id, cliente_slu
 const COMPONENTE_READ_COLUMNS = `id, import_id, pedido_row_id, item_row_id, cliente_id, cliente_slug, marketplace,
        competencia, pedido_id, item_id, tipo, valor, fonte, confianca, obs, escopo, efeito,
        incluido_no_resultado, created_at, updated_at`;
+const COMPONENTE_COLUNAS = COMPONENTE_READ_COLUMNS.split(",").map((c) => c.trim());
 
 // M10 — extraído de getCentralVendasByRange (mesma regra M4 exata, apenas
 // separada da carga pesada de pedidos/itens/componentes): resolve SÓ os
@@ -822,7 +930,10 @@ async function resolveImportsForRange(
   if (condicaoConta) condicoes.push(condicaoConta);
 
   const rowsResult = await db.query(
-    `SELECT id, competencia, fonte, status, confianca, resumo_json, payload_json, created_at, updated_at,
+    // Sem payload_json: no formato completo é o motorPayload inteiro (TOAST) e
+    // nenhum leitor do período o usa (só resumo_json); era lido de TODOS os
+    // imports candidatos de cada competência, não só do escolhido.
+    `SELECT id, competencia, fonte, status, confianca, resumo_json, created_at, updated_at,
             cliente_conta_id, publication_status, coverage_date_from, coverage_date_to, published_at, sync_run_id
        FROM central_vendas_imports
       WHERE ${condicoes.join(" AND ")}`,
@@ -899,13 +1010,15 @@ async function loadPedidosByImportIds({ importIds, dateFrom, dateTo }, db = pool
         ORDER BY pedido_id ASC, id ASC`,
       [pedidoRowIds]
     ),
-    db.query(
-      `SELECT ${COMPONENTE_READ_COLUMNS}
+    consultarComponentes(db, {
+      sqlLegado: `SELECT ${COMPONENTE_READ_COLUMNS}
          FROM central_vendas_componentes
         WHERE pedido_row_id = ANY($1::bigint[])
         ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
-      [pedidoRowIds]
-    ),
+      colunas: COMPONENTE_COLUNAS,
+      filtroLegado: "pedido_row_id = ANY($1::bigint[])",
+      filtroCompacto: "pc.pedido_row_id = ANY($1::bigint[])",
+    }, [pedidoRowIds]),
   ]);
 
   return { pedidos, ...pedidosCompartilhados.itensComImportLido(pedidos, itensResult.rows, componentesResult.rows) };
@@ -956,14 +1069,20 @@ async function loadRealizadoByImportIds({ importIds, dateFrom, dateTo }, db = po
         ORDER BY pedido_id ASC, id ASC`,
       [pedidoRowIds]
     ),
-    db.query(
-      `/* cv:realizado-componentes */ SELECT item_row_id, pedido_row_id, tipo, valor
+    consultarComponentes(db, {
+      sqlLegado: `/* cv:realizado-componentes */ SELECT item_row_id, pedido_row_id, tipo, valor
          FROM central_vendas_componentes
         WHERE pedido_row_id = ANY($1::bigint[])
           AND tipo = ANY($2::text[])
         ORDER BY pedido_id ASC, item_id ASC NULLS LAST, id ASC`,
-      [pedidoRowIds, TIPOS_COMPONENTE_REALIZADO]
-    ),
+      colunas: ["item_row_id", "pedido_row_id", "tipo", "valor"],
+      filtroLegado: "pedido_row_id = ANY($1::bigint[]) AND tipo = ANY($2::text[])",
+      filtroCompacto: "pc.pedido_row_id = ANY($1::bigint[])",
+      paramsCompacto: [pedidoRowIds],
+      tipos: TIPOS_COMPONENTE_REALIZADO,
+      filtroTiposUniao: " AND tt.texto = ANY($2::text[])",
+      comentario: "/* cv:realizado-componentes */ ",
+    }, [pedidoRowIds, TIPOS_COMPONENTE_REALIZADO]),
   ]);
 
   return { pedidos, itens: itensResult.rows, componentes: componentesResult.rows };
@@ -1033,16 +1152,73 @@ async function getPedidoDetailByRowId({ importIds, dateFrom, dateTo, rowId }, db
         ORDER BY id ASC`,
       [pedido.id]
     ),
-    db.query(
-      `SELECT ${COMPONENTE_READ_COLUMNS}
+    consultarComponentes(db, {
+      sqlLegado: `SELECT ${COMPONENTE_READ_COLUMNS}
          FROM central_vendas_componentes
         WHERE pedido_row_id = $1
         ORDER BY item_id ASC NULLS LAST, id ASC`,
-      [pedido.id]
-    ),
+      colunas: COMPONENTE_COLUNAS,
+      filtroLegado: "pedido_row_id = $1",
+      filtroCompacto: "pc.pedido_row_id = $1",
+      ordem: "item",
+    }, [pedido.id]),
   ]);
 
   return { pedido, ...pedidosCompartilhados.itensComImportLido([pedido], itensResult.rows, componentesResult.rows) };
+}
+
+// Detalhamento financeiro do pedido (composicaoFinanceira): variação de cada
+// item (extra do payload do item, gravado com a composição promocional) e os
+// metadados do import DONO da linha do pedido (com reuso, o pedido pode ser
+// lido por outro import; quem calculou é o dono): se a composição foi
+// coletada e a assinatura da base de custos usada. Duas leituras por chave.
+async function getMetaFinanceiraDoPedido({ pedidoRowId, importId }, db = pool) {
+  const [itens, imp] = await Promise.all([
+    db.query(
+      `/* cv:detalhe-variacoes */ SELECT item_id, payload_json->>'variacaoId' AS variacao_id
+         FROM central_vendas_pedido_itens
+        WHERE pedido_row_id = $1 AND payload_json ? 'variacaoId'`,
+      [pedidoRowId]
+    ),
+    db.query(
+      `/* cv:detalhe-import-meta */ SELECT resumo_json->'baseCustos' AS base_custos,
+              (resumo_json ? 'composicaoPromocional') AS composicao_coletada
+         FROM central_vendas_imports WHERE id = $1`,
+      [importId]
+    ),
+  ]);
+  const linha = imp.rows[0] || {};
+  const base = typeof linha.base_custos === "string" ? JSON.parse(linha.base_custos) : linha.base_custos || null;
+  return {
+    variacoes: new Map(itens.rows.map((r) => [r.item_id, r.variacao_id])),
+    composicaoColetada: linha.composicao_coletada === true,
+    baseCustos: base,
+  };
+}
+
+// Ads e Full do Financeiro para a Central: SÓ leitura dos caches por conta ×
+// competência que o Financeiro já preenche (financeiro_ads_cache /
+// financeiro_full_cache). Nenhuma chamada ao ML. Tabela ausente ⇒ sem fonte
+// (nunca zero). O filtro por cliente_slug junto da conta é o mesmo do
+// Financeiro (só volta cache de uma consulta feita para este mesmo par).
+async function getCustosOperacionaisDoFinanceiro({ clienteContaId, clienteSlug, meses }, db = pool) {
+  const vazio = { ads: [], full: [], tabelas: { ads: false, full: false } };
+  if (clienteContaId == null || !Array.isArray(meses) || !meses.length) return vazio;
+  const ex = await db.query(`/* cv:custos-op-tabelas */ SELECT to_regclass('public.financeiro_ads_cache') IS NOT NULL AS ads,
+                                    to_regclass('public.financeiro_full_cache') IS NOT NULL AS full`);
+  const tabelas = { ads: ex.rows[0]?.ads === true, full: ex.rows[0]?.full === true };
+  const params = [clienteContaId, normalizeSlug(clienteSlug), meses];
+  const [ads, full] = await Promise.all([
+    tabelas.ads
+      ? db.query(`/* cv:custos-op-ads */ SELECT mes_ref, investimento_ads::text AS investimento_ads, gmv_ads::text AS gmv_ads, campanhas, consultado_em
+                    FROM financeiro_ads_cache WHERE cliente_conta_id = $1 AND cliente_slug = $2 AND mes_ref = ANY($3::text[])`, params)
+      : { rows: [] },
+    tabelas.full
+      ? db.query(`/* cv:custos-op-full */ SELECT mes_ref, custo_full::text AS custo_full, lancamentos, componentes, definitivo, consultado_em
+                    FROM financeiro_full_cache WHERE cliente_conta_id = $1 AND cliente_slug = $2 AND mes_ref = ANY($3::text[])`, params)
+      : { rows: [] },
+  ]);
+  return { ads: ads.rows, full: full.rows, tabelas };
 }
 
 // M4, seção 9 — promove TODOS os candidates de um sync_run para published de
@@ -1071,8 +1247,11 @@ module.exports = {
   getCentralVendasByRange,
   // M10 — leitura otimizada (ver comentários acima das funções).
   resolveImportsForRange,
+  getMetaFinanceiraDoPedido,
+  getCustosOperacionaisDoFinanceiro,
   loadPedidosByImportIds,
   loadRealizadoByImportIds,
+  carregarComponentesDosPedidos,
   TIPOS_COMPONENTE_REALIZADO,
   getPedidoDetailByRowId,
   promoverCandidatesDoRun,

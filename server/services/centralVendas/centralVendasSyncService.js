@@ -37,6 +37,8 @@ const { buildResumoCentralVendas } = require("./centralVendasImportService");
 const { buscarFretesEmLote } = require("./centralVendasFreteService");
 const { prepararEnvioCompartilhado, repartirCentavos, entraNoRateioEnvio, OBS_ENVIO_COMPARTILHADO } = require("./centralVendasEnvioCompartilhado");
 const { resolverPacksDoRun } = require("./centralVendasPackResolver");
+const composicaoPromocional = require("./centralVendasComposicaoPromocional");
+const { assinaturaBaseCustos } = require("./centralVendasBaseCustosAssinatura");
 const {
   buscarClaimsPorPeriodo,
   classificarClaimsDoPedido,
@@ -628,8 +630,14 @@ function buildMotorFromOrders({
   // O pedido entra no resultado? Fora do resultado ⇒ peso 0 no rateio do envio (padrão: a regra
   // da Central, status efetivo = pós-venda || status da Orders API).
   envioEntraNoResultado = null,
+  // Composição promocional (preço cheio, descontos por financiador, comissão bruta, rebate,
+  // crédito comprovado) como componentes INFORMATIVOS — fora do resultado. null = desligada
+  // (o motor fica exatamente como antes). { clienteContaId, sellerId, evidenciasPorPedido:
+  // Map(pedidoId → { descontos, billing, meta }) } — Discounts/Billing são opcionais.
+  composicao = null,
 }) {
   const pedidos = [];
+  const estatComposicao = composicao ? { pedidos: 0, comPrecoCheio: 0, falhas: 0, porEstado: {} } : null;
   const itens = [];
   const componentes = [];
   // Shipment com 2+ pedidos: o custo do envio é UM só ⇒ rateado entre os pedidos pela receita
@@ -735,7 +743,9 @@ function buildMotorFromOrders({
       });
 
       const itemId = `${pedidoId}:${mlb || "SEM_ID"}:${idx}`;
+      const variacao = composicao && oi.item?.variation_id != null ? { variacaoId: String(oi.item.variation_id) } : null;
       itens.push({
+        ...variacao,
         pedidoId,
         itemId,
         mlb: mlb || null,
@@ -857,6 +867,35 @@ function buildMotorFromOrders({
       );
     }
 
+    if (composicao) {
+      estatComposicao.pedidos += 1;
+      try {
+        const ev = composicao.evidenciasPorPedido ? composicao.evidenciasPorPedido.get(pedidoId) : null;
+        const r = composicaoPromocional.comporPedido({
+          pedido: order,
+          conta: { clienteContaId: composicao.clienteContaId, sellerId: composicao.sellerId ?? null },
+          descontos: ev?.descontos ?? null,
+          billing: ev?.billing ?? null,
+          origemBilling: ev?.billing ? { contaId: composicao.clienteContaId } : null,
+          meta: ev?.meta ?? null,
+        });
+        const informativos = composicaoPromocional.componentesInformativos(r, {
+          pedidoId,
+          itemIdDoIdx: (idx) => `${pedidoId}:${normalizeId(orderItems[idx]?.item?.id) || "SEM_ID"}:${idx}`,
+        });
+        for (const c of informativos) componentes.push(buildComponent(c));
+        if (informativos.some((c) => c.tipo === "preco_cheio")) estatComposicao.comPrecoCheio += 1;
+        estatComposicao.porEstado[r.estado] = (estatComposicao.porEstado[r.estado] || 0) + 1;
+        // Só o que não é deduzível dos componentes: estado e códigos de divergência.
+        if (r.estado !== "NAO_VERIFICADO" || r.divergencias.length) {
+          pedido.composicaoPromocional = { estado: r.estado, divergencias: r.divergencias.map((d) => d.codigo) };
+        }
+      } catch (err) {
+        // Nunca derruba o import: o pedido fica sem composição (= "não verificado").
+        estatComposicao.falhas += 1;
+      }
+    }
+
     finalizarResultadoPedido(pedido);
     pedidos.push(pedido);
   }
@@ -926,6 +965,7 @@ function buildMotorFromOrders({
       claimsReturnsNaoResolvidos: Number(claimsReturnsNaoResolvidos) || 0,
       pedidosComReembolso: pedidos.filter((p) => p.reembolso !== null).length,
       confianca: claimsIndisponivel || Number(claimsReturnsNaoResolvidos) > 0 ? "parcial" : undefined,
+      ...(estatComposicao ? { composicaoPromocional: { contrato: composicaoPromocional.CONTRATO_VERSAO, ...estatComposicao } } : {}),
     },
   };
 }
@@ -1013,6 +1053,14 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
     }
     const base = baseId ? { id: baseId, nome: context.base.nome } : null;
     const costMap = buildCostMap(custos);
+    // Identidade da base usada neste cálculo (por conteúdo). Falha aqui nunca
+    // bloqueia o sync: o import só fica sem a assinatura ("sem registro").
+    let baseCustosAssinatura = null;
+    try {
+      baseCustosAssinatura = await assinaturaBaseCustos(db, baseId);
+    } catch (_) {
+      baseCustosAssinatura = null;
+    }
 
     // Pedidos via Orders API (intervalo inteiro numa paginacao). O contrato
     // devolve {data, completeness} (M3) — nunca sucesso silencioso quando o
@@ -1416,6 +1464,9 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
         competencia: comp,
         ordersContexto: packLote.ordersContexto,
         packsIncompletos: packLote.packsIncompletos,
+        composicao: composicaoPromocional.isComposicaoPromocionalHabilitada({ clienteContaId: context.conta?.id ?? null })
+          ? { clienteContaId: context.conta?.id ?? null, sellerId, evidenciasPorPedido: null }
+          : null,
       });
       // M4, seção 8: NÃO pular competências com 0 pedidos — um snapshot
       // vazio (Orders 0/0, completude complete) é um resultado válido e
@@ -1425,6 +1476,7 @@ function createCentralVendasSyncService(repository = getRepository(), db = pool)
       const resumoCalculado = buildResumoCentralVendas(motorResult);
       const resumo = {
         ...resumoCalculado,
+        ...(baseCustosAssinatura ? { baseCustos: baseCustosAssinatura } : {}),
         // Devolução sem pedido resolvido também rebaixa a confiança: o pós-venda
         // ficou incompleto, e incompleto nunca é "confiável".
         confianca:

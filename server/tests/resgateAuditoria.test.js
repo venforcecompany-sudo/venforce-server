@@ -47,7 +47,14 @@ function fakeDb({ linhas, vendas = [], eventos = [] }) {
         return { rows: linhas.filter((l) => l.cliente_conta_id === conta && l.item_id > apos && (!ids || ids.includes(l.item_id))).sort((a, b) => (a.item_id < b.item_id ? -1 : 1)).slice(0, lim) };
       }
       if (/FROM central_vendas_imports/.test(sql)) return { rows: params[0] === 86 ? [{ id: 1, competencia: "2026-11", coverage_date_to: "2026-11-12" }] : [] };
-      if (/FROM central_vendas_pedido_itens/.test(sql)) return { rows: vendas };
+      // Leitura da Central pela camada compartilhada (pedidos próprios ∪ vinculados; componentes nos dois formatos).
+      if (/to_regclass\('public\.central_vendas_(import_pedidos|pedido_componentes)'\)/.test(sql)) return { rows: [{ ok: false }] };
+      const vendasComIds = vendas.map((v, i) => ({ item_row_id: String(i + 1), pedido_row_id: String(i + 1), ...v }));
+      if (/FROM central_vendas_componentes/.test(sql)) {
+        return { rows: vendasComIds.filter((v) => v.frete_seller != null)
+          .map((v) => ({ item_row_id: v.item_row_id, pedido_row_id: v.pedido_row_id, tipo: "frete_seller", valor: v.frete_seller, fonte: "shipments_api" })) };
+      }
+      if (/central_vendas_pedido_itens/.test(sql)) return { rows: vendasComIds.map(({ frete_seller: _f, ...v }) => v) };
       if (/FROM activity_logs/.test(sql)) return { rows: eventos.filter((e) => e.conta === params[0]) };
       if (/FROM margem_precificacao_aplicacoes|FROM relatorio_itens|FROM relatorios/.test(sql)) return { rows: [] };
       throw new Error(`consulta inesperada: ${sql.slice(0, 120)}`);

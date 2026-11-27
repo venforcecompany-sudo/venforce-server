@@ -14,6 +14,11 @@
 // snapshot paralela.
 
 const pool = require("../../config/database");
+const { detalharPedido } = require("./centralVendasDetalheFinanceiro");
+const { assinaturaBaseCustos, compararAssinatura } = require("./centralVendasBaseCustosAssinatura");
+const custosOp = require("./centralVendasCustosOperacionais");
+const { cascataDoPeriodo } = require("./centralVendasComposicaoFinanceira");
+const adsJanela = require("./centralVendasAdsJanela");
 
 function getRepository() {
   return require("./centralVendasRepository");
@@ -247,6 +252,30 @@ function deriveListaEResumo(payload, params = {}) {
   return { rows, pagination: { page: pageClamped, limit: limitClamped, total, totalPages }, filteredSummary };
 }
 
+// Período pedido ∩ cobertura dos imports PUBLICADOS da conta (datas YYYY-MM-DD).
+// Sem cobertura conhecida em algum import ⇒ o período pedido, sem recorte.
+function recortarPelaCobertura(periodo, imports, clienteContaId) {
+  // O pg entrega DATE como meia-noite LOCAL: usa os campos locais (nunca toISOString, que muda o dia fora de UTC).
+  const pad = (n) => String(n).padStart(2, "0");
+  const dia = (v) => (v instanceof Date ? (Number.isNaN(v.getTime()) ? null : `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`) : (v ? String(v).slice(0, 10) : null));
+  const daConta = (imports || []).filter((i) => Number(i.cliente_conta_id) === Number(clienteContaId));
+  if (!daConta.length || daConta.some((i) => !dia(i.coverage_date_from) || !dia(i.coverage_date_to))) return periodo;
+  // Cobertura precisa ser CONTÍNUA: um buraco (ex.: outubro só até o dia 20)
+  // faria um Ads do mês inteiro parecer da mesma janela das vendas.
+  const faixas = daConta.map((i) => [dia(i.coverage_date_from), dia(i.coverage_date_to)]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const diaSeguinte = (d) => new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+  let fimCorrido = faixas[0][1];
+  for (const [de, ate] of faixas.slice(1)) {
+    if (de > diaSeguinte(fimCorrido)) return periodo;
+    if (ate > fimCorrido) fimCorrido = ate;
+  }
+  const ini = faixas[0][0];
+  const fim = fimCorrido;
+  const dateFrom = periodo.dateFrom > ini ? periodo.dateFrom : ini;
+  const dateTo = periodo.dateTo < fim ? periodo.dateTo : fim;
+  return dateFrom <= dateTo ? { dateFrom, dateTo } : periodo;
+}
+
 function createCentralVendasReadService(repository = getRepository(), db = pool) {
   const base = createCentralVendasService(repository, db);
 
@@ -364,7 +393,8 @@ function createCentralVendasReadService(repository = getRepository(), db = pool)
     // (mesmo escopo account-aware que getCentralVendasByRange sempre
     // aplicou) — evita IDOR por construção, sem checagem extra de posse.
     const t0 = nowMs();
-    const { pedido } = await base.resolveOrderDetail(clienteSlug, rowIdNum, { dateFrom, dateTo, marketplace, clienteContaId });
+    const { pedido, linhaPedido, context } = await base.resolveOrderDetail(clienteSlug, rowIdNum, { dateFrom, dateTo, marketplace, clienteContaId });
+    const composicaoFinanceira = pedido ? await montarComposicaoFinanceira(pedido, linhaPedido, context) : null;
     const t1 = nowMs();
     logPerf("read/orders/:rowId", { totalMs: round1(t1 - t0) }, {
       itens: pedido?.itens?.length || 0, componentes: pedido?.componentes?.length || 0,
@@ -375,7 +405,34 @@ function createCentralVendasReadService(repository = getRepository(), db = pool)
       throw err;
     }
 
-    return { ok: true, pedido };
+    return { ok: true, pedido, composicaoFinanceira };
+  }
+
+  // Detalhamento financeiro (aditivo, ao lado de `pedido`): leitura extra por
+  // chave + assinatura da base atual. Falha de metadado nunca derruba o
+  // detalhe: a composição sai com o que se sabe e a base fica "indisponível".
+  async function montarComposicaoFinanceira(pedido, linhaPedido, context) {
+    let meta = { variacoes: new Map(), composicaoColetada: false, baseCustos: null };
+    let baseCustos = null;
+    try {
+      if (linhaPedido && typeof repository.getMetaFinanceiraDoPedido === "function") {
+        meta = await repository.getMetaFinanceiraDoPedido({ pedidoRowId: linhaPedido.id, importId: linhaPedido.import_id }, db);
+      }
+      const baseAtualId = context?.base?.base_id ?? null;
+      const atual = meta.baseCustos ? await assinaturaBaseCustos(db, baseAtualId) : null;
+      baseCustos = compararAssinatura(meta.baseCustos, atual);
+    } catch (_) {
+      baseCustos = { estado: "indisponivel", gravada: meta.baseCustos || null, atual: null };
+    }
+    const payload = linhaPedido && linhaPedido.payload_json
+      ? (typeof linhaPedido.payload_json === "string" ? JSON.parse(linhaPedido.payload_json) : linhaPedido.payload_json)
+      : {};
+    return detalharPedido(pedido, {
+      variacoes: meta.variacoes,
+      composicaoColetada: meta.composicaoColetada,
+      composicaoDoPedido: payload.composicaoPromocional || null,
+      baseCustos,
+    });
   }
 
   // M10 — resolve contexto e constrói o payload do período UMA vez só e
@@ -396,6 +453,7 @@ function createCentralVendasReadService(repository = getRepository(), db = pool)
     const { rows, pagination, filteredSummary } = deriveListaEResumo(payload, params);
     const { produtos, totalFat } = buildAbcProdutos(payload.pedidos || [], payload.produtos || {});
     const dias = buildDiario(payload.pedidos || []);
+    const custosOperacionais = await montarCustosOperacionais({ cliente, context, periodo: { dateFrom: from, dateTo: to }, pedidos: payload.pedidos || [], marketplace, imports: snapshot?.imports || [] });
     const t3 = nowMs();
 
     logPerf("read/bootstrap", {
@@ -419,7 +477,47 @@ function createCentralVendasReadService(repository = getRepository(), db = pool)
       dias,
       produtos,
       totalFaturamento: totalFat,
+      custosOperacionais,
     };
+  }
+
+  // Ads e Full por conta × período (contrato centralVendasCustosOperacionais),
+  // lidos dos caches do Financeiro. Período parcial com fonte mensal ⇒
+  // incompatível (valor visível, fora do resultado). Erro ⇒ indisponível,
+  // nunca derruba a carga da tela.
+  async function montarCustosOperacionais({ cliente, context, periodo, pedidos, marketplace, imports = [] }) {
+    const clienteContaId = context?.conta?.id ?? null;
+    if (marketplace !== "meli") return { disponivel: false, motivo: "marketplace_sem_fonte" };
+    if (clienteContaId == null) return { disponivel: false, motivo: "conta_nao_resolvida" };
+    try {
+      // Com Ads da janela ligado: o período dos custos é o das VENDAS que existem
+      // (período pedido ∩ cobertura dos imports da conta) — é a janela que o sync
+      // consultou. Desligado: exatamente o comportamento anterior.
+      const janelaLigada = adsJanela.isAdsDaJanelaHabilitado({ clienteContaId });
+      const periodoCustos = janelaLigada ? recortarPelaCobertura(periodo, imports, clienteContaId) : periodo;
+      const meses = custosOp.mesesDoPeriodo(periodoCustos.dateFrom, periodoCustos.dateTo);
+      const fontes = typeof repository.getCustosOperacionaisDoFinanceiro === "function"
+        ? await repository.getCustosOperacionaisDoFinanceiro({ clienteContaId, clienteSlug: cliente?.slug, meses }, db)
+        : { ads: [], full: [] };
+      const { fontesAds, fontesFull } = custosOp.fontesDosCachesDoFinanceiro(fontes, clienteContaId);
+      if (janelaLigada) {
+        const runIds = imports.filter((i) => Number(i.cliente_conta_id) === Number(clienteContaId)).map((i) => i.sync_run_id);
+        for (const row of await adsJanela.lerAdsDaJanela(db, { clienteContaId, syncRunIds: runIds })) {
+          const f = adsJanela.fonteAdsDaJanela(row, clienteContaId);
+          if (f) fontesAds.push(f);
+        }
+      }
+      const cas = cascataDoPeriodo(pedidos);
+      const r = custosOp.resultadoOperacional({
+        periodo: periodoCustos, periodoSelecionado: periodo, clienteContaId,
+        resultadoVendaCentavos: cas.pedidosNoResultado ? cas.resultadoVenda.centavos : null,
+        receitaProdutoCentavos: cas.linhas.receita_produto.centavos,
+        fontesAds, fontesFull,
+      });
+      return { disponivel: true, ...r };
+    } catch (err) {
+      return { disponivel: false, motivo: "erro_leitura_custos", detalhe: err?.code || null };
+    }
   }
 
   return {
@@ -434,6 +532,7 @@ function createCentralVendasReadService(repository = getRepository(), db = pool)
 
 module.exports = {
   createCentralVendasReadService,
+  recortarPelaCobertura,
   getCentralVendasRead: (...args) => createCentralVendasReadService().getCentralVendasRead(...args),
   getCentralVendasReadOrderDetail: (...args) => createCentralVendasReadService().getCentralVendasReadOrderDetail(...args),
   getCentralVendasReadDaily: (...args) => createCentralVendasReadService().getCentralVendasReadDaily(...args),

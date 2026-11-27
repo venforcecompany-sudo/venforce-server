@@ -69,6 +69,13 @@ const CENTRAL_POLICY = {
     ],
     identity: [],
   },
+  // Componentes compactos (migration 20261126): uma linha por pedido, sem
+  // identidade própria; segue o pedido (ON DELETE CASCADE).
+  central_vendas_pedido_componentes: {
+    strategy: "PRESERVE_BY_PARENT",
+    parents: [["pedido_row_id", "central_vendas_pedidos"]],
+    identity: [],
+  },
   central_vendas_mp_payments: {
     strategy: "PRESERVE_BY_PARENT",
     parents: [["sync_run_id", "central_vendas_sync_runs"]],

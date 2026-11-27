@@ -89,7 +89,7 @@ function makeDb({ contas = [], imports = [], pedidos = [], itens = [], component
       }
 
       // A tabela de vínculos não existe nesta fixture (reuso desligado).
-      if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
+      if (/to_regclass\('public\.central_vendas_(import_pedidos|pedido_componentes)'\)/.test(String(sql))) return { rows: [{ ok: false }] };
       throw new Error(`Fake db: SQL nao mapeado -> ${sql.slice(0, 160)}`);
     },
   };

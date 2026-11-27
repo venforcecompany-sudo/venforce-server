@@ -96,7 +96,7 @@ function makeDeps({ importsPorConta, fechamentos = [], existente = null, lockCon
         }
         if (sql.includes("FROM entregas_cliente")) return { rows: fechamentos };
         // A tabela de vínculos não existe nesta fixture (reuso desligado).
-        if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
+        if (/to_regclass\('public\.central_vendas_(import_pedidos|pedido_componentes)'\)/.test(String(sql))) return { rows: [{ ok: false }] };
         throw new Error(`SQL inesperado: ${sql.slice(0, 80)}`);
       },
     },

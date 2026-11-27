@@ -89,7 +89,7 @@ const fakeDb = {
     }
 
     // A tabela de vínculos não existe nesta fixture (reuso desligado).
-    if (/to_regclass\('public\.central_vendas_import_pedidos'\)/.test(String(sql))) return { rows: [{ ok: false }] };
+    if (/to_regclass\('public\.central_vendas_(import_pedidos|pedido_componentes)'\)/.test(String(sql))) return { rows: [{ ok: false }] };
     throw new Error(`Query nao esperada no fake db: ${sql}`);
   },
 };

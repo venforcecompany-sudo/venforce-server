@@ -197,7 +197,10 @@ async function aplicarLoteImports(client, lote, { cfg, incluirAuditoriaSyncJobs,
 
   const contagem = await repo.contarFilhosPorImport(client, alvo);
   const linhas = { imports: 0, pedidos: 0, itens: 0, componentes: 0 };
-  for (const c of contagem.values()) for (const k of Object.keys(linhas)) linhas[k] += c[k];
+  for (const c of contagem.values()) {
+    for (const k of Object.keys(linhas)) linhas[k] += c[k];
+    if (c.componentes_compactos !== undefined) linhas.componentes_compactos = (linhas.componentes_compactos || 0) + c.componentes_compactos;
+  }
 
   let arquivos = null;
   if (exportDir && alvo.length) arquivos = await repo.exportarImportsCsv(client, alvo, { dir: exportDir, prefixo: `lote-${String(numero).padStart(4, "0")}` });

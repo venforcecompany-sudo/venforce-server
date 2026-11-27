@@ -6,7 +6,18 @@
 // segurar conexões (incidentes de PG de out–nov/2026). Nada aqui seleciona
 // tokens nem dados de compradores (só item, preço, quantidade, data e frete).
 
+const pedidosCompartilhados = require("../centralVendas/centralVendasPedidosCompartilhados");
+const centralVendasRepository = require("../centralVendas/centralVendasRepository");
+
 const TIMEOUT_MS = 15000;
+
+// Pedidos dos imports canônicos pela MESMA camada da Central de Vendas:
+// linhas próprias ∪ vinculadas pelo reuso de pedidos (central_vendas_import_pedidos).
+// DISTINCT: a mesma linha nunca entra duas vezes, mesmo que dois imports a citem.
+async function fontePedidosDistintos(db, param) {
+  const fonte = await pedidosCompartilhados.fontePedidos(db, param);
+  return `(SELECT DISTINCT pedido_row_id FROM ${fonte}) fpd`;
+}
 
 /** Competências (AAAA-MM) cobertas por uma janela de `dias` até `agora`. */
 function competenciasJanela(agora, dias) {
@@ -117,12 +128,26 @@ async function vendasPorItem(db, { clienteContaId, desde, competencias }) {
   const m = new Map();
   if (!ids.length) return { porItem: m, imports: imps };
   const { rows } = await consultar(db, `
-    SELECT i.mlb AS item_id, p.data_pedido, i.quantidade, i.valor_unitario, p.quantidade_itens,
-           (SELECT c.valor FROM central_vendas_componentes c WHERE c.item_row_id = i.id AND c.tipo = 'frete_seller' AND c.fonte = 'shipments_api' LIMIT 1) AS frete_seller
-      FROM central_vendas_pedido_itens i
-      JOIN central_vendas_pedidos p ON p.id = i.pedido_row_id
-     WHERE i.import_id = ANY($1::bigint[]) AND p.status = 'paid' AND p.data_pedido >= $2::date AND i.mlb IS NOT NULL`, [ids, desde]);
-  for (const r of rows) {
+    SELECT i.id AS item_row_id, i.pedido_row_id, i.mlb AS item_id, p.data_pedido, i.quantidade, i.valor_unitario, p.quantidade_itens
+      FROM ${await fontePedidosDistintos(db, "$1")}
+      JOIN central_vendas_pedidos p ON p.id = fpd.pedido_row_id
+      JOIN central_vendas_pedido_itens i ON i.pedido_row_id = p.id
+     WHERE p.status = 'paid' AND p.data_pedido >= $2::date AND i.mlb IS NOT NULL
+     ORDER BY p.data_pedido, p.pedido_id, i.item_id`, [ids, desde]);
+  // Frete do item pela camada da Central (linhas antigas, enxutas e compactas):
+  // o primeiro frete_seller da shipments_api do item, como a subconsulta antiga.
+  const freteDoItem = new Map();
+  const componentes = await centralVendasRepository.carregarComponentesDosPedidos({
+    pedidoRowIds: [...new Set(rows.map((r) => String(r.pedido_row_id)))],
+    tipos: ["frete_seller"],
+    colunas: ["item_row_id", "pedido_row_id", "tipo", "valor", "fonte"],
+  }, db);
+  for (const c of componentes) {
+    if (c.fonte !== "shipments_api" || c.item_row_id == null) continue;
+    if (!freteDoItem.has(String(c.item_row_id))) freteDoItem.set(String(c.item_row_id), c.valor);
+  }
+  for (const row of rows) {
+    const r = { ...row, frete_seller: freteDoItem.has(String(row.item_row_id)) ? freteDoItem.get(String(row.item_row_id)) : null };
     const id = r.item_id;
     if (!m.has(id)) m.set(id, { unidades: 0, faturamento: 0, ultimaVenda: null, amostras: [], precos: [] });
     const x = m.get(id);
@@ -236,8 +261,10 @@ async function vendasResumoConta(db, { clienteContaId, desde, competencias }) {
   const { rows } = await consultar(db, `
     SELECT count(DISTINCT p.pedido_id)::int AS pedidos, COALESCE(sum(i.quantidade),0)::numeric AS unidades,
            COALESCE(sum(i.quantidade * i.valor_unitario),0)::numeric AS faturamento, count(DISTINCT i.mlb)::int AS itens
-      FROM central_vendas_pedido_itens i JOIN central_vendas_pedidos p ON p.id = i.pedido_row_id
-     WHERE i.import_id = ANY($1::bigint[]) AND p.status = 'paid' AND p.data_pedido >= $2::date`, [ids, desde]);
+      FROM ${await fontePedidosDistintos(db, "$1")}
+      JOIN central_vendas_pedidos p ON p.id = fpd.pedido_row_id
+      JOIN central_vendas_pedido_itens i ON i.pedido_row_id = p.id
+     WHERE p.status = 'paid' AND p.data_pedido >= $2::date`, [ids, desde]);
   const r = rows[0] || {};
   const ate = imps.map((x) => x.coverage_date_to).filter(Boolean).sort().pop() || null;
   return { pedidos: r.pedidos || 0, unidades: Number(r.unidades || 0), faturamento: Math.round(Number(r.faturamento || 0) * 100) / 100, itensVendidos: r.itens || 0, cobertura: ate };
