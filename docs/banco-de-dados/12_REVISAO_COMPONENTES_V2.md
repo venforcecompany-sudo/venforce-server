@@ -202,3 +202,28 @@ Nenhum desses pedidos tem claim. Em produção não há `mp_payments` para prova
 2. antes, validar 2–3 pedidos da conta com mais casos: payment/refund e Billing.
 
 Isso exige autorização de chamadas nessa conta.
+
+## 8. Revisão de publicação (27/11)
+
+| verificação | resultado |
+|---|---|
+| compatibilidade com a `main` atual (`c129922e`) | merge sem conflito; nenhum arquivo em comum com o que a `main` mudou desde a base |
+| suíte sobre o merge (branch + `main`) | unit: as mesmas 4 falhas da `main` pura (basesTiktok, designStudioWorkspace, meliAnunciosOrdenacaoGlobal, mlTokenService). Portal: as mesmas 7 da `main` pura (anuncios-meli ×4, financeiro-v3-shell, vf-admin-nav-restore, vf-ui) + 1 instável nas duas árvores (squads-config-redesign, `Invalid InterceptionId` do Chrome em 1/3 na `main` e 2/3 no merge) |
+| PG local na branch | compactos 14, Ads/Full 13, 5 modos 392, validador de rebate 6, trava do reuso 25, isolamento do reuso 29, Raio-X 23 + 57, retenção 3 + 11 |
+| flags novas, todas desligadas sem variável | `CENTRAL_VENDAS_COMPONENTES_COMPACTOS(_CONTAS)`, `CENTRAL_VENDAS_COMPOSICAO_PROMOCIONAL(_CONTAS)`, `CENTRAL_VENDAS_ADS_JANELA(_CONTAS)`; as do reuso já existiam e continuam desligadas |
+| migration no boot | nenhuma: `index.js`, `schemaEnsure` e `central_vendas_schema.sql` sem diff; a 20261126 é manual (fase C1) |
+| efeito financeiro com flags desligadas | nenhum nos números: motor `deepEqual` e leitores iguais (5 modos). Sempre ligado, só aditivo: índice do `buildPedidos`, seleção de imports sem `payload_json`, `resumo.baseCustos` (1 consulta por run), `composicaoFinanceira` no detalhe e o bloco de Ads/Full (informativo, fora do resultado oficial) |
+
+**Rollback**
+- **Do deploy (flags desligadas):** publicar de novo o commit anterior. Não há mudança de schema, e os dados novos são chaves JSON aditivas (`resumo.baseCustos`) que o código antigo ignora.
+- **Depois de ligar o reuso:** só a flag (rollback R, doc 11).
+- **Depois da 1ª gravação compacta:** só a flag (rollback C). **Nunca** voltar o código para antes desta branch e **nunca** dropar as tabelas.
+- **Ads da janela:** só a flag. Os registros no run ficam inertes.
+
+**GO:** merge e deploy com todas as flags desligadas.
+
+**NO-GO, até nova evidência ou decisão:**
+- ligar reuso ou compacto antes do noturno da carteira voltar e das noites R3/R4;
+- ligar a composição antes da conta complementar (multi-item, quantidade > 1, Full);
+- mudar a fórmula do reembolso parcial antes de provar quem bancou;
+- rodar retenção com o reuso ligado.
