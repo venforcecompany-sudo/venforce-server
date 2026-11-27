@@ -70,6 +70,7 @@ async function filho(url, modo) {
     conta9: await script.contaDoBanco(pool, 9),
     tarifas: Object.fromEntries(await script.tarifasDaCentral(pool, 5, ["500001", "500002", "500003", "999"])),
     sugestao: await script.sugerir(pool, 5, 30),
+    reembolso: Object.fromEntries(await require("../scripts/central-vendas-reembolso-parcial-investigar").composicaoDaCentral(pool, 5, ["500001", "500002"])),
   };
   await pool.end();
   process.stdout.write(`@@R@@${JSON.stringify(out)}\n`);
@@ -100,6 +101,8 @@ async function pai() {
         JSON.stringify(o.tarifas) === JSON.stringify({ 500001: 547, 500002: 1080 }));
       ok(`[${modo}] sugestão classifica item único, multi-item e quantidade > 1`,
         o.sugestao.item_unico_q1.includes("500001") && o.sugestao.multi_item.includes("500002") && o.sugestao.quantidade_maior_que_1.includes("500003"));
+      ok(`[${modo}] reembolso parcial: composição da Central lida do import publicado mais recente da conta`,
+        o.reembolso["500001"].componentesCentavos.tarifa_venda === -547 && o.reembolso["500002"].componentesCentavos.tarifa_venda === -1080 && o.reembolso["500001"].reembolsoCentavos === null);
     }
   } finally {
     await adm.end();
