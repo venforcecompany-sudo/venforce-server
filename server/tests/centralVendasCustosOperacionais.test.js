@@ -12,9 +12,9 @@ const service = require("../services/centralVendas/centralVendasService");
 
 const NOV = { dateFrom: "2026-11-01", dateTo: "2026-11-30" };
 const NOV_PARCIAL = { dateFrom: "2026-11-01", dateTo: "2026-11-15" };
-const adsMes = (o = {}) => ({ escopo: "conta", clienteContaId: 21, cobertura: { tipo: "mes", mes: "2026-11" }, disponivel: true, investimentoAds: 1200, gmvAds: 9600, gmvDireto: 7000, gmvIndireto: 2600, ...o });
+const adsMes = (o = {}) => ({ escopo: "conta", clienteContaId: 21, cobertura: { tipo: "mes", mes: "2026-11" }, disponivel: true, investimentoAds: 1200, gmvAds: 9600, gmvDireto: 7000, gmvIndireto: 2600, consultadoEm: "2026-12-05T10:00:00Z", ...o });
 const fullMes = (o = {}) => ({
-  clienteContaId: 21, mes: "2026-11", disponivel: true, definitivo: true,
+  clienteContaId: 21, mes: "2026-11", disponivel: true, definitivo: true, consultadoEm: "2026-12-12T10:00:00Z",
   componentes: [
     { grupo: "armazenagem", valor: 310.4, lancamentos: 30 },
     { grupo: "armazenamento_prolongado", valor: 12.1, lancamentos: 2 },
@@ -107,7 +107,7 @@ test("Full sem fonte é indisponível mesmo sem venda Full (armazenagem independ
 
 test("dois meses inteiros: soma por mês; falta de um mês torna o período indisponível", () => {
   const per = { dateFrom: "2026-10-01", dateTo: "2026-11-30" };
-  const out = adsMes({ cobertura: { tipo: "mes", mes: "2026-10" }, investimentoAds: 800, gmvAds: 4000 });
+  const out = adsMes({ cobertura: { tipo: "mes", mes: "2026-10" }, investimentoAds: 800, gmvAds: 4000, consultadoEm: "2026-11-05T10:00:00Z" });
   const ok = ops.avaliarAds({ periodo: per, clienteContaId: 21, fontesAds: [out, adsMes()], receitaProdutoCentavos: 100 });
   assert.equal(ok.investimento.centavos, 200000);
   const falta = ops.avaliarAds({ periodo: per, clienteContaId: 21, fontesAds: [adsMes()], receitaProdutoCentavos: 100 });
@@ -177,4 +177,20 @@ test("catálogo: todo item declara sinal, escopo, fonte e onde entra; Ads/Full n
   assert.equal(CATALOGO.find((l) => l.id === "full").entraEm[0], "resultado_operacional");
   assert.equal(CATALOGO.find((l) => l.id === "descontos").sinal, 0, "desconto já está fora da receita: não subtrair de novo");
   assert.equal(CATALOGO.find((l) => l.id === "rebate").sinal, 0, "rebate nunca somado ao resultado");
+});
+
+test("mês inteiro com fonte consultada ANTES do fim do mês: visível, mas incompatível (não cobre o mês)", () => {
+  const r = ops.resultadoOperacional({ periodo: NOV, clienteContaId: 21, resultadoVendaCentavos: 2500000, receitaProdutoCentavos: 10000000,
+    fontesAds: [adsMes({ consultadoEm: "2026-11-26T06:00:00Z" })], fontesFull: [fullMes({ consultadoEm: "2026-11-26T06:00:00Z", definitivo: false })] });
+  assert.equal(r.ads.compativel, false);
+  assert.equal(r.ads.motivoIncompativel, "fonte_consultada_antes_do_fim_do_mes");
+  assert.equal(r.ads.investimento.centavos, 120000);
+  assert.equal(r.full.compativel, false);
+  assert.equal(r.full.motivoIncompativel, "fonte_consultada_antes_do_fim_do_mes");
+  assert.equal(r.resultadoAposAds.centavos, null);
+  assert.equal(r.resultadoOperacional.centavos, null);
+  // fronteira: 00:00 de Brasília do dia 1 (03:00 UTC)
+  assert.equal(ops.cobreOMesInteiro("2026-12-01T02:59:59Z", "2026-11"), false);
+  assert.equal(ops.cobreOMesInteiro("2026-12-01T03:00:00Z", "2026-11"), true);
+  assert.equal(ops.cobreOMesInteiro(null, "2026-11"), false, "sem data de consulta não está provado");
 });

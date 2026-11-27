@@ -54,6 +54,17 @@ function cobreMesesInteiros(dateFrom, dateTo) {
   return dateFrom === `${primeiro}-01` && dateTo === `${ultimo}-${String(ultimoDia(ultimo)).padStart(2, "0")}`;
 }
 
+// Uma fonte MENSAL só cobre o mês inteiro se foi consultada depois do fim
+// dele (00:00 de Brasília do dia 1 seguinte = 03:00 UTC). Consultada antes ⇒
+// só cobre até aquele instante: abatê-la de uma margem do mês inteiro mistura
+// janelas (ex.: Ads de novembro consultado no dia 26). Sem data ⇒ não provado.
+function cobreOMesInteiro(consultadoEm, mes) {
+  const t = consultadoEm ? new Date(consultadoEm).getTime() : NaN;
+  if (!Number.isFinite(t)) return false;
+  const [a, m] = mes.split("-").map(Number);
+  return t >= Date.UTC(a, m, 1, 3, 0, 0);
+}
+
 function metrica(numerador, denominador, { escala = 1, nomeNum, nomeDen }) {
   const ok = numerador !== null && denominador !== null && denominador > 0;
   return {
@@ -83,6 +94,10 @@ function avaliarAds({ periodo, clienteContaId, fontesAds = [], receitaProdutoCen
     usadas = meses.map((mes) => doEscopo.find((f) => f.cobertura?.tipo === "mes" && f.cobertura.mes === mes) || { faltando: true, mes });
     compativel = cobreMesesInteiros(periodo.dateFrom, periodo.dateTo);
     if (!compativel) motivoIncompativel = "periodo_parcial_com_fonte_mensal";
+    else if (usadas.some((u) => !u.faltando && u.disponivel !== false && !cobreOMesInteiro(u.consultadoEm, u.cobertura?.mes || u.mes))) {
+      compativel = false;
+      motivoIncompativel = "fonte_consultada_antes_do_fim_do_mes";
+    }
   }
   const faltando = usadas.filter((u) => u.faltando || u.disponivel === false);
   const base = {
@@ -133,9 +148,14 @@ function avaliarAds({ periodo, clienteContaId, fontesAds = [], receitaProdutoCen
 // fontesFull: lista de { clienteContaId, mes, disponivel, codigo?, componentes:[{grupo, valor, lancamentos}], definitivo, consultadoEm }
 function avaliarFull({ periodo, clienteContaId, fontesFull = [] }) {
   const meses = mesesDoPeriodo(periodo.dateFrom, periodo.dateTo);
-  const compativel = cobreMesesInteiros(periodo.dateFrom, periodo.dateTo);
   const doEscopo = fontesFull.filter((f) => f && Number(f.clienteContaId) === Number(clienteContaId));
   const porMes = meses.map((mes) => doEscopo.find((f) => f.mes === mes) || { mes, faltando: true });
+  let compativel = cobreMesesInteiros(periodo.dateFrom, periodo.dateTo);
+  let motivoIncompativel = compativel ? null : "periodo_parcial_com_fonte_mensal";
+  if (compativel && porMes.some((f) => !f.faltando && f.disponivel !== false && !cobreOMesInteiro(f.consultadoEm, f.mes))) {
+    compativel = false;
+    motivoIncompativel = "fonte_consultada_antes_do_fim_do_mes";
+  }
   const faltando = porMes.filter((f) => f.faltando || f.disponivel === false);
   const limitacoes = [
     "estornos_nao_abatidos: só lançamentos CHARGE entram; um estorno (BONUS) de armazenagem não é descontado",
@@ -144,7 +164,7 @@ function avaliarFull({ periodo, clienteContaId, fontesFull = [] }) {
   ];
   const base = {
     compativel,
-    motivoIncompativel: compativel ? null : "periodo_parcial_com_fonte_mensal",
+    motivoIncompativel,
     subtiposExcluidos: SUBTIPOS_FRETE_FULL_EXCLUIDOS,
     limitacoes,
     cobertura: porMes.map((f) => (f.faltando ? { mes: f.mes, estado: "sem_fonte" } : { mes: f.mes, estado: f.disponivel === false ? "indisponivel" : (f.definitivo ? "consolidado" : "observado_faturas_abertas"), codigo: f.codigo || null, consultadoEm: f.consultadoEm ?? null })),
@@ -231,6 +251,7 @@ module.exports = {
   SUBTIPOS_FRETE_FULL_EXCLUIDOS,
   mesesDoPeriodo,
   cobreMesesInteiros,
+  cobreOMesInteiro,
   avaliarAds,
   avaliarFull,
   resultadoOperacional,

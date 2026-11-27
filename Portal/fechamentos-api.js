@@ -1245,6 +1245,7 @@ const CUSTOS_OP_MOTIVO = {
   NO_TOKEN: 'conta sem token do Mercado Livre', NO_ADS_PERMISSION: 'sem permissão no Mercado Ads',
   NO_ADVERTISER_FOUND: 'conta sem anunciante no Mercado Ads', ML_ADS_API_ERROR: 'Mercado Ads indisponível na última consulta',
   periodo_parcial_com_fonte_mensal: 'a fonte é mensal e o período selecionado não é um mês inteiro',
+  fonte_consultada_antes_do_fim_do_mes: 'a fonte foi consultada antes do fim do mês e não cobre o mês inteiro (consulte de novo no Financeiro depois do fechamento)',
   conta_nao_resolvida: 'escolha uma conta para ver Ads e Full', marketplace_sem_fonte: 'sem fonte de Ads e Full para este marketplace',
   erro_leitura_custos: 'não foi possível ler os custos do Financeiro agora',
 };

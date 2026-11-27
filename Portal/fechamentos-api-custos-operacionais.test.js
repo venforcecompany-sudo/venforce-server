@@ -26,7 +26,7 @@ const { buildCustosOperacionaisBloco, applyReadResponse, F } = sb.__T__;
 let checks = 0;
 const ok = (l, c) => { assert.ok(c, `FALHOU: ${l}`); checks += 1; console.log(`  ✓ ${l}`); };
 const adsMes = (mes, inv, gmv, consultadoEm) => ops.fonteAdsDoCacheFinanceiro({ disponivel: true, investimentoAds: inv, gmvAds: gmv, consultadoEm }, { clienteContaId: 21, mes });
-const fullMes = { clienteContaId: 21, mes: "2026-10", disponivel: true, definitivo: true, componentes: [{ grupo: "armazenagem", valor: 612.4, lancamentos: 31 }, { grupo: "coleta", valor: 95, lancamentos: 1 }] };
+const fullMes = { clienteContaId: 21, mes: "2026-10", disponivel: true, definitivo: true, consultadoEm: "2026-11-12T10:00:00Z", componentes: [{ grupo: "armazenagem", valor: 612.4, lancamentos: 31 }, { grupo: "coleta", valor: 95, lancamentos: 1 }] };
 const json = (x) => JSON.parse(JSON.stringify({ disponivel: true, ...x }));
 
 {
@@ -54,5 +54,11 @@ const json = (x) => JSON.parse(JSON.stringify({ disponivel: true, ...x }));
   applyReadResponse({ ok: true, summary: {}, rows: [], custosOperacionais: { disponivel: false, motivo: "x" } });
   applyReadResponse({ ok: true, summary: {}, rows: [] });
   ok("um /read de paginação não apaga os custos vindos do bootstrap", F.custosOperacionais && F.custosOperacionais.motivo === "x");
+}
+{
+  const co = json(ops.resultadoOperacional({ periodo: { dateFrom: "2026-11-01", dateTo: "2026-11-30" }, clienteContaId: 21, resultadoVendaCentavos: 400000, receitaProdutoCentavos: 2000000,
+    fontesAds: [adsMes("2026-11", 1760, 11500, "2026-11-26T06:00:00Z")], fontesFull: [] }));
+  const h = buildCustosOperacionaisBloco(co);
+  ok("mês ainda aberto: Ads consultado antes do fim do mês não é abatido e o motivo é dito", h.includes("consultada antes do fim do mês") && h.includes("Fora do período") && h.includes("Não calculável"));
 }
 console.log(`\nfechamentos-api-custos-operacionais.test.js: ${checks} verificações OK`);
