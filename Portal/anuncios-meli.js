@@ -6381,6 +6381,10 @@
 
     var scroll = box.querySelector(".am-reb-corpo");
     var scrollTop = scroll ? scroll.scrollTop : 0;
+    // A lista de estoques da confirmação rola sozinha; sem guardar a posição,
+    // clicar num preset de um MLB devolvia a lista ao topo.
+    var listaEst = box.querySelector(".am-reb-estoques__lista");
+    var listaTop = listaEst ? listaEst.scrollTop : 0;
     var chaveRender = p + ":" + (p === "previa" ? reb.aba : "");
     var abas = p === "previa";
 
@@ -6397,6 +6401,8 @@
     var novoScroll = box.querySelector(".am-reb-corpo");
     if (novoScroll && chaveRender === reb.ultimoPassoRender) novoScroll.scrollTop = scrollTop;
     reb.ultimoPassoRender = chaveRender;
+    var novaListaEst = box.querySelector(".am-reb-estoques__lista");
+    if (novaListaEst && listaTop) novaListaEst.scrollTop = listaTop;
     if (focoId) {
       var n = document.getElementById(focoId);
       if (n && reb.overlay.contains(n)) n.focus();
