@@ -50,3 +50,18 @@ test("sem custo nas duas: não conta como afetado", () => {
   assert.equal(r.itens[0].situacao, "ambos_sem_custo");
   assert.equal(r.resumo.itensAfetados, 0);
 });
+
+test("script: itens gravados na Central viram itens de pedido e passam pelo comparador", () => {
+  const { pedidosDosItens } = require("../scripts/central-vendas-custo-variacao-comparar");
+  const linhas = [
+    { pedido_id: "9", mlb: "MLB2", sku: null, quantidade: "2", variacao_id: "222" },
+    { pedido_id: "9", mlb: "MLB1", sku: "X", quantidade: "1", variacao_id: null },
+    { pedido_id: "10", mlb: "MLB2", sku: null, quantidade: "1", variacao_id: null },
+  ];
+  const pedidos = pedidosDosItens(linhas);
+  assert.equal(pedidos.length, 2);
+  assert.deepEqual(pedidos[0].order_items[0], { item: { id: "MLB2", variation_id: "222", seller_sku: null }, quantity: 2 });
+  const r = compararResolucaoCusto({ custosRows: [row("MLB2", 30, { model: "111" }), row("MLB2", 45, { model: "222" }), row("MLB1", 10)], orders: pedidos });
+  assert.deepEqual(r.itens.map((i) => i.situacao), ["diferente", "igual", "central_escolheu_custo_ambiguo"]);
+  assert.equal(r.resumo.deltaCmvCentavos, 3000);
+});
