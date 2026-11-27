@@ -195,13 +195,14 @@ const TELAS_ADMIN_RESTAURADAS = [
 const IDS_QUE_NAO_DEVEM_EXISTIR = [
   "dashboard", "design-templates", "clickup-executivo", "estudio-templates",
   "cliente-360", "cliente-360-v2", "cliente-360-v3", "cliente-operacao", "sentinel", "margem", "guia",
-  // 27/11/2026 — fora da sidebar para todos os perfis, inclusive admin.
+  // 27/11/2026 — fora da sidebar dos perfis não admin (admin: dropdown Administração).
   "diagnosticos", "promocoes-ml", "resgate",
 ];
 // Hotfix admin-nav-restore-vendas: o ROLE global admin recupera Cliente 360 V3, Sentinel,
 // Central de Vendas e Margem na sidebar (provado em vf-admin-nav-restore-ui.test.js). Para o
 // admin, portanto, esses três ids deixam de ser "proibidos"; para os demais perfis a lista acima segue valendo.
-const IDS_RESTAURADOS_PARA_ADMIN = new Set(["cliente-360-v3", "sentinel"]);
+// 27/11/2026: Margem, Diagnósticos, Promoções ML e Resgate também ficam no dropdown Administração.
+const IDS_RESTAURADOS_PARA_ADMIN = new Set(["cliente-360-v3", "sentinel", "margem", "diagnosticos", "promocoes-ml", "resgate"]);
 
 async function run() {
   const server = await startServer();

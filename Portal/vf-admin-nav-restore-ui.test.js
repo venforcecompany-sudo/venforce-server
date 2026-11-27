@@ -8,7 +8,8 @@
  * (venforce-server.onrender.com) com respostas falsas — nada sai para a rede.
  *
  * Prova:
- *  1. admin vê o menu novo + os 4 itens, cada um UMA vez, com a rota certa;
+ *  1. admin vê o mesmo menu dos demais perfis e os itens operacionais no topo do
+ *     dropdown Administração (27/11/2026), cada um UMA vez, com a rota certa;
  *  2. user / membro / interno / gestor / coordenador veem EXATAMENTE o menu atual
  *     (nenhum dos 4);
  *  3. sem contexto os itens de módulo ficam inertes (aria-disabled), com contexto
@@ -34,15 +35,18 @@ const PROD_HOST = "venforce-server.onrender.com";
 // Menu atual (sidebar) dos perfis NÃO admin — baseline lida da main (61344c17).
 // 27/11/2026: Diagnósticos, Promoções ML e Resgate saíram da sidebar (abrem por URL);
 // Ferramentas foi para o grupo Execução.
-const MENU_NAO_ADMIN = ["visao", "painel-contas", "financeiro", "ads", "anuncios", "central-full", "curva-abc", "automacoes", "ferramentas", "pessoas", "clientes-contas", "relatorios", "bases"];
-// Os 4 itens restaurados SÓ para admin, com a rota esperada.
+// Central de Vendas voltou para todos os perfis no grupo Performance.
+const MENU_NAO_ADMIN = ["visao", "painel-contas", "central-vendas", "financeiro", "ads", "anuncios", "central-full", "curva-abc", "automacoes", "ferramentas", "pessoas", "clientes-contas", "relatorios", "bases"];
+// Itens SÓ do admin, no topo do dropdown Administração (27/11/2026), com a rota esperada.
 const ITENS_ADMIN = [
   { id: "cliente-360-v3", rota: "cliente-360-v3.html" },
   { id: "sentinel", rota: "sentinel.html" },
-  { id: "central-vendas", rota: "fechamentos-api.html" },
+  { id: "margem", rota: "central-margem.html" },
+  { id: "diagnosticos", rota: "diagnostico-inicial.html" },
+  { id: "promocoes-ml", rota: "promocoes-retorno.html" },
+  { id: "resgate", rota: "resgate.html" },
 ];
-// Margem também saiu da sidebar do admin (27/11/2026) — segue abrindo por URL.
-const IDS_FORA_DA_SIDEBAR = ["margem", "diagnosticos", "promocoes-ml", "resgate"];
+const ROTA = Object.fromEntries([...ITENS_ADMIN, { id: "central-vendas", rota: "fechamentos-api.html" }].map((x) => [x.id, x.rota]));
 const PAPEIS_NAO_ADMIN = ["user", "membro", "interno", "gestor", "coordenador"];
 
 const g = (id, status) => ({ id, ml_user_id: String(1000 + id), token_status: status || "valid", is_primary: true });
@@ -165,11 +169,12 @@ async function run() {
     // ═══ 1. admin: menu novo + os 4 itens, uma vez cada, rota correta ═══
     await abrirComo("admin", "painel-contas.html");
     await sleep(300);
-    await check("admin: o menu novo continua inteiro e os 4 itens operacionais aparecem", async () => {
-      const ids = await idsMenu();
-      for (const id of MENU_NAO_ADMIN) assert.ok(ids.includes(id), `item do menu novo ausente para admin: ${id}`);
-      for (const it of ITENS_ADMIN) assert.ok(ids.includes(it.id), `item restaurado ausente para admin: ${it.id}`);
-      assert.strictEqual(ids.length, MENU_NAO_ADMIN.length + ITENS_ADMIN.length, `itens inesperados no menu admin: ${JSON.stringify(ids)}`);
+    // 27/11/2026: os itens só de admin saíram dos grupos e ficam no dropdown Administração.
+    await check("admin: grupos iguais aos dos demais perfis e os itens operacionais dentro de Administração", async () => {
+      assert.deepStrictEqual(await idsMenu(), MENU_NAO_ADMIN, "grupos do admin deveriam ser os mesmos dos demais perfis");
+      const noDropdown = await cdp.evaluate(`Array.from(document.querySelectorAll(".vf-shell__admin .vf-shell__item[data-module]")).map(function(a){return a.dataset.module;})`);
+      for (const it of ITENS_ADMIN) assert.ok(noDropdown.includes(it.id), `${it.id} ausente do dropdown Administração`);
+      assert.deepStrictEqual(noDropdown.slice(0, ITENS_ADMIN.length), ITENS_ADMIN.map((x) => x.id), "itens operacionais deveriam abrir o dropdown");
     });
     await check("admin: nenhum item duplicado na sidebar", async () => {
       const ids = await idsMenu();
@@ -190,7 +195,7 @@ async function run() {
     for (const p of PAPEIS_NAO_ADMIN) {
       await abrirComo(p, "painel-contas.html");
       await sleep(250);
-      await check(`${p}: menu idêntico ao atual, sem nenhum dos 4 itens`, async () => {
+      await check(`${p}: menu idêntico ao atual, sem nenhum item só de admin`, async () => {
         const ids = await idsMenu();
         assert.deepStrictEqual(ids, MENU_NAO_ADMIN, `menu de ${p} mudou: ${JSON.stringify(ids)}`);
         for (const it of ITENS_ADMIN) assert.ok(!ids.includes(it.id), `${it.id} apareceu para ${p}`);
@@ -207,7 +212,7 @@ async function run() {
         const info = await cdp.evaluate(`(function(){var a=document.querySelector('.vf-shell__nav .vf-shell__item[data-module="${id}"]');return a?{href:a.getAttribute('href')||'',dis:a.getAttribute('aria-disabled')==='true'||a.classList.contains('is-disabled')}:null;})()`);
         assert.ok(info, `${id} ausente`);
         assert.strictEqual(info.dis, false, `${id} deveria estar habilitado com contexto`);
-        assert.strictEqual(info.href.split("?")[0], ITENS_ADMIN.find((x) => x.id === id).rota, `${id}: rota errada em "${info.href}"`);
+        assert.strictEqual(info.href.split("?")[0], ROTA[id], `${id}: rota errada em "${info.href}"`);
         assert.ok(/[?&]cliente=n97\b/.test(info.href) && /[?&]conta=42\b/.test(info.href), `${id}: contrato cliente/conta ausente em "${info.href}"`);
       }
     });
@@ -218,7 +223,7 @@ async function run() {
       const disponivel = (id) => cdp.evaluate(`Boolean(document.querySelector('.vf-shell__nav .vf-shell__item[data-module="${id}"]:not(.is-disabled):not([aria-disabled="true"])')) && !document.querySelector('.vf-shell__unavailable .vf-shell__item[data-module="${id}"]')`);
       assert.strictEqual(await disponivel("central-vendas"), true, "Central de Vendas deveria estar disponível");
       assert.strictEqual(await disponivel("cliente-360-v3"), true, "Cliente 360 V3 deveria estar disponível");
-      for (const id of IDS_FORA_DA_SIDEBAR) assert.strictEqual(await cdp.evaluate(`Boolean(document.querySelector('.vf-shell__item[data-module="${id}"]'))`), false, `${id} não deveria estar na sidebar`);
+      assert.strictEqual(await cdp.evaluate(`Boolean(document.querySelector('.vf-shell__admin .vf-shell__item.is-disabled[data-module="margem"]'))`), true, "Margem deveria ficar indisponível na Shopee");
     });
 
     // ═══ 4. admin ABRE as 4 telas por clique real ═══
@@ -248,7 +253,7 @@ async function run() {
       });
     }
 
-    // ═══ 5. Central de Vendas por URL: admin fica; não-admin vai ao Financeiro com a mesma query ═══
+    // ═══ 5. Central de Vendas por URL: todos os perfis ficam nela (27/11/2026) ═══
     await abrirComo("admin", "fechamentos-api.html?cliente=n97&conta=42&periodo=2026-09");
     await sleep(500);
     await check("admin: fechamentos-api.html por URL permanece na Central de Vendas (sem redirecionar ao Financeiro)", async () => {
@@ -257,11 +262,11 @@ async function run() {
       assert.ok(await cdp.evaluate("Boolean(document.querySelector('.vf-shell__nav'))"));
     });
     for (const p of ["user", "membro", "interno", "gestor", "coordenador"]) {
-      await abrirComo(p, "fechamentos-api.html?cliente=n97&conta=42&periodo=2026-09", { semShell: true });
-      await waitFor(cdp, "location.pathname.indexOf('financeiro-v3.html') >= 0", `${p} não foi levado ao Financeiro`);
-      await check(`${p}: fechamentos-api.html segue para o Financeiro preservando cliente/conta/período`, async () => {
-        const loc = await cdp.evaluate("location.search");
-        assert.ok(/cliente=n97/.test(loc) && /conta=42/.test(loc) && /periodo=2026-09/.test(loc), `query perdida: ${loc}`);
+      await abrirComo(p, "fechamentos-api.html?cliente=n97&conta=42&periodo=2026-09");
+      await sleep(500);
+      await check(`${p}: fechamentos-api.html por URL abre a Central de Vendas (sem redirecionar ao Financeiro)`, async () => {
+        const loc = await cdp.evaluate("location.pathname + location.search");
+        assert.ok(loc.startsWith("/fechamentos-api.html"), `redirecionado para ${loc}`);
       });
     }
 

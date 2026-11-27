@@ -4,16 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Venforce — Central de Vendas</title>
-  <!-- Acesso restrito ao ROLE global admin (hotfix de navegação): os demais perfis
-       seguem sendo levados ao Financeiro, com a mesma query/hash, como no stub anterior.
-       É só UX de navegação — a autorização real continua sendo da API (403). -->
-  <script>
-    (function () {
-      var role = "";
-      try { role = String((JSON.parse(localStorage.getItem("vf-user") || "{}") || {}).role || "").toLowerCase(); } catch (e) { role = ""; }
-      if (role !== "admin") location.replace("financeiro-v3.html" + location.search + location.hash);
-    })();
-  </script>
+  <!-- 27/11/2026: aberta para todos os perfis (antes só admin, demais iam ao Financeiro).
+       A autorização continua sendo da API: ler exige requireAutomacoesAccess; sincronizar, admin. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Fundação Global V2: Hanken Grotesk (corpo) · Manrope (display) · IBM Plex Mono (códigos) -->
