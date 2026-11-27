@@ -179,8 +179,8 @@ async function check(name, fn) {
 // implementação.
 // GLOBAIS: sempre habilitadas, independente de cliente/operação selecionados
 // (nenhuma delas exige contexto — cada uma tem seletor próprio na página).
+// Promoções ML saiu da sidebar em 27/11/2026 (pedido da operação) — abre por URL.
 const TELAS_RESTAURADAS = [
-  { modulo: "promocoes-ml", rotaEsperada: "promocoes-retorno.html" },
   { modulo: "curva-abc", rotaEsperada: "fechamento.html" },
 ];
 const TELAS_ADMIN_RESTAURADAS = [
@@ -195,11 +195,13 @@ const TELAS_ADMIN_RESTAURADAS = [
 const IDS_QUE_NAO_DEVEM_EXISTIR = [
   "dashboard", "design-templates", "clickup-executivo", "estudio-templates",
   "cliente-360", "cliente-360-v2", "cliente-360-v3", "cliente-operacao", "sentinel", "margem", "guia",
+  // 27/11/2026 — fora da sidebar para todos os perfis, inclusive admin.
+  "diagnosticos", "promocoes-ml", "resgate",
 ];
 // Hotfix admin-nav-restore-vendas: o ROLE global admin recupera Cliente 360 V3, Sentinel,
 // Central de Vendas e Margem na sidebar (provado em vf-admin-nav-restore-ui.test.js). Para o
 // admin, portanto, esses três ids deixam de ser "proibidos"; para os demais perfis a lista acima segue valendo.
-const IDS_RESTAURADOS_PARA_ADMIN = new Set(["cliente-360-v3", "sentinel", "margem"]);
+const IDS_RESTAURADOS_PARA_ADMIN = new Set(["cliente-360-v3", "sentinel"]);
 
 async function run() {
   const server = await startServer();

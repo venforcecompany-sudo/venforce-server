@@ -162,54 +162,83 @@ function requerContexto(id) {
   return IDS_MODULOS.has(id);
 }
 
-// Ícones dos artboards aprovados — mesma família em todos (viewBox 24,
-// stroke 2.2, cantos arredondados). Só decorativo: ausência de entrada aqui
-// não desabilita nem esconde nenhum item (itemNav() cai para o texto puro).
+// Ícones da sidebar — família única (viewBox 24, stroke 2, cantos
+// arredondados, sempre em currentColor = cor neutra do tema). Os itens do
+// Mercado Livre seguem a linguagem visual do próprio ML (raio do Full, tag de
+// anúncio, megafone do Mercado Ads), mas sem o verde/amarelo da marca: a
+// sidebar continua neutra e só o item ativo ganha o roxo do produto.
+// Só decorativo: item sem entrada aqui cai para a sigla (itemNav()).
+const ICON_PESSOAS = '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>';
+const ICON_TAG = '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"></path>';
+const ICON_PULSO = '<path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>';
 const ICONS = {
-  visao: '<path d="M3 3v18h18"></path><path d="M7 15l4-4 3 3 6-6"></path>',
-  "painel-contas": '<rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="9" x2="9" y2="21"></line>',
-  "cliente-360-v2": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
-  // Mesmo ícone das outras superfícies de Cliente 360 (v2, Operação, V1) —
-  // é a mesma família de tela, não um módulo novo.
-  "cliente-360-v3": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
-  "cliente-operacao": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
-  "cliente-360": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
-  "central-vendas": '<circle cx="9" cy="21" r="1"></circle><circle cx="19" cy="21" r="1"></circle><path d="M2.5 3h2l2.4 12.4a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.6L21 8H6"></path>',
-  financeiro: '<path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-8"></path><path d="M3 20h18"></path>',
-  margem: '<line x1="18" y1="6" x2="6" y2="18"></line><circle cx="7.5" cy="7.5" r="2"></circle><circle cx="16.5" cy="16.5" r="2"></circle>',
-  ads: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline>',
-  anuncios: '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>',
-  "central-full": '<path d="M21 8l-9-5-9 5 9 5 9-5z"></path><path d="M3 8v8l9 5 9-5V8"></path><path d="M12 13v8"></path>',
-  "curva-abc": '<rect x="3" y="4" width="4" height="16"></rect><rect x="10" y="9" width="4" height="11"></rect><rect x="17" y="13" width="4" height="7"></rect>',
-  automacoes: '<polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path>',
-  diagnosticos: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>',
-  "promocoes-ml": '<path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.57 3H4a1 1 0 0 0-1 1v5.57a2 2 0 0 0 .83 1.42l9.59 9.59a2 2 0 0 0 2.83 0l4.34-4.34a2 2 0 0 0 0-2.83z"></path><circle cx="7.5" cy="7.5" r="1.5"></circle>',
-  pessoas: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
-  "clientes-contas": '<rect x="4" y="3" width="14" height="18" rx="2"></rect><circle cx="11" cy="9" r="2.4"></circle><path d="M7.5 17c0-2 1.6-3.4 3.5-3.4s3.5 1.4 3.5 3.4"></path><line x1="18" y1="7" x2="21" y2="7"></line><line x1="18" y1="12" x2="21" y2="12"></line>',
-  relatorios: '<line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line>',
+  // Início — casa (antes era um gráfico, confundia com Financeiro/Relatórios)
+  visao: '<path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"></path>',
+  // Painel de Contas — quadro de cartões
+  "painel-contas": '<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>',
+  "cliente-360-v2": ICON_PESSOAS,
+  "cliente-360-v3": '<circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>',
+  "cliente-operacao": ICON_PESSOAS,
+  "cliente-360": ICON_PESSOAS,
+  // Central de Vendas — sacola (Vendas no painel do ML)
+  "central-vendas": '<path d="M6 7h12l1 14H5L6 7z"></path><path d="M9 10V6a3 3 0 0 1 6 0v4"></path>',
+  // Financeiro — carteira
+  financeiro: '<path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"></path><path d="M3 7h16a2 2 0 0 1 2 2v3h-5a2 2 0 0 0 0 4h5"></path>',
+  margem: '<line x1="19" y1="5" x2="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle>',
+  // Ads — megafone (Mercado Ads)
+  ads: '<path d="M3 11v2a1 1 0 0 0 1 1h3l6 4V6L7 10H4a1 1 0 0 0-1 1z"></path><path d="M17 8.5a5 5 0 0 1 0 7"></path><path d="M19.5 6a8.5 8.5 0 0 1 0 12"></path>',
+  // Anúncios — etiqueta (Anúncios do ML)
+  anuncios: ICON_TAG + '<circle cx="8" cy="8" r="1.6"></circle>',
+  // Central Full — o raio do Mercado Livre Full
+  "central-full": '<path d="M13.5 2 5 13.2h6.2L9.8 22 19 10.3h-6.3L13.5 2z"></path>',
+  // Curva ABC — barras em ordem decrescente
+  "curva-abc": '<path d="M3 21h18"></path><rect x="4" y="5" width="4" height="16" rx="1"></rect><rect x="10" y="10" width="4" height="11" rx="1"></rect><rect x="16" y="15" width="4" height="6" rx="1"></rect>',
+  // Automações — fluxo (gatilho → ação)
+  automacoes: '<rect x="3" y="3" width="6" height="6" rx="1.5"></rect><rect x="15" y="15" width="6" height="6" rx="1.5"></rect><path d="M6 9v3a3 3 0 0 0 3 3h6"></path><path d="m12 12 3 3-3 3"></path>',
+  diagnosticos: ICON_PULSO,
+  "promocoes-ml": ICON_TAG + '<path d="m8 14 6-6"></path>',
+  resgate: '<circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4"></circle><path d="m5.6 5.6 3.6 3.6"></path><path d="m14.8 14.8 3.6 3.6"></path><path d="m14.8 9.2 3.6-3.6"></path><path d="m5.6 18.4 3.6-3.6"></path>',
+  pessoas: ICON_PESSOAS,
+  // Clientes e Contas — maleta
+  "clientes-contas": '<rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M3 13h18"></path>',
+  // Relatórios — documento com linhas
+  relatorios: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path><path d="M8 13h8"></path><path d="M8 17h5"></path>',
   sentinel: '<path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"></path><path d="M9 12l2 2 4-4"></path>',
-  bases: '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>',
-  ferramentas: '<path d="M14.7 6.3a4 4 0 1 0-5.4 5.4L2 19l3 3 7.3-7.3a4 4 0 0 0 5.4-5.4z"></path>',
-  guia: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>',
-  "ml-tokens": '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',
-  "criar-anuncios-meli": '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>',
-  squads: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
-  atividade: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>',
-  "control-center": '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>',
-  callbacks: '<polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path>',
-  debug: '<polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>',
-  lab: '<polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline>',
+  bases: '<ellipse cx="12" cy="5" rx="8" ry="3"></ellipse><path d="M20 12c0 1.66-3.6 3-8 3s-8-1.34-8-3"></path><path d="M4 5v14c0 1.66 3.6 3 8 3s8-1.34 8-3V5"></path>',
+  ferramentas: '<path d="M14.7 6.3a4 4 0 1 0-5.4 5.4L2 19l3 3 7.3-7.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"></path>',
+  guia: '<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path>',
+  "clientes-unificacao": '<circle cx="7" cy="7" r="3"></circle><circle cx="17" cy="7" r="3"></circle><path d="M7 10v2a5 5 0 0 0 10 0v-2"></path><path d="M12 17v4"></path>',
+  "ml-tokens": '<circle cx="8" cy="15" r="4"></circle><path d="m10.8 12.2 8.7-8.7"></path><path d="m17 6 3 3"></path><path d="m14.5 8.5 2 2"></path>',
+  "criar-anuncios-meli": ICON_TAG + '<path d="M9 9h6"></path><path d="M12 6v6"></path>',
+  squads: ICON_PESSOAS,
+  atividade: ICON_PULSO,
+  "control-center": '<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="m7 9 3 3-3 3"></path><path d="M13 15h4"></path>',
+  callbacks: '<path d="M17 2l4 4-4 4"></path><path d="M3 11V9a3 3 0 0 1 3-3h15"></path><path d="M7 22l-4-4 4-4"></path><path d="M21 13v2a3 3 0 0 1-3 3H3"></path>',
+  debug: '<rect x="7" y="7" width="10" height="13" rx="5"></rect><path d="M12 11v9"></path><path d="M3 13h4"></path><path d="M17 13h4"></path><path d="M9 4l1.5 3"></path><path d="M15 4l-1.5 3"></path>',
+  lab: '<path d="M9 3h6"></path><path d="M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2h12.4a1.5 1.5 0 0 0 1.3-2L14 9V3"></path><path d="M7 15h10"></path>',
 };
+
+// Ícones da moldura da sidebar (não são itens de navegação).
+const UI_ICONS = {
+  recolher: '<rect x="3" y="3" width="18" height="18" rx="3"></rect><path d="M9 3v18"></path><path d="m16 15-3-3 3-3"></path>',
+  admin: '<path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"></path><circle cx="12" cy="11" r="2.5"></circle>',
+  chevron: '<path d="m6 9 6 6 6-6"></path>',
+  sair: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5"></path><path d="M21 12H9"></path>',
+};
+function svgIcone(paths, cls, tam = 18) {
+  return '<svg class="' + cls + '" width="' + tam + '" height="' + tam + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + "</svg>";
+}
 
 // Fora da sidebar para todos os perfis, mas ainda registradas em MODULOS/GLOBAIS
 // (rota, gating e destaque continuam valendo) — acessíveis só por URL direta:
 // Cliente 360 V1/V2/V3, Cliente Operação, Sentinel, Margem e Guia do Vendedor.
+// Também fora (pedido da operação, 27/11/2026): Margem, Promoções ML, Resgate e
+// Diagnósticos — continuam registradas e abrem por URL direta.
 export const GRUPOS_NAV = [
   { titulo: "Operação", ids: ["visao", "painel-contas"] },
   { titulo: "Performance", ids: ["financeiro", "ads", "anuncios", "central-full", "curva-abc"] },
-  { titulo: "Execução", ids: ["automacoes", "diagnosticos", "promocoes-ml", "resgate"] },
+  { titulo: "Execução", ids: ["automacoes", "ferramentas"] },
   { titulo: "Gestão", ids: ["pessoas", "clientes-contas", "relatorios", "bases"] },
-  { titulo: "Ferramentas", ids: ["ferramentas"] },
 ];
 
 // Navegação do ROLE global `admin`: o menu novo (GRUPOS_NAV) MAIS as ferramentas operacionais
@@ -219,7 +248,7 @@ export const GRUPOS_NAV = [
 // continuam com GRUPOS_NAV exatamente como está. Não é mecanismo de segurança: a API autoriza.
 export const GRUPOS_NAV_ADMIN = [
   { titulo: "Operação", ids: ["visao", "painel-contas", "sentinel", "cliente-360-v3"] },
-  { titulo: "Performance", ids: ["central-vendas", "financeiro", "margem", "ads", "anuncios", "central-full", "curva-abc"] },
+  { titulo: "Performance", ids: ["central-vendas", "financeiro", "ads", "anuncios", "central-full", "curva-abc"] },
   ...GRUPOS_NAV.slice(2),
 ];
 export function gruposNavPara(role) {
@@ -500,6 +529,79 @@ export function createVfShell(options = {}) {
     return mq("(min-width: 861px) and (max-width: 1200px)");
   }
 
+  /* ── Recolher/expandir ───────────────────────────────────────────────────
+     A largura da coluna anima (grid-template-columns em .vf-shell) só no
+     clique do botão — `is-sidebar-animating` liga a transição por ~meio
+     segundo. Carregar a página já recolhida não anima nada. */
+  let transicao = null; // "expanding" | "collapsing" | null
+  let timerTransicao = null;
+  let adminAberto = false;
+
+  function alternarColapso(valor) {
+    if (valor === colapsada) return;
+    colapsada = valor;
+    try {
+      storage && storage.setItem(COLLAPSE_KEY, colapsada ? "1" : "0");
+    } catch {
+      /* preferência de UI — segue sem persistir */
+    }
+    transicao = colapsada ? "collapsing" : "expanding";
+    if (dom.root && dom.root.classList) dom.root.classList.add("is-sidebar-animating");
+    clearTimeout(timerTransicao);
+    timerTransicao = setTimeout(() => {
+      transicao = null;
+      if (dom.root && dom.root.classList) dom.root.classList.remove("is-sidebar-animating");
+      if (host) host.classList.remove("is-collapsing", "is-expanding");
+    }, 650);
+    render(ctxStore.getSnapshot());
+  }
+
+  // Rail = só ícones: recolhida pelo usuário (≥861px) ou forçada pela faixa
+  // 861–1200. Abaixo de 860 a sidebar vira faixa horizontal com rótulos.
+  function emRail() {
+    return railEstreito() || (colapsada && !mq("(max-width: 860px)"));
+  }
+
+  /* Dica flutuante do rail — um nó só, em <body>, posição fixa: a sidebar
+     tem overflow:hidden e cortaria um tooltip feito com ::after. */
+  let dica = null;
+  function esconderDica() {
+    if (dica) dica.classList.remove("is-visible");
+  }
+  function mostrarDica(alvo) {
+    if (!host || !host.classList.contains("is-rail") || !doc.body) return;
+    const texto = alvo.dataset.tip;
+    if (!texto) return;
+    if (!dica) {
+      dica = el("div", "vf-shell__tip");
+      dica.setAttribute("role", "tooltip");
+      dica.setAttribute("aria-hidden", "true");
+      doc.body.appendChild(dica);
+    }
+    dica.textContent = texto;
+    const r = alvo.getBoundingClientRect();
+    const hr = host.getBoundingClientRect();
+    dica.style.left = `${Math.round(hr.right + 10)}px`;
+    dica.style.top = `${Math.round(r.top + r.height / 2)}px`;
+    dica.classList.toggle("is-disabled", alvo.getAttribute("aria-disabled") === "true");
+    dica.classList.add("is-visible");
+  }
+  if (host && typeof host.addEventListener === "function") {
+    const alvoDica = (e) => (e.target && typeof e.target.closest === "function" ? e.target.closest("[data-tip]") : null);
+    host.addEventListener("mouseover", (e) => {
+      const alvo = alvoDica(e);
+      if (alvo) mostrarDica(alvo);
+      else esconderDica();
+    });
+    host.addEventListener("mouseleave", esconderDica);
+    host.addEventListener("focusin", (e) => {
+      const alvo = alvoDica(e);
+      if (alvo) mostrarDica(alvo);
+    });
+    host.addEventListener("focusout", esconderDica);
+    host.addEventListener("scroll", esconderDica, { passive: true });
+  }
+
   function abreviar(label) {
     const p = String(label).split(/\s+/);
     if (p.length > 1) return (p[0][0] + p[p.length - 1][0]).toUpperCase();
@@ -528,27 +630,52 @@ export function createVfShell(options = {}) {
     const carregando = estado === "BOOT" || estado === "RESOLVING_CLIENT" || estado === "RESOLVING_ACCOUNTS";
 
     host.innerHTML = "";
-    host.className = "vf-shell__sidebar" + (colapsada ? " is-collapsed" : "");
+    esconderDica();
+    const rail = emRail();
+    host.className =
+      "vf-shell__sidebar" +
+      (colapsada ? " is-collapsed" : "") +
+      (rail ? " is-rail" : "") +
+      (transicao ? ` is-${transicao}` : "");
+    if (dom.root && dom.root.classList) dom.root.classList.toggle("is-sidebar-collapsed", colapsada);
+    let ordem = 0; // índice de cada item, para o escalonamento da animação de entrada (--i)
 
     const logo = el("div", "vf-shell__logo");
     logo.innerHTML =
       '<span class="vf-shell__brand"><span class="vf-shell__brand-mark">VF</span>' +
       '<span class="vf-shell__brand-text">Venforce</span></span>';
-    const toggle = el("button", "vf-shell__collapse", colapsada ? "›" : "‹");
+    const toggle = el("button", "vf-shell__collapse");
     toggle.type = "button";
+    toggle.innerHTML = svgIcone(UI_ICONS.recolher, "vf-shell__collapse-icon", 18);
     toggle.setAttribute("aria-label", colapsada ? "Expandir menu" : "Recolher menu");
     toggle.setAttribute("aria-expanded", colapsada ? "false" : "true");
-    toggle.addEventListener("click", () => {
-      colapsada = !colapsada;
-      try {
-        storage && storage.setItem(COLLAPSE_KEY, colapsada ? "1" : "0");
-      } catch {
-        /* preferência de UI — segue sem persistir */
-      }
-      render(ctxStore.getSnapshot());
-    });
+    toggle.dataset.tip = colapsada ? "Expandir menu" : "Recolher menu";
+    toggle.addEventListener("click", () => alternarColapso(!colapsada));
     logo.appendChild(toggle);
     host.appendChild(logo);
+
+    // Recolhida: o bloco de contexto (2 cards altos) não cabe no rail — vira
+    // um botão compacto com as iniciais do cliente. Clicar expande o menu e
+    // já abre a escolha de cliente. Na faixa ≤1200 o contexto mora na barra
+    // superior (contextoNaBarra), então o atalho não faz falta ali.
+    if (colapsada && !contextoNaBarra()) {
+      const clienteAtual = ctxStore.getClienteAtual();
+      const mini = el("button", "vf-shell__context-mini" + (meta ? ` is-${meta.status.tone}` : ""));
+      mini.type = "button";
+      mini.innerHTML =
+        `<span class="vf-shell__context-mini-initials">${fmt.escapeHTML(clienteAtual ? fmt.iniciais(clienteAtual.nome) : "?")}</span>` +
+        '<span class="vf-shell__context-mini-dot" aria-hidden="true"></span>';
+      const rotuloMini = clienteAtual
+        ? `${clienteAtual.nome}${meta ? " · " + meta.nome : ""} — trocar`
+        : "Escolher cliente";
+      mini.setAttribute("aria-label", rotuloMini);
+      mini.dataset.tip = rotuloMini;
+      mini.addEventListener("click", () => {
+        alternarColapso(false);
+        abrirDropdown("cliente");
+      });
+      host.appendChild(mini);
+    }
 
     const bloco = blocoContexto(estado, ctx, meta, carregando, snap);
     if (contextoNaBarra() && contextbar) {
@@ -581,12 +708,16 @@ export function createVfShell(options = {}) {
         }
       });
 
-      host.appendChild(el("div", "vf-shell__section-label", grupo.titulo));
+      const rotuloGrupo = el("div", "vf-shell__section-label");
+      rotuloGrupo.innerHTML = `<span>${fmt.escapeHTML(grupo.titulo)}</span>`;
+      host.appendChild(rotuloGrupo);
       const nav = el("nav", "vf-shell__nav");
       nav.setAttribute("aria-label", grupo.titulo);
       disponiveis.forEach((mod) => {
         const motivo = requerContexto(mod.id) && estado !== "READY" ? "Escolha um cliente e uma operação para abrir este módulo" : null;
-        nav.appendChild(itemNav(mod, motivo, meta));
+        const item = itemNav(mod, motivo, meta);
+        item.style.setProperty("--i", String(ordem++));
+        nav.appendChild(item);
       });
 
       if (indisponiveis.length >= 3) {
@@ -603,21 +734,39 @@ export function createVfShell(options = {}) {
 
     if (String(user.role || "").toLowerCase() === "admin") {
       const admin = el("details", "vf-shell__admin");
-      admin.innerHTML = "<summary>Administração</summary>";
+      const itensAdmin = ADMIN.filter((mod) => !mod.unificacaoUi || unificacaoUiEnabled);
+      // Aberto se o usuário deixou aberto, ou se a página atual é uma delas
+      // (antes fechava a cada re-render e escondia o item ativo).
+      if (adminAberto || itensAdmin.some((mod) => mod.id === doc.body.dataset.vfModule)) admin.open = true;
+      admin.innerHTML =
+        '<summary data-tip="Administração">' +
+        svgIcone(UI_ICONS.admin, "vf-shell__item-icon") +
+        '<span class="vf-shell__item-label">Administração</span>' +
+        svgIcone(UI_ICONS.chevron, "vf-shell__admin-chevron", 14) +
+        "</summary>";
+      admin.addEventListener("toggle", () => {
+        adminAberto = admin.open;
+      });
       const navA = el("nav", "vf-shell__nav");
-      ADMIN.filter((mod) => !mod.unificacaoUi || unificacaoUiEnabled).forEach((mod) => navA.appendChild(itemNav(mod, null, null)));
+      itensAdmin.forEach((mod, i) => {
+        const item = itemNav(mod, null, null);
+        item.style.setProperty("--j", String(i));
+        navA.appendChild(item);
+      });
       admin.appendChild(navA);
       host.appendChild(admin);
     }
 
     const footer = el("div", "vf-shell__footer");
+    const nomeUsuario = user.nome || "Usuário";
     footer.innerHTML =
-      `<span class="vf-shell__avatar">${fmt.escapeHTML(fmt.iniciais(user.nome))}</span>` +
-      `<span class="vf-shell__user"><b>${fmt.escapeHTML(user.nome || "Usuário")}</b>` +
+      `<span class="vf-shell__avatar" data-tip="${fmt.escapeHTML(nomeUsuario)}">${fmt.escapeHTML(fmt.iniciais(user.nome))}</span>` +
+      `<span class="vf-shell__user"><b>${fmt.escapeHTML(nomeUsuario)}</b>` +
       `<small>${fmt.escapeHTML(String(user.role || "").toLowerCase() === "admin" ? "Administrador" : "Usuário")}</small></span>`;
-    const sair = el("button", "vf-shell__logout", "⏻");
+    const sair = el("button", "vf-shell__logout");
+    sair.innerHTML = svgIcone(UI_ICONS.sair, "vf-shell__logout-icon", 16);
     sair.type = "button";
-    sair.title = "Sair";
+    sair.dataset.tip = "Sair";
     sair.setAttribute("aria-label", "Sair");
     sair.addEventListener("click", () => onCommand("logout"));
     footer.appendChild(sair);
@@ -647,22 +796,18 @@ export function createVfShell(options = {}) {
     const isActive = doc.body.dataset.vfModule === mod.id;
     const a = el("a", "vf-shell__item" + (isActive ? " is-active" : "") + (desabilitado ? " is-disabled" : ""));
     a.href = desabilitado ? "#" : buildHref(mod, meta);
-    const rail = railEstreito() || colapsada;
-    if (rail) {
-      // Rail (ícone só, sem <svg>): mantém o texto abreviado de sempre —
-      // adicionar ícone aqui não foi pedido e mudaria o rail já validado.
-      a.textContent = abreviar(mod.label);
-    } else {
-      const icone = ICONS[mod.id];
-      a.innerHTML =
-        (icone
-          ? `<svg class="vf-shell__item-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icone}</svg>`
-          : "") + `<span>${fmt.escapeHTML(mod.label)}</span>`;
-    }
-    if (rail) {
-      a.setAttribute("aria-label", mod.label);
-      a.title = motivoDesabilitado || (futuro ? "Ainda não disponível nesta versão" : mod.label);
-    }
+    // Ícone + rótulo SEMPRE no DOM — o CSS decide o que aparece. Recolher/
+    // expandir passa a ser só troca de classe (o rótulo some com fade e o
+    // ícone não sai do lugar), em vez de trocar o item por uma sigla ("In",
+    // "PC", "Se"…) que ninguém conseguia ler. Sigla só para item sem ícone.
+    const icone = ICONS[mod.id];
+    a.innerHTML =
+      (icone
+        ? svgIcone(icone, "vf-shell__item-icon")
+        : `<span class="vf-shell__item-abbr" aria-hidden="true">${fmt.escapeHTML(abreviar(mod.label))}</span>`) +
+      `<span class="vf-shell__item-label">${fmt.escapeHTML(mod.label)}</span>`;
+    a.dataset.tip = motivoDesabilitado || (futuro ? `${mod.label} — ainda não disponível nesta versão` : mod.label);
+    if (emRail()) a.setAttribute("aria-label", mod.label);
     a.dataset.module = mod.id;
     if (isActive) a.setAttribute("aria-current", "page");
     if (desabilitado) {

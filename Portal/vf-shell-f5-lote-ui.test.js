@@ -79,7 +79,8 @@ const PAGINAS = [
   { arquivo: "full-gestao.html", modulo: "central-full", marca: "#root > *", escopo: "account", query: "?cliente=n97&conta=42" },
   { arquivo: "fechamento.html", modulo: "curva-abc", marca: "#fc-wrap" },
   { arquivo: "cliente-operacao.html", modulo: null, marca: "#vfop-client-select" }, // fora da sidebar (só por URL)
-  { arquivo: "promocoes-retorno.html", modulo: "promocoes-ml", marca: "#promo-cliente-search" },
+  // Promoções ML: fora da sidebar desde 27/11/2026 — a página segue no Shell, só sem item no menu.
+  { arquivo: "promocoes-retorno.html", modulo: null, marca: "#promo-cliente-search" },
   { arquivo: "financeiro.html", modulo: "financeiro", marca: "#fin-shell" },
   { arquivo: "ml-tokens.html", modulo: "ml-tokens", marca: "#mlt-sum-total" },
   { arquivo: "criar-anuncios-meli.html", modulo: "criar-anuncios-meli", marca: "#cam-root" },
